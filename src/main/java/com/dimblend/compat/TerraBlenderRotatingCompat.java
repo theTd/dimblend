@@ -1,6 +1,8 @@
 package com.dimblend.compat;
 
+import com.dimblend.worldgen.OverworldSlice;
 import com.dimblend.worldgen.RotatingChunkGenerator;
+import com.dimblend.worldgen.SlicedOverworldChunkGenerator;
 import com.mojang.logging.LogUtils;
 import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
@@ -69,8 +71,11 @@ public final class TerraBlenderRotatingCompat {
             if (dimensionType == null || logKey == null) {
                 continue;
             }
+            ChunkGenerator target = delegate instanceof SlicedOverworldChunkGenerator sliced
+                    ? sliced.inner()
+                    : delegate;
             try {
-                initializeBiomes.invoke(null, access, dimensionType, logKey, delegate, seed);
+                initializeBiomes.invoke(null, access, dimensionType, logKey, target, seed);
                 LOGGER.info("Initialized TerraBlender biomes for rotating band {}", logKey.location());
             } catch (ReflectiveOperationException exception) {
                 Throwable cause = exception instanceof InvocationTargetException && exception.getCause() != null
@@ -110,7 +115,12 @@ public final class TerraBlenderRotatingCompat {
         }
         String path;
         if (settings.equals(ResourceLocation.withDefaultNamespace("overworld"))) {
-            path = "rotating/overworld";
+            if (delegate instanceof SlicedOverworldChunkGenerator sliced
+                    && sliced.slice() == OverworldSlice.UNDERGROUND) {
+                path = "rotating/overworld_caves";
+            } else {
+                path = "rotating/overworld";
+            }
         } else if (settings.equals(ResourceLocation.withDefaultNamespace("nether"))) {
             path = "rotating/the_nether";
         } else if (settings.equals(ResourceLocation.withDefaultNamespace("end"))) {
@@ -122,6 +132,9 @@ public final class TerraBlenderRotatingCompat {
     }
 
     private static ResourceLocation noiseSettings(ChunkGenerator delegate) {
+        if (delegate instanceof SlicedOverworldChunkGenerator sliced) {
+            delegate = sliced.inner();
+        }
         if (!(delegate instanceof NoiseBasedChunkGenerator noise)) {
             return null;
         }

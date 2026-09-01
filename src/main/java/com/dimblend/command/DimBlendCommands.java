@@ -2,6 +2,9 @@ package com.dimblend.command;
 
 import com.dimblend.DimBlendRegistries;
 import com.dimblend.worldgen.BandIndex;
+import com.dimblend.worldgen.OverworldSlice;
+import com.dimblend.worldgen.RotatingChunkGenerator;
+import com.dimblend.worldgen.SlicedOverworldChunkGenerator;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
@@ -18,15 +21,16 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 
 public final class DimBlendCommands {
-    private static final String[] BAND_NAMES = {"overworld", "end", "nether", "twilight"};
+    private static final String[] BAND_NAMES = {"overworld", "overworld_caves", "end", "nether", "twilight"};
     private static final DynamicCommandExceptionType UNKNOWN_BAND = new DynamicCommandExceptionType(
             value -> Component.literal("unknown band: " + value)
     );
     private static final SuggestionProvider<CommandSourceStack> BAND_SUGGESTIONS = (context, builder) ->
-            SharedSuggestionProvider.suggest(List.of("overworld", "end", "nether", "twilight", "0", "1", "2", "3"), builder);
+            SharedSuggestionProvider.suggest(List.of("overworld", "overworld_caves", "end", "nether", "twilight", "0", "1", "2", "3", "4"), builder);
 
     private DimBlendCommands() {
     }
@@ -79,13 +83,20 @@ public final class DimBlendCommands {
         int x = origin ? 0 : bandIndex * BandIndex.DEFAULT_BAND_SIZE + BandIndex.DEFAULT_BAND_SIZE / 2;
         int z = 0;
         ChunkGenerator generator = level.getChunkSource().getGenerator();
-        int sampledY = generator.getFirstFreeHeight(
-                x,
-                z,
-                Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
-                level,
-                level.getChunkSource().randomState()
-        );
+        Integer undergroundY = undergroundLandingY(generator, bandIndex, x, z, level);
+        if (isUndergroundBand(generator, bandIndex) && undergroundY == null) {
+            source.sendFailure(Component.literal("no safe landing in overworld caves band"));
+            return 0;
+        }
+        int sampledY = undergroundY != null
+                ? undergroundY
+                : generator.getFirstFreeHeight(
+                        x,
+                        z,
+                        Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                        level,
+                        level.getChunkSource().randomState()
+                );
         final int y = sampledY <= level.getMinBuildHeight()
                 ? Math.max(level.getMinBuildHeight() + 1, generator.getSeaLevel())
                 : sampledY;
@@ -97,5 +108,41 @@ public final class DimBlendCommands {
                 true
         );
         return 1;
+    }
+
+    private static boolean isUndergroundBand(ChunkGenerator generator, int bandIndex) {
+        if (!(generator instanceof RotatingChunkGenerator rotating) || bandIndex < 0 || bandIndex >= rotating.delegates().size()) {
+            return false;
+        }
+        ChunkGenerator delegate = rotating.delegates().get(bandIndex);
+        return delegate instanceof SlicedOverworldChunkGenerator sliced
+                && sliced.slice() == OverworldSlice.UNDERGROUND;
+    }
+
+    private static Integer undergroundLandingY(ChunkGenerator generator, int bandIndex, int x, int z, ServerLevel level) {
+        if (!(generator instanceof RotatingChunkGenerator rotating) || bandIndex < 0 || bandIndex >= rotating.delegates().size()) {
+            return null;
+        }
+        ChunkGenerator delegate = rotating.delegates().get(bandIndex);
+        if (!(delegate instanceof SlicedOverworldChunkGenerator sliced)
+                || sliced.slice() != OverworldSlice.UNDERGROUND) {
+            return null;
+        }
+        var column = rotating.getBaseColumn(x, z, level, level.getChunkSource().randomState());
+        int minY = Math.max(sliced.slice().targetMinY() + 1, level.getMinBuildHeight() + 1);
+        int maxY = Math.min(sliced.slice().sealY() - 2, level.getMaxBuildHeight() - 2);
+        for (int feet = maxY; feet >= minY; feet--) {
+            BlockState feetState = column.getBlock(feet);
+            BlockState headState = column.getBlock(feet + 1);
+            BlockState floor = column.getBlock(feet - 1);
+            if (!feetState.blocksMotion()
+                    && feetState.getFluidState().isEmpty()
+                    && !headState.blocksMotion()
+                    && headState.getFluidState().isEmpty()
+                    && floor.blocksMotion()) {
+                return feet;
+            }
+        }
+        return null;
     }
 }

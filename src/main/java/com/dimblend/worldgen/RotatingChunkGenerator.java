@@ -135,7 +135,10 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         HolderLookup<StructureSet> structureSets = access.lookupOrThrow(Registries.STRUCTURE_SET);
         for (int i = 0; i < count; i++) {
             ChunkGenerator delegate = this.delegates.get(i);
-            if (delegate instanceof NoiseBasedChunkGenerator noise) {
+            ChunkGenerator noiseSource = delegate instanceof SlicedOverworldChunkGenerator sliced
+                    ? sliced.inner()
+                    : delegate;
+            if (noiseSource instanceof NoiseBasedChunkGenerator noise) {
                 randoms[i] = RandomState.create(
                         noise.generatorSettings().value(),
                         access.lookupOrThrow(Registries.NOISE),
@@ -505,6 +508,11 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         Pair<BlockPos, Holder<Structure>> nearest = null;
         double nearestDistance = Double.MAX_VALUE;
         for (int i = 0; i < this.delegates.size(); i++) {
+            ChunkGenerator delegate = this.delegates.get(i);
+            if (delegate instanceof SlicedOverworldChunkGenerator sliced
+                    && sliced.slice() == OverworldSlice.UNDERGROUND) {
+                continue;
+            }
             Pair<BlockPos, Holder<Structure>> candidate = this.findNearestForDelegate(
                     i,
                     this.delegateState(i),

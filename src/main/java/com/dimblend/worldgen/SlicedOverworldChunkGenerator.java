@@ -1,0 +1,407 @@
+package com.dimblend.worldgen;
+
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.core.QuartPos;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.server.level.WorldGenRegion;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.LevelHeightAccessor;
+import net.minecraft.world.level.NoiseColumn;
+import net.minecraft.world.level.StructureManager;
+import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.BiomeManager;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
+import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.ProtoChunk;
+import net.minecraft.world.level.levelgen.GenerationStep.Carving;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.Heightmap.Types;
+import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.levelgen.blending.Blender;
+import net.minecraft.world.level.levelgen.structure.StructureSet;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager;
+
+public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
+    public static final MapCodec<SlicedOverworldChunkGenerator> CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            ChunkGenerator.CODEC.fieldOf("inner").forGetter(generator -> generator.inner),
+            OverworldSlice.CODEC.fieldOf("slice").forGetter(generator -> generator.slice)
+    ).apply(instance, SlicedOverworldChunkGenerator::new));
+
+    private final ChunkGenerator inner;
+    private final OverworldSlice slice;
+
+    public SlicedOverworldChunkGenerator(ChunkGenerator inner, OverworldSlice slice) {
+        super(slice.yOffset() == 0 ? inner.getBiomeSource() : new SlicedOverworldBiomeSource(inner.getBiomeSource(), slice));
+        this.inner = inner;
+        this.slice = slice;
+    }
+
+    public ChunkGenerator inner() {
+        return this.inner;
+    }
+
+    public OverworldSlice slice() {
+        return this.slice;
+    }
+
+    @Override
+    protected MapCodec<? extends ChunkGenerator> codec() {
+        return CODEC;
+    }
+
+    @Override
+    public void createStructures(
+            RegistryAccess access,
+            ChunkGeneratorStructureState state,
+            StructureManager structures,
+            ChunkAccess chunk,
+            StructureTemplateManager templates
+    ) {
+        if (this.slice == OverworldSlice.SURFACE) {
+            this.inner.createStructures(access, state, structures, chunk, templates);
+        }
+    }
+
+    @Override
+    public void createReferences(WorldGenLevel level, StructureManager structures, ChunkAccess chunk) {
+        if (this.slice == OverworldSlice.SURFACE) {
+            this.inner.createReferences(level, structures, chunk);
+        }
+    }
+
+    @Override
+    public CompletableFuture<ChunkAccess> createBiomes(
+            RandomState randomState,
+            Blender blender,
+            StructureManager structureManager,
+            ChunkAccess chunk
+    ) {
+        return this.inner.createBiomes(randomState, blender, structureManager, chunk);
+    }
+
+    @Override
+    public CompletableFuture<ChunkAccess> fillFromNoise(
+            Blender blender,
+            RandomState randomState,
+            StructureManager structureManager,
+            ChunkAccess chunk
+    ) {
+        return this.inner.fillFromNoise(blender, randomState, structureManager, chunk);
+    }
+
+    @Override
+    public void buildSurface(WorldGenRegion level, StructureManager structureManager, RandomState randomState, ChunkAccess chunk) {
+        this.inner.buildSurface(level, structureManager, randomState, chunk);
+    }
+
+    @Override
+    public void applyCarvers(
+            WorldGenRegion level,
+            long seed,
+            RandomState randomState,
+            BiomeManager biomeManager,
+            StructureManager structureManager,
+            ChunkAccess chunk,
+            Carving step
+    ) {
+        this.inner.applyCarvers(level, seed, randomState, biomeManager, structureManager, chunk, step);
+        if (step == Carving.AIR) {
+            this.relocateSlice(chunk);
+        }
+    }
+
+    @Override
+    public void applyBiomeDecoration(WorldGenLevel level, ChunkAccess chunk, StructureManager structures) {
+        if (this.slice == OverworldSlice.SURFACE) {
+            this.inner.applyBiomeDecoration(level, chunk, structures);
+            this.sealSlice(chunk);
+        }
+    }
+
+    @Override
+    public void spawnOriginalMobs(WorldGenRegion level) {
+        if (this.slice == OverworldSlice.SURFACE) {
+            this.inner.spawnOriginalMobs(level);
+        }
+    }
+
+    @Override
+    public int getMinY() {
+        return this.inner.getMinY();
+    }
+
+    @Override
+    public int getGenDepth() {
+        return this.inner.getGenDepth();
+    }
+
+    @Override
+    public int getSeaLevel() {
+        return this.inner.getSeaLevel();
+    }
+
+    @Override
+    public int getBaseHeight(int x, int z, Types type, LevelHeightAccessor height, RandomState randomState) {
+        NoiseColumn column = this.getBaseColumn(x, z, height, randomState);
+        int minY = height.getMinBuildHeight();
+        int maxY = height.getMaxBuildHeight() - 1;
+        for (int y = maxY; y >= minY; y--) {
+            BlockState state = column.getBlock(y);
+            if (type.isOpaque().test(state)) {
+                return y + 1;
+            }
+        }
+        return minY;
+    }
+
+    @Override
+    public NoiseColumn getBaseColumn(int x, int z, LevelHeightAccessor height, RandomState randomState) {
+        NoiseColumn source = this.inner.getBaseColumn(x, z, height, randomState);
+        int minY = height.getMinBuildHeight();
+        int depth = height.getHeight();
+        BlockState[] states = new BlockState[depth];
+        BlockState air = Blocks.AIR.defaultBlockState();
+        BlockState bedrock = Blocks.BEDROCK.defaultBlockState();
+        for (int i = 0; i < depth; i++) {
+            int targetY = minY + i;
+            int sourceY = this.slice.toSourceY(targetY);
+            BlockState state = this.slice.containsSourceY(sourceY) ? source.getBlock(sourceY) : air;
+            states[i] = this.sealedState(targetY, state, bedrock, air);
+        }
+        return new NoiseColumn(minY, states);
+    }
+
+    @Override
+    public void addDebugScreenInfo(List<String> info, RandomState randomState, BlockPos pos) {
+        info.add("dimblend overworld slice=" + this.slice.serializedName() + " offset=" + this.slice.yOffset());
+        this.inner.addDebugScreenInfo(info, randomState, pos.offset(0, -this.slice.yOffset(), 0));
+    }
+
+    @Override
+    public ChunkGeneratorStructureState createState(HolderLookup<StructureSet> lookup, RandomState randomState, long seed) {
+        return this.inner.createState(lookup, randomState, seed);
+    }
+
+    private void relocateSlice(ChunkAccess chunk) {
+        if (this.slice.yOffset() == 0) {
+            this.sealSlice(chunk);
+            this.reprimeHeightmaps(chunk);
+            return;
+        }
+        int sourceMin = Math.max(this.slice.sourceMinY(), chunk.getMinBuildHeight());
+        int sourceMaxExclusive = Math.min(this.slice.sourceMaxExclusiveY(), chunk.getMaxBuildHeight());
+        if (sourceMin >= sourceMaxExclusive) {
+            this.sealSlice(chunk);
+            return;
+        }
+        int depth = sourceMaxExclusive - sourceMin;
+        BlockState[][][] blocks = new BlockState[16][16][depth];
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        int minX = chunk.getPos().getMinBlockX();
+        int minZ = chunk.getPos().getMinBlockZ();
+        for (int lx = 0; lx < 16; lx++) {
+            for (int lz = 0; lz < 16; lz++) {
+                for (int dy = 0; dy < depth; dy++) {
+                    int sourceY = sourceMin + dy;
+                    blocks[lx][lz][dy] = chunk.getBlockState(cursor.set(minX + lx, sourceY, minZ + lz));
+                }
+            }
+        }
+        Holder<Biome>[][][] biomes = snapshotBiomes(chunk);
+
+        this.clearColumn(chunk, air());
+        for (int lx = 0; lx < 16; lx++) {
+            for (int lz = 0; lz < 16; lz++) {
+                for (int dy = 0; dy < depth; dy++) {
+                    int targetY = this.slice.toTargetY(sourceMin + dy);
+                    if (targetY < chunk.getMinBuildHeight() || targetY >= chunk.getMaxBuildHeight()) {
+                        continue;
+                    }
+                    chunk.setBlockState(cursor.set(minX + lx, targetY, minZ + lz), blocks[lx][lz][dy], false);
+                }
+            }
+        }
+        this.writeBiomes(chunk, biomes);
+        this.shiftPostProcessing(chunk);
+        this.sealSlice(chunk);
+        this.reprimeHeightmaps(chunk);
+    }
+
+    private Holder<Biome>[][][] snapshotBiomes(ChunkAccess chunk) {
+        int quartX0 = QuartPos.fromBlock(chunk.getPos().getMinBlockX());
+        int quartZ0 = QuartPos.fromBlock(chunk.getPos().getMinBlockZ());
+        int minQuartY = QuartPos.fromBlock(chunk.getMinBuildHeight());
+        int quartHeight = QuartPos.fromBlock(chunk.getHeight());
+        Holder<Biome>[][][] biomes = new Holder[4][4][quartHeight];
+        for (int qx = 0; qx < 4; qx++) {
+            for (int qz = 0; qz < 4; qz++) {
+                for (int qy = 0; qy < quartHeight; qy++) {
+                    biomes[qx][qz][qy] = chunk.getNoiseBiome(quartX0 + qx, minQuartY + qy, quartZ0 + qz);
+                }
+            }
+        }
+        return biomes;
+    }
+
+    private void writeBiomes(ChunkAccess chunk, Holder<Biome>[][][] biomes) {
+        int quartX0 = QuartPos.fromBlock(chunk.getPos().getMinBlockX());
+        int quartZ0 = QuartPos.fromBlock(chunk.getPos().getMinBlockZ());
+        int minQuartY = QuartPos.fromBlock(chunk.getMinBuildHeight());
+        int quartHeight = biomes[0][0].length;
+        int quartOffset = QuartPos.fromBlock(this.slice.yOffset());
+        Holder<Biome> edge = biomes[0][0][0];
+        LevelHeightAccessor height = chunk.getHeightAccessorForGeneration();
+        for (int sectionY = height.getMinSection(); sectionY < height.getMaxSection(); sectionY++) {
+            LevelChunkSection section = chunk.getSection(chunk.getSectionIndexFromSectionY(sectionY));
+            int sectionQuartY = QuartPos.fromSection(sectionY);
+            section.fillBiomesFromNoise(
+                    (qx, qy, qz, sampler) -> {
+                        int sourceQuartY = qy - quartOffset;
+                        int localY = sourceQuartY - minQuartY;
+                        if (localY < 0 || localY >= quartHeight) {
+                            return edge;
+                        }
+                        int localX = qx - quartX0;
+                        int localZ = qz - quartZ0;
+                        if (localX < 0 || localX >= 4 || localZ < 0 || localZ >= 4) {
+                            return edge;
+                        }
+                        return biomes[localX][localZ][localY];
+                    },
+                    null,
+                    quartX0,
+                    sectionQuartY,
+                    quartZ0
+            );
+        }
+    }
+
+    private void clearColumn(ChunkAccess chunk, BlockState air) {
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        int minX = chunk.getPos().getMinBlockX();
+        int minZ = chunk.getPos().getMinBlockZ();
+        int minY = chunk.getMinBuildHeight();
+        int maxY = chunk.getMaxBuildHeight() - 1;
+        for (int lx = 0; lx < 16; lx++) {
+            for (int lz = 0; lz < 16; lz++) {
+                for (int y = minY; y <= maxY; y++) {
+                    chunk.setBlockState(cursor.set(minX + lx, y, minZ + lz), air, false);
+                }
+            }
+        }
+    }
+
+    private void sealSlice(ChunkAccess chunk) {
+        BlockState air = air();
+        BlockState bedrock = Blocks.BEDROCK.defaultBlockState();
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        int minX = chunk.getPos().getMinBlockX();
+        int minZ = chunk.getPos().getMinBlockZ();
+        int minY = chunk.getMinBuildHeight();
+        int maxY = chunk.getMaxBuildHeight() - 1;
+        int targetMin = this.slice.targetMinY();
+        int targetMaxExclusive = this.slice.targetMaxExclusiveY();
+        int sealY = this.slice.sealY();
+        for (int lx = 0; lx < 16; lx++) {
+            for (int lz = 0; lz < 16; lz++) {
+                for (int y = minY; y <= maxY; y++) {
+                    cursor.set(minX + lx, y, minZ + lz);
+                    BlockState current = chunk.getBlockState(cursor);
+                    BlockState sealed = this.sealedState(y, current, bedrock, air, targetMin, targetMaxExclusive, sealY);
+                    if (sealed != current) {
+                        chunk.setBlockState(cursor, sealed, false);
+                    }
+                }
+            }
+        }
+    }
+
+    private BlockState sealedState(int targetY, BlockState current, BlockState bedrock, BlockState air) {
+        return this.sealedState(
+                targetY,
+                current,
+                bedrock,
+                air,
+                this.slice.targetMinY(),
+                this.slice.targetMaxExclusiveY(),
+                this.slice.sealY()
+        );
+    }
+
+    private BlockState sealedState(
+            int targetY,
+            BlockState current,
+            BlockState bedrock,
+            BlockState air,
+            int targetMin,
+            int targetMaxExclusive,
+            int sealY
+    ) {
+        if (targetY == sealY) {
+            return bedrock;
+        }
+        if (targetY < targetMin || targetY >= targetMaxExclusive) {
+            return air;
+        }
+        return current;
+    }
+
+    private int sealedHeight() {
+        return this.slice.floorBedrock() ? this.slice.targetMinY() : this.slice.targetMaxExclusiveY();
+    }
+
+    private void reprimeHeightmaps(ChunkAccess chunk) {
+        EnumSet<Types> primed = EnumSet.noneOf(Types.class);
+        for (Types type : Types.values()) {
+            if (chunk.hasPrimedHeightmap(type)) {
+                primed.add(type);
+            }
+        }
+        if (!primed.isEmpty()) {
+            Heightmap.primeHeightmaps(chunk, primed);
+        }
+    }
+
+    private void shiftPostProcessing(ChunkAccess chunk) {
+        if (!(chunk instanceof ProtoChunk proto)) {
+            return;
+        }
+        it.unimi.dsi.fastutil.shorts.ShortList[] lists = proto.getPostProcessing();
+        ChunkPos pos = proto.getPos();
+        java.util.ArrayList<BlockPos> sourceMarks = new java.util.ArrayList<>();
+        for (int sectionIndex = 0; sectionIndex < lists.length; sectionIndex++) {
+            it.unimi.dsi.fastutil.shorts.ShortList source = lists[sectionIndex];
+            if (source == null || source.isEmpty()) {
+                continue;
+            }
+            int sectionY = chunk.getSectionYFromSectionIndex(sectionIndex);
+            for (short packed : source.toShortArray()) {
+                sourceMarks.add(ProtoChunk.unpackOffsetCoordinates(packed, sectionY, pos));
+            }
+            source.clear();
+        }
+        for (BlockPos sourcePos : sourceMarks) {
+            int targetY = this.slice.toTargetY(sourcePos.getY());
+            if (targetY < chunk.getMinBuildHeight() || targetY >= chunk.getMaxBuildHeight()) {
+                continue;
+            }
+            proto.markPosForPostprocessing(new BlockPos(sourcePos.getX(), targetY, sourcePos.getZ()));
+        }
+    }
+
+    private static BlockState air() {
+        return Blocks.AIR.defaultBlockState();
+    }
+}
