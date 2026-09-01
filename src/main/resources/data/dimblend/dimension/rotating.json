@@ -1,0 +1,40 @@
+{
+  "type": "dimblend:rotating",
+  "generator": {
+    "type": "dimblend:rotating",
+    "band_size": 1024,
+    "delegates": [
+      {
+        "type": "minecraft:noise",
+        "settings": "minecraft:overworld",
+        "biome_source": {
+          "type": "minecraft:multi_noise",
+          "preset": "minecraft:overworld"
+        }
+      },
+      {
+        "type": "minecraft:noise",
+        "settings": "minecraft:end",
+        "biome_source": {
+          "type": "minecraft:the_end"
+        }
+      },
+      {
+        "type": "minecraft:noise",
+        "settings": "minecraft:nether",
+        "biome_source": {
+          "type": "minecraft:multi_noise",
+          "preset": "minecraft:nether"
+        }
+      },
+      {
+        "type": "minecraft:noise",
+        "settings": "dimblend:twilight_noise_gen",
+        "biome_source": {
+          "type": "twilightforest:twilight_biomes",
+          "terrain_data": "twilightforest:biome_grid"
+        }
+      }
+    ]
+  }
+}

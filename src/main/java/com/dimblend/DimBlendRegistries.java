@@ -1,0 +1,37 @@
+package com.dimblend;
+
+import com.dimblend.worldgen.RotatingBiomeSource;
+import com.dimblend.worldgen.RotatingChunkGenerator;
+import com.mojang.serialization.MapCodec;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.biome.BiomeSource;
+import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.registries.DeferredHolder;
+import net.neoforged.neoforge.registries.DeferredRegister;
+
+public final class DimBlendRegistries {
+    public static final DeferredRegister<MapCodec<? extends ChunkGenerator>> CHUNK_GENERATORS =
+            DeferredRegister.create(Registries.CHUNK_GENERATOR, "dimblend");
+    public static final DeferredRegister<MapCodec<? extends BiomeSource>> BIOME_SOURCES =
+            DeferredRegister.create(Registries.BIOME_SOURCE, "dimblend");
+
+    public static final DeferredHolder<MapCodec<? extends ChunkGenerator>, MapCodec<RotatingChunkGenerator>> ROTATING_GENERATOR =
+            CHUNK_GENERATORS.register("rotating", () -> RotatingChunkGenerator.CODEC);
+    public static final DeferredHolder<MapCodec<? extends BiomeSource>, MapCodec<RotatingBiomeSource>> ROTATING_BIOME_SOURCE =
+            BIOME_SOURCES.register("rotating", () -> RotatingBiomeSource.CODEC);
+
+    public static final ResourceKey<Level> ROTATING_LEVEL =
+            ResourceKey.create(Registries.DIMENSION, ResourceLocation.fromNamespaceAndPath("dimblend", "rotating"));
+
+    private DimBlendRegistries() {
+    }
+
+    public static void register(IEventBus bus) {
+        CHUNK_GENERATORS.register(bus);
+        BIOME_SOURCES.register(bus);
+    }
+}
