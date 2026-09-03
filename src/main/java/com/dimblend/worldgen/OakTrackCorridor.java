@@ -21,7 +21,7 @@ public final class OakTrackCorridor {
     public static final int TRACK_Y = 64;
     public static final int TUNNEL_HALF_WIDTH = 2;
     public static final int TUNNEL_HEIGHT = 5;
-    public static final ResourceLocation TRACK_ID = ResourceLocation.fromNamespaceAndPath("railways", "track_oak");
+    public static final ResourceLocation TRACK_ID = ResourceLocation.fromNamespaceAndPath("railways", "track_create_andesite_wide");
 
     private OakTrackCorridor() {
     }
@@ -37,7 +37,7 @@ public final class OakTrackCorridor {
         }
         Block trackBlock = level.registryAccess().registryOrThrow(Registries.BLOCK).get(TRACK_ID);
         if (trackBlock == null) {
-            throw new IllegalStateException("missing required block railways:track_oak");
+            throw new IllegalStateException("missing required block railways:track_create_andesite_wide");
         }
 
         int minX = chunk.getPos().getMinBlockX();
@@ -85,7 +85,7 @@ public final class OakTrackCorridor {
         }
         Block trackBlock = level.registryAccess().registryOrThrow(Registries.BLOCK).get(TRACK_ID);
         if (trackBlock == null) {
-            throw new IllegalStateException("missing required block railways:track_oak");
+            throw new IllegalStateException("missing required block railways:track_create_andesite_wide");
         }
         int minX = chunk.getPos().getMinBlockX();
         int maxX = chunk.getPos().getMaxBlockX();
