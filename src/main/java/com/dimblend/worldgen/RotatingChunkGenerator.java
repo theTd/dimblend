@@ -100,6 +100,10 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         return this.delegates;
     }
 
+    public int bandSize() {
+        return this.bandSize;
+    }
+
     @Override
     protected MapCodec<? extends ChunkGenerator> codec() {
         return CODEC;
@@ -486,6 +490,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         this.ensureRuntimeFromLevel(level);
         int index = this.bandIndex(chunk.getPos());
         this.delegates.get(index).applyBiomeDecoration(level, chunk, structures);
+        OakTrackCorridor.place(level, chunk);
     }
 
     @Override

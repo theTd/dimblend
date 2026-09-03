@@ -100,6 +100,20 @@ Adds a rotating dimension that cycles Overworld, End, Nether, and Twilight Fores
     ordering="AFTER"
     side="BOTH"
 
+[[dependencies.${mod_id}]]
+    modId="create"
+    type="required"
+    versionRange="[6.0.10,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="railways"
+    type="required"
+    versionRange="[0.3.0-beta.2,)"
+    ordering="AFTER"
+    side="BOTH"
+
 
 
 # Features are specific properties of the game environment, that you may want to declare you require. This example declares

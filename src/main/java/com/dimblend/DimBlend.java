@@ -1,6 +1,7 @@
 package com.dimblend;
 
 import com.dimblend.command.DimBlendCommands;
+import com.dimblend.compat.CreateTrackGraphCompat;
 import com.dimblend.compat.TerraBlenderRotatingCompat;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
@@ -14,6 +15,7 @@ public final class DimBlend {
         DimBlendRegistries.register(modBus);
         NeoForge.EVENT_BUS.addListener(DimBlend::onRegisterCommands);
         NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, TerraBlenderRotatingCompat::onServerAboutToStart);
+        NeoForge.EVENT_BUS.addListener(CreateTrackGraphCompat::onChunkLoad);
     }
 
     private static void onRegisterCommands(RegisterCommandsEvent event) {
