@@ -7,20 +7,19 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.NoiseColumn;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
-import net.minecraft.world.level.levelgen.RandomState;
 
 public final class OakTrackCorridor {
     public static final int CORRIDOR_Z = 0;
     public static final int TRACK_Y = 64;
-    public static final int TUNNEL_HALF_WIDTH = 2;
-    public static final int TUNNEL_HEIGHT = 5;
+    /** Inclusive |dz| of the vault equator. Diameter 15 = Z[-7, +7]. */
+    public static final int VAULT_RADIUS = 7;
+    public static final int VAULT_APEX_DY = 14;
     public static final ResourceLocation TRACK_ID = ResourceLocation.fromNamespaceAndPath("railways", "track_create_andesite_wide");
 
     private OakTrackCorridor() {
@@ -28,7 +27,7 @@ public final class OakTrackCorridor {
 
     public static void place(WorldGenLevel level, ChunkAccess chunk) {
         int chunkZ = chunk.getPos().z;
-        if (chunkZ != 0 && chunkZ != -1) {
+        if (!touchesVault(chunkZ)) {
             return;
         }
         ChunkGenerator generator = level.getLevel().getChunkSource().getGenerator();
@@ -44,39 +43,29 @@ public final class OakTrackCorridor {
         int maxX = chunk.getPos().getMaxBlockX();
         int minZ = chunk.getPos().getMinBlockZ();
         int maxZ = chunk.getPos().getMaxBlockZ();
-        int tunnelMinZ = Math.max(minZ, CORRIDOR_Z - TUNNEL_HALF_WIDTH);
-        int tunnelMaxZ = Math.min(maxZ, CORRIDOR_Z + TUNNEL_HALF_WIDTH);
-        if (tunnelMinZ > tunnelMaxZ) {
+        int vaultMinZ = Math.max(minZ, CORRIDOR_Z - VAULT_RADIUS);
+        int vaultMaxZ = Math.min(maxZ, CORRIDOR_Z + VAULT_RADIUS);
+        if (vaultMinZ > vaultMaxZ) {
             return;
         }
 
-        RandomState randomState = level.getLevel().getChunkSource().randomState();
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        int tunnelMinY = TRACK_Y;
-        int tunnelMaxY = TRACK_Y + TUNNEL_HEIGHT - 1;
         if (chunkZ == 0) {
             for (int x = minX; x <= maxX; x++) {
                 writeTrack(level, chunk, cursor, x, trackBlock);
             }
         }
         for (int x = minX; x <= maxX; x++) {
-            if (!allowsTunnel(rotating, x) || !isBuried(rotating, x, level, randomState, tunnelMinY, tunnelMaxY)) {
+            if (!allowsTunnel(rotating, x) || !isBuried(chunk, cursor, x, vaultMinZ, vaultMaxZ)) {
                 continue;
             }
-            for (int z = tunnelMinZ; z <= tunnelMaxZ; z++) {
-                for (int y = tunnelMinY; y <= tunnelMaxY; y++) {
-                    if (z == CORRIDOR_Z && y == TRACK_Y) {
-                        continue;
-                    }
-                    clearTunnelCell(chunk, cursor, x, y, z, trackBlock, false);
-                }
-            }
+            clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, false);
         }
     }
 
     public static void reclearLoadedChunk(ServerLevel level, ChunkAccess chunk) {
         int chunkZ = chunk.getPos().z;
-        if (chunkZ != 0 && chunkZ != -1) {
+        if (!touchesVault(chunkZ)) {
             return;
         }
         ChunkGenerator generator = level.getChunkSource().getGenerator();
@@ -91,25 +80,61 @@ public final class OakTrackCorridor {
         int maxX = chunk.getPos().getMaxBlockX();
         int minZ = chunk.getPos().getMinBlockZ();
         int maxZ = chunk.getPos().getMaxBlockZ();
-        int tunnelMinZ = Math.max(minZ, CORRIDOR_Z - TUNNEL_HALF_WIDTH);
-        int tunnelMaxZ = Math.min(maxZ, CORRIDOR_Z + TUNNEL_HALF_WIDTH);
-        if (tunnelMinZ > tunnelMaxZ) {
+        int vaultMinZ = Math.max(minZ, CORRIDOR_Z - VAULT_RADIUS);
+        int vaultMaxZ = Math.min(maxZ, CORRIDOR_Z + VAULT_RADIUS);
+        if (vaultMinZ > vaultMaxZ) {
             return;
         }
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        int tunnelMinY = TRACK_Y;
-        int tunnelMaxY = TRACK_Y + TUNNEL_HEIGHT - 1;
         for (int x = minX; x <= maxX; x++) {
             if (!allowsTunnel(rotating, x)) {
                 continue;
             }
-            for (int z = tunnelMinZ; z <= tunnelMaxZ; z++) {
-                for (int y = tunnelMinY; y <= tunnelMaxY; y++) {
-                    if (z == CORRIDOR_Z && y == TRACK_Y) {
-                        continue;
-                    }
-                    clearTunnelCell(chunk, cursor, x, y, z, trackBlock, true);
+            clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, true);
+        }
+    }
+
+    public static boolean touchesVault(int chunkZ) {
+        int minZ = chunkZ * 16;
+        int maxZ = minZ + 15;
+        return maxZ >= CORRIDOR_Z - VAULT_RADIUS && minZ <= CORRIDOR_Z + VAULT_RADIUS;
+    }
+
+    /**
+     * Raised circular horseshoe: radius 8, center 6.5 blocks above the track.
+     * Integer form (2*dy - 13)^2 + 4*dz^2 <= 256, dy >= 0.
+     * Floor |dz| <= 4 (9 wide); equator |dz| <= 7 (diameter 15); apex dy = 14.
+     * z = +/-5..7 starts above the track, never from dy = 0.
+     */
+    static boolean inVault(int dz, int dy) {
+        if (dy < 0) {
+            return false;
+        }
+        int twoDyMinus13 = dy + dy - 13;
+        return twoDyMinus13 * twoDyMinus13 + 4 * dz * dz <= 256;
+    }
+
+
+    private static void clearVaultColumn(
+            ChunkAccess chunk,
+            BlockPos.MutableBlockPos cursor,
+            int x,
+            int vaultMinZ,
+            int vaultMaxZ,
+            Block trackBlock,
+            boolean treesOnly
+    ) {
+        for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
+            int dz = z - CORRIDOR_Z;
+            for (int dy = 0; dy <= VAULT_APEX_DY; dy++) {
+                if (!inVault(dz, dy)) {
+                    continue;
                 }
+                int y = TRACK_Y + dy;
+                if (z == CORRIDOR_Z && y == TRACK_Y) {
+                    continue;
+                }
+                clearTunnelCell(chunk, cursor, x, y, z, trackBlock, treesOnly);
             }
         }
     }
@@ -122,24 +147,27 @@ public final class OakTrackCorridor {
             return true;
         }
         OverworldSlice slice = sliced.slice();
-        return TRACK_Y >= slice.targetMinY() && TRACK_Y + TUNNEL_HEIGHT - 1 < slice.targetMaxExclusiveY();
+        return TRACK_Y >= slice.targetMinY() && TRACK_Y + VAULT_APEX_DY < slice.targetMaxExclusiveY();
     }
 
     private static boolean isBuried(
-            RotatingChunkGenerator rotating,
+            ChunkAccess chunk,
+            BlockPos.MutableBlockPos cursor,
             int x,
-            WorldGenLevel level,
-            RandomState randomState,
-            int tunnelMinY,
-            int tunnelMaxY
+            int vaultMinZ,
+            int vaultMaxZ
     ) {
-        for (int z = CORRIDOR_Z - TUNNEL_HALF_WIDTH; z <= CORRIDOR_Z + TUNNEL_HALF_WIDTH; z++) {
-            NoiseColumn column = rotating.getBaseColumn(x, z, level, randomState);
-            for (int y = tunnelMinY; y <= tunnelMaxY; y++) {
+        for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
+            int dz = z - CORRIDOR_Z;
+            for (int dy = 0; dy <= VAULT_APEX_DY; dy++) {
+                if (!inVault(dz, dy)) {
+                    continue;
+                }
+                int y = TRACK_Y + dy;
                 if (z == CORRIDOR_Z && y == TRACK_Y) {
                     continue;
                 }
-                if (isSolidMountain(column.getBlock(y))) {
+                if (isSolidMountain(chunk.getBlockState(cursor.set(x, y, z)))) {
                     return true;
                 }
             }

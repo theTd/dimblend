@@ -154,6 +154,27 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
 
     @Override
     public int getBaseHeight(int x, int z, Types type, LevelHeightAccessor height, RandomState randomState) {
+        if (this.slice == OverworldSlice.UNDERGROUND) {
+            return this.columnBaseHeight(x, z, type, height, randomState);
+        }
+        int minY = height.getMinBuildHeight();
+        int targetMin = this.slice.targetMinY();
+        int targetMaxExclusive = this.slice.targetMaxExclusiveY();
+        int mapped = this.inner.getBaseHeight(x, z, type, height, randomState) + this.slice.yOffset();
+        if (mapped > targetMaxExclusive) {
+            mapped = targetMaxExclusive;
+        }
+        if (mapped < targetMin) {
+            int sealY = this.slice.sealY();
+            if (type.isOpaque().test(Blocks.BEDROCK.defaultBlockState()) && sealY >= minY) {
+                return sealY + 1;
+            }
+            return minY;
+        }
+        return mapped;
+    }
+
+    private int columnBaseHeight(int x, int z, Types type, LevelHeightAccessor height, RandomState randomState) {
         NoiseColumn column = this.getBaseColumn(x, z, height, randomState);
         int minY = height.getMinBuildHeight();
         int maxY = height.getMaxBuildHeight() - 1;

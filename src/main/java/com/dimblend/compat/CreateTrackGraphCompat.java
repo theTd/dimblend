@@ -32,7 +32,7 @@ public final class CreateTrackGraphCompat {
         }
         ChunkAccess chunk = event.getChunk();
         int chunkZ = chunk.getPos().z;
-        if (chunkZ != 0 && chunkZ != -1) {
+        if (!OakTrackCorridor.touchesVault(chunkZ)) {
             return;
         }
         ChunkPos pos = chunk.getPos();
