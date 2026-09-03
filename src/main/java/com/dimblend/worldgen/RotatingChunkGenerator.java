@@ -172,7 +172,8 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         return current;
     }
 
-    private RandomState delegateRandom(int index) {
+    public RandomState delegateRandom(int index) {
+        this.ensureRuntimeOrThrow();
         return this.requireRuntime().random(index);
     }
 
@@ -307,10 +308,11 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         Heightmap ocean = chunk.getOrCreateHeightmapUnprimed(Types.OCEAN_FLOOR_WG);
         Heightmap surface = chunk.getOrCreateHeightmapUnprimed(Types.WORLD_SURFACE_WG);
         MutableBlockPos cursor = new MutableBlockPos();
+        int twilightBand = BandIndex.twilightBand(this.delegates.size());
         int[][] overworldGrid = this.sampleHeightGrid(
                 this.delegates.get(BandIndex.OVERWORLD_BAND), BandIndex.OVERWORLD_BAND, minX, minZ, chunk);
         int[][] twilightGrid = this.sampleHeightGrid(
-                this.delegates.get(BandIndex.TWILIGHT_BAND), BandIndex.TWILIGHT_BAND, minX, minZ, chunk);
+                this.delegates.get(twilightBand), twilightBand, minX, minZ, chunk);
         for (int sectionIndex = 0; sectionIndex < chunk.getSectionsCount(); sectionIndex++) {
             chunk.getSection(sectionIndex).acquire();
         }
@@ -430,13 +432,13 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         return null;
     }
 
-
     private int blendedSurfaceHeight(int x, int z, LevelHeightAccessor height, Types type) {
+        int twilightBand = BandIndex.twilightBand(this.delegates.size());
         int overworldTop = this.delegates.get(BandIndex.OVERWORLD_BAND).getBaseHeight(
                 x, z, type, height, this.delegateRandom(BandIndex.OVERWORLD_BAND)
         ) - 1;
-        int twilightTop = this.delegates.get(BandIndex.TWILIGHT_BAND).getBaseHeight(
-                x, z, type, height, this.delegateRandom(BandIndex.TWILIGHT_BAND)
+        int twilightTop = this.delegates.get(twilightBand).getBaseHeight(
+                x, z, type, height, this.delegateRandom(twilightBand)
         ) - 1;
         float overworldWeight = BandIndex.overworldWeightAcrossTwilightSeam(x, this.bandSize, this.delegates.size());
         return Math.round(twilightTop + (overworldTop - twilightTop) * overworldWeight);

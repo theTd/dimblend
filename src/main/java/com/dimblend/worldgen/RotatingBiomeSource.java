@@ -45,7 +45,9 @@ public final class RotatingBiomeSource extends BiomeSource {
         int blockX = x << 2;
         if (BandIndex.isOverworldTwilightSeam(blockX, this.bandSize, this.sources.size())) {
             float overworldWeight = BandIndex.overworldWeightAcrossTwilightSeam(blockX, this.bandSize, this.sources.size());
-            int index = overworldWeight >= 0.5f ? BandIndex.OVERWORLD_BAND : BandIndex.TWILIGHT_BAND;
+            int index = overworldWeight >= 0.5f
+                    ? BandIndex.OVERWORLD_BAND
+                    : BandIndex.twilightBand(this.sources.size());
             return this.sources.get(index).getNoiseBiome(x, y, z, sampler);
         }
         int index = BandIndex.ofQuartX(x, this.bandSize, this.sources.size());

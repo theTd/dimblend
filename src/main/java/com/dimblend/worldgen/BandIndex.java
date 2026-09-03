@@ -6,7 +6,6 @@ public final class BandIndex {
     public static final int DEFAULT_BAND_SIZE = 1024;
     public static final int SEAM_WIDTH = 32;
     public static final int OVERWORLD_BAND = 0;
-    public static final int TWILIGHT_BAND = 4;
 
     private BandIndex() {
     }
@@ -24,13 +23,18 @@ public final class BandIndex {
     }
 
 
+    public static int twilightBand(int bandCount) {
+        return bandCount - 1;
+    }
+
     public static int signedDistanceToOverworldTwilightSeam(int blockX, int bandSize, int bandCount) {
-        if (bandCount != 5 || bandSize < SEAM_WIDTH) {
+        if (bandCount < 2 || bandSize < SEAM_WIDTH) {
             return Integer.MAX_VALUE;
         }
+        int twilightBand = twilightBand(bandCount);
         int index = ofBlockX(blockX, bandSize, bandCount);
         int local = Math.floorMod(blockX, bandSize);
-        if (index == TWILIGHT_BAND && local >= bandSize - SEAM_WIDTH) {
+        if (index == twilightBand && local >= bandSize - SEAM_WIDTH) {
             return local - bandSize;
         }
         if (index == OVERWORLD_BAND && local < SEAM_WIDTH) {
