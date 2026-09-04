@@ -29,19 +29,18 @@ public final class OakTrackCorridor {
     }
 
     public static void place(WorldGenLevel level, ChunkAccess chunk) {
-        carveVault(level.getLevel().getChunkSource().getGenerator(), level.registryAccess(), chunk, null, true);
+        carveVault(level.getLevel().getChunkSource().getGenerator(), level.registryAccess(), chunk, null);
     }
 
     public static void reclearLoadedChunk(ServerLevel level, ChunkAccess chunk) {
-        carveVault(level.getChunkSource().getGenerator(), level.registryAccess(), chunk, level, false);
+        carveVault(level.getChunkSource().getGenerator(), level.registryAccess(), chunk, level);
     }
 
     private static void carveVault(
             ChunkGenerator generator,
             RegistryAccess access,
             ChunkAccess chunk,
-            @javax.annotation.Nullable ServerLevel live,
-            boolean placeTrack
+            @javax.annotation.Nullable ServerLevel live
     ) {
         int chunkZ = chunk.getPos().z;
         if (!touchesVault(chunkZ)) {
@@ -66,9 +65,9 @@ public final class OakTrackCorridor {
         }
 
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        if (placeTrack && chunkZ == 0) {
+        if (chunkZ == 0) {
             for (int x = minX; x <= maxX; x++) {
-                writeTrack(chunk, cursor, x, trackBlock);
+                writeTrack(chunk, cursor, x, trackBlock, live);
             }
         }
         boolean[] carved = new boolean[maxX - minX + 1];
@@ -313,20 +312,37 @@ public final class OakTrackCorridor {
             ChunkAccess chunk,
             BlockPos.MutableBlockPos cursor,
             int x,
-            Block trackBlock
+            Block trackBlock,
+            @javax.annotation.Nullable ServerLevel live
     ) {
         cursor.set(x, TRACK_Y, CORRIDOR_Z);
         BlockState current = chunk.getBlockState(cursor);
-        if (!canReplace(current, trackBlock)) {
+        if (current.is(Blocks.BEDROCK)) {
+            return;
+        }
+        if (current.getBlock() == trackBlock) {
+            dryTrack(chunk, live, cursor, current);
             return;
         }
         BlockState track = trackBlock.defaultBlockState()
                 .setValue(TrackBlock.SHAPE, TrackShape.XO)
                 .setValue(TrackBlock.HAS_BE, false);
-        if (!current.getFluidState().isEmpty() && track.hasProperty(TrackBlock.WATERLOGGED)) {
-            track = track.setValue(TrackBlock.WATERLOGGED, true);
+        if (track.hasProperty(TrackBlock.WATERLOGGED)) {
+            track = track.setValue(TrackBlock.WATERLOGGED, false);
         }
-        chunk.setBlockState(cursor, track, false);
+        setCell(chunk, live, cursor, track);
+    }
+
+    private static void dryTrack(
+            ChunkAccess chunk,
+            @javax.annotation.Nullable ServerLevel live,
+            BlockPos.MutableBlockPos cursor,
+            BlockState current
+    ) {
+        if (!current.hasProperty(TrackBlock.WATERLOGGED) || !current.getValue(TrackBlock.WATERLOGGED)) {
+            return;
+        }
+        setCell(chunk, live, cursor, current.setValue(TrackBlock.WATERLOGGED, false));
     }
 
     private static void clearTunnelCell(
@@ -340,7 +356,11 @@ public final class OakTrackCorridor {
     ) {
         cursor.set(x, y, z);
         BlockState current = chunk.getBlockState(cursor);
-        if (current.is(Blocks.BEDROCK) || current.getBlock() == trackBlock || current.isAir()) {
+        if (current.is(Blocks.BEDROCK) || current.isAir()) {
+            return;
+        }
+        if (current.getBlock() == trackBlock) {
+            dryTrack(chunk, live, cursor, current);
             return;
         }
         setCell(chunk, live, cursor, Blocks.AIR.defaultBlockState());
@@ -359,10 +379,4 @@ public final class OakTrackCorridor {
         chunk.setBlockState(cursor, state, false);
     }
 
-    private static boolean canReplace(BlockState current, Block trackBlock) {
-        if (current.is(Blocks.BEDROCK)) {
-            return false;
-        }
-        return current.getBlock() != trackBlock;
-    }
 }
