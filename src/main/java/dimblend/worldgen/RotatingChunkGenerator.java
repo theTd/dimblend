@@ -534,6 +534,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         this.ensureRuntime(access);
         int index = this.bandIndex(chunk.getPos());
         this.delegates.get(index).createStructures(access, this.delegateState(index), structures, chunk, templates);
+        OakTrackCorridor.dropStartsIntersectingVault(chunk);
     }
 
     @Override

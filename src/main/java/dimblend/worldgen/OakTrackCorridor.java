@@ -2,6 +2,8 @@ package dimblend.worldgen;
 
 import com.simibubi.create.content.trains.track.TrackBlock;
 import com.simibubi.create.content.trains.track.TrackShape;
+import java.util.HashMap;
+import java.util.Map;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.RegistryAccess;
@@ -15,6 +17,9 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
 
 public final class OakTrackCorridor {
     public static final int CORRIDOR_Z = 0;
@@ -92,6 +97,41 @@ public final class OakTrackCorridor {
         int minZ = chunkZ * 16;
         int maxZ = minZ + 15;
         return maxZ >= CORRIDOR_Z - VAULT_RADIUS && minZ <= CORRIDOR_Z + VAULT_RADIUS;
+    }
+
+    public static BoundingBox vaultAabb() {
+        return new BoundingBox(
+                Integer.MIN_VALUE,
+                TRACK_Y - 1,
+                CORRIDOR_Z - VAULT_RADIUS - 1,
+                Integer.MAX_VALUE,
+                TRACK_Y + VAULT_APEX_DY,
+                CORRIDOR_Z + VAULT_RADIUS + 1
+        );
+    }
+
+    public static boolean intersectsVault(StructureStart start) {
+        return start != null && start.isValid() && start.getBoundingBox().intersects(vaultAabb());
+    }
+
+    public static void dropStartsIntersectingVault(ChunkAccess chunk) {
+        Map<Structure, StructureStart> starts = chunk.getAllStarts();
+        if (starts.isEmpty()) {
+            return;
+        }
+        Map<Structure, StructureStart> kept = new HashMap<>();
+        boolean dropped = false;
+        for (Map.Entry<Structure, StructureStart> entry : starts.entrySet()) {
+            StructureStart start = entry.getValue();
+            if (intersectsVault(start)) {
+                dropped = true;
+                continue;
+            }
+            kept.put(entry.getKey(), start);
+        }
+        if (dropped) {
+            chunk.setAllStarts(kept);
+        }
     }
 
     /**
