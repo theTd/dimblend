@@ -24,9 +24,12 @@ import net.minecraft.world.level.levelgen.structure.StructureStart;
 public final class OakTrackCorridor {
     public static final int CORRIDOR_Z = 0;
     public static final int TRACK_Y = 64;
-    /** Inclusive |dz| of the vault equator. Diameter 23 = Z[-11, +11]. */
-    public static final int VAULT_RADIUS = 11;
-    public static final int VAULT_APEX_DY = 18;
+    /** Inclusive |dz| of the tunnel equator. Diameter 19 = Z[-9, +9]. */
+    public static final int VAULT_RADIUS = 9;
+    /** Circle center is this many blocks above the track. */
+    public static final int VAULT_CENTER_DY = VAULT_RADIUS - 1;
+    public static final int VAULT_FLOOR_DY = VAULT_CENTER_DY - VAULT_RADIUS;
+    public static final int VAULT_APEX_DY = VAULT_CENTER_DY + VAULT_RADIUS;
     public static final ResourceLocation TRACK_ID = ResourceLocation.fromNamespaceAndPath("railways", "track_create_andesite_wide");
     private static final Direction[] DIRECTIONS = Direction.values();
 
@@ -102,7 +105,7 @@ public final class OakTrackCorridor {
     public static BoundingBox vaultAabb() {
         return new BoundingBox(
                 Integer.MIN_VALUE,
-                TRACK_Y - 1,
+                TRACK_Y + VAULT_FLOOR_DY - 1,
                 CORRIDOR_Z - VAULT_RADIUS - 1,
                 Integer.MAX_VALUE,
                 TRACK_Y + VAULT_APEX_DY,
@@ -135,17 +138,13 @@ public final class OakTrackCorridor {
     }
 
     /**
-     * Raised circular horseshoe: radius 12, center 6.5 blocks above the track.
-     * Integer form (2*dy - 13)^2 + 4*dz^2 <= 576, dy >= 0.
-     * Floor |dz| <= 10 (21 wide); equator |dz| <= 11 (diameter 23); apex dy = 18.
-     * z = +/-11 starts at dy = 2, never from dy = 0.
+     * Full circle of radius 9 in the Z/Y plane. Track sits on the 9-wide row.
+     * Center is (z=0, y=TRACK_Y+8). Integer form dz^2 + (dy - 8)^2 <= 81.
+     * Floor dy = -1 (1 cell); track dy = 0 (z=-4..4); equator dy = 8 (|dz|<=9); apex dy = 17.
      */
     static boolean inVault(int dz, int dy) {
-        if (dy < 0) {
-            return false;
-        }
-        int twoDyMinus13 = dy + dy - 13;
-        return twoDyMinus13 * twoDyMinus13 + 4 * dz * dz <= 576;
+        int offY = dy - VAULT_CENTER_DY;
+        return dz * dz + offY * offY <= VAULT_RADIUS * VAULT_RADIUS;
     }
 
 
@@ -161,7 +160,7 @@ public final class OakTrackCorridor {
     ) {
         for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
             int dz = z - CORRIDOR_Z;
-            for (int dy = 0; dy <= maxDy; dy++) {
+            for (int dy = VAULT_FLOOR_DY; dy <= maxDy; dy++) {
                 if (!inVault(dz, dy)) {
                     continue;
                 }
@@ -194,7 +193,7 @@ public final class OakTrackCorridor {
         }
         for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
             int dz = z - CORRIDOR_Z;
-            for (int dy = 0; dy <= maxDy; dy++) {
+            for (int dy = VAULT_FLOOR_DY; dy <= maxDy; dy++) {
                 if (!inVault(dz, dy)) {
                     continue;
                 }
@@ -254,7 +253,7 @@ public final class OakTrackCorridor {
             return;
         }
         if (vaultFace) {
-            if (y < TRACK_Y || y > TRACK_Y + maxDy || !inVault(z - CORRIDOR_Z, y - TRACK_Y)) {
+            if (y < TRACK_Y + VAULT_FLOOR_DY || y > TRACK_Y + maxDy || !inVault(z - CORRIDOR_Z, y - TRACK_Y)) {
                 return;
             }
         } else if (!isVaultShellCell(y, z, maxDy)) {
@@ -273,13 +272,14 @@ public final class OakTrackCorridor {
     }
 
     private static boolean isVaultShellCell(int y, int z, int maxDy) {
-        if (y < TRACK_Y - 1 || y > TRACK_Y + maxDy + 1) {
+        int dy = y - TRACK_Y;
+        if (dy < VAULT_FLOOR_DY - 1 || dy > maxDy + 1) {
             return false;
         }
-        if (y == TRACK_Y - 1) {
+        if (dy == VAULT_FLOOR_DY - 1) {
             return true;
         }
-        return !inVault(z - CORRIDOR_Z, y - TRACK_Y);
+        return !inVault(z - CORRIDOR_Z, dy);
     }
 
     private static void stabilizeVaultCeiling(
@@ -293,7 +293,7 @@ public final class OakTrackCorridor {
     ) {
         for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
             int dz = z - CORRIDOR_Z;
-            for (int dy = 0; dy <= maxDy; dy++) {
+            for (int dy = VAULT_FLOOR_DY; dy <= maxDy; dy++) {
                 if (!inVault(dz, dy)) {
                     continue;
                 }
