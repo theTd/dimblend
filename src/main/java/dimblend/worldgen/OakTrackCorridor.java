@@ -7,8 +7,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.tags.FluidTags;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -262,6 +262,10 @@ public final class OakTrackCorridor {
                 }
                 cursor.set(x, TRACK_Y + dy + 1, z);
                 BlockState current = chunk.getBlockState(cursor);
+                if (isBamboo(current)) {
+                    clearBambooAbove(chunk, live, cursor, x, TRACK_Y + dy + 1, z);
+                    continue;
+                }
                 BlockState stable = stableCeiling(current);
                 if (stable != null) {
                     setCell(chunk, live, cursor, stable);
@@ -281,6 +285,29 @@ public final class OakTrackCorridor {
             return Blocks.RED_SANDSTONE.defaultBlockState();
         }
         return null;
+    }
+
+    private static boolean isBamboo(BlockState current) {
+        return current.is(Blocks.BAMBOO) || current.is(Blocks.BAMBOO_SAPLING);
+    }
+
+    private static void clearBambooAbove(
+            ChunkAccess chunk,
+            @javax.annotation.Nullable ServerLevel live,
+            BlockPos.MutableBlockPos cursor,
+            int x,
+            int startY,
+            int z
+    ) {
+        int maxY = chunk.getMaxBuildHeight() - 1;
+        for (int y = startY; y <= maxY; y++) {
+            cursor.set(x, y, z);
+            BlockState current = chunk.getBlockState(cursor);
+            if (!isBamboo(current)) {
+                return;
+            }
+            setCell(chunk, live, cursor, Blocks.AIR.defaultBlockState());
+        }
     }
 
     private static BlockState glassForFluid(BlockState current) {
