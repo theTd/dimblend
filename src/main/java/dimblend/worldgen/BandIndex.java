@@ -3,7 +3,7 @@ package dimblend.worldgen;
 import net.minecraft.world.level.ChunkPos;
 
 public final class BandIndex {
-    public static final int DEFAULT_BAND_SIZE = 4096;
+    public static final int DEFAULT_BAND_SIZE = 2048;
     public static final int SEAM_WIDTH = 32;
     public static final int OVERWORLD_BAND = 0;
 

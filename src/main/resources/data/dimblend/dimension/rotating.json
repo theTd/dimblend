@@ -2,7 +2,7 @@
   "type": "dimblend:rotating",
   "generator": {
     "type": "dimblend:rotating",
-    "band_size": 4096,
+    "band_size": 2048,
     "delegates": [
       {
         "type": "dimblend:sliced_overworld",
