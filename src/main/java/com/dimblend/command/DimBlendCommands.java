@@ -2,6 +2,7 @@ package com.dimblend.command;
 
 import com.dimblend.DimBlendRegistries;
 import com.dimblend.worldgen.BandIndex;
+import com.dimblend.worldgen.BandLayout;
 import com.dimblend.worldgen.OverworldSlice;
 import com.dimblend.worldgen.RotatingChunkGenerator;
 import com.dimblend.worldgen.SlicedOverworldChunkGenerator;
@@ -12,7 +13,6 @@ import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -28,9 +28,6 @@ import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.levelgen.RandomState;
 
 public final class DimBlendCommands {
-    private static final String[] CORE_BAND_NAMES = {"overworld", "overworld_caves", "end", "nether"};
-    private static final String[] EXTRA_BAND_NAMES = {"otherside", "aether", "starlight"};
-    private static final String TWILIGHT_BAND_NAME = "twilight";
     private static final DynamicCommandExceptionType UNKNOWN_BAND = new DynamicCommandExceptionType(
             value -> Component.literal("unknown band: " + value)
     );
@@ -65,58 +62,24 @@ public final class DimBlendCommands {
     }
 
     private static List<String> bandNames(CommandSourceStack source) {
-        int count = bandCount(source);
         List<String> names = new ArrayList<>();
-        for (int i = 0; i < count; i++) {
-            names.add(bandName(i, count));
+        names.add("origin");
+        for (int i = 0; i <= 40; i++) {
             names.add(Integer.toString(i));
         }
         return names;
     }
 
-    private static int bandCount(CommandSourceStack source) {
-        MinecraftServer server = source.getServer();
-        ServerLevel level = server.getLevel(DimBlendRegistries.ROTATING_LEVEL);
-        if (level == null) {
-            return CORE_BAND_NAMES.length + 1;
-        }
-        ChunkGenerator generator = level.getChunkSource().getGenerator();
-        if (generator instanceof RotatingChunkGenerator rotating) {
-            return rotating.delegates().size();
-        }
-        return CORE_BAND_NAMES.length + 1;
-    }
-
-    private static String bandName(int index, int count) {
-        if (index == BandIndex.twilightBand(count)) {
-            return TWILIGHT_BAND_NAME;
-        }
-        if (index < CORE_BAND_NAMES.length) {
-            return CORE_BAND_NAMES[index];
-        }
-        int extra = index - CORE_BAND_NAMES.length;
-        if (extra >= 0 && extra < EXTRA_BAND_NAMES.length) {
-            return EXTRA_BAND_NAMES[extra];
-        }
-        return "band" + index;
-    }
-
     private static int parseBand(CommandSourceStack source, String raw) throws CommandSyntaxException {
-        int count = bandCount(source);
-        String value = raw.toLowerCase(Locale.ROOT);
-        for (int i = 0; i < count; i++) {
-            if (bandName(i, count).equals(value)) {
-                return i;
-            }
+        String value = raw.toLowerCase();
+        if (value.equals("origin")) {
+            return 0;
         }
         try {
-            int index = Integer.parseInt(value);
-            if (index >= 0 && index < count) {
-                return index;
-            }
+            return Integer.parseInt(value);
         } catch (NumberFormatException ignored) {
+            throw UNKNOWN_BAND.create(raw);
         }
-        throw UNKNOWN_BAND.create(raw);
     }
 
     private static int teleport(CommandSourceStack source, int bandIndex, boolean origin) {
@@ -135,8 +98,8 @@ public final class DimBlendCommands {
         int x = origin ? 0 : bandIndex * BandIndex.DEFAULT_BAND_SIZE + BandIndex.DEFAULT_BAND_SIZE / 2;
         int z = 0;
         ChunkGenerator generator = level.getChunkSource().getGenerator();
-        Integer undergroundY = undergroundLandingY(generator, bandIndex, x, z, level);
-        if (isUndergroundBand(generator, bandIndex) && undergroundY == null) {
+        Integer undergroundY = undergroundLandingY(generator, x, z, level);
+        if (isUndergroundColumn(generator, x) && undergroundY == null) {
             source.sendFailure(Component.literal("no safe landing in overworld caves band"));
             return 0;
         }
@@ -154,8 +117,7 @@ public final class DimBlendCommands {
                 : sampledY;
 
         player.teleportTo(level, x + 0.5, y, z + 0.5, Set.of(), player.getYRot(), player.getXRot());
-        int count = generator instanceof RotatingChunkGenerator rotating ? rotating.delegates().size() : bandCount(source);
-        String bandLabel = origin ? "origin" : bandName(bandIndex, count);
+        String bandLabel = origin ? "origin" : Integer.toString(bandIndex);
         source.sendSuccess(
                 () -> Component.literal("Teleported to dimblend " + bandLabel + " at " + x + " " + y + " " + z),
                 true
@@ -176,9 +138,10 @@ public final class DimBlendCommands {
             return 0;
         }
         int x0 = bandIndex * BandIndex.DEFAULT_BAND_SIZE + BandIndex.DEFAULT_BAND_SIZE / 2;
-        ChunkGenerator delegate = rotating.delegates().get(bandIndex);
+        int delegateIndex = rotating.layout().delegateIndex(bandIndex);
+        ChunkGenerator delegate = rotating.delegates().get(delegateIndex);
         LevelHeightAccessor sourceHeight = LevelHeightAccessor.create(delegate.getMinY(), delegate.getGenDepth());
-        RandomState random = rotating.delegateRandom(bandIndex);
+        RandomState random = rotating.delegateRandom(delegateIndex);
         int min = Integer.MAX_VALUE;
         int max = Integer.MIN_VALUE;
         long sum = 0;
@@ -203,7 +166,7 @@ public final class DimBlendCommands {
         final int maxHeight = max;
         final int meanHeight = (int) (sum / samples);
         final int originX = x0;
-        String label = bandName(bandIndex, rotating.delegates().size());
+        String label = "region" + bandIndex;
         source.sendSuccess(
                 () -> Component.literal(
                         "sample " + label + " ocean_floor_wg n=" + sampleCount
@@ -215,22 +178,26 @@ public final class DimBlendCommands {
         return sampleCount;
     }
 
-    private static boolean isUndergroundBand(ChunkGenerator generator, int bandIndex) {
-        if (!(generator instanceof RotatingChunkGenerator rotating) || bandIndex < 0 || bandIndex >= rotating.delegates().size()) {
+    private static boolean isUndergroundColumn(ChunkGenerator generator, int x) {
+        if (!(generator instanceof RotatingChunkGenerator rotating)) {
             return false;
         }
-        ChunkGenerator delegate = rotating.delegates().get(bandIndex);
+        ChunkGenerator delegate = rotating.delegates().get(
+                rotating.layout().delegateIndex(BandLayout.regionOfBlockX(x, rotating.bandSize()))
+        );
         return delegate instanceof SlicedOverworldChunkGenerator sliced
-                && sliced.slice() == OverworldSlice.UNDERGROUND;
+                && sliced.slice() != OverworldSlice.SURFACE;
     }
 
-    private static Integer undergroundLandingY(ChunkGenerator generator, int bandIndex, int x, int z, ServerLevel level) {
-        if (!(generator instanceof RotatingChunkGenerator rotating) || bandIndex < 0 || bandIndex >= rotating.delegates().size()) {
+    private static Integer undergroundLandingY(ChunkGenerator generator, int x, int z, ServerLevel level) {
+        if (!(generator instanceof RotatingChunkGenerator rotating)) {
             return null;
         }
-        ChunkGenerator delegate = rotating.delegates().get(bandIndex);
+        ChunkGenerator delegate = rotating.delegates().get(
+                rotating.layout().delegateIndex(BandLayout.regionOfBlockX(x, rotating.bandSize()))
+        );
         if (!(delegate instanceof SlicedOverworldChunkGenerator sliced)
-                || sliced.slice() != OverworldSlice.UNDERGROUND) {
+                || sliced.slice() == OverworldSlice.SURFACE) {
             return null;
         }
         var column = rotating.getBaseColumn(x, z, level, level.getChunkSource().randomState());

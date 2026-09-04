@@ -154,13 +154,13 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
 
     @Override
     public int getBaseHeight(int x, int z, Types type, LevelHeightAccessor height, RandomState randomState) {
-        if (this.slice == OverworldSlice.UNDERGROUND) {
+        if (this.slice != OverworldSlice.SURFACE) {
             return this.columnBaseHeight(x, z, type, height, randomState);
         }
         int minY = height.getMinBuildHeight();
         int targetMin = this.slice.targetMinY();
         int targetMaxExclusive = this.slice.targetMaxExclusiveY();
-        int mapped = this.inner.getBaseHeight(x, z, type, height, randomState) + this.slice.yOffset();
+        int mapped = this.inner.getBaseHeight(x, z, type, height, randomState);
         if (mapped > targetMaxExclusive) {
             mapped = targetMaxExclusive;
         }
@@ -370,7 +370,7 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
             int targetMaxExclusive,
             int sealY
     ) {
-        if (targetY == sealY) {
+        if (this.slice.isSealY(targetY)) {
             return bedrock;
         }
         if (targetY < targetMin || targetY >= targetMaxExclusive) {
@@ -379,8 +379,11 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
         return current;
     }
 
+
     private int sealedHeight() {
-        return this.slice.floorBedrock() ? this.slice.targetMinY() : this.slice.targetMaxExclusiveY();
+        return this.slice.topBedrock()
+                ? this.slice.targetMaxExclusiveY()
+                : this.slice.targetMinY();
     }
 
     private void reprimeHeightmaps(ChunkAccess chunk) {

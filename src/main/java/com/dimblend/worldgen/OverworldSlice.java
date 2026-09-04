@@ -3,8 +3,9 @@ package com.dimblend.worldgen;
 import com.mojang.serialization.Codec;
 
 public enum OverworldSlice {
-    SURFACE("surface", 0, 32, Integer.MAX_VALUE, true),
-    UNDERGROUND("underground", 96, -64, 32, false);
+    SURFACE("surface", 0, 48, 320, true, false),
+    UNDERGROUND("underground", 48, 0, 48, true, true),
+    DEEP("deep", 95, -64, 0, false, true);
 
     public static final Codec<OverworldSlice> CODEC = Codec.STRING.xmap(OverworldSlice::byName, OverworldSlice::serializedName);
 
@@ -12,14 +13,23 @@ public enum OverworldSlice {
     private final int yOffset;
     private final int sourceMinY;
     private final int sourceMaxExclusiveY;
-    private final boolean floorBedrock;
+    private final boolean bottomBedrock;
+    private final boolean topBedrock;
 
-    OverworldSlice(String serializedName, int yOffset, int sourceMinY, int sourceMaxExclusiveY, boolean floorBedrock) {
+    OverworldSlice(
+            String serializedName,
+            int yOffset,
+            int sourceMinY,
+            int sourceMaxExclusiveY,
+            boolean bottomBedrock,
+            boolean topBedrock
+    ) {
         this.serializedName = serializedName;
         this.yOffset = yOffset;
         this.sourceMinY = sourceMinY;
         this.sourceMaxExclusiveY = sourceMaxExclusiveY;
-        this.floorBedrock = floorBedrock;
+        this.bottomBedrock = bottomBedrock;
+        this.topBedrock = topBedrock;
     }
 
     public String serializedName() {
@@ -37,9 +47,12 @@ public enum OverworldSlice {
     public int sourceMaxExclusiveY() {
         return this.sourceMaxExclusiveY;
     }
+    public boolean bottomBedrock() {
+        return this.bottomBedrock;
+    }
 
-    public boolean floorBedrock() {
-        return this.floorBedrock;
+    public boolean topBedrock() {
+        return this.topBedrock;
     }
 
     public int toSourceY(int targetY) {
@@ -62,8 +75,13 @@ public enum OverworldSlice {
         return this.toTargetY(this.sourceMaxExclusiveY);
     }
 
+    public boolean isSealY(int targetY) {
+        return (this.bottomBedrock && targetY == this.targetMinY() - 1)
+                || (this.topBedrock && targetY == this.targetMaxExclusiveY());
+    }
+
     public int sealY() {
-        return this.floorBedrock ? this.targetMinY() - 1 : this.targetMaxExclusiveY();
+        return this.topBedrock ? this.targetMaxExclusiveY() : this.targetMinY() - 1;
     }
 
     public static OverworldSlice byName(String name) {

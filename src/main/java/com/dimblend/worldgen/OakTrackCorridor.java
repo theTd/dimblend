@@ -60,17 +60,19 @@ public final class OakTrackCorridor {
         }
         boolean[] carved = new boolean[maxX - minX + 1];
         for (int x = minX; x <= maxX; x++) {
-            if (!allowsTunnel(rotating, x) || !isBuried(chunk, cursor, x, vaultMinZ, vaultMaxZ)) {
+            int maxDy = vaultMaxDy(rotating, x);
+            if (maxDy < 0 || !isBuried(chunk, cursor, x, vaultMinZ, vaultMaxZ, maxDy)) {
                 continue;
             }
             carved[x - minX] = true;
-            clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, false);
+            clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, false, maxDy);
+            stabilizeVaultCeiling(chunk, cursor, x, vaultMinZ, vaultMaxZ, maxDy);
         }
         for (int x = minX; x <= maxX; x++) {
             if (!carved[x - minX]) {
                 continue;
             }
-            sealVaultShell(chunk, cursor, x, minX, maxX, minZ, maxZ, vaultMinZ, vaultMaxZ, trackBlock, carved);
+            sealVaultShell(chunk, cursor, x, minX, maxX, minZ, maxZ, vaultMinZ, vaultMaxZ, trackBlock, carved, vaultMaxDy(rotating, x));
         }
     }
 
@@ -98,10 +100,11 @@ public final class OakTrackCorridor {
         }
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
         for (int x = minX; x <= maxX; x++) {
-            if (!allowsTunnel(rotating, x)) {
+            int maxDy = vaultMaxDy(rotating, x);
+            if (maxDy < 0) {
                 continue;
             }
-            clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, true);
+            clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, true, maxDy);
         }
     }
 
@@ -133,11 +136,12 @@ public final class OakTrackCorridor {
             int vaultMinZ,
             int vaultMaxZ,
             Block trackBlock,
-            boolean treesOnly
+            boolean treesOnly,
+            int maxDy
     ) {
         for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
             int dz = z - CORRIDOR_Z;
-            for (int dy = 0; dy <= VAULT_APEX_DY; dy++) {
+            for (int dy = 0; dy <= maxDy; dy++) {
                 if (!inVault(dz, dy)) {
                     continue;
                 }
@@ -161,11 +165,15 @@ public final class OakTrackCorridor {
             int vaultMinZ,
             int vaultMaxZ,
             Block trackBlock,
-            boolean[] carved
+            boolean[] carved,
+            int maxDy
     ) {
+        if (maxDy < 0) {
+            return;
+        }
         for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
             int dz = z - CORRIDOR_Z;
-            for (int dy = 0; dy <= VAULT_APEX_DY; dy++) {
+            for (int dy = 0; dy <= maxDy; dy++) {
                 if (!inVault(dz, dy)) {
                     continue;
                 }
@@ -180,7 +188,7 @@ public final class OakTrackCorridor {
                         if (nx < minX || nx > maxX || carved[nx - minX]) {
                             continue;
                         }
-                        sealFluidShellCell(chunk, cursor, nx, y, z, minX, maxX, minZ, maxZ, trackBlock, true);
+                        sealFluidShellCell(chunk, cursor, nx, y, z, minX, maxX, minZ, maxZ, trackBlock, true, maxDy);
                         continue;
                     }
                     if (trackCenter && dir != Direction.DOWN) {
@@ -197,7 +205,8 @@ public final class OakTrackCorridor {
                             minZ,
                             maxZ,
                             trackBlock,
-                            false
+                            false,
+                            maxDy
                     );
                 }
             }
@@ -215,16 +224,20 @@ public final class OakTrackCorridor {
             int minZ,
             int maxZ,
             Block trackBlock,
-            boolean vaultFace
+            boolean vaultFace,
+            int maxDy
     ) {
         if (x < minX || x > maxX || z < minZ || z > maxZ) {
+            return;
+        }
+        if (y > TRACK_Y + maxDy) {
             return;
         }
         if (vaultFace) {
             if (y < TRACK_Y || !inVault(z - CORRIDOR_Z, y - TRACK_Y)) {
                 return;
             }
-        } else if (!isVaultShellCell(y, z)) {
+        } else if (!isVaultShellCell(y, z, maxDy)) {
             return;
         }
         cursor.set(x, y, z);
@@ -239,11 +252,54 @@ public final class OakTrackCorridor {
         chunk.setBlockState(cursor, glass, false);
     }
 
-    private static boolean isVaultShellCell(int y, int z) {
+    private static boolean isVaultShellCell(int y, int z, int maxDy) {
         if (y == TRACK_Y - 1) {
             return true;
         }
+        if (y > TRACK_Y + maxDy) {
+            return false;
+        }
         return y >= TRACK_Y && !inVault(z - CORRIDOR_Z, y - TRACK_Y);
+    }
+
+    private static void stabilizeVaultCeiling(
+            ChunkAccess chunk,
+            BlockPos.MutableBlockPos cursor,
+            int x,
+            int vaultMinZ,
+            int vaultMaxZ,
+            int maxDy
+    ) {
+        for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
+            int dz = z - CORRIDOR_Z;
+            for (int dy = 0; dy <= maxDy; dy++) {
+                if (!inVault(dz, dy)) {
+                    continue;
+                }
+                if (dy < maxDy && inVault(dz, dy + 1)) {
+                    continue;
+                }
+                cursor.set(x, TRACK_Y + dy + 1, z);
+                BlockState current = chunk.getBlockState(cursor);
+                BlockState stable = stableCeiling(current);
+                if (stable != null) {
+                    chunk.setBlockState(cursor, stable, false);
+                }
+            }
+        }
+    }
+
+    private static BlockState stableCeiling(BlockState current) {
+        if (current.is(Blocks.GRAVEL) || current.is(Blocks.SUSPICIOUS_GRAVEL)) {
+            return Blocks.STONE.defaultBlockState();
+        }
+        if (current.is(Blocks.SAND) || current.is(Blocks.SUSPICIOUS_SAND)) {
+            return Blocks.SANDSTONE.defaultBlockState();
+        }
+        if (current.is(Blocks.RED_SAND)) {
+            return Blocks.RED_SANDSTONE.defaultBlockState();
+        }
+        return null;
     }
 
     private static BlockState glassForFluid(BlockState current) {
@@ -256,15 +312,18 @@ public final class OakTrackCorridor {
         return null;
     }
 
-    private static boolean allowsTunnel(RotatingChunkGenerator rotating, int x) {
-        ChunkGenerator delegate = rotating.delegates().get(
-                BandIndex.ofBlockX(x, rotating.bandSize(), rotating.delegates().size())
-        );
+    private static int vaultMaxDy(RotatingChunkGenerator rotating, int x) {
+        ChunkGenerator delegate = rotating.delegates().get(rotating.layout().delegateIndex(
+                BandLayout.regionOfBlockX(x, rotating.bandSize())
+        ));
         if (!(delegate instanceof SlicedOverworldChunkGenerator sliced)) {
-            return true;
+            return VAULT_APEX_DY;
         }
         OverworldSlice slice = sliced.slice();
-        return TRACK_Y >= slice.targetMinY() && TRACK_Y + VAULT_APEX_DY < slice.targetMaxExclusiveY();
+        if (TRACK_Y < slice.targetMinY() || TRACK_Y >= slice.targetMaxExclusiveY()) {
+            return -1;
+        }
+        return Math.min(VAULT_APEX_DY, slice.targetMaxExclusiveY() - 1 - TRACK_Y);
     }
 
     private static boolean isBuried(
@@ -272,11 +331,12 @@ public final class OakTrackCorridor {
             BlockPos.MutableBlockPos cursor,
             int x,
             int vaultMinZ,
-            int vaultMaxZ
+            int vaultMaxZ,
+            int maxDy
     ) {
         for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
             int dz = z - CORRIDOR_Z;
-            for (int dy = 0; dy <= VAULT_APEX_DY; dy++) {
+            for (int dy = 0; dy <= maxDy; dy++) {
                 if (!inVault(dz, dy)) {
                     continue;
                 }

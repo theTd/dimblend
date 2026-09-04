@@ -115,9 +115,12 @@ public final class TerraBlenderRotatingCompat {
         }
         String path;
         if (settings.equals(ResourceLocation.withDefaultNamespace("overworld"))) {
-            if (delegate instanceof SlicedOverworldChunkGenerator sliced
-                    && sliced.slice() == OverworldSlice.UNDERGROUND) {
-                path = "rotating/overworld_caves";
+            if (delegate instanceof SlicedOverworldChunkGenerator sliced) {
+                path = switch (sliced.slice()) {
+                    case UNDERGROUND -> "rotating/overworld_caves";
+                    case DEEP -> "rotating/overworld_deep";
+                    case SURFACE -> "rotating/overworld";
+                };
             } else {
                 path = "rotating/overworld";
             }

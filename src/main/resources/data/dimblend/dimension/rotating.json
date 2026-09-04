@@ -29,6 +29,18 @@
         }
       },
       {
+        "type": "dimblend:sliced_overworld",
+        "slice": "deep",
+        "inner": {
+          "type": "minecraft:noise",
+          "settings": "minecraft:overworld",
+          "biome_source": {
+            "type": "minecraft:multi_noise",
+            "preset": "minecraft:overworld"
+          }
+        }
+      },
+      {
         "type": "minecraft:noise",
         "settings": "minecraft:end",
         "biome_source": {

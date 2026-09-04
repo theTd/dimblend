@@ -18,6 +18,8 @@ public final class RotatingBiomeSource extends BiomeSource {
 
     private final List<BiomeSource> sources;
     private final int bandSize;
+    @javax.annotation.Nullable
+    private RotatingChunkGenerator generator;
 
     public RotatingBiomeSource(List<BiomeSource> sources, int bandSize) {
         if (sources.isEmpty()) {
@@ -28,6 +30,10 @@ public final class RotatingBiomeSource extends BiomeSource {
         }
         this.sources = List.copyOf(sources);
         this.bandSize = bandSize;
+    }
+
+    void bind(RotatingChunkGenerator generator) {
+        this.generator = generator;
     }
 
     @Override
@@ -43,14 +49,21 @@ public final class RotatingBiomeSource extends BiomeSource {
     @Override
     public Holder<Biome> getNoiseBiome(int x, int y, int z, Climate.Sampler sampler) {
         int blockX = x << 2;
-        if (BandIndex.isOverworldTwilightSeam(blockX, this.bandSize, this.sources.size())) {
-            float overworldWeight = BandIndex.overworldWeightAcrossTwilightSeam(blockX, this.bandSize, this.sources.size());
-            int index = overworldWeight >= 0.5f
-                    ? BandIndex.OVERWORLD_BAND
-                    : BandIndex.twilightBand(this.sources.size());
+        RotatingChunkGenerator rotating = this.generator;
+        BandLayout layout = rotating == null ? null : rotating.layoutOrNull();
+        if (layout == null) {
+            int region = BandLayout.regionOfBlockX(blockX, this.bandSize);
+            int index = rotating == null ? 0 : BandLayout.fixedDelegateIndex(region, rotating.delegates());
             return this.sources.get(index).getNoiseBiome(x, y, z, sampler);
         }
-        int index = BandIndex.ofQuartX(x, this.bandSize, this.sources.size());
+        if (layout.touchesSurfaceTwilightSeam(blockX, this.bandSize)) {
+            float overworldWeight = layout.surfaceTwilightSeamWeight(blockX, this.bandSize);
+            int index = overworldWeight >= 0.5f
+                    ? layout.surfaceDelegateForSeam(blockX, this.bandSize)
+                    : layout.twilightDelegateForSeam(blockX, this.bandSize);
+            return this.sources.get(index).getNoiseBiome(x, y, z, sampler);
+        }
+        int index = layout.delegateIndex(BandLayout.regionOfBlockX(blockX, this.bandSize));
         return this.sources.get(index).getNoiseBiome(x, y, z, sampler);
     }
 }

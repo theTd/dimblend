@@ -71,7 +71,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
     @Nullable
     private volatile RuntimeState runtime;
 
-    private record RuntimeState(long seed, RandomState[] randoms, ChunkGeneratorStructureState[] states) {
+    private record RuntimeState(long seed, RandomState[] randoms, ChunkGeneratorStructureState[] states, BandLayout layout) {
         private RandomState random(int index) {
             return this.randoms[index];
         }
@@ -94,6 +94,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         }
         this.delegates = List.copyOf(delegates);
         this.bandSize = bandSize;
+        ((RotatingBiomeSource) this.getBiomeSource()).bind(this);
     }
 
     public List<ChunkGenerator> delegates() {
@@ -110,15 +111,38 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
     }
 
     private ChunkGenerator delegate(ChunkPos pos) {
-        return this.delegates.get(BandIndex.ofChunk(pos, this.bandSize, this.delegates.size()));
+        return this.delegates.get(this.bandIndex(pos));
     }
 
     private int bandIndex(ChunkPos pos) {
-        return BandIndex.ofChunk(pos, this.bandSize, this.delegates.size());
+        return this.bandIndexBlock(pos.getMinBlockX());
     }
 
     private int bandIndexBlock(int blockX) {
-        return BandIndex.ofBlockX(blockX, this.bandSize, this.delegates.size());
+        int region = BandLayout.regionOfBlockX(blockX, this.bandSize);
+        BandLayout layout = this.layoutOrNull();
+        if (layout == null) {
+            return BandLayout.fixedDelegateIndex(region, this.delegates);
+        }
+        return layout.delegateIndex(region);
+    }
+
+    @Nullable
+    public BandLayout layoutOrNull() {
+        RuntimeState current = this.runtime;
+        return current == null ? null : current.layout;
+    }
+
+    public BandLayout layout() {
+        BandLayout layout = this.layoutOrNull();
+        if (layout == null) {
+            this.ensureRuntimeOrThrow();
+            layout = this.layoutOrNull();
+        }
+        if (layout == null) {
+            throw new IllegalStateException("dimblend band layout is not set");
+        }
+        return layout;
     }
 
     private synchronized void ensureRuntime(RegistryAccess access) {
@@ -157,7 +181,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
             }
             states[i] = delegate.createState(structureSets, randoms[i], seed);
         }
-        return new RuntimeState(seed, randoms, states);
+        return new RuntimeState(seed, randoms, states, new BandLayout(this.delegates, seed));
     }
 
     private void ensureRuntimeFromLevel(WorldGenLevel level) {
@@ -193,7 +217,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
             if (server != null) {
                 this.runtime = this.buildRuntime(server.registryAccess(), seed);
             } else {
-                this.runtime = new RuntimeState(seed, null, null);
+                this.runtime = new RuntimeState(seed, null, null, new BandLayout(this.delegates, seed));
             }
         }
         return ChunkGeneratorStructureState.createForNormal(randomState, seed, this.getBiomeSource(), lookup);
@@ -241,7 +265,8 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
                 structureManager,
                 chunk
         );
-        if (!BandIndex.chunkTouchesOverworldTwilightSeam(chunk.getPos(), this.bandSize, this.delegates.size())) {
+        if (!this.layout().touchesSurfaceTwilightSeam(chunk.getPos().getMinBlockX(), this.bandSize)
+                && !this.layout().touchesSurfaceTwilightSeam(chunk.getPos().getMaxBlockX(), this.bandSize)) {
             return nativeFill;
         }
         return nativeFill.thenApply(this::adjustOverworldTwilightSeamHeights);
@@ -285,7 +310,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
     @Override
     public int getBaseHeight(int x, int z, Types type, LevelHeightAccessor height, RandomState randomState) {
         this.ensureRuntimeOrThrow();
-        if (BandIndex.isOverworldTwilightSeam(x, this.bandSize, this.delegates.size())) {
+        if (this.layout().touchesSurfaceTwilightSeam(x, this.bandSize)) {
             return this.blendedSurfaceHeight(x, z, height, type) + 1;
         }
         int index = this.bandIndexBlock(x);
@@ -308,9 +333,10 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         Heightmap ocean = chunk.getOrCreateHeightmapUnprimed(Types.OCEAN_FLOOR_WG);
         Heightmap surface = chunk.getOrCreateHeightmapUnprimed(Types.WORLD_SURFACE_WG);
         MutableBlockPos cursor = new MutableBlockPos();
-        int twilightBand = BandIndex.twilightBand(this.delegates.size());
+        int overworldBand = this.layout().surfaceDelegateForSeam(minX, this.bandSize);
+        int twilightBand = this.layout().twilightDelegateForSeam(minX, this.bandSize);
         int[][] overworldGrid = this.sampleHeightGrid(
-                this.delegates.get(BandIndex.OVERWORLD_BAND), BandIndex.OVERWORLD_BAND, minX, minZ, chunk);
+                this.delegates.get(overworldBand), overworldBand, minX, minZ, chunk);
         int[][] twilightGrid = this.sampleHeightGrid(
                 this.delegates.get(twilightBand), twilightBand, minX, minZ, chunk);
         for (int sectionIndex = 0; sectionIndex < chunk.getSectionsCount(); sectionIndex++) {
@@ -319,10 +345,10 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         try {
             for (int lx = 0; lx < 16; lx++) {
                 int x = minX + lx;
-                if (!BandIndex.isOverworldTwilightSeam(x, this.bandSize, this.delegates.size())) {
+                if (!this.layout().touchesSurfaceTwilightSeam(x, this.bandSize)) {
                     continue;
                 }
-                float overworldWeight = BandIndex.overworldWeightAcrossTwilightSeam(x, this.bandSize, this.delegates.size());
+                float overworldWeight = this.layout().surfaceTwilightSeamWeight(x, this.bandSize);
                 for (int lz = 0; lz < 16; lz++) {
                     int z = minZ + lz;
                     int sourceTop = Math.max(minY, ocean.getFirstAvailable(lx, lz) - 1);
@@ -433,14 +459,15 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
     }
 
     private int blendedSurfaceHeight(int x, int z, LevelHeightAccessor height, Types type) {
-        int twilightBand = BandIndex.twilightBand(this.delegates.size());
-        int overworldTop = this.delegates.get(BandIndex.OVERWORLD_BAND).getBaseHeight(
-                x, z, type, height, this.delegateRandom(BandIndex.OVERWORLD_BAND)
+        int overworldBand = this.layout().surfaceDelegateForSeam(x, this.bandSize);
+        int twilightBand = this.layout().twilightDelegateForSeam(x, this.bandSize);
+        int overworldTop = this.delegates.get(overworldBand).getBaseHeight(
+                x, z, type, height, this.delegateRandom(overworldBand)
         ) - 1;
         int twilightTop = this.delegates.get(twilightBand).getBaseHeight(
                 x, z, type, height, this.delegateRandom(twilightBand)
         ) - 1;
-        float overworldWeight = BandIndex.overworldWeightAcrossTwilightSeam(x, this.bandSize, this.delegates.size());
+        float overworldWeight = this.layout().surfaceTwilightSeamWeight(x, this.bandSize);
         return Math.round(twilightTop + (overworldTop - twilightTop) * overworldWeight);
     }
 
@@ -468,8 +495,9 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
 
     @Override
     public void addDebugScreenInfo(List<String> info, RandomState randomState, BlockPos pos) {
+        int region = BandLayout.regionOfBlockX(pos.getX(), this.bandSize);
         int index = this.bandIndexBlock(pos.getX());
-        info.add("dimblend band=" + index + " size=" + this.bandSize);
+        info.add("dimblend region=" + region + " delegate=" + index + " size=" + this.bandSize);
         this.ensureRuntimeOrThrow();
         this.delegates.get(index).addDebugScreenInfo(info, this.delegateRandom(index), pos);
     }
@@ -517,7 +545,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         for (int i = 0; i < this.delegates.size(); i++) {
             ChunkGenerator delegate = this.delegates.get(i);
             if (delegate instanceof SlicedOverworldChunkGenerator sliced
-                    && sliced.slice() == OverworldSlice.UNDERGROUND) {
+                    && sliced.slice() != OverworldSlice.SURFACE) {
                 continue;
             }
             Pair<BlockPos, Holder<Structure>> candidate = this.findNearestForDelegate(
@@ -597,10 +625,8 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
                 boolean found = false;
                 for (Entry<StructurePlacement, Set<Holder<Structure>>> entry : randomSpread) {
                     RandomSpreadStructurePlacement placement = (RandomSpreadStructurePlacement) entry.getKey();
-                    Pair<BlockPos, Holder<Structure>> candidate = getNearestGeneratedStructure(
+                    Pair<BlockPos, Holder<Structure>> candidate = this.getNearestGeneratedStructure(
                             bandIndex,
-                            this.bandSize,
-                            this.delegates.size(),
                             entry.getValue(),
                             level,
                             structures,
@@ -647,7 +673,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         double nearestDistance = Double.MAX_VALUE;
         MutableBlockPos scratch = new MutableBlockPos();
         for (ChunkPos chunkPos : rings) {
-            if (BandIndex.ofChunk(chunkPos, this.bandSize, this.delegates.size()) != bandIndex) {
+            if (this.bandIndex(chunkPos) != bandIndex) {
                 continue;
             }
             scratch.set(SectionPos.sectionToBlockCoord(chunkPos.x, 8), 32, SectionPos.sectionToBlockCoord(chunkPos.z, 8));
@@ -671,10 +697,8 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
     }
 
     @Nullable
-    private static Pair<BlockPos, Holder<Structure>> getNearestGeneratedStructure(
+    private Pair<BlockPos, Holder<Structure>> getNearestGeneratedStructure(
             int bandIndex,
-            int bandSize,
-            int bandCount,
             Set<Holder<Structure>> structures,
             LevelReader level,
             StructureManager manager,
@@ -694,7 +718,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
                     int x = sectionX + spacing * dx;
                     int z = sectionZ + spacing * dz;
                     ChunkPos chunkPos = placement.getPotentialStructureChunk(seed, x, z);
-                    if (BandIndex.ofChunk(chunkPos, bandSize, bandCount) != bandIndex) {
+                    if (this.bandIndex(chunkPos) != bandIndex) {
                         continue;
                     }
                     Pair<BlockPos, Holder<Structure>> candidate = getStructureGeneratingAt(
