@@ -30,20 +30,18 @@ public final class CreateTrackGraphCompat {
         if (level.dimension() != DimBlendRegistries.ROTATING_LEVEL) {
             return;
         }
-        ChunkAccess chunk = event.getChunk();
-        int chunkZ = chunk.getPos().z;
-        if (!OakTrackCorridor.touchesVault(chunkZ)) {
+        if (!event.isNewChunk()) {
             return;
         }
-        ChunkPos pos = chunk.getPos();
+        ChunkPos pos = event.getChunk().getPos();
+        if (!OakTrackCorridor.touchesVault(pos.z)) {
+            return;
+        }
         MinecraftServer server = level.getServer();
-        server.tell(new TickTask(server.getTickCount() + 1, () -> onCorridorChunkReady(level, pos)));
+        server.tell(new TickTask(server.getTickCount() + 1, () -> recarveLoadedVaultChunk(level, pos)));
     }
 
-    private static void onCorridorChunkReady(ServerLevel level, ChunkPos pos) {
-        if (!level.hasChunk(pos.x, pos.z)) {
-            return;
-        }
+    private static void recarveLoadedVaultChunk(ServerLevel level, ChunkPos pos) {
         LevelChunk chunk = level.getChunk(pos.x, pos.z);
         OakTrackCorridor.reclearLoadedChunk(level, chunk);
         if (pos.z != 0) {

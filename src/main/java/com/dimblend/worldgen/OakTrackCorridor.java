@@ -4,9 +4,9 @@ import com.simibubi.create.content.trains.track.TrackBlock;
 import com.simibubi.create.content.trains.track.TrackShape;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.WorldGenLevel;
@@ -29,15 +29,28 @@ public final class OakTrackCorridor {
     }
 
     public static void place(WorldGenLevel level, ChunkAccess chunk) {
+        carveVault(level.getLevel().getChunkSource().getGenerator(), level.registryAccess(), chunk, null, true);
+    }
+
+    public static void reclearLoadedChunk(ServerLevel level, ChunkAccess chunk) {
+        carveVault(level.getChunkSource().getGenerator(), level.registryAccess(), chunk, level, false);
+    }
+
+    private static void carveVault(
+            ChunkGenerator generator,
+            RegistryAccess access,
+            ChunkAccess chunk,
+            @javax.annotation.Nullable ServerLevel live,
+            boolean placeTrack
+    ) {
         int chunkZ = chunk.getPos().z;
         if (!touchesVault(chunkZ)) {
             return;
         }
-        ChunkGenerator generator = level.getLevel().getChunkSource().getGenerator();
         if (!(generator instanceof RotatingChunkGenerator rotating)) {
             return;
         }
-        Block trackBlock = level.registryAccess().registryOrThrow(Registries.BLOCK).get(TRACK_ID);
+        Block trackBlock = access.registryOrThrow(Registries.BLOCK).get(TRACK_ID);
         if (trackBlock == null) {
             throw new IllegalStateException("missing required block railways:track_create_andesite_wide");
         }
@@ -53,58 +66,26 @@ public final class OakTrackCorridor {
         }
 
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        if (chunkZ == 0) {
+        if (placeTrack && chunkZ == 0) {
             for (int x = minX; x <= maxX; x++) {
-                writeTrack(level, chunk, cursor, x, trackBlock);
+                writeTrack(chunk, cursor, x, trackBlock);
             }
         }
         boolean[] carved = new boolean[maxX - minX + 1];
         for (int x = minX; x <= maxX; x++) {
             int maxDy = vaultMaxDy(rotating, x);
-            if (maxDy < 0 || !isBuried(chunk, cursor, x, vaultMinZ, vaultMaxZ, maxDy)) {
+            if (maxDy < 0) {
                 continue;
             }
             carved[x - minX] = true;
-            clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, false, maxDy);
-            stabilizeVaultCeiling(chunk, cursor, x, vaultMinZ, vaultMaxZ, maxDy);
+            clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, maxDy, live);
+            stabilizeVaultCeiling(chunk, cursor, x, vaultMinZ, vaultMaxZ, maxDy, live);
         }
         for (int x = minX; x <= maxX; x++) {
             if (!carved[x - minX]) {
                 continue;
             }
-            sealVaultShell(chunk, cursor, x, minX, maxX, minZ, maxZ, vaultMinZ, vaultMaxZ, trackBlock, carved, vaultMaxDy(rotating, x));
-        }
-    }
-
-    public static void reclearLoadedChunk(ServerLevel level, ChunkAccess chunk) {
-        int chunkZ = chunk.getPos().z;
-        if (!touchesVault(chunkZ)) {
-            return;
-        }
-        ChunkGenerator generator = level.getChunkSource().getGenerator();
-        if (!(generator instanceof RotatingChunkGenerator rotating)) {
-            return;
-        }
-        Block trackBlock = level.registryAccess().registryOrThrow(Registries.BLOCK).get(TRACK_ID);
-        if (trackBlock == null) {
-            throw new IllegalStateException("missing required block railways:track_create_andesite_wide");
-        }
-        int minX = chunk.getPos().getMinBlockX();
-        int maxX = chunk.getPos().getMaxBlockX();
-        int minZ = chunk.getPos().getMinBlockZ();
-        int maxZ = chunk.getPos().getMaxBlockZ();
-        int vaultMinZ = Math.max(minZ, CORRIDOR_Z - VAULT_RADIUS);
-        int vaultMaxZ = Math.min(maxZ, CORRIDOR_Z + VAULT_RADIUS);
-        if (vaultMinZ > vaultMaxZ) {
-            return;
-        }
-        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        for (int x = minX; x <= maxX; x++) {
-            int maxDy = vaultMaxDy(rotating, x);
-            if (maxDy < 0) {
-                continue;
-            }
-            clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, true, maxDy);
+            sealVaultShell(chunk, cursor, x, minX, maxX, minZ, maxZ, vaultMinZ, vaultMaxZ, trackBlock, carved, vaultMaxDy(rotating, x), live);
         }
     }
 
@@ -136,8 +117,8 @@ public final class OakTrackCorridor {
             int vaultMinZ,
             int vaultMaxZ,
             Block trackBlock,
-            boolean treesOnly,
-            int maxDy
+            int maxDy,
+            @javax.annotation.Nullable ServerLevel live
     ) {
         for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
             int dz = z - CORRIDOR_Z;
@@ -149,7 +130,7 @@ public final class OakTrackCorridor {
                 if (z == CORRIDOR_Z && y == TRACK_Y) {
                     continue;
                 }
-                clearTunnelCell(chunk, cursor, x, y, z, trackBlock, treesOnly);
+                clearTunnelCell(chunk, cursor, x, y, z, trackBlock, live);
             }
         }
     }
@@ -166,7 +147,8 @@ public final class OakTrackCorridor {
             int vaultMaxZ,
             Block trackBlock,
             boolean[] carved,
-            int maxDy
+            int maxDy,
+            @javax.annotation.Nullable ServerLevel live
     ) {
         if (maxDy < 0) {
             return;
@@ -188,7 +170,7 @@ public final class OakTrackCorridor {
                         if (nx < minX || nx > maxX || carved[nx - minX]) {
                             continue;
                         }
-                        sealFluidShellCell(chunk, cursor, nx, y, z, minX, maxX, minZ, maxZ, trackBlock, true, maxDy);
+                        sealFluidShellCell(chunk, cursor, nx, y, z, minX, maxX, minZ, maxZ, trackBlock, true, maxDy, live);
                         continue;
                     }
                     if (trackCenter && dir != Direction.DOWN) {
@@ -206,7 +188,8 @@ public final class OakTrackCorridor {
                             maxZ,
                             trackBlock,
                             false,
-                            maxDy
+                            maxDy,
+                            live
                     );
                 }
             }
@@ -225,7 +208,8 @@ public final class OakTrackCorridor {
             int maxZ,
             Block trackBlock,
             boolean vaultFace,
-            int maxDy
+            int maxDy,
+            @javax.annotation.Nullable ServerLevel live
     ) {
         if (x < minX || x > maxX || z < minZ || z > maxZ) {
             return;
@@ -246,7 +230,7 @@ public final class OakTrackCorridor {
         if (glass == null || current.is(glass.getBlock())) {
             return;
         }
-        chunk.setBlockState(cursor, glass, false);
+        setCell(chunk, live, cursor, glass);
     }
 
     private static boolean isVaultShellCell(int y, int z, int maxDy) {
@@ -265,7 +249,8 @@ public final class OakTrackCorridor {
             int x,
             int vaultMinZ,
             int vaultMaxZ,
-            int maxDy
+            int maxDy,
+            @javax.annotation.Nullable ServerLevel live
     ) {
         for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
             int dz = z - CORRIDOR_Z;
@@ -280,7 +265,7 @@ public final class OakTrackCorridor {
                 BlockState current = chunk.getBlockState(cursor);
                 BlockState stable = stableCeiling(current);
                 if (stable != null) {
-                    chunk.setBlockState(cursor, stable, false);
+                    setCell(chunk, live, cursor, stable);
                 }
             }
         }
@@ -323,34 +308,8 @@ public final class OakTrackCorridor {
         return Math.min(VAULT_APEX_DY, slice.targetMaxExclusiveY() - 1 - TRACK_Y);
     }
 
-    private static boolean isBuried(
-            ChunkAccess chunk,
-            BlockPos.MutableBlockPos cursor,
-            int x,
-            int vaultMinZ,
-            int vaultMaxZ,
-            int maxDy
-    ) {
-        for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
-            int dz = z - CORRIDOR_Z;
-            for (int dy = 0; dy <= maxDy; dy++) {
-                if (!inVault(dz, dy)) {
-                    continue;
-                }
-                int y = TRACK_Y + dy;
-                if (z == CORRIDOR_Z && y == TRACK_Y) {
-                    continue;
-                }
-                if (isSolidMountain(chunk.getBlockState(cursor.set(x, y, z)))) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
 
     private static void writeTrack(
-            WorldGenLevel level,
             ChunkAccess chunk,
             BlockPos.MutableBlockPos cursor,
             int x,
@@ -377,17 +336,27 @@ public final class OakTrackCorridor {
             int y,
             int z,
             Block trackBlock,
-            boolean treesOnly
+            @javax.annotation.Nullable ServerLevel live
     ) {
         cursor.set(x, y, z);
         BlockState current = chunk.getBlockState(cursor);
         if (current.is(Blocks.BEDROCK) || current.getBlock() == trackBlock || current.isAir()) {
             return;
         }
-        if (treesOnly && !isTree(current)) {
+        setCell(chunk, live, cursor, Blocks.AIR.defaultBlockState());
+    }
+
+    private static void setCell(
+            ChunkAccess chunk,
+            @javax.annotation.Nullable ServerLevel live,
+            BlockPos.MutableBlockPos cursor,
+            BlockState state
+    ) {
+        if (live != null) {
+            live.setBlock(cursor.immutable(), state, Block.UPDATE_CLIENTS);
             return;
         }
-        chunk.setBlockState(cursor, Blocks.AIR.defaultBlockState(), false);
+        chunk.setBlockState(cursor, state, false);
     }
 
     private static boolean canReplace(BlockState current, Block trackBlock) {
@@ -395,13 +364,5 @@ public final class OakTrackCorridor {
             return false;
         }
         return current.getBlock() != trackBlock;
-    }
-
-    private static boolean isSolidMountain(BlockState current) {
-        return current.blocksMotion() && !current.is(Blocks.BEDROCK);
-    }
-
-    private static boolean isTree(BlockState current) {
-        return current.is(BlockTags.LOGS) || current.is(BlockTags.LEAVES);
     }
 }
