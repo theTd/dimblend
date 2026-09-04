@@ -21,6 +21,7 @@ import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
 
+
 public final class OakTrackCorridor {
     public static final int CORRIDOR_Z = 0;
     public static final int TRACK_Y = 64;
@@ -146,6 +147,21 @@ public final class OakTrackCorridor {
         int offY = dy - VAULT_CENTER_DY;
         return dz * dz + offY * offY <= VAULT_RADIUS * VAULT_RADIUS;
     }
+
+    public static boolean blocksTreeOrigin(WorldGenLevel level, BlockPos origin) {
+        ChunkGenerator generator = level.getLevel().getChunkSource().getGenerator();
+        if (!(generator instanceof RotatingChunkGenerator rotating)) {
+            return false;
+        }
+        int dy = origin.getY() - TRACK_Y;
+        if (dy < VAULT_FLOOR_DY || dy > VAULT_APEX_DY || !inVault(origin.getZ() - CORRIDOR_Z, dy)) {
+            return false;
+        }
+        int maxDy = vaultMaxDy(rotating, origin.getX());
+        return maxDy >= 0 && dy <= maxDy;
+    }
+
+
 
 
     private static void clearVaultColumn(
