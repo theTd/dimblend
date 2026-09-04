@@ -95,9 +95,12 @@ public final class DimBlendCommands {
             return 0;
         }
 
-        int x = origin ? 0 : bandIndex * BandIndex.DEFAULT_BAND_SIZE + BandIndex.DEFAULT_BAND_SIZE / 2;
-        int z = 0;
         ChunkGenerator generator = level.getChunkSource().getGenerator();
+        int bandSize = generator instanceof RotatingChunkGenerator rotating
+                ? rotating.bandSize()
+                : BandIndex.DEFAULT_BAND_SIZE;
+        int x = origin ? 0 : bandIndex * bandSize + bandSize / 2;
+        int z = 0;
         Integer undergroundY = undergroundLandingY(generator, x, z, level);
         if (isUndergroundColumn(generator, x) && undergroundY == null) {
             source.sendFailure(Component.literal("no safe landing in overworld caves band"));
@@ -137,7 +140,8 @@ public final class DimBlendCommands {
             source.sendFailure(Component.literal("rotating generator not loaded"));
             return 0;
         }
-        int x0 = bandIndex * BandIndex.DEFAULT_BAND_SIZE + BandIndex.DEFAULT_BAND_SIZE / 2;
+        int bandSize = rotating.bandSize();
+        int x0 = bandIndex * bandSize + bandSize / 2;
         int delegateIndex = rotating.layout().delegateIndex(bandIndex);
         ChunkGenerator delegate = rotating.delegates().get(delegateIndex);
         LevelHeightAccessor sourceHeight = LevelHeightAccessor.create(delegate.getMinY(), delegate.getGenDepth());
