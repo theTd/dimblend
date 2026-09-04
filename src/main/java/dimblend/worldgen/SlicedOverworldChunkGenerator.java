@@ -117,18 +117,18 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
             Carving step
     ) {
         this.inner.applyCarvers(level, seed, randomState, biomeManager, structureManager, chunk, step);
-        if (step == Carving.AIR) {
-            this.relocateSlice(chunk);
-        }
     }
 
     @Override
     public void applyBiomeDecoration(WorldGenLevel level, ChunkAccess chunk, StructureManager structures) {
+        this.inner.applyBiomeDecoration(level, chunk, structures);
         if (this.slice == OverworldSlice.SURFACE) {
-            this.inner.applyBiomeDecoration(level, chunk, structures);
             this.replaceCopperBelowSourceY64(chunk);
             this.sealSlice(chunk);
+            this.reprimeHeightmaps(chunk);
+            return;
         }
+        this.relocateSlice(chunk);
     }
 
     @Override
