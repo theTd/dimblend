@@ -1,5 +1,6 @@
 package dimblend.command;
 
+import dimblend.DimBlend;
 import dimblend.DimBlendRegistries;
 import dimblend.worldgen.BandIndex;
 import dimblend.worldgen.BandLayout;
@@ -40,13 +41,6 @@ public final class DimBlendCommands {
                 Commands.literal("dimblend")
                         .requires(source -> source.hasPermission(2))
                         .executes(context -> teleport(context.getSource(), 0, true))
-                        .then(Commands.argument("band", StringArgumentType.word())
-                                .suggests(bandSuggestions())
-                                .executes(context -> teleport(
-                                        context.getSource(),
-                                        parseBand(context.getSource(), StringArgumentType.getString(context, "band")),
-                                        false
-                                )))
                         .then(Commands.literal("sample")
                                 .then(Commands.argument("band", StringArgumentType.word())
                                         .suggests(bandSuggestions())
@@ -54,6 +48,15 @@ public final class DimBlendCommands {
                                                 context.getSource(),
                                                 parseBand(context.getSource(), StringArgumentType.getString(context, "band"))
                                         ))))
+                        .then(Commands.literal("pregen")
+                                .executes(context -> dumpPregen(context.getSource())))
+                        .then(Commands.argument("band", StringArgumentType.word())
+                                .suggests(bandSuggestions())
+                                .executes(context -> teleport(
+                                        context.getSource(),
+                                        parseBand(context.getSource(), StringArgumentType.getString(context, "band")),
+                                        false
+                                )))
         );
     }
 
@@ -180,6 +183,13 @@ public final class DimBlendCommands {
                 true
         );
         return sampleCount;
+    }
+
+    private static int dumpPregen(CommandSourceStack source) {
+        for (String line : DimBlend.pregen().snapshot(source.getServer()).lines()) {
+            source.sendSuccess(() -> Component.literal(line), false);
+        }
+        return 1;
     }
 
     private static boolean isUndergroundColumn(ChunkGenerator generator, int x) {
