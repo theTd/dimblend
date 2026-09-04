@@ -118,7 +118,6 @@ public final class TerraBlenderRotatingCompat {
             if (delegate instanceof SlicedOverworldChunkGenerator sliced) {
                 path = switch (sliced.slice()) {
                     case UNDERGROUND -> "rotating/overworld_caves";
-                    case DEEP -> "rotating/overworld_deep";
                     case SURFACE -> "rotating/overworld";
                 };
             } else {

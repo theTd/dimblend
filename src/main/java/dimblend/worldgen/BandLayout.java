@@ -12,7 +12,6 @@ public final class BandLayout {
     private enum Lane {
         SURFACE,
         UNDERGROUND,
-        DEEP,
         NETHER,
         END,
         MOD
@@ -29,7 +28,6 @@ public final class BandLayout {
         this.seed = seed;
         requireLane(Lane.SURFACE);
         requireLane(Lane.UNDERGROUND);
-        requireLane(Lane.DEEP);
         requireLane(Lane.NETHER);
         requireLane(Lane.END);
         this.cache.defaultReturnValue(-1);
@@ -101,7 +99,7 @@ public final class BandLayout {
             return Lane.UNDERGROUND;
         }
         if (region == 3 || region == 6) {
-            return Lane.DEEP;
+            return Lane.UNDERGROUND;
         }
         if (region == 7) {
             return Lane.NETHER;
@@ -183,12 +181,12 @@ public final class BandLayout {
         if (region < 0) {
             int abs = -region;
             if (abs >= 1 && abs <= 15) {
-                return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.DEEP, Lane.NETHER);
+                return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER);
             }
             if (abs >= 16 && abs <= 31) {
-                return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.DEEP, Lane.NETHER, Lane.MOD);
+                return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER, Lane.MOD);
             }
-            return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.DEEP, Lane.NETHER, Lane.END, Lane.MOD);
+            return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER, Lane.END, Lane.MOD);
         }
         if (region == 1 || region == 4) {
             return firstLane(Lane.SURFACE);
@@ -197,7 +195,7 @@ public final class BandLayout {
             return firstLane(Lane.UNDERGROUND);
         }
         if (region == 3 || region == 6) {
-            return firstLane(Lane.DEEP);
+            return firstLane(Lane.UNDERGROUND);
         }
         if (region == 7) {
             return firstLane(Lane.NETHER);
@@ -206,12 +204,12 @@ public final class BandLayout {
             return firstLane(Lane.END);
         }
         if (region >= 8 && region <= 15) {
-            return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.DEEP, Lane.NETHER);
+            return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER);
         }
         if (region >= 16 && region <= 31) {
-            return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.DEEP, Lane.NETHER, Lane.MOD);
+            return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER, Lane.MOD);
         }
-        return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.DEEP, Lane.NETHER, Lane.END, Lane.MOD);
+        return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER, Lane.END, Lane.MOD);
     }
 
     private int pick(int region, int previous, Lane... wanted) {
@@ -284,7 +282,6 @@ public final class BandLayout {
             return switch (sliced.slice()) {
                 case SURFACE -> Lane.SURFACE;
                 case UNDERGROUND -> Lane.UNDERGROUND;
-                case DEEP -> Lane.DEEP;
             };
         }
         ResourceLocation settings = noiseSettings(delegate);

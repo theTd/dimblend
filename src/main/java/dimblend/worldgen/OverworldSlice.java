@@ -3,9 +3,8 @@ package dimblend.worldgen;
 import com.mojang.serialization.Codec;
 
 public enum OverworldSlice {
-    SURFACE("surface", 0, 48, 320, true, false),
-    UNDERGROUND("underground", 48, 0, 48, true, true),
-    DEEP("deep", 95, -64, 0, false, true);
+    SURFACE("surface", 0, 32, 320, true, false),
+    UNDERGROUND("underground", 64, -64, 24, true, true);
 
     public static final Codec<OverworldSlice> CODEC = Codec.STRING.xmap(OverworldSlice::byName, OverworldSlice::serializedName);
 
