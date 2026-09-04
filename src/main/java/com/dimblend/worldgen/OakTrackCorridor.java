@@ -230,11 +230,8 @@ public final class OakTrackCorridor {
         if (x < minX || x > maxX || z < minZ || z > maxZ) {
             return;
         }
-        if (y > TRACK_Y + maxDy) {
-            return;
-        }
         if (vaultFace) {
-            if (y < TRACK_Y || !inVault(z - CORRIDOR_Z, y - TRACK_Y)) {
+            if (y < TRACK_Y || y > TRACK_Y + maxDy || !inVault(z - CORRIDOR_Z, y - TRACK_Y)) {
                 return;
             }
         } else if (!isVaultShellCell(y, z, maxDy)) {
@@ -253,13 +250,13 @@ public final class OakTrackCorridor {
     }
 
     private static boolean isVaultShellCell(int y, int z, int maxDy) {
+        if (y < TRACK_Y - 1 || y > TRACK_Y + maxDy + 1) {
+            return false;
+        }
         if (y == TRACK_Y - 1) {
             return true;
         }
-        if (y > TRACK_Y + maxDy) {
-            return false;
-        }
-        return y >= TRACK_Y && !inVault(z - CORRIDOR_Z, y - TRACK_Y);
+        return !inVault(z - CORRIDOR_Z, y - TRACK_Y);
     }
 
     private static void stabilizeVaultCeiling(
