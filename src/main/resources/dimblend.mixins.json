@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "dimblend.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "minVersion": "0.8",
+  "mixins": [
+    "BetterCavesMasterControllerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
