@@ -110,7 +110,7 @@ Adds a rotating dimension that cycles Overworld, End, Nether, and Twilight Fores
 [[dependencies.${mod_id}]]
     modId="railways"
     type="required"
-    versionRange="[0.3.0-beta.2,)"
+    versionRange="[0.2.0-beta.2,)"
     ordering="AFTER"
     side="BOTH"
 
