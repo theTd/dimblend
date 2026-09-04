@@ -1,8 +1,8 @@
-package com.dimblend.compat;
+package dimblend.compat;
 
-import com.dimblend.worldgen.OverworldSlice;
-import com.dimblend.worldgen.RotatingChunkGenerator;
-import com.dimblend.worldgen.SlicedOverworldChunkGenerator;
+import dimblend.worldgen.OverworldSlice;
+import dimblend.worldgen.RotatingChunkGenerator;
+import dimblend.worldgen.SlicedOverworldChunkGenerator;
 import com.mojang.logging.LogUtils;
 import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;

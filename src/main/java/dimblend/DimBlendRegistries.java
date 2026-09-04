@@ -1,9 +1,9 @@
-package com.dimblend;
+package dimblend;
 
-import com.dimblend.worldgen.RotatingBiomeSource;
-import com.dimblend.worldgen.RotatingChunkGenerator;
-import com.dimblend.worldgen.SlicedOverworldBiomeSource;
-import com.dimblend.worldgen.SlicedOverworldChunkGenerator;
+import dimblend.worldgen.RotatingBiomeSource;
+import dimblend.worldgen.RotatingChunkGenerator;
+import dimblend.worldgen.SlicedOverworldBiomeSource;
+import dimblend.worldgen.SlicedOverworldChunkGenerator;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;

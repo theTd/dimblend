@@ -1,11 +1,11 @@
-package com.dimblend.command;
+package dimblend.command;
 
-import com.dimblend.DimBlendRegistries;
-import com.dimblend.worldgen.BandIndex;
-import com.dimblend.worldgen.BandLayout;
-import com.dimblend.worldgen.OverworldSlice;
-import com.dimblend.worldgen.RotatingChunkGenerator;
-import com.dimblend.worldgen.SlicedOverworldChunkGenerator;
+import dimblend.DimBlendRegistries;
+import dimblend.worldgen.BandIndex;
+import dimblend.worldgen.BandLayout;
+import dimblend.worldgen.OverworldSlice;
+import dimblend.worldgen.RotatingChunkGenerator;
+import dimblend.worldgen.SlicedOverworldChunkGenerator;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;

@@ -1,4 +1,4 @@
-package com.dimblend.worldgen;
+package dimblend.worldgen;
 
 import com.mojang.serialization.Codec;
 

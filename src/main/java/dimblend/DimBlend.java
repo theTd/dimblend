@@ -1,8 +1,8 @@
-package com.dimblend;
+package dimblend;
 
-import com.dimblend.command.DimBlendCommands;
-import com.dimblend.compat.CreateTrackGraphCompat;
-import com.dimblend.compat.TerraBlenderRotatingCompat;
+import dimblend.command.DimBlendCommands;
+import dimblend.compat.CreateTrackGraphCompat;
+import dimblend.compat.TerraBlenderRotatingCompat;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;

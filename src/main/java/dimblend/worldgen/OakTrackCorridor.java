@@ -1,4 +1,4 @@
-package com.dimblend.worldgen;
+package dimblend.worldgen;
 
 import com.simibubi.create.content.trains.track.TrackBlock;
 import com.simibubi.create.content.trains.track.TrackShape;

@@ -1,4 +1,4 @@
-package com.dimblend.worldgen;
+package dimblend.worldgen;
 
 import net.minecraft.world.level.ChunkPos;
 

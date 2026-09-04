@@ -1,7 +1,7 @@
-package com.dimblend.compat;
+package dimblend.compat;
 
-import com.dimblend.DimBlendRegistries;
-import com.dimblend.worldgen.OakTrackCorridor;
+import dimblend.DimBlendRegistries;
+import dimblend.worldgen.OakTrackCorridor;
 import com.simibubi.create.content.trains.track.TrackBlock;
 import com.simibubi.create.content.trains.track.TrackPropagator;
 import java.lang.reflect.Proxy;

@@ -1,4 +1,4 @@
-package com.dimblend.worldgen;
+package dimblend.worldgen;
 
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import java.util.List;
