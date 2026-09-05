@@ -7,6 +7,10 @@
     "BetterCavesMasterControllerMixin",
     "TreeFeatureMixin"
   ],
+  "client": [
+    "BiomeManagerMixin",
+    "ClientChunkCacheMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

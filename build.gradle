@@ -61,7 +61,7 @@ neoForge {
         client {
             client()
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
-            jvmArgument '-Xmx4G'
+            jvmArgument '-Xmx8G'
         }
 
         server {
