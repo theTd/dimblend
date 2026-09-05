@@ -128,6 +128,37 @@ public final class BandLayout {
         return settings != null && "voidscape".equals(settings.getNamespace());
     }
 
+    /**
+     * Stable lane name for a delegate, used by /dimblend find tab completion and lookup.
+     * surface / underground / nether / end / twilight / starlight or the settings namespace
+     * (aether, deeperdarker, voidscape, ...).
+     */
+    public static String laneName(ChunkGenerator delegate) {
+        if (delegate instanceof SlicedOverworldChunkGenerator sliced) {
+            return sliced.slice() == OverworldSlice.SURFACE ? "surface" : "underground";
+        }
+        ResourceLocation settings = noiseSettings(delegate);
+        if (settings == null) {
+            return "mod";
+        }
+        String namespace = settings.getNamespace();
+        if ("minecraft".equals(namespace)) {
+            return switch (settings.getPath()) {
+                case "overworld" -> "surface";
+                case "nether" -> "nether";
+                case "end" -> "end";
+                default -> "mod";
+            };
+        }
+        if ("dimblend".equals(namespace)) {
+            return "twilight";
+        }
+        if ("eternal_starlight".equals(namespace)) {
+            return "starlight";
+        }
+        return namespace;
+    }
+
     public boolean touchesSurfaceTwilightSeam(int blockX, int bandSize) {
         return this.surfaceTwilightSeamWeight(blockX, bandSize) >= 0.0f;
     }

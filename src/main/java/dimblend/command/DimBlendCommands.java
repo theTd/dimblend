@@ -48,6 +48,13 @@ public final class DimBlendCommands {
                                                 context.getSource(),
                                                 parseBand(context.getSource(), StringArgumentType.getString(context, "band"))
                                         ))))
+                        .then(Commands.literal("find")
+                                .then(Commands.argument("lane", StringArgumentType.word())
+                                        .suggests(laneSuggestions())
+                                        .executes(context -> findLane(
+                                                context.getSource(),
+                                                StringArgumentType.getString(context, "lane")
+                                        ))))
                         .then(Commands.literal("pregen")
                                 .executes(context -> dumpPregen(context.getSource())))
                         .then(Commands.argument("band", StringArgumentType.word())
@@ -60,8 +67,70 @@ public final class DimBlendCommands {
         );
     }
 
+    private static SuggestionProvider<CommandSourceStack> laneSuggestions() {
+        return (context, builder) -> SharedSuggestionProvider.suggest(laneNames(context.getSource()), builder);
+    }
+
     private static SuggestionProvider<CommandSourceStack> bandSuggestions() {
         return (context, builder) -> SharedSuggestionProvider.suggest(bandNames(context.getSource()), builder);
+    }
+
+    private static List<String> laneNames(CommandSourceStack source) {
+        List<String> names = new ArrayList<>();
+        MinecraftServer server = source.getServer();
+        ServerLevel level = server != null ? server.getLevel(DimBlendRegistries.ROTATING_LEVEL) : null;
+        if (level == null) {
+            return names;
+        }
+        ChunkGenerator generator = level.getChunkSource().getGenerator();
+        if (!(generator instanceof RotatingChunkGenerator rotating)) {
+            return names;
+        }
+        for (ChunkGenerator delegate : rotating.delegates()) {
+            String name = BandLayout.laneName(delegate);
+            if (!names.contains(name)) {
+                names.add(name);
+            }
+        }
+        return names;
+    }
+
+    private static int findLane(CommandSourceStack source, String lane) throws CommandSyntaxException {
+        MinecraftServer server = source.getServer();
+        ServerLevel level = server.getLevel(DimBlendRegistries.ROTATING_LEVEL);
+        if (level == null) {
+            source.sendFailure(Component.literal("dimblend dimension not loaded"));
+            return 0;
+        }
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("dimblend requires a player"));
+            return 0;
+        }
+        ChunkGenerator generator = level.getChunkSource().getGenerator();
+        if (!(generator instanceof RotatingChunkGenerator rotating)) {
+            source.sendFailure(Component.literal("dimblend dimension not loaded"));
+            return 0;
+        }
+        int bandSize = rotating.bandSize();
+        int from = BandLayout.regionOfBlockX(player.blockPosition().getX(), bandSize);
+        Integer found = null;
+        for (int radius = 0; radius <= 1024 && found == null; radius++) {
+            for (int candidate : new int[]{from + radius, from - radius}) {
+                ChunkGenerator delegate = rotating.delegates().get(
+                        rotating.layout().delegateIndex(candidate)
+                );
+                if (BandLayout.laneName(delegate).equals(lane)) {
+                    found = candidate;
+                    break;
+                }
+            }
+        }
+        if (found == null) {
+            source.sendFailure(Component.literal("no band with lane " + lane + " within 1024 bands"));
+            return 0;
+        }
+        return teleport(source, found, false);
     }
 
     private static List<String> bandNames(CommandSourceStack source) {
@@ -196,11 +265,11 @@ public final class DimBlendCommands {
         if (!(generator instanceof RotatingChunkGenerator rotating)) {
             return false;
         }
-        ChunkGenerator delegate = rotating.delegates().get(
-                rotating.layout().delegateIndex(BandLayout.regionOfBlockX(x, rotating.bandSize()))
-        );
-        return delegate instanceof SlicedOverworldChunkGenerator sliced
-                && sliced.slice() != OverworldSlice.SURFACE;
+        return BandLayout.laneName(
+                rotating.delegates().get(rotating.layout().delegateIndex(
+                        BandLayout.regionOfBlockX(x, rotating.bandSize())
+                ))
+        ).equals("underground");
     }
 
     private static Integer undergroundLandingY(ChunkGenerator generator, int x, int z, ServerLevel level) {
