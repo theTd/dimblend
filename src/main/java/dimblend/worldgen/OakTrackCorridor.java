@@ -34,6 +34,8 @@ public final class OakTrackCorridor {
     public static final ResourceLocation TRACK_ID = ResourceLocation.fromNamespaceAndPath("railways", "track_create_andesite_wide");
     /** Half-width of the cobblestone roadbed under the track. 7 wide = Z[-3, +3]. */
     private static final int ROADBED_HALF_WIDTH = 3;
+    /** How deep below the vault floor a tree origin may sit and still lose its support column. */
+    private static final int TREE_UNDERMINED_DEPTH = 48;
     private static final Direction[] DIRECTIONS = Direction.values();
 
     private OakTrackCorridor() {
@@ -191,17 +193,27 @@ public final class OakTrackCorridor {
         return Math.abs(dz) <= halfWidth;
     }
 
-    public static boolean blocksTreeOrigin(WorldGenLevel level, BlockPos origin) {
+    /**
+     * Blocks tree/fungus features whose origin column crosses the carve band: roots inside the
+     * vault z-span (|dz| <= VAULT_RADIUS) and origin anywhere the carving can undermine (below
+     * the vault) or decapitate (at or above the ceiling). Trees rooted outside the z-span merely
+     * lose canopy edges to the carve — they keep terrain support and are left alone.
+     */
+    public static boolean blocksTreeLikeOrigin(WorldGenLevel level, BlockPos origin) {
         ChunkGenerator generator = level.getLevel().getChunkSource().getGenerator();
         if (!(generator instanceof RotatingChunkGenerator rotating)) {
             return false;
         }
-        int dy = origin.getY() - TRACK_Y;
-        if (dy < VAULT_FLOOR_DY || dy > VAULT_APEX_DY || !inVault(origin.getZ() - CORRIDOR_Z, dy)) {
+        int dz = origin.getZ() - CORRIDOR_Z;
+        if (Math.abs(dz) > VAULT_RADIUS) {
             return false;
         }
         int maxDy = vaultMaxDy(rotating, origin.getX());
-        return maxDy >= 0 && dy <= maxDy;
+        if (maxDy < 0) {
+            return false;
+        }
+        int dy = origin.getY() - TRACK_Y;
+        return dy >= -TREE_UNDERMINED_DEPTH && dy <= maxDy + 1;
     }
 
 
