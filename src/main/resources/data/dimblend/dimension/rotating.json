@@ -307422,6 +307422,58 @@
         "settings": "eternal_starlight:starlight"
       },
       {
+        "type": "voidscape:void",
+        "biome_source": {
+          "type": "voidscape:layered",
+          "layerBottomDownwards": {
+            "biomes": [
+              "voidscape:antispires"
+            ],
+            "chance": 4,
+            "majorBiome": "voidscape:void"
+          },
+          "layerBottomDownwardsStart": 32,
+          "layerThreeSlicesBetween": {
+            "biomes": [
+              "voidscape:null",
+              "voidscape:overworld",
+              "voidscape:nether",
+              "voidscape:end",
+              {
+                "biome": "voidscape:aether",
+                "modid": "aether"
+              }
+            ],
+            "chance": 4,
+            "majorBiome": "voidscape:void"
+          },
+          "layerTopUpwards": {
+            "biomes": [
+              "voidscape:thunderspires",
+              "voidscape:thunder_forest"
+            ],
+            "chance": 4,
+            "majorBiome": "voidscape:void"
+          },
+          "layerTopUpwardsStart": 160,
+          "possibleBiomes": [
+            "voidscape:thunderspires",
+            "voidscape:thunder_forest",
+            "voidscape:antispires",
+            "voidscape:null",
+            "voidscape:void",
+            "voidscape:overworld",
+            "voidscape:nether",
+            "voidscape:end",
+            {
+              "biome": "voidscape:aether",
+              "modid": "aether"
+            }
+          ]
+        },
+        "settings": "voidscape:void"
+      },
+      {
         "type": "minecraft:noise",
         "settings": "dimblend:twilight_noise_gen",
         "biome_source": {

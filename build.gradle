@@ -133,6 +133,7 @@ dependencies {
     localRuntime files("D:/Downloads/aether-1.21.1-1.5.10-neoforge.jar")
     localRuntime files("D:/Downloads/owo-lib-neoforge-0.12.15.1-beta.6+1.21.jar")
     localRuntime files("D:/Downloads/eternalstarlight-0.9.0+1.21.1+neoforge.jar")
+    localRuntime files("D:/Downloads/Voidscape-1.21.1-1.9.588.jar")
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.

@@ -77,12 +77,8 @@ public final class BandLayout {
     }
 
     public static int fixedDelegateIndex(int region, List<ChunkGenerator> delegates) {
-        if (region < 0) {
-            Lane[] lanes = classify(delegates);
-            return firstOf(lanes, Lane.SURFACE);
-        }
         Lane[] lanes = classify(delegates);
-        Lane lane = fixedLane(region);
+        Lane lane = fixedLane(Math.abs(region));
         if (lane == null) {
             return firstOf(lanes, Lane.SURFACE);
         }
@@ -90,21 +86,23 @@ public final class BandLayout {
         return index >= 0 ? index : firstOf(lanes, Lane.SURFACE);
     }
 
+    /**
+     * Fixed lane for distance |region| from spawn. Null = random pool.
+     * 0 spawn surface; 1/3/4 surface; 2/5/6 underground; 7 nether; 32 end.
+     * Positive and negative sides mirror the same sequence.
+     */
     @javax.annotation.Nullable
-    private static Lane fixedLane(int region) {
-        if (region == 0 || region == 1 || region == 4) {
+    private static Lane fixedLane(int distance) {
+        if (distance == 0 || distance == 1 || distance == 3 || distance == 4) {
             return Lane.SURFACE;
         }
-        if (region == 2 || region == 5) {
+        if (distance == 2 || distance == 5 || distance == 6) {
             return Lane.UNDERGROUND;
         }
-        if (region == 3 || region == 6) {
-            return Lane.UNDERGROUND;
-        }
-        if (region == 7) {
+        if (distance == 7) {
             return Lane.NETHER;
         }
-        if (region == 32) {
+        if (distance == 32) {
             return Lane.END;
         }
         return null;
@@ -122,6 +120,12 @@ public final class BandLayout {
     public static boolean isTwilight(ChunkGenerator delegate) {
         ResourceLocation settings = noiseSettings(delegate);
         return settings != null && "dimblend".equals(settings.getNamespace()) && settings.getPath().contains("twilight");
+    }
+
+    /** Voidscape void islands use bedrock as terrain; corridor must carve through it. */
+    public static boolean isVoidscape(ChunkGenerator delegate) {
+        ResourceLocation settings = noiseSettings(delegate);
+        return settings != null && "voidscape".equals(settings.getNamespace());
     }
 
     public boolean touchesSurfaceTwilightSeam(int blockX, int bandSize) {
@@ -178,35 +182,15 @@ public final class BandLayout {
     }
 
     private int assign(int region, int previous) {
-        if (region < 0) {
-            int abs = -region;
-            if (abs >= 1 && abs <= 15) {
-                return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER);
-            }
-            if (abs >= 16 && abs <= 31) {
-                return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER, Lane.MOD);
-            }
-            return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER, Lane.END, Lane.MOD);
+        int distance = Math.abs(region);
+        Lane fixed = fixedLane(distance);
+        if (fixed != null) {
+            return firstLane(fixed);
         }
-        if (region == 1 || region == 4) {
-            return firstLane(Lane.SURFACE);
-        }
-        if (region == 2 || region == 5) {
-            return firstLane(Lane.UNDERGROUND);
-        }
-        if (region == 3 || region == 6) {
-            return firstLane(Lane.UNDERGROUND);
-        }
-        if (region == 7) {
-            return firstLane(Lane.NETHER);
-        }
-        if (region == 32) {
-            return firstLane(Lane.END);
-        }
-        if (region >= 8 && region <= 15) {
+        if (distance >= 8 && distance <= 15) {
             return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER);
         }
-        if (region >= 16 && region <= 31) {
+        if (distance >= 16 && distance <= 31) {
             return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER, Lane.MOD);
         }
         return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER, Lane.END, Lane.MOD);

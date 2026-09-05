@@ -76,19 +76,19 @@ public final class OakTrackCorridor {
         }
 
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        if (chunkZ == 0) {
-            for (int x = minX; x <= maxX; x++) {
-                writeTrack(chunk, cursor, x, trackBlock, live);
-            }
-        }
         boolean[] carved = new boolean[maxX - minX + 1];
         for (int x = minX; x <= maxX; x++) {
-            int maxDy = vaultMaxDy(rotating, x);
+            ChunkGenerator delegate = corridorDelegate(rotating, x);
+            boolean carveBedrock = BandLayout.isVoidscape(delegate);
+            if (chunkZ == 0) {
+                writeTrack(chunk, cursor, x, trackBlock, carveBedrock, live);
+            }
+            int maxDy = vaultMaxDy(delegate);
             if (maxDy < 0) {
                 continue;
             }
             carved[x - minX] = true;
-            clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, maxDy, live);
+            clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, maxDy, carveBedrock, live);
             stabilizeVaultCeiling(chunk, cursor, x, vaultMinZ, vaultMaxZ, maxDy, live);
             writeRoadbed(rotating, chunk, cursor, x, minZ, maxZ, live);
         }
@@ -215,6 +215,7 @@ public final class OakTrackCorridor {
             int vaultMaxZ,
             Block trackBlock,
             int maxDy,
+            boolean carveBedrock,
             @javax.annotation.Nullable ServerLevel live
     ) {
         for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
@@ -227,7 +228,7 @@ public final class OakTrackCorridor {
                 if (z == CORRIDOR_Z && y == TRACK_Y) {
                     continue;
                 }
-                clearTunnelCell(chunk, cursor, x, y, z, trackBlock, live);
+                clearTunnelCell(chunk, cursor, x, y, z, trackBlock, carveBedrock, live);
             }
         }
     }
@@ -420,9 +421,16 @@ public final class OakTrackCorridor {
     }
 
     private static int vaultMaxDy(RotatingChunkGenerator rotating, int x) {
-        ChunkGenerator delegate = rotating.delegates().get(rotating.layout().delegateIndex(
+        return vaultMaxDy(corridorDelegate(rotating, x));
+    }
+
+    private static ChunkGenerator corridorDelegate(RotatingChunkGenerator rotating, int x) {
+        return rotating.delegates().get(rotating.layout().delegateIndex(
                 BandLayout.regionOfBlockX(x, rotating.bandSize())
         ));
+    }
+
+    private static int vaultMaxDy(ChunkGenerator delegate) {
         if (!(delegate instanceof SlicedOverworldChunkGenerator sliced)) {
             return VAULT_APEX_DY;
         }
@@ -439,11 +447,12 @@ public final class OakTrackCorridor {
             BlockPos.MutableBlockPos cursor,
             int x,
             Block trackBlock,
+            boolean carveBedrock,
             @javax.annotation.Nullable ServerLevel live
     ) {
         cursor.set(x, TRACK_Y, CORRIDOR_Z);
         BlockState current = chunk.getBlockState(cursor);
-        if (current.is(Blocks.BEDROCK)) {
+        if (current.is(Blocks.BEDROCK) && !carveBedrock) {
             return;
         }
         if (current.getBlock() == trackBlock) {
@@ -478,11 +487,12 @@ public final class OakTrackCorridor {
             int y,
             int z,
             Block trackBlock,
+            boolean carveBedrock,
             @javax.annotation.Nullable ServerLevel live
     ) {
         cursor.set(x, y, z);
         BlockState current = chunk.getBlockState(cursor);
-        if (current.is(Blocks.BEDROCK) || current.isAir()) {
+        if ((current.is(Blocks.BEDROCK) && !carveBedrock) || current.isAir()) {
             return;
         }
         if (current.getBlock() == trackBlock) {

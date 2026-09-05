@@ -135,6 +135,13 @@ config="${mod_id}.mixins.json"
     ordering="AFTER"
     side="BOTH"
 
+[[dependencies.${mod_id}]]
+    modId="voidscape"
+    type="required"
+    versionRange="[1.9.588,)"
+    ordering="AFTER"
+    side="BOTH"
+
 
 
 # Features are specific properties of the game environment, that you may want to declare you require. This example declares
