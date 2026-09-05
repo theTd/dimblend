@@ -45,6 +45,26 @@ public final class PregenConfig {
             .comment("Consecutive healthy ticks required before raising the in-flight budget")
             .defineInRange("raiseStreakTicks", 10, 1, 200);
 
+    public static final ModConfigSpec.IntValue PLAYER_PROXIMITY_RADIUS = BUILDER
+            .comment("Do not issue pregen tickets within this chunk radius of any player")
+            .defineInRange("playerProximityRadius", 4, 0, 16);
+
+    public static final ModConfigSpec.IntValue MOVING_CHUNK_THRESHOLD = BUILDER
+            .comment("Treat a player as 'moving fast' if they cross this many chunks in one rescan interval")
+            .defineInRange("movingChunkThreshold", 2, 0, 16);
+
+    public static final ModConfigSpec.BooleanValue CANCEL_ON_POOL_BACKLOG = BUILDER
+            .comment("Cancel in-flight pregen tickets when the worldgen pool stays backlogged")
+            .define("cancelOnPoolBacklog", true);
+
+    public static final ModConfigSpec.IntValue BACKLOG_CANCEL_STREAK = BUILDER
+            .comment("Consecutive ticks the pool must be backlogged before cancelling in-flight tickets")
+            .defineInRange("backlogCancelStreak", 2, 1, 20);
+
+    public static final ModConfigSpec.BooleanValue PREGEN_ONLY_BEHIND = BUILDER
+            .comment("Only pregenerate chunks behind the player (negative X), never ahead")
+            .define("pregenOnlyBehind", false);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private PregenConfig() {
