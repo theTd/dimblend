@@ -25,13 +25,15 @@ import net.minecraft.world.level.levelgen.structure.StructureStart;
 public final class OakTrackCorridor {
     public static final int CORRIDOR_Z = 0;
     public static final int TRACK_Y = 64;
-    /** Inclusive |dz| of the tunnel equator. Diameter 19 = Z[-9, +9]. */
+    /** Inclusive |dz| of the tunnel midsection. Width 19 = Z[-9, +9]. */
     public static final int VAULT_RADIUS = 9;
-    /** Circle center is this many blocks above the track. */
-    public static final int VAULT_CENTER_DY = VAULT_RADIUS - 1;
-    public static final int VAULT_FLOOR_DY = VAULT_CENTER_DY - VAULT_RADIUS;
-    public static final int VAULT_APEX_DY = VAULT_CENTER_DY + VAULT_RADIUS;
+    /** Tunnel floor opens at the track row itself; Y=63 below is solid floor. */
+    public static final int VAULT_FLOOR_DY = 0;
+    /** Flat ceiling row is this many blocks above the track. */
+    public static final int VAULT_APEX_DY = 18;
     public static final ResourceLocation TRACK_ID = ResourceLocation.fromNamespaceAndPath("railways", "track_create_andesite_wide");
+    /** Half-width of the cobblestone roadbed under the track. 7 wide = Z[-3, +3]. */
+    private static final int ROADBED_HALF_WIDTH = 3;
     private static final Direction[] DIRECTIONS = Direction.values();
 
     private OakTrackCorridor() {
@@ -88,12 +90,40 @@ public final class OakTrackCorridor {
             carved[x - minX] = true;
             clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, maxDy, live);
             stabilizeVaultCeiling(chunk, cursor, x, vaultMinZ, vaultMaxZ, maxDy, live);
+            writeRoadbed(rotating, chunk, cursor, x, minZ, maxZ, live);
         }
         for (int x = minX; x <= maxX; x++) {
             if (!carved[x - minX]) {
                 continue;
             }
             sealVaultShell(chunk, cursor, x, minX, maxX, minZ, maxZ, vaultMinZ, vaultMaxZ, trackBlock, carved, vaultMaxDy(rotating, x), live);
+        }
+    }
+
+    private static void writeRoadbed(
+            RotatingChunkGenerator rotating,
+            ChunkAccess chunk,
+            BlockPos.MutableBlockPos cursor,
+            int x,
+            int minZ,
+            int maxZ,
+            @javax.annotation.Nullable ServerLevel live
+    ) {
+        ChunkGenerator delegate = rotating.delegates().get(rotating.layout().delegateIndex(
+                BandLayout.regionOfBlockX(x, rotating.bandSize())
+        ));
+        if (!(delegate instanceof SlicedOverworldChunkGenerator) && !BandLayout.isTwilight(delegate)) {
+            return;
+        }
+        int zMin = Math.max(minZ, CORRIDOR_Z - ROADBED_HALF_WIDTH);
+        int zMax = Math.min(maxZ, CORRIDOR_Z + ROADBED_HALF_WIDTH);
+        for (int z = zMin; z <= zMax; z++) {
+            cursor.set(x, TRACK_Y - 1, z);
+            BlockState current = chunk.getBlockState(cursor);
+            if (current.is(Blocks.BEDROCK)) {
+                continue;
+            }
+            setCell(chunk, live, cursor, Blocks.COBBLESTONE.defaultBlockState());
         }
     }
 
@@ -139,13 +169,26 @@ public final class OakTrackCorridor {
     }
 
     /**
-     * Full circle of radius 9 in the Z/Y plane. Track sits on the 9-wide row.
-     * Center is (z=0, y=TRACK_Y+8). Integer form dz^2 + (dy - 8)^2 <= 81.
-     * Floor dy = -1 (1 cell); track dy = 0 (z=-4..4); equator dy = 8 (|dz|<=9); apex dy = 17.
+     * Octagonal tunnel from the user's 2-1-1-1-2-7 corner staircase, mirrored top to bottom.
+     * Flat floor and ceiling are 7 wide (|dz| <= 3); side walls are 7 tall; interior 19 x 19.
+     * Interior spans dy = 0..18 (Y=64..82); solid floor Y=63 and ceiling Y=83.
+     * Track row dy = 0 is the 7-wide floor. Widest dy = 6..12 (|dz| <= 9). Exterior 21 x 21.
+     * Per-row half width from the flat: 3, 5, 6, 7, 8, 8, then 9 for the 7 wall rows.
      */
     static boolean inVault(int dz, int dy) {
-        int offY = dy - VAULT_CENTER_DY;
-        return dz * dz + offY * offY <= VAULT_RADIUS * VAULT_RADIUS;
+        if (dy < VAULT_FLOOR_DY || dy > VAULT_APEX_DY) {
+            return false;
+        }
+        int tier = Math.min(dy, VAULT_APEX_DY - dy);
+        int halfWidth = switch (tier) {
+            case 0 -> 3;
+            case 1 -> 5;
+            case 2 -> 6;
+            case 3 -> 7;
+            case 4, 5 -> 8;
+            default -> VAULT_RADIUS;
+        };
+        return Math.abs(dz) <= halfWidth;
     }
 
     public static boolean blocksTreeOrigin(WorldGenLevel level, BlockPos origin) {
