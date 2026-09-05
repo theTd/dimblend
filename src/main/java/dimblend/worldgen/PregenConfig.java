@@ -25,6 +25,10 @@ public final class PregenConfig {
             .comment("Fixed maximum chunk Z of the strip, inclusive")
             .defineInRange("zMax", 15, -4096, 4096);
 
+    public static final ModConfigSpec.IntValue MIN_IN_FLIGHT = BUILDER
+            .comment("Starting in-flight budget. Hard brake may still drop to 1")
+            .defineInRange("minInFlight", 4, 1, 128);
+
     public static final ModConfigSpec.IntValue MAX_IN_FLIGHT = BUILDER
             .comment("Upper bound of chunks simultaneously driven to FULL")
             .defineInRange("maxInFlight", 16, 1, 128);
@@ -34,8 +38,12 @@ public final class PregenConfig {
             .defineInRange("brakeTickMs", 40, 20, 100);
 
     public static final ModConfigSpec.IntValue OK_TICK_MS = BUILDER
-            .comment("Average tick time below this with an idle worldgen pool raises the budget")
+            .comment("Average tick time below this raises the in-flight budget after a healthy streak")
             .defineInRange("okTickMs", 30, 10, 100);
+
+    public static final ModConfigSpec.IntValue RAISE_STREAK_TICKS = BUILDER
+            .comment("Consecutive healthy ticks required before raising the in-flight budget")
+            .defineInRange("raiseStreakTicks", 10, 1, 200);
 
     public static final ModConfigSpec SPEC = BUILDER.build();
 

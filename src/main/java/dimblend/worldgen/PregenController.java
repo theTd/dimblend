@@ -31,6 +31,7 @@ public final class PregenController {
     private static final int RESCAN_INTERVAL_TICKS = 20;
     private static final int TICKET_TIMEOUT_TICKS = 1200;
     private static final int WATCHDOG_TICKS = 3600;
+    private static final int POOL_BACKLOG_PER_WORKER = 1;
 
     private static final TicketType<ChunkPos> PREGEN_TICKET =
             TicketType.create("dimblend:pregen", Comparator.comparingLong(ChunkPos::toLong), TICKET_TIMEOUT_TICKS);
@@ -91,23 +92,27 @@ public final class PregenController {
     private final Set<Key> done = ConcurrentHashMap.newKeySet();
     private final Map<Key, Integer> inFlight = new ConcurrentHashMap<>();
     private final Map<UUID, Integer> logoutAnchors = new ConcurrentHashMap<>();
-    private volatile int cap = 1;
+    private volatile int cap;
     private volatile boolean stopping;
     private int tickCounter;
+    private int healthyStreak;
+    private int windowMissing;
+
     @SubscribeEvent
     public void onServerTick(ServerTickEvent.Post event) {
         if (this.stopping || !PregenConfig.ENABLED.get()) {
             return;
         }
         MinecraftServer server = event.getServer();
-        this.adjustCap(server);
         this.sweepCompleted(server);
+        this.adjustCap(server);
         this.issueTickets(server);
         if (++this.tickCounter >= RESCAN_INTERVAL_TICKS) {
             this.tickCounter = 0;
             this.rebuildWindows(server);
         }
     }
+
     @SubscribeEvent
     public void onServerStopping(ServerStoppingEvent event) {
         this.stopping = true;
@@ -123,8 +128,10 @@ public final class PregenController {
         this.inFlight.clear();
         this.done.clear();
         this.logoutAnchors.clear();
-        this.cap = 1;
+        this.cap = PregenConfig.MIN_IN_FLIGHT.get();
         this.tickCounter = 0;
+        this.healthyStreak = 0;
+        this.windowMissing = 0;
         this.stopping = false;
     }
 
@@ -236,12 +243,36 @@ public final class PregenController {
     }
 
     private void adjustCap(MinecraftServer server) {
+        int min = Math.min(PregenConfig.MIN_IN_FLIGHT.get(), PregenConfig.MAX_IN_FLIGHT.get());
+        int max = Math.max(min, PregenConfig.MAX_IN_FLIGHT.get());
+        if (this.cap == 0) {
+            this.cap = min;
+        } else if (this.cap > max) {
+            this.cap = max;
+        }
         double avgMs = averageTickMs(server);
         if (avgMs > PregenConfig.BRAKE_TICK_MS.get()) {
             this.cap = Math.max(1, this.cap / 2);
-        } else if (avgMs < PregenConfig.OK_TICK_MS.get() && worldgenPoolIdle()) {
-            this.cap = Math.min(PregenConfig.MAX_IN_FLIGHT.get(), this.cap + 1);
+            this.healthyStreak = 0;
+            return;
         }
+        if (avgMs >= PregenConfig.OK_TICK_MS.get()) {
+            this.healthyStreak = 0;
+            return;
+        }
+        this.healthyStreak++;
+        if (this.healthyStreak < PregenConfig.RAISE_STREAK_TICKS.get()) {
+            return;
+        }
+        this.healthyStreak = 0;
+        if (this.cap >= max || !this.hasDemand() || worldgenPoolBacklogged()) {
+            return;
+        }
+        this.cap = this.cap < min ? min : this.cap + 1;
+    }
+
+    private boolean hasDemand() {
+        return this.windowMissing > 0 || this.inFlight.size() >= this.cap || !this.queue.isEmpty();
     }
 
     private static double averageTickMs(MinecraftServer server) {
@@ -256,9 +287,14 @@ public final class PregenController {
         return n == 0 ? 0 : sum / 1_000_000.0 / n;
     }
 
-    private static boolean worldgenPoolIdle() {
+    private static boolean worldgenPoolBacklogged() {
         ExecutorService executor = Util.backgroundExecutor();
-        return executor instanceof ForkJoinPool pool && pool.getQueuedSubmissionCount() == 0;
+        if (!(executor instanceof ForkJoinPool pool)) {
+            return false;
+        }
+        int queued = pool.getQueuedSubmissionCount();
+        int limit = Math.max(1, pool.getParallelism() * POOL_BACKLOG_PER_WORKER);
+        return queued > limit;
     }
 
     private void sweepCompleted(MinecraftServer server) {
@@ -308,6 +344,9 @@ public final class PregenController {
             ChunkPos pos = new ChunkPos(key.chunk());
             level.getChunkSource().addRegionTicket(PREGEN_TICKET, pos, 0, pos);
             this.inFlight.put(key, server.getTickCount());
+            if (this.windowMissing > 0) {
+                this.windowMissing--;
+            }
         }
     }
 
@@ -334,6 +373,7 @@ public final class PregenController {
         List<Key> missing = new ArrayList<>(targets.keySet());
         missing.removeIf(this.done::contains);
         missing.removeAll(this.inFlight.keySet());
+        this.windowMissing = missing.size();
         missing.sort(Comparator
                 .comparingInt((Key key) -> Math.abs(targets.get(key)))
                 .thenComparingInt(key -> targets.get(key)));
