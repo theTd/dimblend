@@ -5,6 +5,8 @@ import dimblend.DimBlendRegistries;
 import dimblend.worldgen.BandIndex;
 import dimblend.worldgen.BandLayout;
 import dimblend.worldgen.OverworldSlice;
+import dimblend.worldgen.PregenConfig;
+import dimblend.worldgen.PregenController;
 import dimblend.worldgen.RotatingChunkGenerator;
 import dimblend.worldgen.SlicedOverworldChunkGenerator;
 import com.mojang.brigadier.CommandDispatcher;
@@ -56,7 +58,16 @@ public final class DimBlendCommands {
                                                 StringArgumentType.getString(context, "lane")
                                         ))))
                         .then(Commands.literal("pregen")
-                                .executes(context -> dumpPregen(context.getSource())))
+                                .executes(context -> dumpPregen(context.getSource()))
+                                .then(Commands.literal("on")
+                                        .requires(source -> source.hasPermission(2))
+                                        .executes(context -> setPregenOverride(context.getSource(), true, "on")))
+                                .then(Commands.literal("off")
+                                        .requires(source -> source.hasPermission(2))
+                                        .executes(context -> setPregenOverride(context.getSource(), false, "off")))
+                                .then(Commands.literal("auto")
+                                        .requires(source -> source.hasPermission(2))
+                                        .executes(context -> setPregenOverride(context.getSource(), null, "auto"))))
                         .then(Commands.argument("band", StringArgumentType.word())
                                 .suggests(bandSuggestions())
                                 .executes(context -> teleport(
@@ -252,6 +263,17 @@ public final class DimBlendCommands {
                 true
         );
         return sampleCount;
+    }
+
+    private static int setPregenOverride(CommandSourceStack source, Boolean override, String label) {
+        DimBlend.pregen().setPregenOverride(override);
+        PregenController.Snapshot snapshot = DimBlend.pregen().snapshot(source.getServer());
+        String configState = PregenConfig.ENABLED.get() ? "on" : "off";
+        String mode = "pregen " + label + ": effective " + (snapshot.enabled() ? "on" : "off")
+                + (snapshot.enabled() == PregenConfig.ENABLED.get() ? "" : " (config " + configState + ")")
+                + ", inFlight " + snapshot.inFlight();
+        source.sendSuccess(() -> Component.literal(mode), false);
+        return 1;
     }
 
     private static int dumpPregen(CommandSourceStack source) {

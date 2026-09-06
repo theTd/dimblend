@@ -49,9 +49,9 @@ public final class PregenConfig {
             .comment("Do not issue pregen tickets within this chunk radius of any player")
             .defineInRange("playerProximityRadius", 4, 0, 16);
 
-    public static final ModConfigSpec.IntValue MOVING_CHUNK_THRESHOLD = BUILDER
-            .comment("Treat a player as 'moving fast' if they cross this many chunks in one rescan interval")
-            .defineInRange("movingChunkThreshold", 2, 0, 16);
+    public static final ModConfigSpec.BooleanValue MESH_GATE = BUILDER
+            .comment("Pause issuing pregen tickets and cancel in-flight ones while the client mesh rebuild pipeline is starved (integrated server only; no effect on dedicated servers)")
+            .define("meshGate", true);
 
     public static final ModConfigSpec.BooleanValue CANCEL_ON_POOL_BACKLOG = BUILDER
             .comment("Cancel in-flight pregen tickets when the worldgen pool stays backlogged")
