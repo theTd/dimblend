@@ -43,7 +43,6 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.levelgen.GenerationStep.Carving;
 import net.minecraft.world.level.levelgen.Heightmap.Types;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
-import net.minecraft.world.level.levelgen.NoiseChunk;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
@@ -297,7 +296,6 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
     ) {
         this.ensureRuntimeFromLevel(level);
         int index = this.bandIndex(chunk.getPos());
-        this.dropDisabledAquiferNoiseChunk(chunk);
         this.delegates.get(index).applyCarvers(
                 level,
                 seed,
@@ -307,25 +305,6 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
                 chunk,
                 step
         );
-    }
-
-    private void dropDisabledAquiferNoiseChunk(ChunkAccess chunk) {
-        NoiseChunk noise = chunk.noiseChunk;
-        if (noise == null) {
-            return;
-        }
-        if (!hasBetterCavesLiquidRegions(noise.aquifer())) {
-            chunk.noiseChunk = null;
-        }
-    }
-
-    private static boolean hasBetterCavesLiquidRegions(Object aquifer) {
-        for (Class<?> iface : aquifer.getClass().getInterfaces()) {
-            if ("com.yungnickyoung.minecraft.bettercaves.duck.ILiquidRegionsProvider".equals(iface.getName())) {
-                return true;
-            }
-        }
-        return false;
     }
 
     @Override

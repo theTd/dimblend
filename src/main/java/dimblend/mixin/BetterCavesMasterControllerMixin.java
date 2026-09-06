@@ -29,7 +29,11 @@ public abstract class BetterCavesMasterControllerMixin {
     private static boolean hasLiquidRegions(Aquifer aquifer) {
         for (Class<?> iface : aquifer.getClass().getInterfaces()) {
             if ("com.yungnickyoung.minecraft.bettercaves.duck.ILiquidRegionsProvider".equals(iface.getName())) {
-                return true;
+                try {
+                    return iface.getMethod("bettercaves$getLiquidRegions").invoke(aquifer) != null;
+                } catch (ReflectiveOperationException e) {
+                    return false;
+                }
             }
         }
         return false;
