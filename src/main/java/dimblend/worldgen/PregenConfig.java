@@ -50,7 +50,7 @@ public final class PregenConfig {
             .defineInRange("playerProximityRadius", 4, 0, 16);
 
     public static final ModConfigSpec.BooleanValue MESH_GATE = BUILDER
-            .comment("Pause issuing pregen tickets and cancel in-flight ones while the client mesh rebuild pipeline is starved (integrated server only; no effect on dedicated servers)")
+            .comment("Pause issuing pregen tickets while the client mesh rebuild pipeline is starved (integrated server only; no effect on dedicated servers). In-flight tickets are left alone so partial progress is not discarded.")
             .define("meshGate", true);
 
     public static final ModConfigSpec.BooleanValue CANCEL_ON_POOL_BACKLOG = BUILDER

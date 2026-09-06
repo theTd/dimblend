@@ -4,6 +4,7 @@ import dimblend.DimBlendRegistries;
 import it.unimi.dsi.fastutil.longs.Long2IntMap;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
+import it.unimi.dsi.fastutil.longs.LongLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -33,10 +34,11 @@ public final class PregenController {
     private static final int RESCAN_INTERVAL_TICKS = 20;
     private static final int WATCHDOG_TICKS = 3600;
     private static final int POOL_BACKLOG_PER_WORKER = 1;
-    private static final int TICKET_TIMEOUT_TICKS = 1200;
     private static final int CONGEST_TRIGGER_TICKS = 10;
+    private static final int HOLD_RADIUS = 8; // matches ChunkPyramid STRUCTURE_STARTS dependency radius
+    private static final int HOLD_CAP = 1024; // oldest-first release when exceeded
     private static final TicketType<ChunkPos> PREGEN_TICKET =
-            TicketType.create("dimblend:pregen", Comparator.comparingLong(ChunkPos::toLong), TICKET_TIMEOUT_TICKS);
+            TicketType.create("dimblend:pregen", Comparator.comparingLong(ChunkPos::toLong));
 
     public record Snapshot(
             boolean enabled,
@@ -45,6 +47,7 @@ public final class PregenController {
             int done,
             int inFlight,
             int cancelling,
+            int held,
             int pending,
             int behind,
             int behindDone,
@@ -74,6 +77,7 @@ public final class PregenController {
                     + "  mesh " + this.mesh
                     + "  cancel " + this.cancelledThisCycle
                     + "  logout " + this.anchors
+                    + "  hold " + this.held
                     + this.overrideMarker);
             lines.add("all    " + bar(this.done, this.window) + "  " + this.done + "/" + this.window);
             lines.add("behind " + bar(this.behindDone, this.behind) + "  " + this.behindDone + "/" + this.behind
@@ -111,6 +115,10 @@ public final class PregenController {
     private final LongOpenHashSet done = new LongOpenHashSet();
     private final Long2IntOpenHashMap inFlight = new Long2IntOpenHashMap();
     private final LongOpenHashSet cancelling = new LongOpenHashSet();
+    /** Completed chunks whose pregen ticket stays registered until radius-8 neighbors settle. */
+    private final LongLinkedOpenHashSet heldTickets = new LongLinkedOpenHashSet();
+    /** Post-proximity window membership from the last rescan; settle oracle for held tickets. */
+    private LongOpenHashSet windowTargets = new LongOpenHashSet();
     private final Map<UUID, Integer> logoutAnchors = new ConcurrentHashMap<>();
     private volatile int cap;
     private volatile boolean stopping;
@@ -134,7 +142,6 @@ public final class PregenController {
             return;
         }
         this.cancelInflightDueToBacklog(server);
-        this.cancelInflightForMeshCongestion(server);
         this.adjustCap(server);
         this.issueTickets(server);
         if (++this.tickCounter >= RESCAN_INTERVAL_TICKS) {
@@ -154,6 +161,8 @@ public final class PregenController {
         this.inFlight.clear();
         this.cancelling.clear();
         this.done.clear();
+        this.heldTickets.clear();
+        this.windowTargets = new LongOpenHashSet();
         this.logoutAnchors.clear();
         this.cap = PregenConfig.MIN_IN_FLIGHT.get();
         this.tickCounter = 0;
@@ -172,8 +181,8 @@ public final class PregenController {
     }
 
     /**
-     * Sets the runtime override. Turning pregen off revokes all non-cancelling in-flight tickets
-     * so generation stops immediately instead of waiting for the 60s ticket timeout.
+     * Sets the runtime override. Turning pregen off revokes all non-cancelling in-flight and
+     * held tickets so generation stops and resident chunks are released immediately.
      */
     public void setPregenOverride(Boolean override) {
         this.pregenOverride = override;
@@ -194,9 +203,10 @@ public final class PregenController {
     }
 
     /**
-     * Revokes every non-cancelling in-flight ticket and marks those chunks as cancelling so
-     * {@link #sweepCompleted(MinecraftServer)} will not remove their tickets a second time
-     * once they arrive.
+     * Revokes every non-cancelling in-flight ticket and every held ticket. In-flight chunks are
+     * marked cancelling so {@link #sweepCompleted(MinecraftServer)} will not remove their tickets
+     * a second time once they arrive; held chunks already completed, so their tickets are simply
+     * released.
      */
     private void cancelInflightTickets(ServerLevel level) {
         if (level == null) {
@@ -210,6 +220,11 @@ public final class PregenController {
             level.getChunkSource().removeRegionTicket(PREGEN_TICKET, pos, 0, pos);
             this.cancelling.add(chunk);
         }
+        for (long chunk : this.heldTickets) {
+            ChunkPos pos = new ChunkPos(chunk);
+            level.getChunkSource().removeRegionTicket(PREGEN_TICKET, pos, 0, pos);
+        }
+        this.heldTickets.clear();
     }
 
     @SubscribeEvent
@@ -249,6 +264,7 @@ public final class PregenController {
                 stats.done,
                 this.inFlight.size(),
                 this.cancelling.size(),
+                this.heldTickets.size(),
                 Math.max(0, stats.window - stats.done - this.inFlight.size()),
                 stats.behind,
                 stats.behindDone,
@@ -415,33 +431,6 @@ public final class PregenController {
         }
     }
 
-    /**
-     * Revokes all in-flight pregen tickets exactly once when mesh congestion first trips the gate
-     * ({@code congestedStreak == CONGEST_TRIGGER_TICKS}). Revoking does not interrupt running noise
-     * tasks; it only stops new layer submissions, so workers free up within 1-2 task lengths.
-     * Later ticks keep the streak above the trigger, so {@link #issueTickets} stays blocked; the
-     * equality check makes this fire once per congestion episode.
-     */
-    private void cancelInflightForMeshCongestion(MinecraftServer server) {
-        if (!PregenConfig.MESH_GATE.get() || this.congestedStreak != CONGEST_TRIGGER_TICKS) {
-            return;
-        }
-        ServerLevel level = server.getLevel(DimBlendRegistries.ROTATING_LEVEL);
-        if (level == null) {
-            return;
-        }
-        for (Long2IntMap.Entry entry : this.inFlight.long2IntEntrySet()) {
-            long chunk = entry.getLongKey();
-            if (this.cancelling.contains(chunk)) {
-                continue;
-            }
-            ChunkPos pos = new ChunkPos(chunk);
-            level.getChunkSource().removeRegionTicket(PREGEN_TICKET, pos, 0, pos);
-            this.cancelling.add(chunk);
-            this.cancelledThisCycle++;
-        }
-    }
-
     private static String meshStatus() {
         return switch (MeshPressure.current()) {
             case OK -> "ok " + MeshPressure.toBatch() + "/" + MeshPressure.freeBuffers();
@@ -464,11 +453,21 @@ public final class PregenController {
             ChunkPos pos = new ChunkPos(chunk);
             if (level.getChunkSource().getChunkNow(pos.x, pos.z) != null) {
                 if (!this.cancelling.contains(chunk)) {
-                    level.getChunkSource().removeRegionTicket(PREGEN_TICKET, pos, 0, pos);
+                    if (neighborsSettled(chunk)) {
+                        level.getChunkSource().removeRegionTicket(PREGEN_TICKET, pos, 0, pos);
+                    } else {
+                        this.heldTickets.add(chunk);
+                    }
                 }
                 finished.add(chunk);
             } else if (now - entry.getIntValue() > WATCHDOG_TICKS) {
                 stale.add(chunk);
+                this.heldTickets.remove(chunk);
+                if (!this.cancelling.contains(chunk)) {
+                    // Ticket never auto-expires (timeout 0); the watchdog is the only release
+                    // path for in-flight chunks that never reached FULL.
+                    level.getChunkSource().removeRegionTicket(PREGEN_TICKET, pos, 0, pos);
+                }
             }
         }
         for (long chunk : finished) {
@@ -479,6 +478,59 @@ public final class PregenController {
         for (long chunk : stale) {
             this.inFlight.remove(chunk);
             this.cancelling.remove(chunk);
+        }
+        this.releaseHeldTickets(level);
+    }
+
+    /**
+     * A completed chunk's radius-8 neighborhood is settled when every neighbor is either already
+     * done or outside the current pregen window (membership is refreshed by
+     * {@link #rebuildWindows(MinecraftServer)}).
+     */
+    private boolean neighborsSettled(long chunk) {
+        int x = ChunkPos.getX(chunk);
+        int z = ChunkPos.getZ(chunk);
+        for (int dx = -HOLD_RADIUS; dx <= HOLD_RADIUS; dx++) {
+            for (int dz = -HOLD_RADIUS; dz <= HOLD_RADIUS; dz++) {
+                if (dx == 0 && dz == 0) {
+                    continue;
+                }
+                long n = ChunkPos.asLong(x + dx, z + dz);
+                if (this.done.contains(n) || !this.windowTargets.contains(n)) {
+                    continue;
+                }
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Releases held tickets whose neighborhood has settled (or whose chunk is no longer
+     * resident, e.g. an external removal unloaded it) and enforces {@link #HOLD_CAP} by dropping
+     * the oldest holds. {@code removeRegionTicket} is a no-op when the ticket is already gone.
+     */
+    private void releaseHeldTickets(ServerLevel level) {
+        if (level == null) {
+            this.heldTickets.clear();
+            return;
+        }
+        LongArrayList release = new LongArrayList();
+        for (long chunk : this.heldTickets) {
+            ChunkPos pos = new ChunkPos(chunk);
+            if (neighborsSettled(chunk) || level.getChunkSource().getChunkNow(pos.x, pos.z) == null) {
+                release.add(chunk);
+            }
+        }
+        for (long chunk : release) {
+            this.heldTickets.remove(chunk);
+            ChunkPos pos = new ChunkPos(chunk);
+            level.getChunkSource().removeRegionTicket(PREGEN_TICKET, pos, 0, pos);
+        }
+        while (this.heldTickets.size() > HOLD_CAP) {
+            long chunk = this.heldTickets.removeFirstLong();
+            ChunkPos pos = new ChunkPos(chunk);
+            level.getChunkSource().removeRegionTicket(PREGEN_TICKET, pos, 0, pos);
         }
     }
 
@@ -547,6 +599,8 @@ public final class PregenController {
             this.addWindow(targets, entry.getValue(), 0, xBehind, xAhead, zMin, zMax);
         }
         targets.keySet().removeIf((long chunk) -> playerZones.contains(chunk));
+        // Store the post-proximity window so held-ticket settle checks match the live window.
+        this.windowTargets = new LongOpenHashSet(targets.keySet());
         LongArrayList missing = new LongArrayList(targets.keySet().toLongArray());
         missing.removeIf((long chunk) -> this.done.contains(chunk));
         missing.removeAll(this.inFlight.keySet());
