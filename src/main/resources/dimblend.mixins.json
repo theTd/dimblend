@@ -9,7 +9,8 @@
   ],
   "client": [
     "BiomeManagerMixin",
-    "ClientChunkCacheMixin"
+    "ClientChunkCacheMixin",
+    "ShaderInstanceMixin"
   ],
   "injectors": {
     "defaultRequire": 1
