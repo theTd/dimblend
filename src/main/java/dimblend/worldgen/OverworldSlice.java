@@ -4,7 +4,7 @@ import com.mojang.serialization.Codec;
 
 public enum OverworldSlice {
     SURFACE("surface", 0, 32, 320, true, false),
-    UNDERGROUND("underground", 64, -64, 24, true, true);
+    UNDERGROUND("underground", 64, -64, 32, true, true);
 
     public static final Codec<OverworldSlice> CODEC = Codec.STRING.xmap(OverworldSlice::byName, OverworldSlice::serializedName);
 
