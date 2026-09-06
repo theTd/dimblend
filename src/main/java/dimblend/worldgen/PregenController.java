@@ -1,8 +1,11 @@
 package dimblend.worldgen;
 
 import dimblend.DimBlendRegistries;
+import dimblend.mixin.DistanceManagerAccessor;
 import it.unimi.dsi.fastutil.longs.Long2IntMap;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -14,14 +17,18 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ForkJoinPool;
 import net.minecraft.Util;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ChunkLevel;
+import net.minecraft.server.level.FullChunkStatus;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.Ticket;
 import net.minecraft.server.level.TicketType;
+import net.minecraft.util.SortedArraySet;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -46,6 +53,8 @@ public final class PregenController {
             int window,
             int done,
             int inFlight,
+            int foreign,
+            boolean yielding,
             int cancelling,
             int held,
             int pending,
@@ -75,9 +84,10 @@ public final class PregenController {
                     + "  " + String.format("%.0f", this.avgTickMs) + "ms"
                     + "  online " + this.online
                     + "  mesh " + this.mesh
-                    + "  cancel " + this.cancelledThisCycle
                     + "  logout " + this.anchors
                     + "  hold " + this.held
+                    + "  ext " + this.foreign
+                    + (this.yielding ? "  YIELD" : "")
                     + this.overrideMarker);
             lines.add("all    " + bar(this.done, this.window) + "  " + this.done + "/" + this.window);
             lines.add("behind " + bar(this.behindDone, this.behind) + "  " + this.behindDone + "/" + this.behind
@@ -141,6 +151,7 @@ public final class PregenController {
         if (!pregenEffective()) {
             return;
         }
+        this.updateForeignYield(server);
         this.cancelInflightDueToBacklog(server);
         this.adjustCap(server);
         this.issueTickets(server);
@@ -149,6 +160,12 @@ public final class PregenController {
             this.rebuildWindows(server);
         }
     }
+
+    /** Distinct unloaded chunks demanded by players or non-pregen tickets across all levels. */
+    private int foreignPending;
+    private boolean yielding;
+    private int foreignPresentStreak;
+    private int foreignClearStreak;
 
     @SubscribeEvent
     public void onServerStopping(ServerStoppingEvent event) {
@@ -170,7 +187,10 @@ public final class PregenController {
         this.windowMissing = 0;
         this.backlogStreak = 0;
         this.cancelledThisCycle = 0;
-        this.congestedStreak = 0;
+        this.foreignPending = 0;
+        this.yielding = false;
+        this.foreignPresentStreak = 0;
+        this.foreignClearStreak = 0;
         this.stopping = false;
     }
 
@@ -212,6 +232,19 @@ public final class PregenController {
         if (level == null) {
             return;
         }
+        this.cancelActiveInflight(level);
+        for (long chunk : this.heldTickets) {
+            ChunkPos pos = new ChunkPos(chunk);
+            level.getChunkSource().removeRegionTicket(PREGEN_TICKET, pos, 0, pos);
+        }
+        this.heldTickets.clear();
+    }
+
+    /**
+     * Revokes every non-cancelling in-flight ticket, marking it cancelling so
+     * {@link #sweepCompleted(MinecraftServer)} will not remove its ticket twice once it arrives.
+     */
+    private void cancelActiveInflight(ServerLevel level) {
         for (long chunk : this.inFlight.keySet()) {
             if (this.cancelling.contains(chunk)) {
                 continue;
@@ -219,12 +252,80 @@ public final class PregenController {
             ChunkPos pos = new ChunkPos(chunk);
             level.getChunkSource().removeRegionTicket(PREGEN_TICKET, pos, 0, pos);
             this.cancelling.add(chunk);
+            this.cancelledThisCycle++;
         }
-        for (long chunk : this.heldTickets) {
-            ChunkPos pos = new ChunkPos(chunk);
-            level.getChunkSource().removeRegionTicket(PREGEN_TICKET, pos, 0, pos);
+    }
+
+    /**
+     * Tracks foreign generation demand: pregen stops issuing while any non-pregen demand exists,
+     * and cancels in-flight pregen tickets once the demand streak is met.
+     */
+    private void updateForeignYield(MinecraftServer server) {
+        if (!PregenConfig.YIELD_TO_FOREIGN_GEN.get()) {
+            this.yielding = false;
+            this.foreignPending = 0;
+            this.foreignPresentStreak = 0;
+            this.foreignClearStreak = 0;
+            return;
         }
-        this.heldTickets.clear();
+        this.foreignPending = this.scanForeignPending(server);
+        if (this.foreignPending > 0) {
+            this.yielding = true;
+            this.foreignClearStreak = 0;
+            this.foreignPresentStreak++;
+            if (this.foreignPresentStreak >= PregenConfig.FOREIGN_YIELD_CANCEL_STREAK.get()) {
+                ServerLevel level = server.getLevel(DimBlendRegistries.ROTATING_LEVEL);
+                if (level != null) {
+                    this.cancelActiveInflight(level);
+                }
+            }
+            return;
+        }
+        this.foreignPresentStreak = 0;
+        this.foreignClearStreak++;
+        if (this.foreignClearStreak >= PregenConfig.FOREIGN_YIELD_RESUME_TICKS.get()) {
+            this.yielding = false;
+        }
+    }
+
+    /** Counts distinct unloaded chunks demanded by players or non-pregen tickets across all levels. */
+    private int scanForeignPending(MinecraftServer server) {
+        int fullLevel = ChunkLevel.byStatus(FullChunkStatus.FULL);
+        int vd = server.getPlayerList().getViewDistance();
+        int total = 0;
+        for (ServerLevel level : server.getAllLevels()) {
+            LongOpenHashSet pending = new LongOpenHashSet();
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                if (player.serverLevel() != level) {
+                    continue;
+                }
+                ChunkPos pos = player.chunkPosition();
+                for (int dx = -vd; dx <= vd; dx++) {
+                    for (int dz = -vd; dz <= vd; dz++) {
+                        if (level.getChunkSource().getChunkNow(pos.x + dx, pos.z + dz) == null) {
+                            pending.add(ChunkPos.asLong(pos.x + dx, pos.z + dz));
+                        }
+                    }
+                }
+            }
+            Long2ObjectOpenHashMap<SortedArraySet<Ticket<?>>> tickets =
+                    ((DistanceManagerAccessor) level.getChunkSource().chunkMap.getDistanceManager()).dimblend$getTickets();
+            for (Long2ObjectMap.Entry<SortedArraySet<Ticket<?>>> entry : tickets.long2ObjectEntrySet()) {
+                long chunk = entry.getLongKey();
+                boolean foreign = false;
+                for (Ticket<?> ticket : entry.getValue()) {
+                    if (ticket.getType() != PREGEN_TICKET && ticket.getTicketLevel() <= fullLevel) {
+                        foreign = true;
+                        break;
+                    }
+                }
+                if (foreign && level.getChunkSource().getChunkNow(ChunkPos.getX(chunk), ChunkPos.getZ(chunk)) == null) {
+                    pending.add(chunk);
+                }
+            }
+            total += pending.size();
+        }
+        return total;
     }
 
     @SubscribeEvent
@@ -263,6 +364,8 @@ public final class PregenController {
                 stats.window,
                 stats.done,
                 this.inFlight.size(),
+                this.foreignPending,
+                this.yielding,
                 this.cancelling.size(),
                 this.heldTickets.size(),
                 Math.max(0, stats.window - stats.done - this.inFlight.size()),
@@ -539,6 +642,9 @@ public final class PregenController {
             return;
         }
         if (PregenConfig.MESH_GATE.get() && this.congestedStreak >= CONGEST_TRIGGER_TICKS) {
+            return;
+        }
+        if (this.yielding) {
             return;
         }
         ServerLevel level = server.getLevel(DimBlendRegistries.ROTATING_LEVEL);

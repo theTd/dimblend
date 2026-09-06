@@ -65,6 +65,18 @@ public final class PregenConfig {
             .comment("Only pregenerate chunks behind the player (negative X), never ahead")
             .define("pregenOnlyBehind", false);
 
+    public static final ModConfigSpec.BooleanValue YIELD_TO_FOREIGN_GEN = BUILDER
+            .comment("Pause pregen while any non-pregen ticket or player view-distance demand still needs generation in any level; cancel in-flight when the streak is met")
+            .define("yieldToForeignGen", true);
+
+    public static final ModConfigSpec.IntValue FOREIGN_YIELD_CANCEL_STREAK = BUILDER
+            .comment("Consecutive ticks with foreign demand before cancelling in-flight pregen tickets")
+            .defineInRange("foreignYieldCancelStreak", 2, 1, 20);
+
+    public static final ModConfigSpec.IntValue FOREIGN_YIELD_RESUME_TICKS = BUILDER
+            .comment("Consecutive clear ticks required before resuming after yielding")
+            .defineInRange("foreignYieldResumeTicks", 20, 1, 200);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private PregenConfig() {
