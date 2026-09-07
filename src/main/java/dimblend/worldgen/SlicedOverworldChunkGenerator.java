@@ -2,15 +2,22 @@ package dimblend.worldgen;
 
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.QuartPos;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.DoubleTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.server.level.WorldGenRegion;
+import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.NoiseColumn;
@@ -69,16 +76,12 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
             ChunkAccess chunk,
             StructureTemplateManager templates
     ) {
-        if (this.slice == OverworldSlice.SURFACE) {
-            this.inner.createStructures(access, state, structures, chunk, templates);
-        }
+        this.inner.createStructures(access, state, structures, chunk, templates);
     }
 
     @Override
     public void createReferences(WorldGenLevel level, StructureManager structures, ChunkAccess chunk) {
-        if (this.slice == OverworldSlice.SURFACE) {
-            this.inner.createReferences(level, structures, chunk);
-        }
+        this.inner.createReferences(level, structures, chunk);
     }
 
     @Override
@@ -128,7 +131,7 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
             this.reprimeHeightmaps(chunk);
             return;
         }
-        this.relocateSlice(chunk);
+        this.relocateSlice(level, chunk);
     }
 
     @Override
@@ -216,7 +219,7 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
         return this.inner.createState(lookup, randomState, seed);
     }
 
-    private void relocateSlice(ChunkAccess chunk) {
+    private void relocateSlice(WorldGenLevel level, ChunkAccess chunk) {
         if (this.slice.yOffset() == 0) {
             this.sealSlice(chunk);
             this.reprimeHeightmaps(chunk);
@@ -242,6 +245,33 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
             }
         }
         Holder<Biome>[][][] biomes = snapshotBiomes(chunk);
+        HolderLookup.Provider provider = level.registryAccess();
+        Set<BlockPos> bePositions = chunk.getBlockEntitiesPos();
+        List<CompoundTag> beTags = new ArrayList<>();
+        for (BlockPos pos : bePositions) {
+            if (!this.slice.containsSourceY(pos.getY())) {
+                continue;
+            }
+            CompoundTag tag = chunk.getBlockEntityNbtForSaving(pos, provider);
+            if (tag != null) {
+                beTags.add(tag);
+            }
+        }
+        for (BlockPos pos : bePositions) {
+            chunk.removeBlockEntity(pos);
+        }
+        if (chunk instanceof ProtoChunk protoChunk) {
+            Iterator<CompoundTag> entityTags = protoChunk.getEntities().iterator();
+            while (entityTags.hasNext()) {
+                CompoundTag entityTag = entityTags.next();
+                ListTag posTag = entityTag.getList("Pos", 6);
+                if (posTag.size() == 3 && this.slice.containsSourceY(Mth.floor(posTag.getDouble(1)))) {
+                    posTag.set(1, DoubleTag.valueOf(posTag.getDouble(1) + this.slice.yOffset()));
+                } else {
+                    entityTags.remove();
+                }
+            }
+        }
 
         this.clearColumn(chunk, air());
         for (int lx = 0; lx < 16; lx++) {
@@ -254,6 +284,14 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
                     chunk.setBlockState(cursor.set(minX + lx, targetY, minZ + lz), replaceCopper(sourceMin + dy, blocks[lx][lz][dy]), false);
                 }
             }
+        }
+        for (CompoundTag tag : beTags) {
+            int targetY = this.slice.toTargetY(tag.getInt("y"));
+            if (targetY < chunk.getMinBuildHeight() || targetY >= chunk.getMaxBuildHeight()) {
+                continue;
+            }
+            tag.putInt("y", targetY);
+            chunk.setBlockEntityNbt(tag);
         }
         this.writeBiomes(chunk, biomes);
         this.shiftPostProcessing(chunk);

@@ -146,11 +146,11 @@ public final class OakTrackCorridor {
         );
     }
 
-    public static boolean intersectsVault(StructureStart start) {
-        return start != null && start.isValid() && start.getBoundingBox().intersects(vaultAabb());
+    public static boolean intersectsVault(StructureStart start, int yShift) {
+        return start != null && start.isValid() && start.getBoundingBox().moved(0, yShift, 0).intersects(vaultAabb());
     }
 
-    public static void dropStartsIntersectingVault(ChunkAccess chunk) {
+    public static void dropStartsIntersectingVault(ChunkAccess chunk, int yShift) {
         Map<Structure, StructureStart> starts = chunk.getAllStarts();
         if (starts.isEmpty()) {
             return;
@@ -159,7 +159,7 @@ public final class OakTrackCorridor {
         boolean dropped = false;
         for (Map.Entry<Structure, StructureStart> entry : starts.entrySet()) {
             StructureStart start = entry.getValue();
-            if (intersectsVault(start)) {
+            if (intersectsVault(start, yShift)) {
                 dropped = true;
                 continue;
             }

@@ -15,7 +15,6 @@ import java.util.concurrent.CompletableFuture;
 import javax.annotation.Nullable;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.BlockPos.MutableBlockPos;
@@ -513,7 +512,10 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         this.ensureRuntime(access);
         int index = this.bandIndex(chunk.getPos());
         this.delegates.get(index).createStructures(access, this.delegateState(index), structures, chunk, templates);
-        OakTrackCorridor.dropStartsIntersectingVault(chunk);
+        int yShift = this.delegates.get(index) instanceof SlicedOverworldChunkGenerator sliced
+                ? sliced.slice().yOffset()
+                : 0;
+        OakTrackCorridor.dropStartsIntersectingVault(chunk, yShift);
     }
 
     @Override
@@ -544,11 +546,6 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         Pair<BlockPos, Holder<Structure>> nearest = null;
         double nearestDistance = Double.MAX_VALUE;
         for (int i = 0; i < this.delegates.size(); i++) {
-            ChunkGenerator delegate = this.delegates.get(i);
-            if (delegate instanceof SlicedOverworldChunkGenerator sliced
-                    && sliced.slice() != OverworldSlice.SURFACE) {
-                continue;
-            }
             Pair<BlockPos, Holder<Structure>> candidate = this.findNearestForDelegate(
                     i,
                     this.delegateState(i),
