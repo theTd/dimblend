@@ -77,6 +77,10 @@ public final class PregenConfig {
             .comment("Consecutive clear ticks required before resuming after yielding")
             .defineInRange("foreignYieldResumeTicks", 20, 1, 200);
 
+    public static final ModConfigSpec.BooleanValue SURFACE_CORNER_MEMO = BUILDER
+            .comment("Memoize the 8 corner fiddle triples of the last queried quart cell in BiomeManager.getBiome (surface-phase locality). true = on (measured ~86% corner hit), false = vanilla path")
+            .define("surfaceCornerMemo", true);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private PregenConfig() {
