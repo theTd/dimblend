@@ -131,6 +131,8 @@ public final class HangWatchdog {
      */
     private final AtomicBoolean clientPaused = new AtomicBoolean();
     private final AtomicBoolean clientSeen = new AtomicBoolean();
+    /** Runtime kill switch; off stops the watchdog thread and blocks rearming at server start. */
+    private volatile boolean enabled = false;
 
     /** Client tick bridge; mirrors the volatile client pause flag. Client thread only. */
     public void clientPause(boolean paused) {
@@ -151,12 +153,43 @@ public final class HangWatchdog {
 
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {
+        if (!this.enabled) {
+            LOGGER.info("dimblend hang watchdog disabled (enable with /dimblend watchdog on)");
+            return;
+        }
         this.start(event.getServer());
     }
 
     @SubscribeEvent
     public void onServerStopped(ServerStoppedEvent event) {
         this.stop();
+    }
+
+    /**
+     * Enables and arms the watchdog on the running server. Idempotent: re-enabling an
+     * already-armed watchdog is a no-op that reports back the unchanged state.
+     */
+    public boolean enable(MinecraftServer server) {
+        if (this.enabled && this.session != null) {
+            return true;
+        }
+        this.enabled = true;
+        this.start(server);
+        return true;
+    }
+
+    /**
+     * Disarms the watchdog and stops the polling thread. {@code enabled=false} also blocks
+     * the automatic rearm at the next server start, so the off state survives restarts.
+     */
+    public void disable() {
+        this.enabled = false;
+        this.stop();
+    }
+
+    /** Runtime state for the /dimblend watchdog status line. */
+    public boolean isEnabled() {
+        return this.enabled;
     }
 
     private void start(MinecraftServer server) {
@@ -232,8 +265,11 @@ public final class HangWatchdog {
             // Halting (volatile running flips false at halt, before the save window)
             // and singleplayer pause (mirrored volatile, clientSeen-gated) legitimately
             // stop ticks: close out any recording, treat both as fresh activity so
-            // neither fires a dump.
-            if (!current.isRunning() || (this.clientSeen.get() && this.clientPaused.get())) {
+            // neither fires a dump. isCurrentlySaving() is intentionally NOT suppressed —
+            // the stopServer unload livelock lives inside that window and is exactly
+            // what the watchdog must catch.
+            if ((!current.isRunning() && !current.isCurrentlySaving())
+                    || (this.clientSeen.get() && this.clientPaused.get())) {
                 this.finalizeJfr(owned, now);
                 owned.lastTickDone.set(now);
                 // Baseline reset closes any episode: next hang starts from a clean

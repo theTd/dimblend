@@ -7,7 +7,9 @@
     "BetterCavesMasterControllerMixin",
     "ConfiguredFeatureMixin",
     "DistanceManagerAccessor",
-    "ChunkMapAccessor"
+    "ChunkMapAccessor",
+    "ChunkMapMixin",
+    "ChunkHolderMixin"
   ],
   "client": [
     "BiomeManagerMixin",

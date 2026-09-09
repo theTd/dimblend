@@ -74,6 +74,12 @@ public final class DimBlendCommands {
                                         .executes(context -> setWatch(context.getSource(), true)))
                                 .then(Commands.literal("off")
                                         .executes(context -> setWatch(context.getSource(), false))))
+                        .then(Commands.literal("watchdog")
+                                .executes(context -> dumpWatchdog(context.getSource()))
+                                .then(Commands.literal("on")
+                                        .executes(context -> setWatchdog(context.getSource(), true)))
+                                .then(Commands.literal("off")
+                                        .executes(context -> setWatchdog(context.getSource(), false))))
                         .then(Commands.argument("band", StringArgumentType.word())
                                 .suggests(bandSuggestions())
                                 .executes(context -> teleport(
@@ -295,6 +301,21 @@ public final class DimBlendCommands {
             DimBlend.monitor().watchOff(player);
         }
         source.sendSuccess(() -> Component.literal("chunkgen watch " + (on ? "on" : "off")), false);
+        return 1;
+    }
+
+    private static int dumpWatchdog(CommandSourceStack source) {
+        source.sendSuccess(() -> Component.literal("hang watchdog " + (DimBlend.watchdog().isEnabled() ? "on" : "off")), false);
+        return 1;
+    }
+
+    private static int setWatchdog(CommandSourceStack source, boolean on) {
+        if (on) {
+            DimBlend.watchdog().enable(source.getServer());
+        } else {
+            DimBlend.watchdog().disable();
+        }
+        source.sendSuccess(() -> Component.literal("hang watchdog " + (on ? "on" : "off")), false);
         return 1;
     }
 
