@@ -31,6 +31,8 @@ public final class OakTrackCorridor {
     public static final int VAULT_FLOOR_DY = 0;
     /** Flat ceiling row is this many blocks above the track. */
     public static final int VAULT_APEX_DY = 18;
+    /** No structures may generate within this many chunks of CORRIDOR_Z (either side). */
+    public static final int NO_STRUCTURE_CHUNK_RANGE = 16;
     public static final ResourceLocation TRACK_ID = ResourceLocation.fromNamespaceAndPath("railways", "track_create_andesite_wide");
     /** Half-width of the cobblestone roadbed under the track. 7 wide = Z[-3, +3]. */
     private static final int ROADBED_HALF_WIDTH = 3;
@@ -134,6 +136,13 @@ public final class OakTrackCorridor {
         int maxZ = minZ + 15;
         return maxZ >= CORRIDOR_Z - VAULT_RADIUS && minZ <= CORRIDOR_Z + VAULT_RADIUS;
     }
+    /** True when any part of this chunk lies in the no-structure zone. */
+    public static boolean touchesNoStructureZone(int chunkZ) {
+        int minZ = chunkZ * 16;
+        int maxZ = minZ + 15;
+        int blockRange = NO_STRUCTURE_CHUNK_RANGE * 16 + 15;
+        return maxZ >= CORRIDOR_Z - blockRange && minZ <= CORRIDOR_Z + blockRange;
+    }
 
     public static BoundingBox vaultAabb() {
         return new BoundingBox(
@@ -149,8 +158,13 @@ public final class OakTrackCorridor {
     public static boolean intersectsVault(StructureStart start) {
         return start != null && start.isValid() && start.getBoundingBox().intersects(vaultAabb());
     }
+    public static boolean intersectsNoStructureZone(StructureStart start) {
+        return start != null && start.isValid()
+                && start.getBoundingBox().minZ() <= CORRIDOR_Z + NO_STRUCTURE_CHUNK_RANGE * 16 + 15
+                && start.getBoundingBox().maxZ() >= CORRIDOR_Z - (NO_STRUCTURE_CHUNK_RANGE * 16 + 15);
+    }
 
-    public static void dropStartsIntersectingVault(ChunkAccess chunk) {
+    public static void dropBlockedStarts(ChunkAccess chunk) {
         Map<Structure, StructureStart> starts = chunk.getAllStarts();
         if (starts.isEmpty()) {
             return;
@@ -159,7 +173,7 @@ public final class OakTrackCorridor {
         boolean dropped = false;
         for (Map.Entry<Structure, StructureStart> entry : starts.entrySet()) {
             StructureStart start = entry.getValue();
-            if (intersectsVault(start)) {
+            if (intersectsVault(start) || intersectsNoStructureZone(start)) {
                 dropped = true;
                 continue;
             }
