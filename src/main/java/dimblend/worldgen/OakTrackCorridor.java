@@ -136,12 +136,16 @@ public final class OakTrackCorridor {
         int maxZ = minZ + 15;
         return maxZ >= CORRIDOR_Z - VAULT_RADIUS && minZ <= CORRIDOR_Z + VAULT_RADIUS;
     }
-    /** True when any part of this chunk lies in the no-structure zone. */
-    public static boolean touchesNoStructureZone(int chunkZ) {
+    /**
+     * True when every block column in this chunk lies inside the no-structure zone.
+     * Those origin chunks skip {@code createStructures}. Chunks that only overlap
+     * the zone still generate; {@link #dropBlockedStarts} filters by AABB.
+     */
+    public static boolean originFullyInsideNoStructureZone(int chunkZ) {
         int minZ = chunkZ * 16;
         int maxZ = minZ + 15;
         int blockRange = NO_STRUCTURE_CHUNK_RANGE * 16 + 15;
-        return maxZ >= CORRIDOR_Z - blockRange && minZ <= CORRIDOR_Z + blockRange;
+        return minZ >= CORRIDOR_Z - blockRange && maxZ <= CORRIDOR_Z + blockRange;
     }
 
     public static BoundingBox vaultAabb() {
@@ -164,6 +168,11 @@ public final class OakTrackCorridor {
                 && start.getBoundingBox().maxZ() >= CORRIDOR_Z - (NO_STRUCTURE_CHUNK_RANGE * 16 + 15);
     }
 
+    /**
+     * Drops starts whose AABB intersects the vault or no-structure zone.
+     * Safety net for origins that still generate: overlap-only chunks and
+     * out-of-zone origins whose AABB crosses the corridor.
+     */
     public static void dropBlockedStarts(ChunkAccess chunk) {
         Map<Structure, StructureStart> starts = chunk.getAllStarts();
         if (starts.isEmpty()) {
