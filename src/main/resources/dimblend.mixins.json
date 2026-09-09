@@ -6,7 +6,8 @@
   "mixins": [
     "BetterCavesMasterControllerMixin",
     "ConfiguredFeatureMixin",
-    "DistanceManagerAccessor"
+    "DistanceManagerAccessor",
+    "ChunkMapAccessor"
   ],
   "client": [
     "BiomeManagerMixin",

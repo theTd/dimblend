@@ -387,6 +387,19 @@ public final class PregenController {
         );
     }
 
+    /** Age in ticks of the oldest in-flight ticket, or -1 when nothing is in flight. */
+    public int oldestInFlightAge(int nowTick) {
+        boolean any = false;
+        int oldest = 0;
+        for (int issueTick : this.inFlight.values()) {
+            if (!any || issueTick - nowTick < oldest - nowTick) {
+                oldest = issueTick;
+                any = true;
+            }
+        }
+        return any ? nowTick - oldest : -1;
+    }
+
     private WindowStats windowStats(MinecraftServer server, int xBehind, int xAhead, int zMin, int zMax) {
         Long2IntOpenHashMap side = new Long2IntOpenHashMap();
         int online = 0;
