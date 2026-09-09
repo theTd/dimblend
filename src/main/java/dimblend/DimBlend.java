@@ -1,6 +1,7 @@
 package dimblend;
 
 import dimblend.command.DimBlendCommands;
+import dimblend.diagnostics.HangWatchdog;
 import dimblend.compat.CreateTrackGraphCompat;
 import dimblend.compat.TerraBlenderRotatingCompat;
 import dimblend.worldgen.ChunkGenMonitor;
@@ -18,6 +19,7 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
 public final class DimBlend {
     private static final PregenController PREGEN = new PregenController();
     private static final ChunkGenMonitor MONITOR = new ChunkGenMonitor();
+    private static final HangWatchdog WATCHDOG = new HangWatchdog();
 
     public DimBlend(IEventBus modBus, ModContainer container) {
         DimBlendRegistries.register(modBus);
@@ -27,6 +29,11 @@ public final class DimBlend {
         NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, TerraBlenderRotatingCompat::onServerAboutToStart);
         NeoForge.EVENT_BUS.addListener(CreateTrackGraphCompat::onChunkLoad);
         NeoForge.EVENT_BUS.register(MONITOR);
+        NeoForge.EVENT_BUS.register(WATCHDOG);
+    }
+
+    public static HangWatchdog watchdog() {
+        return WATCHDOG;
     }
 
     public static PregenController pregen() {

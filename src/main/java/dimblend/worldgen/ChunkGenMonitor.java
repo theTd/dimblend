@@ -95,6 +95,8 @@ public final class ChunkGenMonitor {
      * {@code /dimblend watch dump}; a dump mid-window does not shorten the next sample.
      */
     private int lastScanTick = -1;
+    /** Last engine sample summary line, for the hang watchdog's thread dump. */
+    private volatile String lastSample;
 
     /** Re-subscribes a player who previously ran {@code /dimblend watch off}. */
     public void watchOn(ServerPlayer player) {
@@ -102,6 +104,10 @@ public final class ChunkGenMonitor {
         if (this.bossbar != null) {
             this.bossbar.addPlayer(player);
         }
+    }
+    /** Last engine sample as a single line, or null before the first sample; read by the hang watchdog. */
+    public String lastSampleSummary() {
+        return this.lastSample;
     }
 
     /** Hides the bossbar for this player until they opt back in. */
@@ -118,10 +124,13 @@ public final class ChunkGenMonitor {
             this.ticksSinceLog++;
         }
         if (++this.sampleCounter < SAMPLE_TICKS) {
+            DimBlend.watchdog().heartbeat();
             return;
         }
         this.sampleCounter = 0;
         this.sample(event.getServer());
+        // Heartbeat last: a hang inside sampling itself must stop the heartbeat.
+        DimBlend.watchdog().heartbeat();
     }
 
     /** Engine-side snapshot of the rotating level's chunk system, one sample. */
@@ -144,6 +153,17 @@ public final class ChunkGenMonitor {
             return;
         }
         EngineStats stats = this.collect(server, level);
+        this.lastSample = "t=" + server.getTickCount()
+                + " rate " + stats.ratePerSample() + "/s"
+                + " pend " + stats.pendingFutures()
+                + " stuck " + stats.stuck().size()
+                + " v " + stats.visibleHolders()
+                + " sort " + (stats.sorterHasWork() ? "Y" : "N")
+                + " main " + stats.mainPending()
+                + " unload " + stats.unloadBacklog()
+                + " trel " + stats.ticketsToRelease()
+                + " " + String.format("%.0f", stats.tickMs()) + "ms"
+                + " pool " + poolStats();
         this.updateBossbar(server, stats);
         if (!stats.stuck().isEmpty() && this.ticksSinceLog >= LOG_THROTTLE_TICKS) {
             this.ticksSinceLog = 0;
@@ -412,6 +432,7 @@ public final class ChunkGenMonitor {
         this.optedOut.clear();
         this.seen.clear();
         this.lastScanTick = -1;
+        this.lastSample = null;
         this.sampleCounter = 0;
         this.ticksSinceLog = LOG_THROTTLE_TICKS;
         if (this.bossbar != null) {
