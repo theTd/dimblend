@@ -162,10 +162,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         HolderLookup<StructureSet> structureSets = access.lookupOrThrow(Registries.STRUCTURE_SET);
         for (int i = 0; i < count; i++) {
             ChunkGenerator delegate = this.delegates.get(i);
-            ChunkGenerator noiseSource = delegate instanceof SlicedOverworldChunkGenerator sliced
-                    ? sliced.inner()
-                    : delegate;
-            if (noiseSource instanceof NoiseBasedChunkGenerator noise) {
+            if (delegate instanceof NoiseBasedChunkGenerator noise) {
                 randoms[i] = RandomState.create(
                         noise.generatorSettings().value(),
                         access.lookupOrThrow(Registries.NOISE),
@@ -512,10 +509,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         this.ensureRuntime(access);
         int index = this.bandIndex(chunk.getPos());
         this.delegates.get(index).createStructures(access, this.delegateState(index), structures, chunk, templates);
-        int yShift = this.delegates.get(index) instanceof SlicedOverworldChunkGenerator sliced
-                ? sliced.slice().yOffset()
-                : 0;
-        OakTrackCorridor.dropStartsIntersectingVault(chunk, yShift);
+        OakTrackCorridor.dropStartsIntersectingVault(chunk);
     }
 
     @Override

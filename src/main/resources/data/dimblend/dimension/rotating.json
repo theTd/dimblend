@@ -5,27 +5,11 @@
     "band_size": 2048,
     "delegates": [
       {
-        "type": "dimblend:sliced_overworld",
-        "slice": "surface",
-        "inner": {
-          "type": "minecraft:noise",
-          "settings": "minecraft:overworld",
-          "biome_source": {
-            "type": "minecraft:multi_noise",
-            "preset": "minecraft:overworld"
-          }
-        }
-      },
-      {
-        "type": "dimblend:sliced_overworld",
-        "slice": "underground",
-        "inner": {
-          "type": "minecraft:noise",
-          "settings": "minecraft:overworld",
-          "biome_source": {
-            "type": "minecraft:multi_noise",
-            "preset": "minecraft:overworld"
-          }
+        "type": "minecraft:noise",
+        "settings": "minecraft:overworld",
+        "biome_source": {
+          "type": "minecraft:multi_noise",
+          "preset": "minecraft:overworld"
         }
       },
       {

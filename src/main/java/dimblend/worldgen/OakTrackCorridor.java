@@ -114,7 +114,7 @@ public final class OakTrackCorridor {
         ChunkGenerator delegate = rotating.delegates().get(rotating.layout().delegateIndex(
                 BandLayout.regionOfBlockX(x, rotating.bandSize())
         ));
-        if (!(delegate instanceof SlicedOverworldChunkGenerator) && !BandLayout.isTwilight(delegate)) {
+        if (!BandLayout.isSurfaceOverworld(delegate) && !BandLayout.isTwilight(delegate)) {
             return;
         }
         int zMin = Math.max(minZ, CORRIDOR_Z - ROADBED_HALF_WIDTH);
@@ -146,11 +146,11 @@ public final class OakTrackCorridor {
         );
     }
 
-    public static boolean intersectsVault(StructureStart start, int yShift) {
-        return start != null && start.isValid() && start.getBoundingBox().moved(0, yShift, 0).intersects(vaultAabb());
+    public static boolean intersectsVault(StructureStart start) {
+        return start != null && start.isValid() && start.getBoundingBox().intersects(vaultAabb());
     }
 
-    public static void dropStartsIntersectingVault(ChunkAccess chunk, int yShift) {
+    public static void dropStartsIntersectingVault(ChunkAccess chunk) {
         Map<Structure, StructureStart> starts = chunk.getAllStarts();
         if (starts.isEmpty()) {
             return;
@@ -159,7 +159,7 @@ public final class OakTrackCorridor {
         boolean dropped = false;
         for (Map.Entry<Structure, StructureStart> entry : starts.entrySet()) {
             StructureStart start = entry.getValue();
-            if (intersectsVault(start, yShift)) {
+            if (intersectsVault(start)) {
                 dropped = true;
                 continue;
             }
@@ -443,14 +443,7 @@ public final class OakTrackCorridor {
     }
 
     private static int vaultMaxDy(ChunkGenerator delegate) {
-        if (!(delegate instanceof SlicedOverworldChunkGenerator sliced)) {
-            return VAULT_APEX_DY;
-        }
-        OverworldSlice slice = sliced.slice();
-        if (TRACK_Y < slice.targetMinY() || TRACK_Y >= slice.targetMaxExclusiveY()) {
-            return -1;
-        }
-        return Math.min(VAULT_APEX_DY, slice.targetMaxExclusiveY() - 1 - TRACK_Y);
+        return VAULT_APEX_DY;
     }
 
 
