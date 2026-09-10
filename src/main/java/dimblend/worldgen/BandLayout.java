@@ -2,6 +2,7 @@ package dimblend.worldgen;
 
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import java.util.List;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
@@ -118,23 +119,23 @@ public final class BandLayout {
 
     /** Voidscape void islands use bedrock as terrain; corridor must carve through it. */
     public static boolean isVoidscape(ChunkGenerator delegate) {
-        ResourceLocation settings = noiseSettings(delegate);
-        return settings != null && "voidscape".equals(settings.getNamespace());
+        ResourceLocation id = identity(delegate);
+        return id != null && "voidscape".equals(id.getNamespace());
     }
 
     /**
      * Stable lane name for a delegate, used by /dimblend find tab completion and lookup.
-     * surface / nether / end / twilight / starlight or the settings namespace
+     * surface / nether / end / twilight / starlight or the settings/codec namespace
      * (aether, deeperdarker, voidscape, ...).
      */
     public static String laneName(ChunkGenerator delegate) {
-        ResourceLocation settings = noiseSettings(delegate);
-        if (settings == null) {
+        ResourceLocation id = identity(delegate);
+        if (id == null) {
             return "mod";
         }
-        String namespace = settings.getNamespace();
+        String namespace = id.getNamespace();
         if ("minecraft".equals(namespace)) {
-            return switch (settings.getPath()) {
+            return switch (id.getPath()) {
                 case "overworld" -> "surface";
                 case "nether" -> "nether";
                 case "end" -> "end";
@@ -148,6 +149,19 @@ public final class BandLayout {
             return "starlight";
         }
         return namespace;
+    }
+
+    /**
+     * Prefer noise-settings key when available; otherwise the registered chunk-generator
+     * type name. Non-noise delegates (Eternal Starlight, Voidscape) only expose the latter.
+     */
+    @javax.annotation.Nullable
+    private static ResourceLocation identity(ChunkGenerator delegate) {
+        ResourceLocation settings = noiseSettings(delegate);
+        if (settings != null) {
+            return settings;
+        }
+        return delegate.getTypeNameForDataFixer().map(ResourceKey::location).orElse(null);
     }
 
     public boolean touchesSurfaceTwilightSeam(int blockX, int bandSize) {
