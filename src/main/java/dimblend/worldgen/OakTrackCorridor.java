@@ -27,10 +27,10 @@ public final class OakTrackCorridor {
     public static final int TRACK_Y = 64;
     /** Inclusive |dz| of the tunnel midsection. Width 19 = Z[-9, +9]. */
     public static final int VAULT_RADIUS = 9;
-    /** Tunnel floor opens at the track row itself; Y=63 below is solid floor. */
-    public static final int VAULT_FLOOR_DY = 0;
+    /** Tunnel floor opens one block below the track; Y=62 below is solid floor. */
+    public static final int VAULT_FLOOR_DY = -1;
     /** Flat ceiling row is this many blocks above the track. */
-    public static final int VAULT_APEX_DY = 18;
+    public static final int VAULT_APEX_DY = 17;
     /** No structures may generate within this many chunks of CORRIDOR_Z (either side). */
     public static final int NO_STRUCTURE_CHUNK_RANGE = 16;
     public static final ResourceLocation TRACK_ID = ResourceLocation.fromNamespaceAndPath("railways", "track_create_andesite_wide");
@@ -196,15 +196,18 @@ public final class OakTrackCorridor {
     /**
      * Octagonal tunnel from the user's 2-1-1-1-2-7 corner staircase, mirrored top to bottom.
      * Flat floor and ceiling are 7 wide (|dz| <= 3); side walls are 7 tall; interior 19 x 19.
-     * Interior spans dy = 0..18 (Y=64..82); solid floor Y=63 and ceiling Y=83.
-     * Track row dy = 0 is the 7-wide floor. Widest dy = 6..12 (|dz| <= 9). Exterior 21 x 21.
+     * Interior spans dy = -1..17 (Y=63..81); solid floor Y=62 and ceiling Y=82.
+     * Track stays at dy = 0 / Y=64; roadbed stays at Y=63 (the 7-wide floor).
+     * Widest dy = 5..11 (|dz| <= 9). Exterior 21 x 21.
      * Per-row half width from the flat: 3, 5, 6, 7, 8, 8, then 9 for the 7 wall rows.
      */
     static boolean inVault(int dz, int dy) {
         if (dy < VAULT_FLOOR_DY || dy > VAULT_APEX_DY) {
             return false;
         }
-        int tier = Math.min(dy, VAULT_APEX_DY - dy);
+        int shapeDy = dy - VAULT_FLOOR_DY;
+        int apexFromFloor = VAULT_APEX_DY - VAULT_FLOOR_DY;
+        int tier = Math.min(shapeDy, apexFromFloor - shapeDy);
         int halfWidth = switch (tier) {
             case 0 -> 3;
             case 1 -> 5;
