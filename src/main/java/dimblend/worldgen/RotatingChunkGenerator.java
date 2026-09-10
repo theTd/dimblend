@@ -524,6 +524,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         int index = this.bandIndex(chunk.getPos());
         this.delegates.get(index).applyBiomeDecoration(level, chunk, structures);
         OakTrackCorridor.place(level, chunk);
+        OakTrackCorridor.placeLoadedVaultNeighbors(level, chunk.getPos());
     }
 
     @Override

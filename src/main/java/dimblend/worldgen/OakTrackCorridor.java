@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.Map;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
@@ -47,8 +48,29 @@ public final class OakTrackCorridor {
         carveVault(level.getLevel().getChunkSource().getGenerator(), level.registryAccess(), chunk, null);
     }
 
-    public static void reclearLoadedChunk(ServerLevel level, ChunkAccess chunk) {
-        carveVault(level.getChunkSource().getGenerator(), level.registryAccess(), chunk, level);
+    /**
+     * Re-carves vault neighbors already present in the generation region after the
+     * origin chunk's FEATURES pass, so neighbor decoration cannot refill the vault.
+     * Worker-thread path only: place() routes through chunk.setBlockState.
+     */
+    public static void placeLoadedVaultNeighbors(WorldGenLevel level, ChunkPos origin) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) {
+                    continue;
+                }
+                int nx = origin.x + dx;
+                int nz = origin.z + dz;
+                if (!touchesVault(nz)) {
+                    continue;
+                }
+                if (!level.hasChunk(nx, nz)) {
+                    continue;
+                }
+                ChunkAccess neighbor = level.getChunk(nx, nz);
+                place(level, neighbor);
+            }
+        }
     }
 
     private static void carveVault(

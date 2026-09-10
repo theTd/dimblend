@@ -21,7 +21,6 @@ import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.level.ChunkEvent;
@@ -47,11 +46,11 @@ public final class CreateTrackGraphCompat {
             return;
         }
         ChunkPos pos = event.getChunk().getPos();
-        if (!OakTrackCorridor.touchesVault(pos.z)) {
+        if (pos.z != OakTrackCorridor.CORRIDOR_Z) {
             return;
         }
         MinecraftServer server = level.getServer();
-        server.tell(new TickTask(server.getTickCount() + 1, () -> recarveLoadedVaultChunk(level, pos)));
+        server.tell(new TickTask(server.getTickCount() + 1, () -> tryStitchOrDefer(level, pos)));
     }
 
     public static void onServerTick(ServerTickEvent.Post event) {
@@ -76,15 +75,6 @@ public final class CreateTrackGraphCompat {
 
     public static void onServerStopped(ServerStoppedEvent event) {
         pendingStitch.clear();
-    }
-
-    private static void recarveLoadedVaultChunk(ServerLevel level, ChunkPos pos) {
-        LevelChunk chunk = level.getChunk(pos.x, pos.z);
-        OakTrackCorridor.reclearLoadedChunk(level, chunk);
-        if (pos.z != 0) {
-            return;
-        }
-        tryStitchOrDefer(level, pos);
     }
 
     private static void tryStitchOrDefer(ServerLevel level, ChunkPos pos) {
