@@ -28,6 +28,8 @@ public final class DimBlend {
         NeoForge.EVENT_BUS.addListener(DimBlend::onRegisterCommands);
         NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, TerraBlenderRotatingCompat::onServerAboutToStart);
         NeoForge.EVENT_BUS.addListener(CreateTrackGraphCompat::onChunkLoad);
+        NeoForge.EVENT_BUS.addListener(CreateTrackGraphCompat::onServerTick);
+        NeoForge.EVENT_BUS.addListener(CreateTrackGraphCompat::onServerStopped);
         NeoForge.EVENT_BUS.register(MONITOR);
         NeoForge.EVENT_BUS.register(WATCHDOG);
     }
