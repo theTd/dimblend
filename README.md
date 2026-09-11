@@ -46,7 +46,7 @@ All subcommands require permission level 2.
 | `/dimblend find <lane>` | Locate the nearest chunk of a lane (`surface`, `nether`, `end`, `twilight`, `starlight`, ...) |
 | `/dimblend sample <band>` | Report sampled terrain heights for a band |
 | `/dimblend pregen [on\|off\|auto]` | Force strip pregeneration on/off, or restore automatic control |
-| `/dimblend watch [on\|off]` | Toggle chunk-generation monitoring |
+| `/dimblend watch [on\|off]` | Show/hide the chunkgen bossbar for yourself (default off) |
 | `/dimblend watchdog [on\|off]` | Toggle the hang watchdog (JFR capture + thread dumps on stalls) |
 
 ## Server config

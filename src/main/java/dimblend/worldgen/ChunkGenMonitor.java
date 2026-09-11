@@ -51,9 +51,9 @@ import org.slf4j.Logger;
  * generation step whose future never completes; in particular the fatal-exception path
  * leaves the step future pending and the generation ref count claimed, so the chunk can
  * never unload.
- *
- * <p>Stall detection and logging always run. The bossbar auto-subscribes every online
- * permission-2 player and can be hidden per player with {@code /dimblend watch off}.
+ * <p>Stall detection and logging always run. The bossbar is opt-in and off by default:
+ * it appears for a player after {@code /dimblend watch on} and hides again with
+ * {@code /dimblend watch off}.
  */
 public final class ChunkGenMonitor {
     /** Sampling cadence, in server ticks. */
@@ -82,8 +82,8 @@ public final class ChunkGenMonitor {
 
     /** First-seen tick per pending (chunk, status) pair, indexed by status index. */
     private final Long2ObjectMap<Ledger> pending = new Long2ObjectOpenHashMap<>();
-    /** Players who ran {@code watch off}; excluded from auto-subscription until they opt back in. */
-    private final Set<UUID> optedOut = new HashSet<>();
+    /** Players who ran {@code /dimblend watch on}; only they see the bossbar. */
+    private final Set<UUID> watchers = new HashSet<>();
     /** Scan scratch of currently visible chunk keys; server thread only. */
     private final LongOpenHashSet seen = new LongOpenHashSet();
     private ServerBossEvent bossbar;
@@ -98,9 +98,9 @@ public final class ChunkGenMonitor {
     /** Last engine sample summary line, for the hang watchdog's thread dump. */
     private volatile String lastSample;
 
-    /** Re-subscribes a player who previously ran {@code /dimblend watch off}. */
+    /** Shows the bossbar for this player until they opt back out. */
     public void watchOn(ServerPlayer player) {
-        this.optedOut.remove(player.getUUID());
+        this.watchers.add(player.getUUID());
         if (this.bossbar != null) {
             this.bossbar.addPlayer(player);
         }
@@ -112,7 +112,7 @@ public final class ChunkGenMonitor {
 
     /** Hides the bossbar for this player until they opt back in. */
     public void watchOff(ServerPlayer player) {
-        this.optedOut.add(player.getUUID());
+        this.watchers.remove(player.getUUID());
         if (this.bossbar != null) {
             this.bossbar.removePlayer(player);
         }
@@ -268,11 +268,11 @@ public final class ChunkGenMonitor {
         this.bossbar.setProgress(this.bossbarProgress(stats));
     }
 
-    /** Subscribes every online permission-2 player who has not opted out. */
+    /** Subscribes every online permission-2 player who has opted in, and only them. */
     private void syncViewers(MinecraftServer server) {
         Set<ServerPlayer> wanted = new HashSet<>();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            if (player.hasPermissions(2) && !this.optedOut.contains(player.getUUID())) {
+            if (player.hasPermissions(2) && this.watchers.contains(player.getUUID())) {
                 wanted.add(player);
             }
         }
@@ -429,7 +429,7 @@ public final class ChunkGenMonitor {
     @SubscribeEvent
     public void onServerStopping(ServerStoppingEvent event) {
         this.pending.clear();
-        this.optedOut.clear();
+        this.watchers.clear();
         this.seen.clear();
         this.lastScanTick = -1;
         this.lastSample = null;
