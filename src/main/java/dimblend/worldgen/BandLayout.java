@@ -12,6 +12,7 @@ public final class BandLayout {
 
     private enum Lane {
         SURFACE,
+        UNDERGROUND,
         NETHER,
         END,
         MOD
@@ -27,6 +28,7 @@ public final class BandLayout {
         this.lanes = classify(delegates);
         this.seed = seed;
         requireLane(Lane.SURFACE);
+        requireLane(Lane.UNDERGROUND);
         requireLane(Lane.NETHER);
         requireLane(Lane.END);
         this.cache.defaultReturnValue(-1);
@@ -87,12 +89,16 @@ public final class BandLayout {
 
     /**
      * Fixed lane for distance |region| from spawn. Null = random pool.
-     * 0-6 surface; 7 nether; 32 end. Positive and negative sides mirror the same sequence.
+     * 0 spawn surface; 1/3/4 surface; 2/5/6 underground; 7 nether; 32 end.
+     * Positive and negative sides mirror the same sequence.
      */
     @javax.annotation.Nullable
     private static Lane fixedLane(int distance) {
-        if (distance <= 6) {
+        if (distance == 0 || distance == 1 || distance == 3 || distance == 4) {
             return Lane.SURFACE;
+        }
+        if (distance == 2 || distance == 5 || distance == 6) {
+            return Lane.UNDERGROUND;
         }
         if (distance == 7) {
             return Lane.NETHER;
@@ -125,10 +131,12 @@ public final class BandLayout {
 
     /**
      * Stable lane name for a delegate, used by /dimblend find tab completion and lookup.
-     * surface / nether / end / twilight / starlight or the settings/codec namespace
-     * (aether, deeperdarker, voidscape, ...).
+     * surface / underground / nether / end / twilight / starlight or the settings/codec namespace
      */
     public static String laneName(ChunkGenerator delegate) {
+        if (delegate instanceof SlicedOverworldChunkGenerator sliced) {
+            return sliced.slice() == OverworldSlice.SURFACE ? "surface" : "underground";
+        }
         ResourceLocation id = identity(delegate);
         if (id == null) {
             return "mod";
@@ -224,12 +232,12 @@ public final class BandLayout {
             return firstLane(fixed);
         }
         if (distance >= 8 && distance <= 15) {
-            return pick(region, previous, Lane.SURFACE, Lane.NETHER);
+            return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER);
         }
         if (distance >= 16 && distance <= 31) {
-            return pick(region, previous, Lane.SURFACE, Lane.NETHER, Lane.MOD);
+            return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER, Lane.MOD);
         }
-        return pick(region, previous, Lane.SURFACE, Lane.NETHER, Lane.END, Lane.MOD);
+        return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER, Lane.END, Lane.MOD);
     }
 
     private int pick(int region, int previous, Lane... wanted) {
@@ -298,6 +306,12 @@ public final class BandLayout {
     }
 
     private static Lane laneOf(ChunkGenerator delegate) {
+        if (delegate instanceof SlicedOverworldChunkGenerator sliced) {
+            return switch (sliced.slice()) {
+                case SURFACE -> Lane.SURFACE;
+                case UNDERGROUND -> Lane.UNDERGROUND;
+            };
+        }
         ResourceLocation settings = noiseSettings(delegate);
         if (settings != null) {
             if ("minecraft".equals(settings.getNamespace()) && "overworld".equals(settings.getPath())) {
@@ -314,6 +328,9 @@ public final class BandLayout {
     }
 
     private static ResourceLocation noiseSettings(ChunkGenerator delegate) {
+        if (delegate instanceof SlicedOverworldChunkGenerator sliced) {
+            delegate = sliced.inner();
+        }
         if (!(delegate instanceof NoiseBasedChunkGenerator noise)) {
             return null;
         }

@@ -138,7 +138,7 @@ public final class OakTrackCorridor {
         ChunkGenerator delegate = rotating.delegates().get(rotating.layout().delegateIndex(
                 BandLayout.regionOfBlockX(x, rotating.bandSize())
         ));
-        if (!BandLayout.isSurfaceOverworld(delegate) && !BandLayout.isTwilight(delegate)) {
+        if (!(delegate instanceof SlicedOverworldChunkGenerator) && !BandLayout.isSurfaceOverworld(delegate) && !BandLayout.isTwilight(delegate)) {
             return;
         }
         int zMin = Math.max(minZ, CORRIDOR_Z - ROADBED_HALF_WIDTH);
@@ -493,9 +493,15 @@ public final class OakTrackCorridor {
     }
 
     private static int vaultMaxDy(ChunkGenerator delegate) {
-        return VAULT_APEX_DY;
+        if (!(delegate instanceof SlicedOverworldChunkGenerator sliced)) {
+            return VAULT_APEX_DY;
+        }
+        OverworldSlice slice = sliced.slice();
+        if (TRACK_Y < slice.targetMinY() || TRACK_Y >= slice.targetMaxExclusiveY()) {
+            return -1;
+        }
+        return Math.min(VAULT_APEX_DY, slice.targetMaxExclusiveY() - 1 - TRACK_Y);
     }
-
 
     private static void writeTrack(
             ChunkAccess chunk,

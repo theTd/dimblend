@@ -4,11 +4,11 @@ import dimblend.DimBlend;
 import dimblend.DimBlendRegistries;
 import dimblend.worldgen.BandIndex;
 import dimblend.worldgen.BandLayout;
-
+import dimblend.worldgen.OverworldSlice;
 import dimblend.worldgen.PregenConfig;
 import dimblend.worldgen.PregenController;
 import dimblend.worldgen.RotatingChunkGenerator;
-
+import dimblend.worldgen.SlicedOverworldChunkGenerator;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
@@ -24,7 +24,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.LevelHeightAccessor;
@@ -196,17 +196,24 @@ public final class DimBlendCommands {
                 : BandIndex.DEFAULT_BAND_SIZE;
         int x = origin ? 0 : bandIndex * bandSize + bandSize / 2;
         int z = 0;
-        int sampledY = generator.getFirstFreeHeight(
-                x,
-                z,
-                Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
-                level,
-                level.getChunkSource().randomState()
-        );
-
+        Integer undergroundY = undergroundLandingY(generator, x, z, level);
+        if (isUndergroundColumn(generator, x) && undergroundY == null) {
+            source.sendFailure(Component.literal("no safe landing in overworld caves band"));
+            return 0;
+        }
+        int sampledY = undergroundY != null
+                ? undergroundY
+                : generator.getFirstFreeHeight(
+                        x,
+                        z,
+                        Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                        level,
+                        level.getChunkSource().randomState()
+                );
         final int y = sampledY <= level.getMinBuildHeight()
                 ? Math.max(level.getMinBuildHeight() + 1, generator.getSeaLevel())
                 : sampledY;
+
 
         player.teleportTo(level, x + 0.5, y, z + 0.5, Set.of(), player.getYRot(), player.getXRot());
         String bandLabel = origin ? "origin" : Integer.toString(bandIndex);
@@ -280,6 +287,46 @@ public final class DimBlendCommands {
                 + ", inFlight " + snapshot.inFlight();
         source.sendSuccess(() -> Component.literal(mode), false);
         return 1;
+    }
+
+    private static boolean isUndergroundColumn(ChunkGenerator generator, int x) {
+        if (!(generator instanceof RotatingChunkGenerator rotating)) {
+            return false;
+        }
+        return BandLayout.laneName(
+                rotating.delegates().get(rotating.layout().delegateIndex(
+                        BandLayout.regionOfBlockX(x, rotating.bandSize())
+                ))
+        ).equals("underground");
+    }
+
+    private static Integer undergroundLandingY(ChunkGenerator generator, int x, int z, ServerLevel level) {
+        if (!(generator instanceof RotatingChunkGenerator rotating)) {
+            return null;
+        }
+        ChunkGenerator delegate = rotating.delegates().get(
+                rotating.layout().delegateIndex(BandLayout.regionOfBlockX(x, rotating.bandSize()))
+        );
+        if (!(delegate instanceof SlicedOverworldChunkGenerator sliced)
+                || sliced.slice() == OverworldSlice.SURFACE) {
+            return null;
+        }
+        var column = rotating.getBaseColumn(x, z, level, level.getChunkSource().randomState());
+        int minY = Math.max(sliced.slice().targetMinY() + 1, level.getMinBuildHeight() + 1);
+        int maxY = Math.min(sliced.slice().sealY() - 2, level.getMaxBuildHeight() - 2);
+        for (int feet = maxY; feet >= minY; feet--) {
+            BlockState feetState = column.getBlock(feet);
+            BlockState headState = column.getBlock(feet + 1);
+            BlockState floor = column.getBlock(feet - 1);
+            if (!feetState.blocksMotion()
+                    && feetState.getFluidState().isEmpty()
+                    && !headState.blocksMotion()
+                    && headState.getFluidState().isEmpty()
+                    && floor.blocksMotion()) {
+                return feet;
+            }
+        }
+        return null;
     }
 
     private static int dumpWatch(CommandSourceStack source) {
