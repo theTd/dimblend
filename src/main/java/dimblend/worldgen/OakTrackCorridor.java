@@ -18,7 +18,6 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
-import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
 
@@ -166,32 +165,29 @@ public final class OakTrackCorridor {
     public static boolean originFullyInsideNoStructureZone(int chunkZ) {
         int minZ = chunkZ * 16;
         int maxZ = minZ + 15;
-        int blockRange = NO_STRUCTURE_CHUNK_RANGE * 16 + 15;
-        return minZ >= CORRIDOR_Z - blockRange && maxZ <= CORRIDOR_Z + blockRange;
+        int half = noStructureZoneHalfWidth();
+        return minZ >= CORRIDOR_Z - half && maxZ <= CORRIDOR_Z + half;
     }
 
-    public static BoundingBox vaultAabb() {
-        return new BoundingBox(
-                Integer.MIN_VALUE,
-                TRACK_Y + VAULT_FLOOR_DY - 1,
-                CORRIDOR_Z - VAULT_RADIUS - 1,
-                Integer.MAX_VALUE,
-                TRACK_Y + VAULT_APEX_DY,
-                CORRIDOR_Z + VAULT_RADIUS + 1
-        );
+    /** Inclusive half-width in blocks of the no-structure zone around the corridor. */
+    public static int noStructureZoneHalfWidth() {
+        return NO_STRUCTURE_CHUNK_RANGE * 16 + 15;
     }
 
-    public static boolean intersectsVault(StructureStart start) {
-        return start != null && start.isValid() && start.getBoundingBox().intersects(vaultAabb());
+    /** True when a block Z lies inside the no-structure zone. */
+    public static boolean originInsideNoStructureZone(int blockZ) {
+        return Math.abs(blockZ - CORRIDOR_Z) <= noStructureZoneHalfWidth();
     }
+
     public static boolean intersectsNoStructureZone(StructureStart start) {
+        int half = noStructureZoneHalfWidth();
         return start != null && start.isValid()
-                && start.getBoundingBox().minZ() <= CORRIDOR_Z + NO_STRUCTURE_CHUNK_RANGE * 16 + 15
-                && start.getBoundingBox().maxZ() >= CORRIDOR_Z - (NO_STRUCTURE_CHUNK_RANGE * 16 + 15);
+                && start.getBoundingBox().minZ() <= CORRIDOR_Z + half
+                && start.getBoundingBox().maxZ() >= CORRIDOR_Z - half;
     }
 
     /**
-     * Drops starts whose AABB intersects the vault or no-structure zone.
+     * Drops starts whose AABB intersects the no-structure zone.
      * Safety net for origins that still generate: overlap-only chunks and
      * out-of-zone origins whose AABB crosses the corridor.
      */
@@ -204,7 +200,7 @@ public final class OakTrackCorridor {
         boolean dropped = false;
         for (Map.Entry<Structure, StructureStart> entry : starts.entrySet()) {
             StructureStart start = entry.getValue();
-            if (intersectsVault(start) || intersectsNoStructureZone(start)) {
+            if (intersectsNoStructureZone(start)) {
                 dropped = true;
                 continue;
             }
@@ -266,8 +262,19 @@ public final class OakTrackCorridor {
         return dy >= -TREE_UNDERMINED_DEPTH && dy <= maxDy + 1;
     }
 
-
-
+    /**
+     * Small mod buildings ride the biome-decoration feature pipeline (e.g. Twilight Forest
+     * druid huts, wells, ruins) instead of structure starts, so {@link #dropBlockedStarts}
+     * never sees them. Retreat their origins from the whole no-structure zone, mirroring
+     * the structure-start treatment.
+     */
+    public static boolean blocksBuildingOrigin(WorldGenLevel level, BlockPos origin) {
+        ChunkGenerator generator = level.getLevel().getChunkSource().getGenerator();
+        if (!(generator instanceof RotatingChunkGenerator)) {
+            return false;
+        }
+        return originInsideNoStructureZone(origin.getZ());
+    }
 
     private static void clearVaultColumn(
             ChunkAccess chunk,
