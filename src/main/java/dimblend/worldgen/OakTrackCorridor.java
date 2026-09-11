@@ -28,7 +28,7 @@ public final class OakTrackCorridor {
     public static final int TRACK_Y = 64;
     /** Inclusive |dz| of the tunnel midsection. Width 19 = Z[-9, +9]. */
     public static final int VAULT_RADIUS = 9;
-    /** Tunnel floor opens one block below the track; Y=62 below is solid floor. */
+    /** Octagon floor-row anchor (shape + fluid-seal floor). Carving opens at dy=0; dy=-1 stays terrain. */
     public static final int VAULT_FLOOR_DY = -1;
     /** Flat ceiling row is this many blocks above the track. */
     public static final int VAULT_APEX_DY = 17;
@@ -218,8 +218,10 @@ public final class OakTrackCorridor {
     /**
      * Octagonal tunnel from the user's 2-1-1-1-2-7 corner staircase, mirrored top to bottom.
      * Flat floor and ceiling are 7 wide (|dz| <= 3); side walls are 7 tall; interior 19 x 19.
-     * Interior spans dy = -1..17 (Y=63..81); solid floor Y=62 and ceiling Y=82.
-     * Track stays at dy = 0 / Y=64; roadbed stays at Y=63 (the 7-wide floor).
+     * Shape spans dy = -1..17; carving skips the dy = -1 floor row, opening at dy = 0 (Y=64),
+     * so terrain below the track row is left as generated. Ceiling row dy = 17 (Y=81) is carved
+     * open; solid ceiling is the terrain above Y=81.
+     * Track stays at dy = 0 / Y=64; roadbed write at Y=63 is unchanged.
      * Widest dy = 5..11 (|dz| <= 9). Exterior 21 x 21.
      * Per-row half width from the flat: 3, 5, 6, 7, 8, 8, then 9 for the 7 wall rows.
      */
@@ -280,7 +282,7 @@ public final class OakTrackCorridor {
     ) {
         for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
             int dz = z - CORRIDOR_Z;
-            for (int dy = VAULT_FLOOR_DY; dy <= maxDy; dy++) {
+            for (int dy = 0; dy <= maxDy; dy++) {
                 if (!inVault(dz, dy)) {
                     continue;
                 }
@@ -313,7 +315,7 @@ public final class OakTrackCorridor {
         }
         for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
             int dz = z - CORRIDOR_Z;
-            for (int dy = VAULT_FLOOR_DY; dy <= maxDy; dy++) {
+            for (int dy = 0; dy <= maxDy; dy++) {
                 if (!inVault(dz, dy)) {
                     continue;
                 }
@@ -393,10 +395,10 @@ public final class OakTrackCorridor {
 
     private static boolean isVaultShellCell(int y, int z, int maxDy) {
         int dy = y - TRACK_Y;
-        if (dy < VAULT_FLOOR_DY - 1 || dy > maxDy + 1) {
+        if (dy < VAULT_FLOOR_DY || dy > maxDy + 1) {
             return false;
         }
-        if (dy == VAULT_FLOOR_DY - 1) {
+        if (dy == VAULT_FLOOR_DY) {
             return true;
         }
         return !inVault(z - CORRIDOR_Z, dy);
@@ -413,7 +415,7 @@ public final class OakTrackCorridor {
     ) {
         for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
             int dz = z - CORRIDOR_Z;
-            for (int dy = VAULT_FLOOR_DY; dy <= maxDy; dy++) {
+            for (int dy = 0; dy <= maxDy; dy++) {
                 if (!inVault(dz, dy)) {
                     continue;
                 }
