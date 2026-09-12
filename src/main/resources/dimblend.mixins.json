@@ -9,7 +9,8 @@
     "DistanceManagerAccessor",
     "ChunkMapAccessor",
     "ChunkMapMixin",
-    "ChunkHolderMixin"
+    "ChunkHolderMixin",
+    "SignalPropagatorMixin"
   ],
   "client": [
     "BiomeManagerMixin",

@@ -26,10 +26,15 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class CreateTrackGraphCompat {
+    private static final Logger LOGGER = LoggerFactory.getLogger("dimblend/TrackStitch");
     private static final int STITCH_PLAYER_CHUNK_RANGE = 8;
     private static final int PENDING_STITCH_CAP = 4096;
+    /** Near-player deferred stitches to drain per server tick. */
+    private static final int MAX_STITCH_PER_TICK = 8;
     private static final LinkedHashSet<ChunkPos> pendingStitch = new LinkedHashSet<>();
 
     private CreateTrackGraphCompat() {
@@ -42,9 +47,11 @@ public final class CreateTrackGraphCompat {
         if (level.dimension() != DimBlendRegistries.ROTATING_LEVEL) {
             return;
         }
-        if (!event.isNewChunk()) {
-            return;
-        }
+        // No isNewChunk gate: worldgen tracks carry HAS_BE=false and no BlockEntity, so
+        // TrackBlock.tick's TrackPropagator.onRailAdded never fires for them. The stitch is
+        // the only graph-registration path, and rotating graphs are not persisted by Create,
+        // so disk-loaded chunks must re-stitch on every load. alreadyInGraph + onRailAdded's
+        // merge-into-existing-graph behavior keep repeats cheap.
         ChunkPos pos = event.getChunk().getPos();
         if (pos.z != OakTrackCorridor.CORRIDOR_Z) {
             return;
@@ -63,13 +70,17 @@ public final class CreateTrackGraphCompat {
             return;
         }
         List<ChunkPos> snapshot = new ArrayList<>(pendingStitch);
+        int processed = 0;
         for (ChunkPos pos : snapshot) {
+            if (processed >= MAX_STITCH_PER_TICK) {
+                break;
+            }
             if (!playerNearTrackChunk(level, pos)) {
                 continue;
             }
             pendingStitch.remove(pos);
             stitchChunkEnds(level, pos);
-            break;
+            processed++;
         }
     }
 
@@ -79,6 +90,9 @@ public final class CreateTrackGraphCompat {
 
     private static void tryStitchOrDefer(ServerLevel level, ChunkPos pos) {
         if (!playerNearTrackChunk(level, pos)) {
+            // Diagnostic: distinguish "player not in this level" from "player too far".
+            LOGGER.info("defer {} players={} pending={}", pos, level.players().size(),
+                    pendingStitch.size() + 1);
             pendingStitch.add(pos);
             while (pendingStitch.size() > PENDING_STITCH_CAP) {
                 pendingStitch.removeFirst();
@@ -101,7 +115,13 @@ public final class CreateTrackGraphCompat {
     }
 
     private static void stitchChunkEnds(ServerLevel level, ChunkPos pos) {
-        LevelChunk chunk = level.getChunk(pos.x, pos.z);
+        // getChunkNow, not getChunk: a deferred entry may outlive the chunk's stay in the
+        // loaded map, and ServerLevel.getChunk would sync-load it on the main thread here.
+        // The next ChunkEvent.Load re-enqueues it.
+        LevelChunk chunk = level.getChunkSource().getChunkNow(pos.x, pos.z);
+        if (chunk == null) {
+            return;
+        }
         int minX = pos.getMinBlockX();
         int maxX = pos.getMaxBlockX();
         int y = OakTrackCorridor.TRACK_Y;
@@ -121,18 +141,20 @@ public final class CreateTrackGraphCompat {
             east = found;
         }
         if (west == null) {
+            LOGGER.info("stitch {} no track row found", pos);
             return;
         }
-        LevelAccessor loadedOnly = loadedChunksOnly(level);
-        stitchEndIfMissing(level, loadedOnly, chunk, west);
+        // The real ServerLevel, not a LevelAccessor proxy: Create resolves node dimensions via
+        // `world instanceof Level` (ITrackBlock.lambda$getConnected$1) and silently tags every
+        // node as minecraft:overworld otherwise, making the whole registration inert.
+        stitchEndIfMissing(level, chunk, west);
         if (!west.equals(east)) {
-            stitchEndIfMissing(level, loadedOnly, chunk, east);
+            stitchEndIfMissing(level, chunk, east);
         }
     }
 
     private static void stitchEndIfMissing(
             ServerLevel level,
-            LevelAccessor loadedOnly,
             LevelChunk chunk,
             BlockPos end
     ) {
@@ -140,15 +162,27 @@ public final class CreateTrackGraphCompat {
             return;
         }
         BlockState state = chunk.getBlockState(end);
-        TrackPropagator.onRailAdded(loadedOnly, end.immutable(), state);
+        LOGGER.info("stitch onRailAdded at {} state={}", end, state);
+        TrackPropagator.onRailAdded(level, end.immutable(), state);
+        LOGGER.info("stitch onRailAdded done at {} graphsAtLoc={}", end, alreadyInGraph(level, end));
     }
 
     private static boolean alreadyInGraph(ServerLevel level, BlockPos pos) {
-        TrackNodeLocation loc = new TrackNodeLocation(Vec3.atLowerCornerOf(pos)).in(level);
+        // Create places graph nodes at the block's bottom center (TrackBlock.getConnected
+        // uses Vec3.atBottomCenterOf); a corner lookup never matches and would rerun the
+        // full onRailAdded walk on every load.
+        TrackNodeLocation loc = new TrackNodeLocation(Vec3.atBottomCenterOf(pos)).in(level);
         return !Create.RAILWAYS.sided(level).getGraphs(level, loc).isEmpty();
     }
 
-    private static LevelAccessor loadedChunksOnly(ServerLevel level) {
+    /**
+     * Read-only view that reports AIR for chunks not in the loaded map. NOTE: this is a
+     * LevelAccessor proxy, not a Level — Create resolves node dimensions via
+     * {@code world instanceof Level} and would tag every discovered node as overworld,
+     * which silently voids graph registration. Only suitable for pure blockstate reads
+     * that never feed TrackNodeLocation creation.
+     */
+    public static LevelAccessor loadedChunksOnly(ServerLevel level) {
         return (LevelAccessor) Proxy.newProxyInstance(
                 LevelAccessor.class.getClassLoader(),
                 new Class<?>[] {LevelAccessor.class},
