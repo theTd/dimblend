@@ -57,7 +57,12 @@ public final class CreateTrackGraphCompat {
             return;
         }
         MinecraftServer server = level.getServer();
-        server.tell(new TickTask(server.getTickCount() + 1, () -> tryStitchOrDefer(level, pos)));
+        // Enqueue only — never stitch inline. TickTasks run between ticks (runAllTasks,
+        // outside ServerTickEvent): an inline stitch there once blocked the server thread
+        // for 15-35s per corridor chunk (invisible to spark's tick stats, logged by
+        // vanilla as "Can't keep up! Running Xms behind"). The actual stitch work is
+        // drained inside onServerTick under a per-tick budget.
+        server.tell(new TickTask(server.getTickCount() + 1, () -> enqueueStitch(pos)));
     }
 
     public static void onServerTick(ServerTickEvent.Post event) {
@@ -78,6 +83,14 @@ public final class CreateTrackGraphCompat {
             if (!playerNearTrackChunk(level, pos)) {
                 continue;
             }
+            if (!neighborsLoaded(level, pos)) {
+                // Walk/getConnected reads reach +/-1 block past the chunk borders; wait
+                // until the 4-neighborhood is loaded so TrackPropagator.onRailAdded (and
+                // its TrackPropagatorMixin-bounded walk) can never force a sync chunk
+                // load. Stay queued; the neighbor's ChunkEvent.Load re-enqueues work and
+                // this entry is retried on a later tick.
+                continue;
+            }
             pendingStitch.remove(pos);
             stitchChunkEnds(level, pos);
             processed++;
@@ -88,19 +101,24 @@ public final class CreateTrackGraphCompat {
         pendingStitch.clear();
     }
 
-    private static void tryStitchOrDefer(ServerLevel level, ChunkPos pos) {
-        if (!playerNearTrackChunk(level, pos)) {
-            // Diagnostic: distinguish "player not in this level" from "player too far".
-            LOGGER.info("defer {} players={} pending={}", pos, level.players().size(),
-                    pendingStitch.size() + 1);
-            pendingStitch.add(pos);
-            while (pendingStitch.size() > PENDING_STITCH_CAP) {
-                pendingStitch.removeFirst();
-            }
-            return;
+    private static void enqueueStitch(ChunkPos pos) {
+        pendingStitch.add(pos);
+        while (pendingStitch.size() > PENDING_STITCH_CAP) {
+            pendingStitch.removeFirst();
         }
-        pendingStitch.remove(pos);
-        stitchChunkEnds(level, pos);
+        LOGGER.debug("queue {} pending={}", pos, pendingStitch.size());
+    }
+
+    /**
+     * True when the 4-neighborhood chunks of pos are all loaded (non-blocking).
+     * The corridor track sits at z=0, i.e. on the border between z-chunks -1 and 0,
+     * and onRailAdded's blockstate reads reach +/-1 block, hence the z-neighbors.
+     */
+    public static boolean neighborsLoaded(ServerLevel level, ChunkPos pos) {
+        return chunkNow(level, pos.x - 1, pos.z) != null
+                && chunkNow(level, pos.x + 1, pos.z) != null
+                && chunkNow(level, pos.x, pos.z - 1) != null
+                && chunkNow(level, pos.x, pos.z + 1) != null;
     }
 
     private static boolean playerNearTrackChunk(ServerLevel level, ChunkPos pos) {
@@ -118,7 +136,7 @@ public final class CreateTrackGraphCompat {
         // getChunkNow, not getChunk: a deferred entry may outlive the chunk's stay in the
         // loaded map, and ServerLevel.getChunk would sync-load it on the main thread here.
         // The next ChunkEvent.Load re-enqueues it.
-        LevelChunk chunk = level.getChunkSource().getChunkNow(pos.x, pos.z);
+        LevelChunk chunk = chunkNow(level, pos.x, pos.z);
         if (chunk == null) {
             return;
         }
@@ -141,12 +159,15 @@ public final class CreateTrackGraphCompat {
             east = found;
         }
         if (west == null) {
-            LOGGER.info("stitch {} no track row found", pos);
+            LOGGER.debug("stitch {} no track row found", pos);
             return;
         }
         // The real ServerLevel, not a LevelAccessor proxy: Create resolves node dimensions via
         // `world instanceof Level` (ITrackBlock.lambda$getConnected$1) and silently tags every
         // node as minecraft:overworld otherwise, making the whole registration inert.
+        // Sync chunk loads inside onRailAdded's walk are prevented upstream: the drain only
+        // runs when the 4-neighborhood is loaded, and TrackPropagatorMixin bounds the walk
+        // to loaded chunks inside the rotating dimension.
         stitchEndIfMissing(level, chunk, west);
         if (!west.equals(east)) {
             stitchEndIfMissing(level, chunk, east);
@@ -162,9 +183,9 @@ public final class CreateTrackGraphCompat {
             return;
         }
         BlockState state = chunk.getBlockState(end);
-        LOGGER.info("stitch onRailAdded at {} state={}", end, state);
+        LOGGER.debug("stitch onRailAdded at {} state={}", end, state);
         TrackPropagator.onRailAdded(level, end.immutable(), state);
-        LOGGER.info("stitch onRailAdded done at {} graphsAtLoc={}", end, alreadyInGraph(level, end));
+        LOGGER.debug("stitch onRailAdded done at {} graphsAtLoc={}", end, alreadyInGraph(level, end));
     }
 
     private static boolean alreadyInGraph(ServerLevel level, BlockPos pos) {
@@ -175,11 +196,15 @@ public final class CreateTrackGraphCompat {
         return !Create.RAILWAYS.sided(level).getGraphs(level, loc).isEmpty();
     }
 
+    private static LevelChunk chunkNow(ServerLevel level, int x, int z) {
+        return level.getChunkSource().getChunkNow(x, z);
+    }
+
     /**
      * Read-only view that reports AIR for chunks not in the loaded map. NOTE: this is a
      * LevelAccessor proxy, not a Level — Create resolves node dimensions via
      * {@code world instanceof Level} and would tag every discovered node as overworld,
-     * which silently voids graph registration. Only suitable for pure blockstate reads
+     * making the whole registration inert. Only suitable for pure blockstate reads
      * that never feed TrackNodeLocation creation.
      */
     public static LevelAccessor loadedChunksOnly(ServerLevel level) {
@@ -206,7 +231,8 @@ public final class CreateTrackGraphCompat {
     }
 
     private static BlockState blockStateIfLoaded(ServerLevel level, BlockPos pos) {
-        LevelChunk chunk = level.getChunkSource().getChunkNow(
+        LevelChunk chunk = chunkNow(
+                level,
                 SectionPos.blockToSectionCoord(pos.getX()),
                 SectionPos.blockToSectionCoord(pos.getZ())
         );
@@ -217,7 +243,8 @@ public final class CreateTrackGraphCompat {
     }
 
     private static BlockEntity blockEntityIfLoaded(ServerLevel level, BlockPos pos) {
-        LevelChunk chunk = level.getChunkSource().getChunkNow(
+        LevelChunk chunk = chunkNow(
+                level,
                 SectionPos.blockToSectionCoord(pos.getX()),
                 SectionPos.blockToSectionCoord(pos.getZ())
         );
