@@ -119,6 +119,11 @@ public final class BandLayout {
     }
 
     public static boolean isTwilight(ChunkGenerator delegate) {
+        if (delegate instanceof YShiftedNoiseChunkGenerator shifted) {
+            return shifted.sourceSettingsKey()
+                    .map(key -> "twilightforest".equals(key.location().getNamespace()))
+                    .orElse(false);
+        }
         ResourceLocation settings = noiseSettings(delegate);
         return settings != null && "dimblend".equals(settings.getNamespace()) && settings.getPath().contains("twilight");
     }
@@ -136,6 +141,9 @@ public final class BandLayout {
     public static String laneName(ChunkGenerator delegate) {
         if (delegate instanceof SlicedOverworldChunkGenerator sliced) {
             return sliced.slice() == OverworldSlice.SURFACE ? "surface" : "underground";
+        }
+        if (isTwilight(delegate)) {
+            return "twilight";
         }
         ResourceLocation id = identity(delegate);
         if (id == null) {

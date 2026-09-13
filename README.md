@@ -20,7 +20,7 @@ generators, picked by a seeded lane layout:
 | `aether:skylands` | Aether skylands |
 | `eternal_starlight:biome_based` | Eternal Starlight |
 | `voidscape:void` | Voidscape void islands |
-| `dimblend:twilight_noise_gen` | Twilight Forest biomes on a custom noise rig |
+| `dimblend:y_shifted_noise` | Twilight Forest's own noise settings, terrain lifted +64 |
 
 The lane layout is deterministic per seed and distance-aware: regions 0–6 from
 spawn are always Overworld, region 7 is always Nether, region 32 is always the

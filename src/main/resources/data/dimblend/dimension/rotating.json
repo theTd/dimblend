@@ -307474,8 +307474,10 @@
         "settings": "voidscape:void"
       },
       {
-        "type": "minecraft:noise",
-        "settings": "dimblend:twilight_noise_gen",
+        "type": "dimblend:y_shifted_noise",
+        "settings": "twilightforest:twilight_noise_gen",
+        "y_offset": 64,
+        "sea_level": 64,
         "biome_source": {
           "type": "twilightforest:twilight_biomes",
           "terrain_data": "twilightforest:biome_grid"
