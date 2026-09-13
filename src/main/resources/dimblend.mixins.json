@@ -16,6 +16,7 @@
   ],
   "client": [
     "BiomeManagerMixin",
+    "BiomeNotifierMixin",
     "ClientChunkCacheMixin",
     "ClientLevelAccessor",
     "ClientLevelDataMixin",

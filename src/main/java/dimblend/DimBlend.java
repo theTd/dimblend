@@ -1,5 +1,7 @@
 package dimblend;
 
+import dimblend.band.BandLanePayload;
+import dimblend.band.BandLaneSync;
 import dimblend.command.DimBlendCommands;
 import dimblend.diagnostics.HangWatchdog;
 import dimblend.compat.CorridorTrackProtector;
@@ -26,6 +28,7 @@ public final class DimBlend {
     private static final ChunkGenMonitor MONITOR = new ChunkGenMonitor();
     private static final HangWatchdog WATCHDOG = new HangWatchdog();
     private static final TimeLockSync TIME_LOCK = new TimeLockSync();
+    private static final BandLaneSync BAND_LANE = new BandLaneSync();
 
     public DimBlend(IEventBus modBus, ModContainer container) {
         DimBlendRegistries.register(modBus);
@@ -34,6 +37,7 @@ public final class DimBlend {
         NeoForge.EVENT_BUS.addListener(DimBlend::onRegisterCommands);
         modBus.addListener(DimBlend::onRegisterPayloads);
         NeoForge.EVENT_BUS.register(TIME_LOCK);
+        NeoForge.EVENT_BUS.register(BAND_LANE);
         NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, TerraBlenderRotatingCompat::onServerAboutToStart);
         NeoForge.EVENT_BUS.addListener(CreateTrackGraphCompat::onChunkLoad);
         NeoForge.EVENT_BUS.addListener(CreateTrackGraphCompat::onServerTick);
@@ -63,5 +67,6 @@ public final class DimBlend {
 
     private static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
         TimeLockPayload.register(event.registrar("1"));
+        BandLanePayload.register(event.registrar("1"));
     }
 }
