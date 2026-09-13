@@ -2,6 +2,7 @@ package dimblend;
 
 import dimblend.band.BandLanePayload;
 import dimblend.band.BandLaneSync;
+import dimblend.client.DimBlendClient;
 import dimblend.command.DimBlendCommands;
 import dimblend.diagnostics.HangWatchdog;
 import dimblend.compat.CorridorTrackProtector;
@@ -13,11 +14,13 @@ import dimblend.worldgen.ChunkGenMonitor;
 import dimblend.worldgen.PregenConfig;
 import dimblend.worldgen.PregenController;
 import dimblend.worldgen.WarpGatePassageGuard;
+import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -38,6 +41,9 @@ public final class DimBlend {
         modBus.addListener(DimBlend::onRegisterPayloads);
         NeoForge.EVENT_BUS.register(TIME_LOCK);
         NeoForge.EVENT_BUS.register(BAND_LANE);
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            DimBlendClient.register(modBus);
+        }
         NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, TerraBlenderRotatingCompat::onServerAboutToStart);
         NeoForge.EVENT_BUS.addListener(CreateTrackGraphCompat::onChunkLoad);
         NeoForge.EVENT_BUS.addListener(CreateTrackGraphCompat::onServerTick);
