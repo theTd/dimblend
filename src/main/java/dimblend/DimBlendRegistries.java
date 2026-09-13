@@ -1,6 +1,7 @@
 package dimblend;
 
 import dimblend.block.WarpGateBlock;
+import dimblend.block.WarpGateBlockEntity;
 import dimblend.worldgen.RotatingBiomeSource;
 import dimblend.worldgen.RotatingChunkGenerator;
 import dimblend.worldgen.SlicedOverworldBiomeSource;
@@ -14,6 +15,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.BiomeSource;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.neoforged.bus.api.IEventBus;
@@ -30,10 +32,20 @@ public final class DimBlendRegistries {
             DeferredRegister.create(Registries.DENSITY_FUNCTION_TYPE, "dimblend");
     public static final DeferredRegister.Blocks BLOCKS =
             DeferredRegister.createBlocks("dimblend");
+    public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES =
+            DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, "dimblend");
 
     /** No BlockItem: players must never obtain the gate (worldgen-only block). */
     public static final DeferredBlock<WarpGateBlock> WARP_GATE =
             BLOCKS.register("warp_gate", () -> new WarpGateBlock(WarpGateBlock.createProperties()));
+
+    /**
+     * Own type (vanilla END_GATEWAY only accepts Blocks.END_GATEWAY for ticking) so the
+     * renderer and ticker bind to the warp gate block; see {@link WarpGateBlockEntity}.
+     */
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<WarpGateBlockEntity>> WARP_GATE_BE =
+            BLOCK_ENTITY_TYPES.register("warp_gate", () ->
+                    BlockEntityType.Builder.of(WarpGateBlockEntity::new, WARP_GATE.get()).build(null));
 
     public static final DeferredHolder<MapCodec<? extends ChunkGenerator>, MapCodec<RotatingChunkGenerator>> ROTATING_GENERATOR =
             CHUNK_GENERATORS.register("rotating", () -> RotatingChunkGenerator.CODEC);
@@ -64,5 +76,6 @@ public final class DimBlendRegistries {
         BIOME_SOURCES.register(bus);
         DENSITY_FUNCTION_TYPES.register(bus);
         BLOCKS.register(bus);
+        BLOCK_ENTITY_TYPES.register(bus);
     }
 }

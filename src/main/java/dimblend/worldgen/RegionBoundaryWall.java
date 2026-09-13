@@ -2,8 +2,10 @@ package dimblend.worldgen;
 
 import dimblend.DimBlendRegistries;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.WorldGenLevel;
-import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
@@ -12,9 +14,9 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
  * Region partition wall + warp gate at band boundaries.
  *
  * Every region boundary column (block X = k * band_size) that separates two different
- * lanes gets a full-height bedrock wall. Inside the railway corridor cross-section the
- * wall yields to warp gate blocks, which replace the carved vault, the track, and the
- * roadbed. Passage through the gate is controlled at runtime by
+ * lanes gets a full-height wall of Biomes O' Plenty's null block. Inside the railway
+ * corridor cross-section the wall yields to warp gate blocks, which replace the carved
+ * vault, the track, and the roadbed. Passage through the gate is controlled at runtime by
  * {@link WarpGatePassageGuard}; the gate block itself is collision-free.
  *
  * Boundaries whose adjacent regions share a lane (see
@@ -25,6 +27,9 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
  * pass wrote it. This class exclusively owns boundary columns.
  */
 public final class RegionBoundaryWall {
+    public static final ResourceLocation WALL_ID =
+            ResourceLocation.fromNamespaceAndPath("biomesoplenty", "null_block");
+
     private RegionBoundaryWall() {
     }
 
@@ -33,9 +38,14 @@ public final class RegionBoundaryWall {
         if (!(generator instanceof RotatingChunkGenerator rotating)) {
             return;
         }
+        Block wallBlock = level.registryAccess().registryOrThrow(Registries.BLOCK).get(WALL_ID);
+        if (wallBlock == null) {
+            throw new IllegalStateException("missing required block " + WALL_ID);
+        }
+        BlockState wall = wallBlock.defaultBlockState();
         int wallX = chunk.getPos().getMinBlockX();
         if (ownsBoundaryColumn(rotating, wallX)) {
-            writeColumn(chunk, rotating, wallX);
+            writeColumn(chunk, rotating, wallX, wall);
         }
         // Our column can be dirtied by the west neighbor decorating after us: feature
         // overhang (leaves, snow, fluids) spills across the border into our minX column.
@@ -45,7 +55,7 @@ public final class RegionBoundaryWall {
         int eastWallX = chunk.getPos().getMaxBlockX() + 1;
         if (ownsBoundaryColumn(rotating, eastWallX)
                 && level.hasChunk(chunk.getPos().x + 1, chunk.getPos().z)) {
-            writeColumn(level.getChunk(chunk.getPos().x + 1, chunk.getPos().z), rotating, eastWallX);
+            writeColumn(level.getChunk(chunk.getPos().x + 1, chunk.getPos().z), rotating, eastWallX, wall);
         }
     }
 
@@ -65,7 +75,7 @@ public final class RegionBoundaryWall {
     /**
      * Runtime gate check for the passage guard: returns the block X of the first
      * boundary-column slab the given box overlaps, or -1. Cells outside the octagon shape
-     * are bedrock wall, so blocking the whole bounding box only ever affects entities
+     * are solid wall, so blocking the whole bounding box only ever affects entities
      * already inside wall/gate blocks.
      */
     public static int overlappedBoundaryColumn(
@@ -91,10 +101,9 @@ public final class RegionBoundaryWall {
         return -1;
     }
 
-    private static void writeColumn(ChunkAccess chunk, RotatingChunkGenerator rotating, int wallX) {
+    private static void writeColumn(ChunkAccess chunk, RotatingChunkGenerator rotating, int wallX, BlockState wall) {
         int maxDy = OakTrackCorridor.vaultMaxDy(rotating, wallX);
         BlockState gate = DimBlendRegistries.WARP_GATE.get().defaultBlockState();
-        BlockState wall = Blocks.BEDROCK.defaultBlockState();
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
         int minZ = chunk.getPos().getMinBlockZ();
         int maxZ = chunk.getPos().getMaxBlockZ();
