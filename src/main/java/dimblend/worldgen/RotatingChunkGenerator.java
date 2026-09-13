@@ -117,6 +117,14 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         return this.bandIndexBlock(pos.getMinBlockX());
     }
 
+    /**
+     * Resolve the delegate index for a block X with the same layout/fallback
+     * as chunk generation. Used by dimblend.time.TimeLockSync.
+     */
+    public int delegateIndexForBlockX(int blockX) {
+        return this.bandIndexBlock(blockX);
+    }
+
     private int bandIndexBlock(int blockX) {
         int region = BandLayout.regionOfBlockX(blockX, this.bandSize);
         BandLayout layout = this.layoutOrNull();
