@@ -1,5 +1,7 @@
 package dimblend;
 
+import dimblend.band.BandInfoPayload;
+import dimblend.band.BandInfoSync;
 import dimblend.band.BandLanePayload;
 import dimblend.band.BandLaneSync;
 import dimblend.client.DimBlendClient;
@@ -24,6 +26,7 @@ import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
+import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 @Mod("dimblend")
 public final class DimBlend {
@@ -31,6 +34,7 @@ public final class DimBlend {
     private static final ChunkGenMonitor MONITOR = new ChunkGenMonitor();
     private static final HangWatchdog WATCHDOG = new HangWatchdog();
     private static final TimeLockSync TIME_LOCK = new TimeLockSync();
+    private static final BandInfoSync BAND_INFO = new BandInfoSync();
     private static final BandLaneSync BAND_LANE = new BandLaneSync();
 
     public DimBlend(IEventBus modBus, ModContainer container) {
@@ -40,6 +44,7 @@ public final class DimBlend {
         NeoForge.EVENT_BUS.addListener(DimBlend::onRegisterCommands);
         modBus.addListener(DimBlend::onRegisterPayloads);
         NeoForge.EVENT_BUS.register(TIME_LOCK);
+        NeoForge.EVENT_BUS.register(BAND_INFO);
         NeoForge.EVENT_BUS.register(BAND_LANE);
         if (FMLEnvironment.dist == Dist.CLIENT) {
             DimBlendClient.register(modBus);
@@ -72,7 +77,9 @@ public final class DimBlend {
     }
 
     private static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
-        TimeLockPayload.register(event.registrar("1"));
-        BandLanePayload.register(event.registrar("1"));
+        PayloadRegistrar registrar = event.registrar("1");
+        TimeLockPayload.register(registrar);
+        BandInfoPayload.register(registrar);
+        BandLanePayload.register(registrar);
     }
 }
