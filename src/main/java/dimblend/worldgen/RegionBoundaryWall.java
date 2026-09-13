@@ -112,8 +112,16 @@ public final class RegionBoundaryWall {
         for (int z = minZ; z <= maxZ; z++) {
             int dz = z - OakTrackCorridor.CORRIDOR_Z;
             for (int y = minY; y < maxY; y++) {
-                BlockState state = isGateCell(dz, y - OakTrackCorridor.TRACK_Y, maxDy) ? gate : wall;
-                chunk.setBlockState(cursor.set(wallX, y, z), state, false);
+                boolean gateCell = isGateCell(dz, y - OakTrackCorridor.TRACK_Y, maxDy);
+                cursor.set(wallX, y, z);
+                chunk.setBlockState(cursor, gateCell ? gate : wall, false);
+                if (gateCell) {
+                    // ProtoChunk.setBlockState never creates block entities — the vanilla
+                    // gateway feature gets its BE from a follow-up getBlockEntity call,
+                    // which we skip. Without this the gate cell has no BE, the server
+                    // never syncs one, and the cell renders as a see-through hole.
+                    chunk.setBlockEntity(DimBlendRegistries.WARP_GATE.get().newBlockEntity(cursor.immutable(), gate));
+                }
             }
         }
     }
