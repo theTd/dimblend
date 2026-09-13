@@ -1,5 +1,6 @@
 package dimblend.worldgen;
 
+import com.mojang.logging.LogUtils;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import java.util.ArrayList;
@@ -35,24 +36,67 @@ import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.levelgen.GenerationStep.Carving;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.Heightmap.Types;
+import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
 import net.minecraft.world.level.levelgen.structure.StructureSet;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager;
+import org.slf4j.Logger;
 
 public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
+    private static final Logger LOGGER = LogUtils.getLogger();
     public static final MapCodec<SlicedOverworldChunkGenerator> CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
             ChunkGenerator.CODEC.fieldOf("inner").forGetter(generator -> generator.inner),
             OverworldSlice.CODEC.fieldOf("slice").forGetter(generator -> generator.slice)
-    ).apply(instance, SlicedOverworldChunkGenerator::new));
+    ).apply(instance, SlicedOverworldChunkGenerator::parse));
 
     private final ChunkGenerator inner;
     private final OverworldSlice slice;
 
-    public SlicedOverworldChunkGenerator(ChunkGenerator inner, OverworldSlice slice) {
+    /**
+     * JSON entry point. Applies the underground ocean filter exactly once: rebuilding the
+     * delegate a second time (codec round-trip of an already filtered generator) hits the
+     * idempotence guard in {@link #applyUndergroundOceanFilter}.
+     */
+    public static SlicedOverworldChunkGenerator parse(ChunkGenerator inner, OverworldSlice slice) {
+        return new SlicedOverworldChunkGenerator(applyUndergroundOceanFilter(inner, slice), slice);
+    }
+
+    private SlicedOverworldChunkGenerator(ChunkGenerator inner, OverworldSlice slice) {
         super(slice.yOffset() == 0 ? inner.getBiomeSource() : new SlicedOverworldBiomeSource(inner.getBiomeSource(), slice));
         this.inner = inner;
         this.slice = slice;
+    }
+
+    /**
+     * The underground slice draws biomes from the full overworld climate, oceans included.
+     * generation-rules.md 地下 requires those to be replaced, and the swap has to happen
+     * on the delegate's own biome source: NoiseBasedChunkGenerator reads that field for
+     * both chunk biome filling and ocean-structure placement checks, so filtering any
+     * outer wrapper alone would leak oceans into stored chunks and structures. Only the
+     * exact vanilla {@code minecraft:noise} shape is rebuilt; subclasses (e.g.
+     * {@code dimblend:y_shifted_noise}) carry state this plain rebuild would drop, so they
+     * are skipped with a warning instead of being silently downcast.
+     */
+    private static ChunkGenerator applyUndergroundOceanFilter(ChunkGenerator inner, OverworldSlice slice) {
+        if (slice != OverworldSlice.UNDERGROUND) {
+            return inner;
+        }
+        if (!(inner instanceof NoiseBasedChunkGenerator noise)) {
+            LOGGER.warn("underground slice inner generator {} is not noise-based; ocean filter not installed", inner.getClass().getName());
+            return inner;
+        }
+        if (noise.getBiomeSource() instanceof OceanFilteredBiomeSource) {
+            return inner;
+        }
+        if (noise.getClass() != NoiseBasedChunkGenerator.class) {
+            LOGGER.warn(
+                    "underground slice inner generator {} is a NoiseBasedChunkGenerator subclass; ocean filter skipped so its subclass state is not lost",
+                    noise.getClass().getName()
+            );
+            return inner;
+        }
+        return new NoiseBasedChunkGenerator(new OceanFilteredBiomeSource(noise.getBiomeSource()), noise.generatorSettings());
     }
 
     public ChunkGenerator inner() {

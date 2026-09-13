@@ -1,5 +1,6 @@
 package dimblend.compat;
 
+import dimblend.worldgen.OceanFilteredBiomeSource;
 import dimblend.worldgen.OverworldSlice;
 import dimblend.worldgen.RotatingChunkGenerator;
 import dimblend.worldgen.SlicedOverworldChunkGenerator;
@@ -74,8 +75,12 @@ public final class TerraBlenderRotatingCompat {
             ChunkGenerator target = delegate instanceof SlicedOverworldChunkGenerator sliced
                     ? sliced.inner()
                     : delegate;
+            ChunkGenerator terraBlenderTarget = unwrapOceanFilter(target);
+            if (terraBlenderTarget != target) {
+                LOGGER.info("Unwrapped dimblend ocean filter for TerraBlender init of {}", logKey.location());
+            }
             try {
-                initializeBiomes.invoke(null, access, dimensionType, logKey, target, seed);
+                initializeBiomes.invoke(null, access, dimensionType, logKey, terraBlenderTarget, seed);
                 LOGGER.info("Initialized TerraBlender biomes for rotating band {}", logKey.location());
             } catch (ReflectiveOperationException exception) {
                 Throwable cause = exception instanceof InvocationTargetException && exception.getCause() != null
@@ -84,6 +89,22 @@ public final class TerraBlenderRotatingCompat {
                 LOGGER.warn("TerraBlender init failed for {}", logKey.location(), cause);
             }
         }
+    }
+
+    /**
+     * TerraBlender's {@code initializeBiomes} gates on the delegate's biome source being a
+     * vanilla {@code MultiNoiseBiomeSource} (silently skipping anything else) and mutates
+     * that instance in place. Underground slices wrap their multi-noise source in
+     * {@link OceanFilteredBiomeSource}, so hand TerraBlender an unfiltered view of the same
+     * inner source: the injection lands on the identical instance the wrapper delegates to,
+     * and region biomes keep flowing through the filter (tagged oceans stay excluded).
+     */
+    private static ChunkGenerator unwrapOceanFilter(ChunkGenerator inner) {
+        if (inner instanceof NoiseBasedChunkGenerator noise
+                && noise.getBiomeSource() instanceof OceanFilteredBiomeSource filtered) {
+            return new NoiseBasedChunkGenerator(filtered.inner(), noise.generatorSettings());
+        }
+        return inner;
     }
 
     private static Holder<DimensionType> dimensionTypeForDelegate(
