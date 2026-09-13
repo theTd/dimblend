@@ -536,6 +536,8 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         this.delegates.get(index).applyBiomeDecoration(level, chunk, structures);
         OakTrackCorridor.place(level, chunk);
         OakTrackCorridor.placeLoadedVaultNeighbors(level, chunk.getPos());
+        // After the corridor: the wall/gate overwrites boundary columns (track, roadbed).
+        RegionBoundaryWall.place(level, chunk);
     }
 
     @Override

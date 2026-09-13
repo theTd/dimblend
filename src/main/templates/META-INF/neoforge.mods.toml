@@ -142,6 +142,13 @@ config="${mod_id}.mixins.json"
     ordering="AFTER"
     side="BOTH"
 
+[[dependencies.${mod_id}]]
+    modId="sable"
+    type="optional"
+    versionRange="[0,)"
+    ordering="AFTER"
+    side="BOTH"
+
 
 
 # Features are specific properties of the game environment, that you may want to declare you require. This example declares

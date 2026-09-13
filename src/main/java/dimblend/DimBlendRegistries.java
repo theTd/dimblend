@@ -1,5 +1,6 @@
 package dimblend;
 
+import dimblend.block.WarpGateBlock;
 import dimblend.worldgen.RotatingBiomeSource;
 import dimblend.worldgen.RotatingChunkGenerator;
 import dimblend.worldgen.SlicedOverworldBiomeSource;
@@ -16,6 +17,7 @@ import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
@@ -26,6 +28,12 @@ public final class DimBlendRegistries {
             DeferredRegister.create(Registries.BIOME_SOURCE, "dimblend");
     public static final DeferredRegister<MapCodec<? extends DensityFunction>> DENSITY_FUNCTION_TYPES =
             DeferredRegister.create(Registries.DENSITY_FUNCTION_TYPE, "dimblend");
+    public static final DeferredRegister.Blocks BLOCKS =
+            DeferredRegister.createBlocks("dimblend");
+
+    /** No BlockItem: players must never obtain the gate (worldgen-only block). */
+    public static final DeferredBlock<WarpGateBlock> WARP_GATE =
+            BLOCKS.register("warp_gate", () -> new WarpGateBlock(WarpGateBlock.createProperties()));
 
     public static final DeferredHolder<MapCodec<? extends ChunkGenerator>, MapCodec<RotatingChunkGenerator>> ROTATING_GENERATOR =
             CHUNK_GENERATORS.register("rotating", () -> RotatingChunkGenerator.CODEC);
@@ -55,5 +63,6 @@ public final class DimBlendRegistries {
         CHUNK_GENERATORS.register(bus);
         BIOME_SOURCES.register(bus);
         DENSITY_FUNCTION_TYPES.register(bus);
+        BLOCKS.register(bus);
     }
 }

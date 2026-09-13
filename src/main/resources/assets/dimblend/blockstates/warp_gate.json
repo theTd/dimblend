@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "dimblend:block/warp_gate" }
+  }
+}

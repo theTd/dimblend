@@ -103,6 +103,12 @@ public final class OakTrackCorridor {
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
         boolean[] carved = new boolean[maxX - minX + 1];
         for (int x = minX; x <= maxX; x++) {
+            if (RegionBoundaryWall.ownsBoundaryColumn(rotating, x)) {
+                // Boundary columns belong to RegionBoundaryWall (bedrock wall + warp gate).
+                // Skip them entirely: neighbor re-carves (placeLoadedVaultNeighbors) run
+                // after this pass on other threads would otherwise wipe the gate here.
+                continue;
+            }
             ChunkGenerator delegate = corridorDelegate(rotating, x);
             boolean carveBedrock = BandLayout.isVoidscape(delegate);
             if (chunkZ == 0) {
@@ -489,7 +495,8 @@ public final class OakTrackCorridor {
         return null;
     }
 
-    private static int vaultMaxDy(RotatingChunkGenerator rotating, int x) {
+    /** Package-private: also used by {@link RegionBoundaryWall} for the gate ceiling. */
+    static int vaultMaxDy(RotatingChunkGenerator rotating, int x) {
         return vaultMaxDy(corridorDelegate(rotating, x));
     }
 

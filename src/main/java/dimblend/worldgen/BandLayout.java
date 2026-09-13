@@ -73,6 +73,20 @@ public final class BandLayout {
         return Math.floorDiv(blockX, bandSize);
     }
 
+    /**
+     * True when blockX is a region-boundary column (local X == 0) and both adjacent regions
+     * draw from the same lane, e.g. spawn-adjacent 0/1 (both surface) or 5/6 (both
+     * underground). Such boundaries get no partition wall and no warp gate — see
+     * {@link RegionBoundaryWall}.
+     */
+    public boolean sameLaneAcrossBoundary(int blockX, int bandSize) {
+        if (Math.floorMod(blockX, bandSize) != 0) {
+            return false;
+        }
+        int region = regionOfBlockX(blockX, bandSize);
+        return this.lanes[this.delegateIndex(region - 1)] == this.lanes[this.delegateIndex(region)];
+    }
+
     public static boolean isSurfaceOverworld(ChunkGenerator delegate) {
         return laneOf(delegate) == Lane.SURFACE;
     }

@@ -10,6 +10,7 @@ import dimblend.time.TimeLockSync;
 import dimblend.worldgen.ChunkGenMonitor;
 import dimblend.worldgen.PregenConfig;
 import dimblend.worldgen.PregenController;
+import dimblend.worldgen.WarpGatePassageGuard;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
@@ -39,6 +40,7 @@ public final class DimBlend {
         NeoForge.EVENT_BUS.addListener(CreateTrackGraphCompat::onServerStopped);
         NeoForge.EVENT_BUS.addListener(CorridorTrackProtector::onBreakBlock);
         NeoForge.EVENT_BUS.addListener(CorridorTrackProtector::onExplosionDetonate);
+        NeoForge.EVENT_BUS.addListener(WarpGatePassageGuard::onEntityTickPost);
         NeoForge.EVENT_BUS.register(MONITOR);
         NeoForge.EVENT_BUS.register(WATCHDOG);
     }
