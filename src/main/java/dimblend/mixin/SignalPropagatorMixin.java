@@ -18,6 +18,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * new node's incident edges (preserving getGroupAtPosition -> graph.id). The unconditional
  * per-edge edgeDataChanged sync for idempotent no-op writes is pure overhead at corridor
  * pregen scale. Graphs with signals pass through unchanged.
+ *
+ * <p>Correctness rests on Create invariants rather than re-derivation: {@link EdgeData}
+ * constructs with {@code singleSignalGroup = passiveGroup} and {@code connectNodes} creates
+ * edges already passive, so on a graph with zero SIGNAL points every edge is passive already
+ * and the mixin body is a value-preserving no-op. The dropped {@code notifyTrains} /
+ * {@code edgeDataChanged} side effects have no observable surface there: occupied-block
+ * re-derivation via {@code updateSignalBlocks} (consumed in {@code Train.earlyTick}) is keyed
+ * to group ids, the passive group id equals the graph id on signal-less graphs, and node
+ * add/remove does not change it; clients likewise default new edge data to passive.
+ *
+ * <p>When upgrading Create, re-verify the body of {@code SignalPropagator#notifySignalsOfNewNode}
+ * against these assumptions — a HEAD injection cannot detect method-body drift.
  */
 @Mixin(value = SignalPropagator.class, remap = false)
 public abstract class SignalPropagatorMixin {

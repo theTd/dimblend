@@ -4,25 +4,20 @@ import dimblend.DimBlendRegistries;
 import dimblend.worldgen.OakTrackCorridor;
 import com.simibubi.create.Create;
 import com.simibubi.create.content.trains.graph.TrackNodeLocation;
+import com.simibubi.create.content.trains.track.ITrackBlock;
 import com.simibubi.create.content.trains.track.TrackBlock;
 import com.simibubi.create.content.trains.track.TrackPropagator;
-import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.SectionPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.TickTask;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.LevelAccessor;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -49,9 +44,11 @@ public final class CreateTrackGraphCompat {
         }
         // No isNewChunk gate: worldgen tracks carry HAS_BE=false and no BlockEntity, so
         // TrackBlock.tick's TrackPropagator.onRailAdded never fires for them. The stitch is
-        // the only graph-registration path, and rotating graphs are not persisted by Create,
-        // so disk-loaded chunks must re-stitch on every load. alreadyInGraph + onRailAdded's
-        // merge-into-existing-graph behavior keep repeats cheap.
+        // the only graph-registration path. Create does persist track graphs across restarts
+        // (RailwaySavedData, all dimensions), so chunks stitched before a restart short-circuit
+        // via alreadyInGraph; chunks without graph data (older sessions, data loss) re-stitch
+        // here. alreadyInGraph + onRailAdded's merge-into-existing-graph behavior keep repeats
+        // cheap.
         ChunkPos pos = event.getChunk().getPos();
         if (pos.z != OakTrackCorridor.CORRIDOR_Z) {
             return;
@@ -104,7 +101,9 @@ public final class CreateTrackGraphCompat {
     private static void enqueueStitch(ChunkPos pos) {
         pendingStitch.add(pos);
         while (pendingStitch.size() > PENDING_STITCH_CAP) {
-            pendingStitch.removeFirst();
+            ChunkPos evicted = pendingStitch.removeFirst();
+            LOGGER.warn("stitch queue full ({}), evicted {} — registration may lag until the chunk reloads",
+                    PENDING_STITCH_CAP, evicted);
         }
         LOGGER.debug("queue {} pending={}", pos, pendingStitch.size());
     }
@@ -189,68 +188,25 @@ public final class CreateTrackGraphCompat {
     }
 
     private static boolean alreadyInGraph(ServerLevel level, BlockPos pos) {
-        // Create places graph nodes at the block's bottom center (TrackBlock.getConnected
-        // uses Vec3.atBottomCenterOf); a corner lookup never matches and would rerun the
-        // full onRailAdded walk on every load.
-        TrackNodeLocation loc = new TrackNodeLocation(Vec3.atBottomCenterOf(pos)).in(level);
-        return !Create.RAILWAYS.sided(level).getGraphs(level, loc).isEmpty();
+        // Probe at the same DiscoveredLocations onRailAdded would register: TrackNodeLocation
+        // packs at half-block precision (round(x*2)), so nodes on a straight X-axis run sit at
+        // integer x / z+0.5 while a bottom-center probe (x+0.5/z+0.5) never matched — that kept
+        // this check permanently false and forced a full onRailAdded (with train
+        // detach/reattach churn via phase-1 removeNode) on every drain. Not a track block
+        // anymore (race with world changes): nothing to register, treat as already handled.
+        BlockState state = level.getBlockState(pos);
+        if (!(state.getBlock() instanceof ITrackBlock track)) {
+            return true;
+        }
+        for (TrackNodeLocation.DiscoveredLocation end : track.getConnected(level, pos, state, false, null)) {
+            if (!Create.RAILWAYS.sided(level).getGraphs(level, end).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static LevelChunk chunkNow(ServerLevel level, int x, int z) {
         return level.getChunkSource().getChunkNow(x, z);
-    }
-
-    /**
-     * Read-only view that reports AIR for chunks not in the loaded map. NOTE: this is a
-     * LevelAccessor proxy, not a Level — Create resolves node dimensions via
-     * {@code world instanceof Level} and would tag every discovered node as overworld,
-     * making the whole registration inert. Only suitable for pure blockstate reads
-     * that never feed TrackNodeLocation creation.
-     */
-    public static LevelAccessor loadedChunksOnly(ServerLevel level) {
-        return (LevelAccessor) Proxy.newProxyInstance(
-                LevelAccessor.class.getClassLoader(),
-                new Class<?>[] {LevelAccessor.class},
-                (proxy, method, args) -> {
-                    String name = method.getName();
-                    if (name.equals("getBlockState") && args != null && args.length == 1 && args[0] instanceof BlockPos pos) {
-                        return blockStateIfLoaded(level, pos);
-                    }
-                    if (name.equals("getFluidState") && args != null && args.length == 1 && args[0] instanceof BlockPos pos) {
-                        return blockStateIfLoaded(level, pos).getFluidState();
-                    }
-                    if (name.equals("getBlockEntity") && args != null && args.length == 1 && args[0] instanceof BlockPos pos) {
-                        return blockEntityIfLoaded(level, pos);
-                    }
-                    if (name.equals("isClientSide")) {
-                        return false;
-                    }
-                    return method.invoke(level, args);
-                }
-        );
-    }
-
-    private static BlockState blockStateIfLoaded(ServerLevel level, BlockPos pos) {
-        LevelChunk chunk = chunkNow(
-                level,
-                SectionPos.blockToSectionCoord(pos.getX()),
-                SectionPos.blockToSectionCoord(pos.getZ())
-        );
-        if (chunk == null) {
-            return Blocks.AIR.defaultBlockState();
-        }
-        return chunk.getBlockState(pos);
-    }
-
-    private static BlockEntity blockEntityIfLoaded(ServerLevel level, BlockPos pos) {
-        LevelChunk chunk = chunkNow(
-                level,
-                SectionPos.blockToSectionCoord(pos.getX()),
-                SectionPos.blockToSectionCoord(pos.getZ())
-        );
-        if (chunk == null) {
-            return null;
-        }
-        return chunk.getBlockEntity(pos);
     }
 }
