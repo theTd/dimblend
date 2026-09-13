@@ -35,6 +35,23 @@ including Voidscape bedrock. Structure generation is suppressed within 16
 chunks of the corridor, and the Create track graph is stitched lazily once
 chunks near players are finished.
 
+The corridor track row is bedrock-grade infrastructure: in the rotating
+dimension it cannot be broken by non-creative players (by hand or with a
+Create wrench — no crack progress, instant-break excluded) and it survives
+explosions, matching vanilla bedrock behavior for creative players. Straight
+Create track shapes have no collision box by design, so entities walking the
+corridor sink onto the roadbed rather than standing on the rail. Event-less
+removal paths (wither, `/setblock`, Create drills) are not covered.
+
+**Per-band time lock**: while in the rotating dimension, each player's client
+time is pinned to the band they stand in (underground 22000, nether 18000,
+twilight jittering in 12600–12700, aether 4000, ...), surface bands flow
+normally. The lock is visual, per player — the server world time keeps
+flowing, so gameplay that consults server time is unaffected.
+
+> Target generation rules (north star spec, tracked as a checklist):
+> [docs/generation-rules.md](docs/generation-rules.md)
+
 ## Commands
 
 All subcommands require permission level 2.

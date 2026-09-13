@@ -5,6 +5,7 @@
   "minVersion": "0.8",
   "mixins": [
     "BetterCavesMasterControllerMixin",
+    "BlockBehaviourMixin",
     "ConfiguredFeatureMixin",
     "DistanceManagerAccessor",
     "ChunkMapAccessor",
@@ -16,6 +17,7 @@
   "client": [
     "BiomeManagerMixin",
     "ClientChunkCacheMixin",
+    "ClientLevelMixin",
     "ShaderInstanceMixin"
   ],
   "injectors": {
