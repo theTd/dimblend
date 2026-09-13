@@ -36,26 +36,26 @@
 ## 二、全局规则
 
 - [ ] 矿石以矿堆为计，数量减半，每堆规模不变
-- [ ] 轨道硬度和基岩一样
+- [x] 轨道硬度和基岩一样（等效实现：挖掘进度归零 + 破坏/扳手事件取消 + 防爆，见 `CorridorTrackProtector` / `BlockBehaviourMixin`）
 - [ ] 取消轨道碰撞箱
-- [ ] 阻止玩家用扳手拆除轨道
-- [ ] 每个区域之间生成隔墙（最好不包括开始几个相邻且相同的区域）
-- [ ] 轨道洞穴大小的区域填充「折越门」方块，覆盖铁轨和地基
-- [ ] 折越门方块阻止任何非玩家实体通过；生存玩家需站在 sable 结构上才可通过
+- [x] 阻止玩家用扳手拆除轨道（Create 扳手与手拆同走 `BlockEvent.BreakEvent`，一并取消；创造模式放行，同基岩）
+- [x] 每个区域之间生成隔墙（`RegionBoundaryWall`：不同 lane 边界整列基岩墙；同 lane 边界保持开放）
+- [x] 轨道洞穴大小的区域填充「折越门」方块，覆盖铁轨和地基（`WarpGateBlock` 填充走廊截面，含轨道与路基格）
+- [x] 折越门方块阻止任何未授权实体通过（`WarpGatePassageGuard`：非玩家实体一律拦截；生存玩家需站在 Sable 结构上，创造/旁观直接放行）
 - [ ] 左下角物品栏左侧显示当前区域序号 + 以玩家当前位置为准的行进进度
 
 ## 三、分纬度规则
 
 ### 地表（Overworld）
 
-- [ ] 生成轨道：**桦木宽轨**，有路基
+- [x] 生成轨道：**桦木宽轨**，有路基（`CorridorTrackProfile.SURFACE`）
 - [x] 时间恢复正常流逝
 - [ ] 生成区间改为 **Y0 以上**
 - [ ] 仅生成 煤 / 铜 / 铁 / 金 / 锌 五种矿石
 
 ### 地下（Underground）
 
-- [ ] 生成轨道：**深色橡木宽轨**，有路基
+- [x] 生成轨道：**深色橡木宽轨**，有路基（`CorridorTrackProfile.UNDERGROUND`）
 - [x] 时间锁定 22000
 - [ ] 替换轨道上方 15 格宽内所有流体为玻璃
 - [ ] 阻止海洋生物群系及其变种生成
@@ -63,38 +63,38 @@
 
 ### 下界（Nether）
 
-- [ ] 生成轨道：**黑石宽轨**，无路基
+- [x] 生成轨道：**黑石宽轨**，无路基（`CorridorTrackProfile.NETHER`）
 - [x] 时间锁定 18000
-- [ ] 阻止下界生物僵尸化
+- [x] 阻止下界生物僵尸化（dimension_type 全局 `piglin_safe: true`）
 
 ### 末地（End）
 
-- [ ] 生成轨道：**幻纱宽轨**，无路基
+- [x] 生成轨道：**幻纱宽轨**，无路基（`CorridorTrackProfile.END`）
 - [x] 时间锁定 18000（末地/星光/深渊取「时间锁定」备选；客户端按玩家锁定，服务端世界时间照流）
 
 ### 暮色（Twilight Forest）
 
-- [ ] 生成轨道：**标准宽轨**，有路基
+- [x] 生成轨道：**标准宽轨**，有路基（`CorridorTrackProfile.TWILIGHT`）
 - [x] 时间锁定 12600–12700（模拟原本的抽搐黄昏效果，区间内缓慢随机游移）
 - [ ] 恢复生物群系 shader
 
 ### 星光（Eternal Starlight）
 
-- [ ] 生成轨道：**标准宽轨**，取消路基
+- [x] 生成轨道：**标准宽轨**，取消路基（`CorridorTrackProfile.STARLIGHT`）
 - [x] 时间锁定 14000（取「时间锁定」备选）
-- [ ] 阻止星光传送门结构生成
+- [x] 阻止星光传送门结构生成（覆写 5 个 `eternal_starlight:has_portal_ruins_*` 群系 tag 为空，见 `docs/starlight-portal-structure.md`）
 
 ### 深暗（Deeper & Darker Otherside）
 
-- [ ] 生成轨道：**标准宽轨**，无路基
+- [x] 生成轨道：**标准宽轨**，无路基（`CorridorTrackProfile.OTHERSIDE`）
 - [x] 时间锁定 18000
 
 ### 天域（Aether Skylands）
 
-- [ ] 生成轨道：**无枕木宽轨**，无路基
+- [x] 生成轨道：**无枕木宽轨**，无路基（`CorridorTrackProfile.AETHER`）
 - [x] 时间锁定 4000
 
 ### 深渊（Voidscape）
 
-- [ ] 生成轨道：**无枕木宽轨**，无路基
+- [x] 生成轨道：**无枕木宽轨**，无路基（`CorridorTrackProfile.VOIDSCAPE`）
 - [x] 恢复 shader，或时间锁定 18000（取「时间锁定」备选）

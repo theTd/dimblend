@@ -2,6 +2,7 @@ package dimblend.worldgen;
 
 import com.simibubi.create.content.trains.track.TrackBlock;
 import com.simibubi.create.content.trains.track.TrackShape;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 import net.minecraft.core.BlockPos;
@@ -9,7 +10,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.WorldGenLevel;
@@ -33,7 +33,6 @@ public final class OakTrackCorridor {
     public static final int VAULT_APEX_DY = 17;
     /** No structures may generate within this many chunks of CORRIDOR_Z (either side). */
     public static final int NO_STRUCTURE_CHUNK_RANGE = 16;
-    public static final ResourceLocation TRACK_ID = ResourceLocation.fromNamespaceAndPath("railways", "track_create_andesite_wide");
     /** Half-width of the cobblestone roadbed under the track. 7 wide = Z[-3, +3]. */
     private static final int ROADBED_HALF_WIDTH = 3;
     /** How deep below the vault floor a tree origin may sit and still lose its support column. */
@@ -85,10 +84,7 @@ public final class OakTrackCorridor {
         if (!(generator instanceof RotatingChunkGenerator rotating)) {
             return;
         }
-        Block trackBlock = access.registryOrThrow(Registries.BLOCK).get(TRACK_ID);
-        if (trackBlock == null) {
-            throw new IllegalStateException("missing required block railways:track_create_andesite_wide");
-        }
+        Map<CorridorTrackProfile, Block> trackBlocks = new EnumMap<>(CorridorTrackProfile.class);
 
         int minX = chunk.getPos().getMinBlockX();
         int maxX = chunk.getPos().getMaxBlockX();
@@ -110,6 +106,8 @@ public final class OakTrackCorridor {
                 continue;
             }
             ChunkGenerator delegate = corridorDelegate(rotating, x);
+            CorridorTrackProfile profile = CorridorTrackProfile.forDelegate(delegate);
+            Block trackBlock = trackBlock(access, trackBlocks, profile);
             boolean carveBedrock = BandLayout.isVoidscape(delegate);
             if (chunkZ == 0) {
                 writeTrack(chunk, cursor, x, trackBlock, carveBedrock, live);
@@ -121,18 +119,41 @@ public final class OakTrackCorridor {
             carved[x - minX] = true;
             clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, maxDy, carveBedrock, live);
             stabilizeVaultCeiling(chunk, cursor, x, vaultMinZ, vaultMaxZ, maxDy, live);
-            writeRoadbed(rotating, chunk, cursor, x, minZ, maxZ, live);
+            writeRoadbed(profile.hasRoadbed(), chunk, cursor, x, minZ, maxZ, live);
         }
         for (int x = minX; x <= maxX; x++) {
             if (!carved[x - minX]) {
                 continue;
             }
-            sealVaultShell(chunk, cursor, x, minX, maxX, minZ, maxZ, vaultMinZ, vaultMaxZ, trackBlock, carved, vaultMaxDy(rotating, x), live);
+            sealVaultShell(
+                    chunk, cursor, x, minX, maxX, minZ, maxZ, vaultMinZ, vaultMaxZ,
+                    trackBlock(access, trackBlocks, CorridorTrackProfile.forDelegate(corridorDelegate(rotating, x))),
+                    carved, vaultMaxDy(rotating, x), live);
         }
     }
 
+    /**
+     * Resolves (and caches per carve call) the track block of one lane profile.
+     * All variants are base Steam 'n' Rails blocks — no optional-mod gates — so
+     * a missing id is a hard misconfiguration, same as the previous single
+     * TRACK_ID requirement.
+     */
+    private static Block trackBlock(
+            RegistryAccess access,
+            Map<CorridorTrackProfile, Block> cache,
+            CorridorTrackProfile profile
+    ) {
+        return cache.computeIfAbsent(profile, p -> {
+            Block block = access.registryOrThrow(Registries.BLOCK).get(p.trackId());
+            if (block == null) {
+                throw new IllegalStateException("missing required block " + p.trackId());
+            }
+            return block;
+        });
+    }
+
     private static void writeRoadbed(
-            RotatingChunkGenerator rotating,
+            boolean hasRoadbed,
             ChunkAccess chunk,
             BlockPos.MutableBlockPos cursor,
             int x,
@@ -140,10 +161,7 @@ public final class OakTrackCorridor {
             int maxZ,
             @javax.annotation.Nullable ServerLevel live
     ) {
-        ChunkGenerator delegate = rotating.delegates().get(rotating.layout().delegateIndex(
-                BandLayout.regionOfBlockX(x, rotating.bandSize())
-        ));
-        if (!(delegate instanceof SlicedOverworldChunkGenerator) && !BandLayout.isSurfaceOverworld(delegate) && !BandLayout.isTwilight(delegate)) {
+        if (!hasRoadbed) {
             return;
         }
         int zMin = Math.max(minZ, CORRIDOR_Z - ROADBED_HALF_WIDTH);

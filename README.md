@@ -28,12 +28,15 @@ End; the remaining regions draw from widening lane pools (surface weighted 2×).
 Adjacent surface/Twilight bands are merged across a 32-block smoothstep seam so
 the transition has no cliff.
 
-A vaulted oak **railway corridor** runs along Z = 0 through every band at
-Y = 64: a wide-gauge Create track (`railways:track_create_andesite_wide`) on a
-cobblestone roadbed, carved through whatever terrain the band generates —
-including Voidscape bedrock. Structure generation is suppressed within 16
-chunks of the corridor, and the Create track graph is stitched lazily once
-chunks near players are finished.
+A vaulted **railway corridor** runs along Z = 0 through every band at
+Y = 64: a wide-gauge Steam 'n' Rails track whose material follows the band's
+lane — birch (surface), dark oak (underground), blackstone (Nether), phantom
+(End), andesite (Twilight/Starlight/Otherside) or tieless (Aether/Voidscape)
+wide gauge, with a cobblestone roadbed under the surface, underground and
+twilight lanes (`CorridorTrackProfile`) — carved through whatever terrain the
+band generates, including Voidscape bedrock. Structure generation is
+suppressed within 16 chunks of the corridor, and the Create track graph is
+stitched lazily once chunks near players are finished.
 
 The corridor track row is bedrock-grade infrastructure: in the rotating
 dimension it cannot be broken by non-creative players (by hand or with a
@@ -92,7 +95,8 @@ Minecraft 1.21.1, NeoForge 21.1.249, Parchment mappings 2024.11.17.
 | Aether | ≥ 1.5.10 |
 | Eternal Starlight | ≥ 0.9.0 |
 | Voidscape | ≥ 1.9.588 |
-| TerraBlender | optional, ≥ 4.1 |
+| Biomes O' Plenty | ≥ 21.1.0.7 (provides the region wall block) |
+| TerraBlender | ≥ 4.1 (optional standalone; pulled in required by Biomes O' Plenty) |
 
 ## Building from source
 
