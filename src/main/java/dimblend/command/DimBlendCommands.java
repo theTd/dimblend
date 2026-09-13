@@ -197,10 +197,6 @@ public final class DimBlendCommands {
         int x = origin ? 0 : bandIndex * bandSize + bandSize / 2;
         int z = 0;
         Integer undergroundY = undergroundLandingY(generator, x, z, level);
-        if (isUndergroundColumn(generator, x) && undergroundY == null) {
-            source.sendFailure(Component.literal("no safe landing in overworld caves band"));
-            return 0;
-        }
         int sampledY = undergroundY != null
                 ? undergroundY
                 : generator.getFirstFreeHeight(
@@ -287,17 +283,6 @@ public final class DimBlendCommands {
                 + ", inFlight " + snapshot.inFlight();
         source.sendSuccess(() -> Component.literal(mode), false);
         return 1;
-    }
-
-    private static boolean isUndergroundColumn(ChunkGenerator generator, int x) {
-        if (!(generator instanceof RotatingChunkGenerator rotating)) {
-            return false;
-        }
-        return BandLayout.laneName(
-                rotating.delegates().get(rotating.layout().delegateIndex(
-                        BandLayout.regionOfBlockX(x, rotating.bandSize())
-                ))
-        ).equals("underground");
     }
 
     private static Integer undergroundLandingY(ChunkGenerator generator, int x, int z, ServerLevel level) {
