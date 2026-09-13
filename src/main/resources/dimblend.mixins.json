@@ -17,6 +17,8 @@
   "client": [
     "BiomeManagerMixin",
     "ClientChunkCacheMixin",
+    "ClientLevelAccessor",
+    "ClientLevelDataMixin",
     "ClientLevelMixin",
     "ShaderInstanceMixin"
   ],

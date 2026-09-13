@@ -46,8 +46,11 @@ removal paths (wither, `/setblock`, Create drills) are not covered.
 **Per-band time lock**: while in the rotating dimension, each player's client
 time is pinned to the band they stand in (underground 22000, nether 18000,
 twilight jittering in 12600–12700, aether 4000, ...), surface bands flow
-normally. The lock is visual, per player — the server world time keeps
-flowing, so gameplay that consults server time is unaffected.
+normally. For locked bands the client daylight cycle is faked off
+(doDaylightCycle=false semantics) and day-time reads are shadowed, so the
+celestial sphere cannot be dragged by the server's periodic time syncs. The
+lock is visual, per player — the server world time keeps flowing, so gameplay
+that consults server time is unaffected.
 
 > Target generation rules (north star spec, tracked as a checklist):
 > [docs/generation-rules.md](docs/generation-rules.md)
