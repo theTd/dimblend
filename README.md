@@ -24,7 +24,7 @@ generators, picked by a seeded lane layout:
 
 The lane layout is deterministic per seed and distance-aware: regions 0–6 from
 spawn are always Overworld, region 7 is always Nether, region 32 is always the
-End; the remaining regions draw from widening lane pools (surface weighted 2×).
+End; the remaining regions draw from widening lane pools (surface weighted 3×).
 Adjacent surface/Twilight bands are merged across a 32-block smoothstep seam so
 the transition has no cliff.
 

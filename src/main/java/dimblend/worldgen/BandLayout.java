@@ -8,7 +8,7 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 
 public final class BandLayout {
-    public static final int SURFACE_WEIGHT = 2;
+    public static final int SURFACE_WEIGHT = 3;
 
     private enum Lane {
         SURFACE,
