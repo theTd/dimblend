@@ -22,11 +22,14 @@ generators, picked by a seeded lane layout:
 | `voidscape:void` | Voidscape void islands |
 | `dimblend:y_shifted_noise` | Twilight Forest's own noise settings, terrain lifted +64 |
 
-The lane layout is deterministic per seed and distance-aware: regions 0–6 from
-spawn are always Overworld, region 7 is always Nether, region 32 is always the
-End; the remaining regions draw from widening lane pools (surface weighted 3×).
-Adjacent surface/Twilight bands are merged across a 32-block smoothstep seam so
-the transition has no cliff.
+The lane layout is deterministic per seed and distance-aware: regions 0–21 from
+spawn follow a fixed script (surface / underground / nether, then one band each
+of Aether, Twilight, Starlight, Otherside and Voidscape), region 32 is always
+the End; regions 22–31 draw from every lane except End, and regions 33+ draw
+from the full pool including End (surface weighted 3×). Each eligible terrain
+is guaranteed at least once per random window (22–31, then every 16 regions
+from 33). Adjacent surface/Twilight bands are merged across a 32-block
+smoothstep seam so the transition has no cliff.
 
 A vaulted **railway corridor** runs along Z = 0 through every band at
 Y = 64: a wide-gauge Steam 'n' Rails track whose material follows the band's

@@ -1,6 +1,5 @@
 package dimblend.worldgen;
 
-import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import java.util.List;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -8,61 +7,41 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 
 public final class BandLayout {
-    public static final int SURFACE_WEIGHT = 3;
+    public static final int SURFACE_WEIGHT = BandLaneAssigner.SURFACE_WEIGHT;
 
     private enum Lane {
         SURFACE,
         UNDERGROUND,
         NETHER,
         END,
+        AETHER,
+        TWILIGHT,
+        STARLIGHT,
+        OTHERSIDE,
+        VOIDSCAPE,
         MOD
     }
 
     private final List<ChunkGenerator> delegates;
     private final Lane[] lanes;
-    private final long seed;
-    private final Int2IntOpenHashMap cache = new Int2IntOpenHashMap();
+    private final BandLaneAssigner assigner;
 
     public BandLayout(List<ChunkGenerator> delegates, long seed) {
         this.delegates = delegates;
         this.lanes = classify(delegates);
-        this.seed = seed;
         requireLane(Lane.SURFACE);
         requireLane(Lane.UNDERGROUND);
         requireLane(Lane.NETHER);
         requireLane(Lane.END);
-        this.cache.defaultReturnValue(-1);
-        this.cache.put(0, firstLane(Lane.SURFACE));
+        this.assigner = new BandLaneAssigner(kindsOf(this.lanes), seed);
     }
 
     public long seed() {
-        return this.seed;
+        return this.assigner.seed();
     }
 
     public int delegateIndex(int region) {
-        synchronized (this.cache) {
-            int cached = this.cache.get(region);
-            if (cached >= 0) {
-                return cached;
-            }
-            int step = region > 0 ? 1 : -1;
-            int current = this.cache.get(0);
-            for (int r = step; ; r += step) {
-                int known = this.cache.get(r);
-                if (known >= 0) {
-                    current = known;
-                    if (r == region) {
-                        return current;
-                    }
-                    continue;
-                }
-                current = assign(r, current);
-                this.cache.put(r, current);
-                if (r == region) {
-                    return current;
-                }
-            }
-        }
+        return this.assigner.delegateIndex(region);
     }
 
     public ChunkGenerator delegate(int region) {
@@ -75,10 +54,9 @@ public final class BandLayout {
 
     /**
      * True when blockX is a region-boundary column (local X == 0) and both adjacent regions
-     * share a {@link #laneName} identity, e.g. spawn-adjacent 0/1 (both surface) or 5/6
-     * (both underground). The layout picker buckets every modded latitude as {@link Lane#MOD}
-     * for weighted rolls; that bucket is not a wall identity — twilight vs starlight (or
-     * aether vs voidscape, …) still count as different lanes. Same-name boundaries get no
+     * share a {@link #laneName} identity, e.g. spawn-adjacent 0/1 (both surface), 5/6
+     * (both underground), or 11/12 (both nether). Twilight vs starlight (or aether vs
+     * voidscape, …) still count as different lanes. Same-name boundaries get no
      * partition wall and no warp gate — see {@link RegionBoundaryWall}.
      */
     public boolean sameLaneAcrossBoundary(int blockX, int bandSize) {
@@ -96,33 +74,31 @@ public final class BandLayout {
     public static int fixedDelegateIndex(int region, List<ChunkGenerator> delegates) {
         Lane[] lanes = classify(delegates);
         Lane lane = fixedLane(Math.abs(region));
-        if (lane == null) {
-            return firstOf(lanes, Lane.SURFACE);
+        int index = firstOf(lanes, lane == null ? Lane.SURFACE : lane);
+        if (index < 0) {
+            index = firstOf(lanes, Lane.SURFACE);
         }
-        int index = firstOf(lanes, lane);
-        return index >= 0 ? index : firstOf(lanes, Lane.SURFACE);
+        return index >= 0 ? index : 0;
     }
 
     /**
      * Fixed lane for distance |region| from spawn. Null = random pool.
-     * 0 spawn surface; 1/3/4 surface; 2/5/6 underground; 7 nether; 32 end.
-     * Positive and negative sides mirror the same sequence.
+     * Script is 0–21 plus 32; positive and negative sides mirror the same sequence.
      */
     @javax.annotation.Nullable
     private static Lane fixedLane(int distance) {
-        if (distance == 0 || distance == 1 || distance == 3 || distance == 4) {
-            return Lane.SURFACE;
-        }
-        if (distance == 2 || distance == 5 || distance == 6) {
-            return Lane.UNDERGROUND;
-        }
-        if (distance == 7) {
-            return Lane.NETHER;
-        }
-        if (distance == 32) {
-            return Lane.END;
-        }
-        return null;
+        return switch (BandLaneAssigner.fixedKind(distance)) {
+            case BandLaneAssigner.SURFACE -> Lane.SURFACE;
+            case BandLaneAssigner.UNDERGROUND -> Lane.UNDERGROUND;
+            case BandLaneAssigner.NETHER -> Lane.NETHER;
+            case BandLaneAssigner.END -> Lane.END;
+            case BandLaneAssigner.AETHER -> Lane.AETHER;
+            case BandLaneAssigner.TWILIGHT -> Lane.TWILIGHT;
+            case BandLaneAssigner.STARLIGHT -> Lane.STARLIGHT;
+            case BandLaneAssigner.OTHERSIDE -> Lane.OTHERSIDE;
+            case BandLaneAssigner.VOIDSCAPE -> Lane.VOIDSCAPE;
+            default -> null;
+        };
     }
 
     private static int firstOf(Lane[] lanes, Lane lane) {
@@ -131,7 +107,7 @@ public final class BandLayout {
                 return i;
             }
         }
-        return 0;
+        return -1;
     }
 
     public static boolean isTwilight(ChunkGenerator delegate) {
@@ -249,63 +225,6 @@ public final class BandLayout {
         return u * u * (3.0f - 2.0f * u);
     }
 
-    private int assign(int region, int previous) {
-        int distance = Math.abs(region);
-        Lane fixed = fixedLane(distance);
-        if (fixed != null) {
-            return firstLane(fixed);
-        }
-        if (distance >= 8 && distance <= 15) {
-            return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER);
-        }
-        if (distance >= 16 && distance <= 31) {
-            return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER, Lane.MOD);
-        }
-        return pick(region, previous, Lane.SURFACE, Lane.UNDERGROUND, Lane.NETHER, Lane.END, Lane.MOD);
-    }
-
-    private int pick(int region, int previous, Lane... wanted) {
-        int total = 0;
-        for (int i = 0; i < this.lanes.length; i++) {
-            if (i == previous || !contains(wanted, this.lanes[i])) {
-                continue;
-            }
-            total += weight(this.lanes[i]);
-        }
-        if (total <= 0) {
-            return previous;
-        }
-        int roll = mix(this.seed, region);
-        if (roll < 0) {
-            roll = ~roll;
-        }
-        roll %= total;
-        for (int i = 0; i < this.lanes.length; i++) {
-            if (i == previous || !contains(wanted, this.lanes[i])) {
-                continue;
-            }
-            int w = weight(this.lanes[i]);
-            if (roll < w) {
-                return i;
-            }
-            roll -= w;
-        }
-        return previous;
-    }
-
-    private static boolean contains(Lane[] wanted, Lane lane) {
-        for (Lane value : wanted) {
-            if (value == lane) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static int weight(Lane lane) {
-        return lane == Lane.SURFACE ? SURFACE_WEIGHT : 1;
-    }
-
     private void requireLane(Lane lane) {
         if (firstLane(lane) < 0) {
             throw new IllegalStateException("rotating delegates missing " + lane);
@@ -321,6 +240,25 @@ public final class BandLayout {
         return -1;
     }
 
+    private static byte[] kindsOf(Lane[] lanes) {
+        byte[] kinds = new byte[lanes.length];
+        for (int i = 0; i < lanes.length; i++) {
+            kinds[i] = switch (lanes[i]) {
+                case SURFACE -> BandLaneAssigner.SURFACE;
+                case UNDERGROUND -> BandLaneAssigner.UNDERGROUND;
+                case NETHER -> BandLaneAssigner.NETHER;
+                case END -> BandLaneAssigner.END;
+                case AETHER -> BandLaneAssigner.AETHER;
+                case TWILIGHT -> BandLaneAssigner.TWILIGHT;
+                case STARLIGHT -> BandLaneAssigner.STARLIGHT;
+                case OTHERSIDE -> BandLaneAssigner.OTHERSIDE;
+                case VOIDSCAPE -> BandLaneAssigner.VOIDSCAPE;
+                case MOD -> BandLaneAssigner.MOD;
+            };
+        }
+        return kinds;
+    }
+
     private static Lane[] classify(List<ChunkGenerator> delegates) {
         Lane[] lanes = new Lane[delegates.size()];
         for (int i = 0; i < delegates.size(); i++) {
@@ -330,25 +268,18 @@ public final class BandLayout {
     }
 
     private static Lane laneOf(ChunkGenerator delegate) {
-        if (delegate instanceof SlicedOverworldChunkGenerator sliced) {
-            return switch (sliced.slice()) {
-                case SURFACE -> Lane.SURFACE;
-                case UNDERGROUND -> Lane.UNDERGROUND;
-            };
-        }
-        ResourceLocation settings = noiseSettings(delegate);
-        if (settings != null) {
-            if ("minecraft".equals(settings.getNamespace()) && "overworld".equals(settings.getPath())) {
-                return Lane.SURFACE;
-            }
-            if ("minecraft".equals(settings.getNamespace()) && "nether".equals(settings.getPath())) {
-                return Lane.NETHER;
-            }
-            if ("minecraft".equals(settings.getNamespace()) && "end".equals(settings.getPath())) {
-                return Lane.END;
-            }
-        }
-        return Lane.MOD;
+        return switch (laneName(delegate)) {
+            case "surface" -> Lane.SURFACE;
+            case "underground" -> Lane.UNDERGROUND;
+            case "nether" -> Lane.NETHER;
+            case "end" -> Lane.END;
+            case "aether" -> Lane.AETHER;
+            case "twilight" -> Lane.TWILIGHT;
+            case "starlight" -> Lane.STARLIGHT;
+            case "deeperdarker" -> Lane.OTHERSIDE;
+            case "voidscape" -> Lane.VOIDSCAPE;
+            default -> Lane.MOD;
+        };
     }
 
     private static ResourceLocation noiseSettings(ChunkGenerator delegate) {
@@ -359,16 +290,5 @@ public final class BandLayout {
             return null;
         }
         return noise.generatorSettings().unwrapKey().map(key -> key.location()).orElse(null);
-    }
-
-    private static int mix(long seed, int region) {
-        long x = seed;
-        x ^= (long) region * 0x9E3779B97F4A7C15L;
-        x ^= x >>> 33;
-        x *= 0xff51afd7ed558ccdL;
-        x ^= x >>> 33;
-        x *= 0xc4ceb9fe1a85ec53L;
-        x ^= x >>> 33;
-        return (int) x;
     }
 }
