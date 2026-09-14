@@ -4,7 +4,9 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import javax.annotation.Nullable;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceKey;
@@ -13,9 +15,12 @@ import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.biome.BiomeSource;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
+import net.minecraft.world.level.levelgen.blending.Blender;
 import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
@@ -106,6 +111,50 @@ public final class YShiftedNoiseChunkGenerator extends NoiseBasedChunkGenerator 
     @Override
     public void buildSurface(WorldGenRegion level, StructureManager structures, RandomState random, ChunkAccess chunk) {
         YShiftScope.run(this.yOffset, () -> super.buildSurface(level, structures, random, chunk));
+    }
+
+    @Override
+    public CompletableFuture<ChunkAccess> fillFromNoise(
+            Blender blender,
+            RandomState random,
+            StructureManager structures,
+            ChunkAccess chunk
+    ) {
+        int noiseMinY = this.generatorSettings().value().noiseSettings().minY();
+        BlockState fill = this.generatorSettings().value().defaultBlock();
+        return super.fillFromNoise(blender, random, structures, chunk)
+                .thenApply(filled -> fillBelowNoise(filled, noiseMinY, fill));
+    }
+
+    private static ChunkAccess fillBelowNoise(ChunkAccess chunk, int noiseMinY, BlockState fill) {
+        int minY = chunk.getMinBuildHeight();
+        if (minY >= noiseMinY) {
+            return chunk;
+        }
+        BlockState bedrock = Blocks.BEDROCK.defaultBlockState();
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        int minX = chunk.getPos().getMinBlockX();
+        int minZ = chunk.getPos().getMinBlockZ();
+        for (int sectionIndex = 0; sectionIndex < chunk.getSectionsCount(); sectionIndex++) {
+            chunk.getSection(sectionIndex).acquire();
+        }
+        try {
+            for (int lx = 0; lx < 16; lx++) {
+                for (int lz = 0; lz < 16; lz++) {
+                    int x = minX + lx;
+                    int z = minZ + lz;
+                    for (int y = minY; y < noiseMinY; y++) {
+                        cursor.set(x, y, z);
+                        chunk.setBlockState(cursor, y <= minY + 4 ? bedrock : fill, false);
+                    }
+                }
+            }
+        } finally {
+            for (int sectionIndex = 0; sectionIndex < chunk.getSectionsCount(); sectionIndex++) {
+                chunk.getSection(sectionIndex).release();
+            }
+        }
+        return chunk;
     }
 
     @Override
