@@ -75,16 +75,18 @@ public final class BandLayout {
 
     /**
      * True when blockX is a region-boundary column (local X == 0) and both adjacent regions
-     * draw from the same lane, e.g. spawn-adjacent 0/1 (both surface) or 5/6 (both
-     * underground). Such boundaries get no partition wall and no warp gate — see
-     * {@link RegionBoundaryWall}.
+     * share a {@link #laneName} identity, e.g. spawn-adjacent 0/1 (both surface) or 5/6
+     * (both underground). The layout picker buckets every modded latitude as {@link Lane#MOD}
+     * for weighted rolls; that bucket is not a wall identity — twilight vs starlight (or
+     * aether vs voidscape, …) still count as different lanes. Same-name boundaries get no
+     * partition wall and no warp gate — see {@link RegionBoundaryWall}.
      */
     public boolean sameLaneAcrossBoundary(int blockX, int bandSize) {
         if (Math.floorMod(blockX, bandSize) != 0) {
             return false;
         }
         int region = regionOfBlockX(blockX, bandSize);
-        return this.lanes[this.delegateIndex(region - 1)] == this.lanes[this.delegateIndex(region)];
+        return laneName(this.delegate(region - 1)).equals(laneName(this.delegate(region)));
     }
 
     public static boolean isSurfaceOverworld(ChunkGenerator delegate) {

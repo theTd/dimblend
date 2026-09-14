@@ -4,6 +4,7 @@ import dimblend.DimBlendRegistries;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -14,12 +15,13 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
  * Region partition wall + warp gate at band boundaries.
  *
  * Every region boundary column (block X = k * band_size) that separates two different
- * lanes gets a full-height wall of Biomes O' Plenty's null block. Inside the railway
- * corridor cross-section the wall yields to warp gate blocks, which replace the carved
- * vault, the track, and the roadbed. Passage through the gate is controlled at runtime by
- * {@link WarpGatePassageGuard}; the gate block itself is collision-free.
+ * {@link BandLayout#laneName} identities gets a full-height wall of Biomes O' Plenty's
+ * null block. Inside the railway corridor cross-section the wall yields to warp gate
+ * blocks, which replace the carved vault, the track, and the roadbed. Passage through
+ * the gate is controlled at runtime by {@link WarpGatePassageGuard}; the gate block
+ * itself is collision-free.
  *
- * Boundaries whose adjacent regions share a lane (see
+ * Boundaries whose adjacent regions share a lane name (see
  * {@link BandLayout#sameLaneAcrossBoundary}) get nothing — those stay open corridors.
  *
  * Ownership rule: {@link OakTrackCorridor} never touches boundary columns (see the skip in
@@ -43,26 +45,35 @@ public final class RegionBoundaryWall {
             throw new IllegalStateException("missing required block " + WALL_ID);
         }
         BlockState wall = wallBlock.defaultBlockState();
-        int wallX = chunk.getPos().getMinBlockX();
-        if (ownsBoundaryColumn(rotating, wallX)) {
-            writeColumn(chunk, rotating, wallX, wall);
-        }
-        // Our column can be dirtied by the west neighbor decorating after us: feature
-        // overhang (leaves, snow, fluids) spills across the border into our minX column.
-        // Mirror OakTrackCorridor.placeLoadedVaultNeighbors and rewrite the east
-        // neighbor's boundary column whenever it is present, so whichever side decorates
-        // last leaves the column in its final wall/gate state.
-        int eastWallX = chunk.getPos().getMaxBlockX() + 1;
-        if (ownsBoundaryColumn(rotating, eastWallX)
-                && level.hasChunk(chunk.getPos().x + 1, chunk.getPos().z)) {
-            writeColumn(level.getChunk(chunk.getPos().x + 1, chunk.getPos().z), rotating, eastWallX, wall);
+        // Feature overhang (leaves, snow, fluids, trees) spills from any neighbor into a
+        // boundary column after this chunk already wrote it. Mirror
+        // OakTrackCorridor.placeLoadedVaultNeighbors: rewrite every loaded 3x3 chunk whose
+        // west edge is a wall-owned boundary, so whichever side decorates last leaves the
+        // column in its final wall/gate state. The previous east-only rewrite missed
+        // north/south (and diagonal) spills along the same wall X.
+        ChunkPos origin = chunk.getPos();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                ChunkAccess target;
+                if (dx == 0 && dz == 0) {
+                    target = chunk;
+                } else if (level.hasChunk(origin.x + dx, origin.z + dz)) {
+                    target = level.getChunk(origin.x + dx, origin.z + dz);
+                } else {
+                    continue;
+                }
+                int wallX = target.getPos().getMinBlockX();
+                if (ownsBoundaryColumn(rotating, wallX)) {
+                    writeColumn(target, rotating, wallX, wall);
+                }
+            }
         }
     }
 
     /**
      * True when this block column is a boundary owned by the wall/gate, i.e. a region
-     * boundary whose two sides differ in lane. Shared by worldgen and
-     * {@link WarpGatePassageGuard} so both always agree on where gates exist.
+     * boundary whose two sides differ in {@link BandLayout#laneName}. Shared by worldgen
+     * and {@link WarpGatePassageGuard} so both always agree on where gates exist.
      */
     public static boolean ownsBoundaryColumn(RotatingChunkGenerator rotating, int blockX) {
         int bandSize = rotating.bandSize();

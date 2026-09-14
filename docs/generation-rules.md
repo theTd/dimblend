@@ -39,7 +39,7 @@
 - [x] 轨道硬度和基岩一样（等效实现：挖掘进度归零 + 破坏/扳手事件取消 + 防爆，见 `CorridorTrackProtector` / `BlockBehaviourMixin`）
 - [ ] 取消轨道碰撞箱
 - [x] 阻止玩家用扳手拆除轨道（Create 扳手与手拆同走 `BlockEvent.BreakEvent`，一并取消；创造模式放行，同基岩）
-- [x] 每个区域之间生成隔墙（`RegionBoundaryWall`：不同 lane 边界整列基岩墙；同 lane 边界保持开放）
+- [x] 每个区域之间生成隔墙（`RegionBoundaryWall`：不同 `laneName` 边界整列墙；同名边界保持开放，如连续地表 0/1、连续地下 5/6。mod 纬度按具体名区分，暮色/星光/天域等相邻仍建墙）
 - [x] 轨道洞穴大小的区域填充「折越门」方块，覆盖铁轨和地基（`WarpGateBlock` 填充走廊截面，含轨道与路基格）
 - [x] 折越门方块阻止任何未授权实体通过（`WarpGatePassageGuard`：非玩家实体一律拦截；生存玩家需站在 Sable 结构上，创造/旁观直接放行）
 - [ ] 左下角物品栏左侧显示当前区域序号 + 以玩家当前位置为准的行进进度
