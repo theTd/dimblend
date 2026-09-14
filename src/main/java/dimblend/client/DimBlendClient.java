@@ -22,6 +22,7 @@ public final class DimBlendClient {
         modBus.addListener(DimBlendClient::onRegisterGuiLayers);
         modBus.addListener(DimBlendClient::onRegisterDimensionSpecialEffects);
         NeoForge.EVENT_BUS.addListener(TwilightBandFog::onRenderFog);
+        NeoForge.EVENT_BUS.addListener(TwilightBandFog::onComputeFogColor);
         NeoForge.EVENT_BUS.addListener(TwilightBandFog::onLevelUnload);
     }
 

@@ -7,6 +7,7 @@ import dimblend.worldgen.RotatingBiomeSource;
 import dimblend.worldgen.RotatingChunkGenerator;
 import dimblend.worldgen.SlicedOverworldBiomeSource;
 import dimblend.worldgen.SlicedOverworldChunkGenerator;
+import dimblend.worldgen.YShiftedBiomeSource;
 import dimblend.worldgen.YShiftedDensity;
 import dimblend.worldgen.YShiftedNoiseChunkGenerator;
 
@@ -66,6 +67,8 @@ public final class DimBlendRegistries {
 
     public static final DeferredHolder<MapCodec<? extends BiomeSource>, MapCodec<SlicedOverworldBiomeSource>> SLICED_OVERWORLD_BIOME_SOURCE =
             BIOME_SOURCES.register("sliced_overworld", () -> SlicedOverworldBiomeSource.CODEC);
+    public static final DeferredHolder<MapCodec<? extends BiomeSource>, MapCodec<YShiftedBiomeSource>> Y_SHIFTED_BIOME_SOURCE =
+            BIOME_SOURCES.register("y_shifted", () -> YShiftedBiomeSource.CODEC);
 
 
     public static final ResourceKey<Level> ROTATING_LEVEL =

@@ -32,9 +32,9 @@ import twilightforest.client.TwilightForestRenderInfo;
  */
 public final class RotatingDimensionEffects extends DimensionSpecialEffects.OverworldEffects {
 
-    /** Same construction parameters as TF's registration (cloudLevel 128, SkyType.NONE). */
+    /** Clouds sit 128 above original TF sea (0); after +64 lift they stay 128 above sea 64. */
     private final TwilightForestRenderInfo twilight = new TwilightForestRenderInfo(
-            128.0F, false, DimensionSpecialEffects.SkyType.NONE, false, false);
+            192.0F, false, DimensionSpecialEffects.SkyType.NONE, false, false);
 
     @Override
     @Nullable

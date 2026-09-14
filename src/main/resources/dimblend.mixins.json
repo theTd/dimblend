@@ -4,15 +4,40 @@
   "compatibilityLevel": "JAVA_21",
   "minVersion": "0.8",
   "mixins": [
+    "BedBlockMixin",
     "BetterCavesMasterControllerMixin",
     "BlockBehaviourMixin",
     "ConfiguredFeatureMixin",
+    "DecorationClearanceMixin",
     "DistanceManagerAccessor",
     "ChunkMapAccessor",
     "ChunkMapMixin",
     "ChunkHolderMixin",
+    "BiasedToBottomHeightMixin",
+    "UniformHeightMixin",
+    "MobSunBurnMixin",
+    "NoiseBasedChunkGeneratorMixin",
     "SignalPropagatorMixin",
-    "TrackPropagatorMixin"
+    "StructureStartMixin",
+    "TrackPropagatorMixin",
+    "VerticalAnchorAbsoluteMixin",
+    "WorldGenerationContextMixin",
+    "twilight.CapabilityEventsMixin",
+    "twilight.EmptyMagicMapItemMixin",
+    "twilight.EndermanTakeBlockGoalMixin",
+    "twilight.FinalCastleEntranceTowerMixin",
+    "twilight.GrowingBeanstalkMixin",
+    "twilight.HydraLairStructureMixin",
+    "twilight.LabyrinthStructureMixin",
+    "twilight.LocationPredicateMixin",
+    "twilight.MagicMapItemMixin",
+    "twilight.MazeEntranceShaftMixin",
+    "twilight.StrongholdUpperAscenderMixin",
+    "twilight.TFDimensionMixin",
+    "twilight.TFPortalBlockMixin",
+    "twilight.TFTeleportCommandMixin",
+    "twilight.TravellersGearLogicMixin",
+    "twilight.YetiCaveStructureMixin"
   ],
   "client": [
     "BiomeManagerMixin",
@@ -21,7 +46,10 @@
     "ClientLevelAccessor",
     "ClientLevelDataMixin",
     "ClientLevelMixin",
-    "ShaderInstanceMixin"
+    "ShaderInstanceMixin",
+    "twilight.ClientGameEventsMixin",
+    "twilight.TFDimensionClientMixin",
+    "twilight.StructureProtectionPacketMixin"
   ],
   "injectors": {
     "defaultRequire": 1

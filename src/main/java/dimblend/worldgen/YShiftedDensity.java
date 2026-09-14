@@ -16,7 +16,9 @@ import net.minecraft.world.level.levelgen.blending.Blender;
  *
  * <p>Used to lift another mod's noise terrain (Twilight Forest, +64) by referencing that
  * mod's own NoiseGeneratorSettings instead of forking its density functions and surface
- * rules into data files that must be manually kept in sync.
+ * rules into data files that must be manually kept in sync. The matching biome-column
+ * shift lives in {@link YShiftedBiomeSource}; structure Y unclamp in
+ * {@link YShiftedStructureElevation}. Both run on the y-shifted delegate itself.
  *
  * <p>The shifted context is a plain delegate; {@link ShiftedContext} keeps a mutable delegate
  * slot so {@link #fillArray} can reuse one wrapper per batch instead of allocating per cell.
