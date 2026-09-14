@@ -170,7 +170,6 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
     public void applyBiomeDecoration(WorldGenLevel level, ChunkAccess chunk, StructureManager structures) {
         this.inner.applyBiomeDecoration(level, chunk, structures);
         if (this.slice == OverworldSlice.SURFACE) {
-            this.replaceCopperBelowSourceY64(chunk);
             this.sealSlice(chunk);
             this.reprimeHeightmaps(chunk);
             return;
@@ -325,7 +324,7 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
                     if (targetY < chunk.getMinBuildHeight() || targetY >= chunk.getMaxBuildHeight()) {
                         continue;
                     }
-                    chunk.setBlockState(cursor.set(minX + lx, targetY, minZ + lz), replaceCopper(sourceMin + dy, blocks[lx][lz][dy]), false);
+                    chunk.setBlockState(cursor.set(minX + lx, targetY, minZ + lz), blocks[lx][lz][dy], false);
                 }
             }
         }
@@ -506,36 +505,6 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
             }
             proto.markPosForPostprocessing(new BlockPos(sourcePos.getX(), targetY, sourcePos.getZ()));
         }
-    }
-
-    private void replaceCopperBelowSourceY64(ChunkAccess chunk) {
-        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        int minX = chunk.getPos().getMinBlockX();
-        int minZ = chunk.getPos().getMinBlockZ();
-        int minY = chunk.getMinBuildHeight();
-        int maxY = chunk.getMaxBuildHeight() - 1;
-        for (int lx = 0; lx < 16; lx++) {
-            for (int lz = 0; lz < 16; lz++) {
-                for (int y = minY; y <= maxY; y++) {
-                    cursor.set(minX + lx, y, minZ + lz);
-                    BlockState current = chunk.getBlockState(cursor);
-                    BlockState replaced = replaceCopper(this.slice.toSourceY(y), current);
-                    if (replaced != current) {
-                        chunk.setBlockState(cursor, replaced, false);
-                    }
-                }
-            }
-        }
-    }
-
-    private static BlockState replaceCopper(int sourceY, BlockState current) {
-        if (sourceY >= 64) {
-            return current;
-        }
-        if (current.is(Blocks.COPPER_ORE) || current.is(Blocks.DEEPSLATE_COPPER_ORE) || current.is(Blocks.RAW_COPPER_BLOCK)) {
-            return Blocks.ANDESITE.defaultBlockState();
-        }
-        return current;
     }
 
     private static BlockState air() {

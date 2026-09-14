@@ -125,6 +125,11 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         return this.bandIndexBlock(blockX);
     }
 
+    /** Delegate that owns {@code blockX}, same resolution as chunk generation. */
+    public ChunkGenerator delegateForBlockX(int blockX) {
+        return this.delegates.get(this.delegateIndexForBlockX(blockX));
+    }
+
     private int bandIndexBlock(int blockX) {
         int region = BandLayout.regionOfBlockX(blockX, this.bandSize);
         BandLayout layout = this.layoutOrNull();

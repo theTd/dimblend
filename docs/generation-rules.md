@@ -35,7 +35,8 @@
 
 ## 二、全局规则
 
-- [ ] 矿石以矿堆为计，数量减半，每堆规模不变
+- [x] 矿石以矿堆为计，数量减半，每堆规模不变（`OrePileRules`：劫持 `ConfiguredFeature.place`，对矿物 `OreConfiguration` 堆 50% 取消；`size` 不改，门控 RNG 与塑形 RNG 分离）
+- [x] 每次尝试生成矿物时 50% 概率整堆替换为安山岩（存活堆再掷一次，目标 RuleTest / size / 暴露丢弃率保持原样）
 - [x] 轨道硬度和基岩一样（等效实现：挖掘进度归零 + 破坏/扳手事件取消 + 防爆，见 `CorridorTrackProtector` / `BlockBehaviourMixin`）
 - [ ] 取消轨道碰撞箱
 - [x] 阻止玩家用扳手拆除轨道（Create 扳手与手拆同走 `BlockEvent.BreakEvent`，一并取消；创造模式放行，同基岩）
@@ -51,7 +52,7 @@
 - [x] 生成轨道：**桦木宽轨**，有路基（`CorridorTrackProfile.SURFACE`）
 - [x] 时间恢复正常流逝
 - [ ] 生成区间改为 **Y0 以上**
-- [ ] 仅生成 煤 / 铜 / 铁 / 金 / 锌 五种矿石
+- [x] 仅生成 煤 / 铜 / 铁 / 金 / 锌 五种矿石（地表 lane 上其它矿物堆直接取消；锌走 `c:ores/zinc` + 方块 id）
 
 ### 地下（Underground）
 
