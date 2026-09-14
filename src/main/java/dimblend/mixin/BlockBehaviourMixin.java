@@ -3,6 +3,7 @@ package dimblend.mixin;
 import com.simibubi.create.content.trains.track.TrackBlock;
 import dimblend.DimBlendRegistries;
 import dimblend.compat.CorridorTrackProtector;
+import dimblend.worldgen.RegionBoundaryWallProtector;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.BlockGetter;
@@ -28,10 +29,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * {@link CorridorTrackProtector#isCorridorTrackPos}.
  *
  * <p>Companion server-side enforcement lives in
- * {@link dimblend.compat.CorridorTrackProtector} (BlockEvent.BreakEvent and
- * ExplosionEvent.Detonate); this mixin only affects the digging-feel path.
- * Non-corridor Create tracks everywhere, and all blocks in other dimensions,
- * pass through untouched.
+ * {@link dimblend.compat.CorridorTrackProtector} and
+ * {@link dimblend.worldgen.RegionBoundaryWallProtector} (BreakEvent, explosion,
+ * piston). This mixin only affects the digging-feel path. Wall protection uses
+ * the same {@link RegionBoundaryWallProtector#isProtectedWall} predicate as the
+ * server events (rotating dimension + null_block + boundary column), so BOP End
+ * Corruption trunks in End bands stay mineable.
  */
 @Mixin(BlockBehaviour.class)
 public abstract class BlockBehaviourMixin {
@@ -47,6 +50,18 @@ public abstract class BlockBehaviourMixin {
             return;
         }
         if (CorridorTrackProtector.isCorridorTrackPos(pos)) {
+            cir.setReturnValue(0f);
+        }
+    }
+
+    @Inject(method = "getDestroyProgress", at = @At("HEAD"), cancellable = true)
+    private void dimblend$boundaryWallDestroyProgress(
+            BlockState state, Player player, BlockGetter level, BlockPos pos,
+            CallbackInfoReturnable<Float> cir) {
+        if (!RegionBoundaryWallProtector.isWallBlock(state)) {
+            return;
+        }
+        if (RegionBoundaryWallProtector.isProtectedWall(level, pos, state)) {
             cir.setReturnValue(0f);
         }
     }

@@ -28,6 +28,12 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
  * Ownership rule: {@link OakTrackCorridor} never touches boundary columns (see the skip in
  * its carve loop), so neighbor re-carves during decoration cannot wipe the gate after this
  * pass wrote it. This class exclusively owns boundary columns.
+ *
+ * The wall cube itself is BOP null_block (normal hardness, piston-normal). Survival
+ * mining / explosions / vanilla pistons are blocked by {@link RegionBoundaryWallProtector};
+ * warp-gate cells already use {@code strength(-1, 3600000)} and {@code PushReaction.BLOCK}.
+ * BOP End Corruption also places this block as tree trunks in End bands — protection is
+ * column-scoped so those trunks stay mineable.
  */
 public final class RegionBoundaryWall {
     public static final ResourceLocation WALL_ID =
