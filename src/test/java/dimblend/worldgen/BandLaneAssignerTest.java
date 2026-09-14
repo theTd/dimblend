@@ -49,13 +49,13 @@ class BandLaneAssignerTest {
             BandLaneAssigner assigner = new BandLaneAssigner(PRODUCTION_KINDS, seed);
             assertRandomAdjacentDistinct(assigner, 21, 80, seed);
             assertRandomAdjacentDistinct(assigner, -80, -21, seed);
-            assertWindowCoverage(assigner, 22, 31, seed);
-            assertWindowCoverage(assigner, -31, -22, seed);
-            assertWindowCoverage(assigner, 33, 48, seed);
-            assertWindowCoverage(assigner, 49, 64, seed);
-            assertWindowCoverage(assigner, 65, 80, seed);
-            assertWindowCoverage(assigner, -48, -33, seed);
-            assertWindowCoverage(assigner, -64, -49, seed);
+            assertWindowCoverage(assigner, PRODUCTION_KINDS, 22, 31, seed);
+            assertWindowCoverage(assigner, PRODUCTION_KINDS, -31, -22, seed);
+            assertWindowCoverage(assigner, PRODUCTION_KINDS, 33, 48, seed);
+            assertWindowCoverage(assigner, PRODUCTION_KINDS, 49, 64, seed);
+            assertWindowCoverage(assigner, PRODUCTION_KINDS, 65, 80, seed);
+            assertWindowCoverage(assigner, PRODUCTION_KINDS, -48, -33, seed);
+            assertWindowCoverage(assigner, PRODUCTION_KINDS, -64, -49, seed);
             assertPool(assigner, 22, 31, BandLaneAssigner.pool(22), seed);
             assertPool(assigner, 33, 48, BandLaneAssigner.pool(33), seed);
         }
@@ -72,7 +72,7 @@ class BandLaneAssignerTest {
     }
 
     @Test
-    void missingFixedModFallsBackToSurface() {
+    void missingOptionalModFallsBackAndStillCoversRemaining() {
         byte[] kinds = {
             BandLaneAssigner.SURFACE,
             BandLaneAssigner.UNDERGROUND,
@@ -83,10 +83,28 @@ class BandLaneAssignerTest {
             BandLaneAssigner.OTHERSIDE,
             BandLaneAssigner.VOIDSCAPE
         };
-        BandLaneAssigner assigner = new BandLaneAssigner(kinds, 1L);
-        assertEquals(0, assigner.delegateIndex(16), "region 16 without aether");
-        assertEquals(0, assigner.delegateIndex(-16), "region -16 without aether");
-        assertEquals(4, assigner.delegateIndex(17), "twilight still present");
+        for (long seed = 0; seed < 64; seed++) {
+            BandLaneAssigner assigner = new BandLaneAssigner(kinds, seed);
+            assertEquals(0, assigner.delegateIndex(16), "region 16 without aether seed " + seed);
+            assertEquals(0, assigner.delegateIndex(-16), "region -16 without aether seed " + seed);
+            assertEquals(4, assigner.delegateIndex(17), "twilight still present seed " + seed);
+            assertRandomAdjacentDistinct(assigner, 21, 48, seed);
+            assertWindowCoverage(assigner, kinds, 22, 31, seed);
+            assertWindowCoverage(assigner, kinds, 33, 48, seed);
+        }
+    }
+
+    @Test
+    void positiveAndNegativeRandomSidesAreIndependent() {
+        boolean differed = false;
+        for (long seed = 0; seed < 256; seed++) {
+            BandLaneAssigner assigner = new BandLaneAssigner(PRODUCTION_KINDS, seed);
+            if (assigner.delegateIndex(22) != assigner.delegateIndex(-22)) {
+                differed = true;
+                break;
+            }
+        }
+        assertTrue(differed, "signed-region mix should let +22 and -22 diverge on some seeds");
     }
 
     @Test
@@ -115,15 +133,15 @@ class BandLaneAssignerTest {
         }
     }
 
-    private static void assertWindowCoverage(BandLaneAssigner assigner, int from, int to, long seed) {
+    private static void assertWindowCoverage(BandLaneAssigner assigner, byte[] kinds, int from, int to, long seed) {
         int sample = Math.abs(from) >= Math.abs(to) ? from : to;
         byte[] wanted = BandLaneAssigner.pool(Math.abs(sample));
-        boolean[] seen = new boolean[PRODUCTION_KINDS.length];
+        boolean[] seen = new boolean[kinds.length];
         for (int region = from; region <= to; region++) {
             seen[assigner.delegateIndex(region)] = true;
         }
-        for (int i = 0; i < PRODUCTION_KINDS.length; i++) {
-            if (!contains(wanted, PRODUCTION_KINDS[i])) {
+        for (int i = 0; i < kinds.length; i++) {
+            if (!contains(wanted, kinds[i])) {
                 continue;
             }
             assertTrue(seen[i], "missing delegate " + i + " in " + from + ".." + to + " seed " + seed);

@@ -28,8 +28,11 @@ of Aether, Twilight, Starlight, Otherside and Voidscape), region 32 is always
 the End; regions 22–31 draw from every lane except End, and regions 33+ draw
 from the full pool including End (surface weighted 3×). Each eligible terrain
 is guaranteed at least once per random window (22–31, then every 16 regions
-from 33). Adjacent surface/Twilight bands are merged across a 32-block
-smoothstep seam so the transition has no cliff.
+from 33; positive and negative sides independently). Changing this layout does
+not rewrite already-generated chunks — exploring an old rotating world can
+meet a seam between the previous sequence and the new one; start a new world
+for a consistent map. Adjacent surface/Twilight bands are merged across a
+32-block smoothstep seam so the transition has no cliff.
 
 A vaulted **railway corridor** runs along Z = 0 through every band at
 Y = 64: a wide-gauge Steam 'n' Rails track whose material follows the band's
