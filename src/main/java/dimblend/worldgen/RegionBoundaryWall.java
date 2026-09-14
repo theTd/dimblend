@@ -17,9 +17,10 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
  * Every region boundary column (block X = k * band_size) that separates two different
  * {@link BandLayout#laneName} identities gets a full-height wall of Biomes O' Plenty's
  * null block. Inside the railway corridor cross-section the wall yields to warp gate
- * blocks, which replace the carved vault, the track, and the roadbed. Passage through
- * the gate is controlled at runtime by {@link WarpGatePassageGuard}; the gate block
- * itself is collision-free.
+ * blocks, which replace the carved vault, the track, and the roadbed. The gate is a
+ * wall for unauthorized entities ({@link dimblend.block.WarpGateBlock#getCollisionShape})
+ * and air for Sable's world mesh / Create carriages; {@link WarpGatePassageGuard} is
+ * only the clip/teleport safety net.
  *
  * Boundaries whose adjacent regions share a lane name (see
  * {@link BandLayout#sameLaneAcrossBoundary}) get nothing — those stay open corridors.

@@ -1,29 +1,22 @@
 package dimblend.worldgen;
 
-import dev.ryanhcode.sable.companion.SableCompanion;
 import dimblend.DimBlendRegistries;
+import dimblend.block.WarpGateBlock;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.tick.EntityTickEvent;
 
 /**
- * Runtime passage control for warp gates (see {@link RegionBoundaryWall}).
+ * Clip/teleport safety net for warp gates (see {@link RegionBoundaryWall}).
  *
- * The gate block is collision-free; instead, every entity whose bounding box enters a
- * gate region is pushed back out to the nearest side of the boundary slab unless it may
- * pass:
- *
- * <ul>
- *   <li>players in creative or spectator mode — always;</li>
- *   <li>other players — only while standing on (or riding a vehicle inside) a Sable
- *       physics structure, detected via the JiJ'd sable-companion, which is a safe no-op
- *       returning null when Sable is not installed;</li>
- *   <li>everything else (mobs, minecarts, trains, items, projectiles) — never.</li>
- * </ul>
+ * Walking players are stopped by {@link WarpGateBlock#getCollisionShape}; this guard
+ * still pushes unauthorized entities back out if they spawn, teleport, or otherwise
+ * clip into a gate slab. Passage policy is {@link WarpGateBlock#mayPass} so collision
+ * and this revert cannot disagree (Create carriages / Sable riders pass, other
+ * entities do not).
  */
 public final class WarpGatePassageGuard {
     private WarpGatePassageGuard() {
@@ -54,20 +47,10 @@ public final class WarpGatePassageGuard {
         }
         int slabX = RegionBoundaryWall.overlappedBoundaryColumn(
                 rotating, box.minX, box.maxX, box.minY, box.maxY, box.minZ, box.maxZ);
-        if (slabX < 0 || mayPass(entity)) {
+        if (slabX < 0 || WarpGateBlock.mayPass(entity)) {
             return;
         }
         revert(entity, slabX);
-    }
-
-    private static boolean mayPass(Entity entity) {
-        if (entity instanceof Player player) {
-            if (player.isSpectator() || player.isCreative()) {
-                return true;
-            }
-            return SableCompanion.INSTANCE.getTrackingOrVehicleSubLevel(player) != null;
-        }
-        return false;
     }
 
     /**
