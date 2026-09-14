@@ -35,6 +35,11 @@ public final class OakTrackCorridor {
     public static final int NO_STRUCTURE_CHUNK_RANGE = 16;
     /** Half-width of the cobblestone roadbed under the track. 7 wide = Z[-3, +3]. */
     private static final int ROADBED_HALF_WIDTH = 3;
+    /**
+     * Inclusive |dz| of the underground fluid-to-glass strip above the track.
+     * Width 15 = Z[-7, +7], matching generation-rules.md 地下.
+     */
+    private static final int FLUID_STRIP_HALF_WIDTH = 7;
     /** How deep below the vault floor a tree origin may sit and still lose its support column. */
     private static final int TREE_UNDERMINED_DEPTH = 48;
     private static final Direction[] DIRECTIONS = Direction.values();
@@ -120,6 +125,9 @@ public final class OakTrackCorridor {
             clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, maxDy, carveBedrock, live);
             stabilizeVaultCeiling(chunk, cursor, x, vaultMinZ, vaultMaxZ, maxDy, live);
             writeRoadbed(profile.hasRoadbed(), chunk, cursor, x, minZ, maxZ, live);
+            if (profile == CorridorTrackProfile.UNDERGROUND) {
+                replaceFluidStrip(chunk, cursor, x, minZ, maxZ, fluidStripMaxY(delegate, chunk), trackBlock, live);
+            }
         }
         for (int x = minX; x <= maxX; x++) {
             if (!carved[x - minX]) {
@@ -174,6 +182,50 @@ public final class OakTrackCorridor {
             }
             setCell(chunk, live, cursor, Blocks.COBBLESTONE.defaultBlockState());
         }
+    }
+
+    /**
+     * Underground spec: every fluid in the 15-wide strip at and above the track
+     * becomes glass. Vault air is already empty; this converts the rest of the
+     * aquifer column in that strip, not just the 1-block shell.
+     */
+    private static void replaceFluidStrip(
+            ChunkAccess chunk,
+            BlockPos.MutableBlockPos cursor,
+            int x,
+            int minZ,
+            int maxZ,
+            int maxY,
+            Block trackBlock,
+            @javax.annotation.Nullable ServerLevel live
+    ) {
+        int zMin = Math.max(minZ, CORRIDOR_Z - FLUID_STRIP_HALF_WIDTH);
+        int zMax = Math.min(maxZ, CORRIDOR_Z + FLUID_STRIP_HALF_WIDTH);
+        if (zMin > zMax || TRACK_Y > maxY) {
+            return;
+        }
+        for (int z = zMin; z <= zMax; z++) {
+            for (int y = TRACK_Y; y <= maxY; y++) {
+                cursor.set(x, y, z);
+                BlockState current = chunk.getBlockState(cursor);
+                if (current.is(Blocks.BEDROCK) || current.getBlock() == trackBlock) {
+                    continue;
+                }
+                BlockState glass = glassForFluid(current);
+                if (glass == null || current.is(glass.getBlock())) {
+                    continue;
+                }
+                setCell(chunk, live, cursor, glass);
+            }
+        }
+    }
+
+    private static int fluidStripMaxY(ChunkGenerator delegate, ChunkAccess chunk) {
+        int top = chunk.getMaxBuildHeight() - 1;
+        if (delegate instanceof SlicedOverworldChunkGenerator sliced) {
+            return Math.min(top, sliced.slice().targetMaxExclusiveY() - 1);
+        }
+        return top;
     }
 
     public static boolean touchesVault(int chunkZ) {
@@ -504,13 +556,16 @@ public final class OakTrackCorridor {
     }
 
     private static BlockState glassForFluid(BlockState current) {
-        if (current.getFluidState().is(FluidTags.WATER)) {
-            return Blocks.BLUE_STAINED_GLASS.defaultBlockState();
+        if (current.getFluidState().isEmpty()) {
+            return null;
         }
         if (current.getFluidState().is(FluidTags.LAVA)) {
             return Blocks.RED_STAINED_GLASS.defaultBlockState();
         }
-        return null;
+        if (current.getFluidState().is(FluidTags.WATER)) {
+            return Blocks.BLUE_STAINED_GLASS.defaultBlockState();
+        }
+        return Blocks.GLASS.defaultBlockState();
     }
 
     /** Package-private: also used by {@link RegionBoundaryWall} for the gate ceiling. */
