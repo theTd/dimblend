@@ -5,6 +5,7 @@ import dimblend.DimBlend;
 import dimblend.DimBlendRegistries;
 import dimblend.mixin.ChunkMapAccessor;
 import dimblend.mixin.DistanceManagerAccessor;
+import dimblend.mixin.GenerationChunkHolderAccessor;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -204,7 +205,9 @@ public final class ChunkGenMonitor {
                                 pair.getFirst(),
                                 now - ledger.stamps[slot],
                                 holder.getGenerationRefCount(),
-                                holder.getQueueLevel()
+                                holder.getQueueLevel(),
+                                ((GenerationChunkHolderAccessor) holder).dimblend$startedWork().get(),
+                                holder.getLatestStatus()
                         ));
                     }
                 } else if (trackable && ledger != null && ledger.futures[slot] != null) {
@@ -312,6 +315,7 @@ public final class ChunkGenMonitor {
         }
         if (!stats.stuck().isEmpty()) {
             name.append("  STUCK ").append(stats.stuck().size()).append(": ").append(stats.stuck().get(0).render());
+            name.append("  pool ").append(poolStats());
         }
         return Component.literal(name.toString());
     }
@@ -347,6 +351,10 @@ public final class ChunkGenMonitor {
                 + "  trel " + stats.ticketsToRelease()
                 + "  " + String.format("%.0f", stats.tickMs()) + "ms"
                 + "  pool " + poolStats());
+        ChunkTaskPriorityQueueSorter sorter = ((ChunkMapAccessor) level.getChunkSource().chunkMap).dimblend$getQueueSorter();
+        if (sorter != null) {
+            lines.add("sorter " + sorter.getDebugStatus());
+        }
         PregenController.Snapshot pregen = DimBlend.pregen().snapshot(server);
         lines.add("pregen  fly " + pregen.inFlight()
                 + "  cap " + pregen.cap() + "/" + pregen.maxInFlight()
@@ -361,19 +369,36 @@ public final class ChunkGenMonitor {
     }
 
     /** One stuck future with its aging, for logging and bossbar display. */
-    private record StuckEntry(long chunk, ChunkStatus status, int ageTicks, int refCount, int queueLevel) {
+    private record StuckEntry(
+            long chunk,
+            ChunkStatus status,
+            int ageTicks,
+            int refCount,
+            int queueLevel,
+            ChunkStatus started,
+            ChunkStatus latest
+    ) {
         private String render() {
-            return ChunkPos.getX(this.chunk) + "," + ChunkPos.getZ(this.chunk)
-                    + " " + this.status.getName()
-                    + " " + this.ageTicks / 20 + "s"
-                    + " ref " + this.refCount
-                    + " q " + this.queueLevel;
+            StringBuilder text = new StringBuilder()
+                    .append(ChunkPos.getX(this.chunk)).append(',').append(ChunkPos.getZ(this.chunk))
+                    .append(' ').append(this.status.getName())
+                    .append(' ').append(this.ageTicks / 20).append('s');
+            if (this.started != null) {
+                text.append(" start ").append(this.started.getName());
+            }
+            if (this.latest != null && this.latest != this.status) {
+                text.append(" have ").append(this.latest.getName());
+            }
+            return text.append(" ref ").append(this.refCount)
+                    .append(" q ").append(this.queueLevel)
+                    .toString();
         }
     }
 
     private void logStall(ServerLevel level, EngineStats stats) {
+        ChunkTaskPriorityQueueSorter sorter = ((ChunkMapAccessor) level.getChunkSource().chunkMap).dimblend$getQueueSorter();
         LOGGER.warn("chunkgen stall on {} ({} stuck, {} pend): rate {}/s v {} sort {} main {} unload {} trel {}"
-                        + " | tick {}ms | pool {}",
+                        + " | tick {}ms | pool {} | sorter {}",
                 level.dimension().location(),
                 stats.stuck().size(),
                 stats.pendingFutures(),
@@ -384,7 +409,8 @@ public final class ChunkGenMonitor {
                 stats.unloadBacklog(),
                 stats.ticketsToRelease(),
                 String.format("%.0f", stats.tickMs()),
-                poolStats());
+                poolStats(),
+                sorter != null ? sorter.getDebugStatus() : "n/a");
         PregenController.Snapshot pregen = DimBlend.pregen().snapshot(level.getServer());
         LOGGER.warn("pregen context: fly {} cap {}/{} yield {} foreign {} hold {}",
                 pregen.inFlight(),
