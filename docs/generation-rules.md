@@ -93,7 +93,7 @@
 ### 暮色（Twilight Forest）
 
 - [x] 生成轨道：**标准宽轨**，有路基（`CorridorTrackProfile.TWILIGHT`）
-- [x] 时间锁定 12600–12700（模拟原本的抽搐黄昏效果，区间内缓慢随机游移）
+- [x] 时间锁定 12950–13050（对齐 TF 1.21.1 `fixed_time: 13000` 的永暮亮度；区间内缓慢随机游移。不可用 12600–12700：那一段仍在日落亮侧，lightmap 约为 13000 的 1.5 倍，地形会看起来像白天）
 - [x] 恢复生物群系 shader（`dimblend:rotating` 自定义 DimensionSpecialEffects：相机所在群系属于 twilightforest 时逐帧切到 TF 委托——永暮星空/无日月晚霞/TF 雾色曲线/低空与黑森林浓雾；`TwilightBandFog` 移植 TF FogHandler 雾距平滑）
 
 ### 星光（Eternal Starlight）

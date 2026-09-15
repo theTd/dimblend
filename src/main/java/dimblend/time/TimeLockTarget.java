@@ -14,13 +14,20 @@ public record TimeLockTarget(Mode mode, long time) {
         NONE,
         /** Fixed time of day in a 24000 tick cycle. */
         FIXED,
-        /** Twilight dusk jitter: a fresh random tick in the twilight range per client tick. */
+        /** Twilight dusk jitter around TF's {@code fixed_time: 13000}. */
         TWILIGHT_JITTER
     }
 
-    public static final long TWILIGHT_MIN = 12600L;
-    /** Exclusive upper bound; the spec's 12600–12700 jitter interval. */
-    public static final long TWILIGHT_MAX_EXCLUSIVE = 12701L;
+    /**
+     * Inclusive lower bound of the dusk wander. Twilight Forest 1.21.1 pins the
+     * dimension at {@code fixed_time: 13000} (just after night start); vanilla
+     * lightmap/sky daylight at 12600–12700 is still ~1.5× brighter than that
+     * and reads as daytime on terrain. Keep a 100-tick window centered on 13000
+     * so the old "twitch" remains without climbing back up the sunset curve.
+     */
+    public static final long TWILIGHT_MIN = 12950L;
+    /** Exclusive upper bound; 12950–13050 inclusive. */
+    public static final long TWILIGHT_MAX_EXCLUSIVE = 13051L;
 
     public static final TimeLockTarget NONE = new TimeLockTarget(Mode.NONE, 0L);
 

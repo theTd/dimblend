@@ -13,8 +13,9 @@ import net.minecraft.util.Mth;
  * packets).
  *
  * <p>Twilight dusk is a clamped random walk, not a per-tick full-range roll:
- * the latter visibly shook the sun. The walk shuffles within the spec range
- * (12600–12700) at a slow shimmer rate.
+ * the latter visibly shook the sun. The walk shuffles within
+ * {@link TimeLockTarget#TWILIGHT_MIN} to {@link TimeLockTarget#TWILIGHT_MAX_EXCLUSIVE}
+ * (centered on Twilight Forest's {@code fixed_time: 13000}) at a slow shimmer rate.
  */
 public final class ClientTimeLock {
     private static final double TWILIGHT_STEP = 0.6;
