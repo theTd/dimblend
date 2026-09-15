@@ -1,0 +1,49 @@
+package dimblend.mixin;
+
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import dimblend.worldgen.WorldGenerationContextExtension;
+import dimblend.worldgen.YShiftedStructureElevation;
+import java.util.Optional;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.WorldGenerationContext;
+import net.minecraft.world.level.levelgen.heightproviders.HeightProvider;
+import net.minecraft.world.level.levelgen.structure.structures.JigsawStructure;
+import org.spongepowered.asm.mixin.Final;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.injection.At;
+
+@Mixin(JigsawStructure.class)
+public abstract class JigsawStructureMixin {
+    @Shadow
+    @Final
+    private Optional<Heightmap.Types> projectStartToHeightmap;
+
+    /**
+     * {@code start_height} is added to the heightmap, not used as world Y.
+     * {@link VerticalAnchorAbsoluteMixin} would lift {@code absolute: 0} by the
+     * twilight offset and float the structure.
+     */
+    @WrapOperation(
+            method = "findGenerationPoint",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/world/level/levelgen/heightproviders/HeightProvider;sample(Lnet/minecraft/util/RandomSource;Lnet/minecraft/world/level/levelgen/WorldGenerationContext;)I"
+            )
+    )
+    private int dimblend$keepHeightmapRelativeStartHeight(
+            HeightProvider provider,
+            RandomSource random,
+            WorldGenerationContext context,
+            Operation<Integer> original
+    ) {
+        if (this.projectStartToHeightmap.isEmpty()) {
+            return original.call(provider, random, context);
+        }
+        return YShiftedStructureElevation.sampleWithoutAbsoluteYShift(
+                (WorldGenerationContextExtension) context,
+                () -> original.call(provider, random, context));
+    }
+}

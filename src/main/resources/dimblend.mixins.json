@@ -17,6 +17,7 @@
     "BlockStateBaseMixin",
     "IBlockStateExtensionMixin",
     "ConfiguredFeatureMixin",
+    "JigsawStructureMixin",
     "DecorationClearanceMixin",
     "DistanceManagerAccessor",
     "ChunkMapAccessor",

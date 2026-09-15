@@ -9,6 +9,12 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+/**
+ * Lifts absolute world Y (ores, buried jigsaws without a heightmap) by the
+ * twilight terrain offset. Heightmap-projected jigsaw {@code start_height} is an
+ * offset from the surface, not a world Y — {@link JigsawStructureMixin} clears
+ * this shift while that value is sampled.
+ */
 @Mixin(VerticalAnchor.Absolute.class)
 public abstract class VerticalAnchorAbsoluteMixin {
     @Inject(method = "resolveY", at = @At("RETURN"), cancellable = true)
