@@ -6,7 +6,6 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import javax.annotation.Nullable;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceKey;
@@ -132,25 +131,26 @@ public final class YShiftedNoiseChunkGenerator extends NoiseBasedChunkGenerator 
             return chunk;
         }
         BlockState bedrock = Blocks.BEDROCK.defaultBlockState();
-        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        int minX = chunk.getPos().getMinBlockX();
-        int minZ = chunk.getPos().getMinBlockZ();
-        for (int sectionIndex = 0; sectionIndex < chunk.getSectionsCount(); sectionIndex++) {
+        int sections = chunk.getSectionsCount();
+        for (int sectionIndex = 0; sectionIndex < sections; sectionIndex++) {
             chunk.getSection(sectionIndex).acquire();
         }
         try {
+            // PalettedContainer's ThreadingDetector is a non-reentrant Semaphore(1).
+            // ProtoChunk.setBlockState → section.setBlockState(..., true) → getAndSet → acquire()
+            // would self-deadlock on the permit this loop already holds. Write with useLocks=false
+            // (getAndSetUnchecked), matching vanilla NoiseBasedChunkGenerator.fillFromNoise.
             for (int lx = 0; lx < 16; lx++) {
                 for (int lz = 0; lz < 16; lz++) {
-                    int x = minX + lx;
-                    int z = minZ + lz;
                     for (int y = minY; y < noiseMinY; y++) {
-                        cursor.set(x, y, z);
-                        chunk.setBlockState(cursor, y <= minY + 4 ? bedrock : fill, false);
+                        BlockState state = y <= minY + 4 ? bedrock : fill;
+                        chunk.getSection(chunk.getSectionIndex(y))
+                                .setBlockState(lx, y & 15, lz, state, false);
                     }
                 }
             }
         } finally {
-            for (int sectionIndex = 0; sectionIndex < chunk.getSectionsCount(); sectionIndex++) {
+            for (int sectionIndex = 0; sectionIndex < sections; sectionIndex++) {
                 chunk.getSection(sectionIndex).release();
             }
         }

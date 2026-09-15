@@ -33,6 +33,7 @@
     "TrackPropagatorMixin",
     "VerticalAnchorAbsoluteMixin",
     "WorldGenerationContextMixin",
+    "aether.DungeonBlacklistFilterMixin",
     "twilight.CapabilityEventsMixin",
     "twilight.EmptyMagicMapItemMixin",
     "twilight.EndermanTakeBlockGoalMixin",
