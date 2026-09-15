@@ -85,6 +85,9 @@ neoForge {
         // The gametest system is also enabled by default for other run configs under the /test command.
         gameTestServer {
             type = "gameTestServer"
+            // Isolated from run/mods: the client pack (Sodium etc.) cannot boot a dedicated
+            // GameTest server. This directory only gets Gradle's declared runtime mods.
+            gameDirectory = project.file('run-gametest')
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
 
