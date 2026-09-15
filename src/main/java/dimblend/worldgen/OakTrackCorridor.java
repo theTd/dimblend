@@ -27,7 +27,7 @@ public final class OakTrackCorridor {
     public static final int TRACK_Y = 64;
     /** Inclusive |dz| of the tunnel midsection. Width 19 = Z[-9, +9]. */
     public static final int VAULT_RADIUS = 9;
-    /** Octagon floor-row anchor (shape + fluid-seal floor). Carving opens at dy=0; dy=-1 stays terrain. */
+    /** Octagon floor-row anchor. Carving opens at dy=0; dy=-1 stays terrain and is not fluid-sealed. */
     public static final int VAULT_FLOOR_DY = -1;
     /** Flat ceiling row is this many blocks above the track. */
     public static final int VAULT_APEX_DY = 17;
@@ -188,6 +188,7 @@ public final class OakTrackCorridor {
      * Underground spec: every fluid in the 15-wide strip at and above the track
      * becomes glass. Vault air is already empty; this converts the rest of the
      * aquifer column in that strip, not just the 1-block shell.
+     * Starts at {@link #TRACK_Y}; the roadbed ({@code TRACK_Y - 1}) and below stay as generated.
      */
     private static void replaceFluidStrip(
             ChunkAccess chunk,
@@ -416,7 +417,9 @@ public final class OakTrackCorridor {
                         sealFluidShellCell(chunk, cursor, nx, y, z, minX, maxX, minZ, maxZ, trackBlock, true, maxDy, live);
                         continue;
                     }
-                    if (trackCenter && dir != Direction.DOWN) {
+                    if (trackCenter) {
+                        // Track cell is not air: still seal neighboring X-face at TRACK_Y,
+                        // but skip Y/Z faces so DOWN cannot glass the roadbed.
                         continue;
                     }
                     sealFluidShellCell(
@@ -457,8 +460,11 @@ public final class OakTrackCorridor {
         if (x < minX || x > maxX || z < minZ || z > maxZ) {
             return;
         }
+        if (y < TRACK_Y) {
+            return;
+        }
         if (vaultFace) {
-            if (y < TRACK_Y + VAULT_FLOOR_DY || y > TRACK_Y + maxDy || !inVault(z - CORRIDOR_Z, y - TRACK_Y)) {
+            if (y > TRACK_Y + maxDy || !inVault(z - CORRIDOR_Z, y - TRACK_Y)) {
                 return;
             }
         } else if (!isVaultShellCell(y, z, maxDy)) {
@@ -478,11 +484,8 @@ public final class OakTrackCorridor {
 
     private static boolean isVaultShellCell(int y, int z, int maxDy) {
         int dy = y - TRACK_Y;
-        if (dy < VAULT_FLOOR_DY || dy > maxDy + 1) {
+        if (dy < 0 || dy > maxDy + 1) {
             return false;
-        }
-        if (dy == VAULT_FLOOR_DY) {
-            return true;
         }
         return !inVault(z - CORRIDOR_Z, dy);
     }
