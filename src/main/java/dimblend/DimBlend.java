@@ -10,6 +10,7 @@ import dimblend.diagnostics.HangWatchdog;
 import dimblend.compat.CorridorTrackProtector;
 import dimblend.compat.CreateTrackGraphCompat;
 import dimblend.compat.TerraBlenderRotatingCompat;
+import dimblend.compat.VoidscapeNetherDezombify;
 import dimblend.gametest.CopycatObsidianHardnessGameTests;
 import dimblend.time.TimeLockPayload;
 import dimblend.time.TimeLockSync;
@@ -63,6 +64,7 @@ public final class DimBlend {
         NeoForge.EVENT_BUS.addListener(RegionBoundaryWallProtector::onExplosionDetonate);
         NeoForge.EVENT_BUS.addListener(RegionBoundaryWallProtector::onPistonPre);
         NeoForge.EVENT_BUS.addListener(WarpGatePassageGuard::onEntityTickPost);
+        NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, VoidscapeNetherDezombify::onFinalizeSpawn);
         NeoForge.EVENT_BUS.register(MONITOR);
         NeoForge.EVENT_BUS.register(WATCHDOG);
     }

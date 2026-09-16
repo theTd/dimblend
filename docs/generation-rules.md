@@ -88,7 +88,7 @@
 - [x] 生成轨道：**黑石宽轨**，无路基（`CorridorTrackProfile.NETHER`）
 - [x] 时间锁定 18000
 - [x] 天气走原版
-- [x] 阻止下界生物僵尸化（dimension_type 全局 `piglin_safe: true`）
+- [x] 阻止下界生物僵尸化（dimension_type 全局 `piglin_safe: true`；Voidscape `voidscape:nether` 刷怪表直接刷僵尸猪灵/僵尸疣猪兽，rotating 里在 finalizeSpawn 换成猪灵/疣猪兽）
 
 ### 末地（End）
 
