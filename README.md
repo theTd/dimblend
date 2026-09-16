@@ -65,7 +65,9 @@ locked band read that band's target instead ({@code ServerBandTime}), so End
 endermen keep appearing instead of tracking the shared overworld day cycle.
 End bands additionally swap the overworld sky for vanilla's End skybox
 ({@code end_sky.png}, no sun/moon/stars) via {@code RotatingDimensionEffects},
-keyed off the same per-player lane sync as the HUD.
+keyed off the same per-player lane sync as the HUD. Starlight bands restore
+Eternal Starlight's dead-star sky ({@code ESSkyRenderer}) while the camera
+samples an {@code eternal_starlight} biome.
 
 > Target generation rules (north star spec, tracked as a checklist):
 > [docs/generation-rules.md](docs/generation-rules.md)

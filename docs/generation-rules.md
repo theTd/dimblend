@@ -108,8 +108,9 @@
 ### 星光（Eternal Starlight）
 
 - [x] 生成轨道：**标准宽轨**，取消路基（`CorridorTrackProfile.STARLIGHT`）
-- [x] 时间锁定 14000（取「时间锁定」备选）
+- [x] 时间锁定 14000（取「时间锁定」备选；只管昼夜读数，不管天体位置）
 - [x] 天气走原版
+- [x] 恢复星光天空（`RotatingDimensionEffects`：相机所在群系属于 eternal_starlight 时委托 `ESSkyRenderer`——死星/自定义星场/`SkyType.NONE`/云高 160；ES 天空把死星钉在 12500，与 14000 时间锁解耦）
 - [x] 阻止星光传送门结构生成（覆写 5 个 `eternal_starlight:has_portal_ruins_*` 群系 tag 为空，见 `docs/starlight-portal-structure.md`）
 
 ### 深暗（Deeper & Darker Otherside）

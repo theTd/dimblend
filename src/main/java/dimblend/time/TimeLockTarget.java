@@ -5,9 +5,11 @@ package dimblend.time;
  * north-star spec (docs/generation-rules.md §3). Lane names come from
  * {@link dimblend.worldgen.BandLayout#laneName}.
  *
- * <p>Starlight / voidscape use the spec's "时间锁定" fallback (the "恢复纬度效果"
- * alternative is not implemented). End keeps the 18000 lock for day-cycle
- * reads; the End skybox itself is restored in RotatingDimensionEffects.
+ * <p>Starlight keeps the 14000 lock for day-cycle reads; the starlight skybox
+ * itself is restored in RotatingDimensionEffects. Voidscape uses the spec's
+ * "时间锁定" fallback (the "恢复纬度效果" alternative is not implemented). End
+ * keeps the 18000 lock for day-cycle reads; the End skybox itself is restored
+ * in RotatingDimensionEffects.
  */
 public record TimeLockTarget(Mode mode, long time) {
     public enum Mode {
