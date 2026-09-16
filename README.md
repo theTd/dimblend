@@ -40,8 +40,10 @@ lane — birch (surface), dark oak (underground), blackstone (Nether), phantom
 (End), andesite (Twilight/Starlight/Otherside) or tieless (Aether/Voidscape)
 wide gauge, with a cobblestone roadbed under the surface, underground and
 twilight lanes (`CorridorTrackProfile`) — carved through whatever terrain the
-band generates, including Voidscape bedrock. Structure generation is
-suppressed within 16 chunks of the corridor, and the Create track graph is
+band generates, including Voidscape bedrock. Structure generation (and building-like biome features) is
+suppressed within 16 chunks of the corridor and on both sides of each
+partition wall — same-name continuous bands have no wall and no suppression —
+and the Create track graph is
 stitched lazily once chunks near players are finished.
 
 The corridor track row is bedrock-grade infrastructure: in the rotating

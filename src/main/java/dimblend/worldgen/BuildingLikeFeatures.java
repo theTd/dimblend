@@ -4,10 +4,12 @@ import java.util.List;
 import net.minecraft.world.level.levelgen.feature.Feature;
 
 /**
- * Class-name based small-building detector for corridor retreat, cached per class.
- * Mod structures below the structure-start threshold (Twilight Forest druid huts,
- * wells, ruins, graveyards, foundations, monoliths) ride the biome-decoration
- * feature pipeline, so OakTrackCorridor.dropBlockedStarts never sees them.
+ * Class-name based small-building detector for corridor and partition-wall
+ * retreat, cached per class. Mod structures below the structure-start threshold
+ * (Twilight Forest druid huts, wells, ruins, graveyards, foundations, monoliths)
+ * ride the biome-decoration feature pipeline, so
+ * {@link OakTrackCorridor#dropBlockedStarts} and
+ * {@link RegionBoundaryNoStructureZone#dropBlockedStarts} never see them.
  * Detection walks the superclass chain: every template-based building (subclass of
  * TF's {@code TemplateFeature}) is caught via its family superclass, while the
  * direct-Feature buildings are listed by exact name. Matching is exact-name, not

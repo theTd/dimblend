@@ -57,7 +57,8 @@ public final class BandLayout {
      * share a {@link #laneName} identity, e.g. spawn-adjacent 0/1 (both surface), 5/6
      * (both underground), or 11/12 (both nether). Twilight vs starlight (or aether vs
      * voidscape, …) still count as different lanes. Same-name boundaries get no
-     * partition wall and no warp gate — see {@link RegionBoundaryWall}.
+     * partition wall, no warp gate, and no {@link RegionBoundaryNoStructureZone}
+     * — see {@link RegionBoundaryWall}.
      */
     public boolean sameLaneAcrossBoundary(int blockX, int bandSize) {
         if (Math.floorMod(blockX, bandSize) != 0) {

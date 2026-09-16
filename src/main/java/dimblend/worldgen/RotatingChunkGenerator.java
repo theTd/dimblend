@@ -526,12 +526,15 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         // Fully-contained origin chunks never keep a start. Skip Structure.generate.
         // Empty starts is vanilla-legal (tryGenerateStructure writes only valid starts).
         // Overlap-only and out-of-zone origins still generate; dropBlockedStarts
-        // is the AABB spillover net.
-        if (!OakTrackCorridor.originFullyInsideNoStructureZone(chunk.getPos().z)) {
-            int index = this.bandIndex(chunk.getPos());
+        // is the AABB spillover net (corridor Z and walled-boundary X).
+        ChunkPos pos = chunk.getPos();
+        if (!OakTrackCorridor.originFullyInsideNoStructureZone(pos.z)
+                && !RegionBoundaryNoStructureZone.originFullyInside(this, pos)) {
+            int index = this.bandIndex(pos);
             this.delegates.get(index).createStructures(access, this.delegateState(index), structures, chunk, templates);
         }
         OakTrackCorridor.dropBlockedStarts(chunk);
+        RegionBoundaryNoStructureZone.dropBlockedStarts(this, chunk);
     }
 
     @Override

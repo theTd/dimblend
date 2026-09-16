@@ -23,7 +23,9 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
  * only the clip/teleport safety net.
  *
  * Boundaries whose adjacent regions share a lane name (see
- * {@link BandLayout#sameLaneAcrossBoundary}) get nothing — those stay open corridors.
+ * {@link BandLayout#sameLaneAcrossBoundary}) get nothing — those stay open corridors
+ * and skip {@link RegionBoundaryNoStructureZone}. Walled boundaries get that zone
+ * on both sides so structures cannot grow into the wall.
  *
  * Ownership rule: {@link OakTrackCorridor} never touches boundary columns (see the skip in
  * its carve loop), so neighbor re-carves during decoration cannot wipe the gate after this
@@ -83,11 +85,14 @@ public final class RegionBoundaryWall {
      * and {@link WarpGatePassageGuard} so both always agree on where gates exist.
      */
     public static boolean ownsBoundaryColumn(RotatingChunkGenerator rotating, int blockX) {
-        int bandSize = rotating.bandSize();
+        return ownsBoundaryColumn(rotating.layout(), rotating.bandSize(), blockX);
+    }
+
+    public static boolean ownsBoundaryColumn(BandLayout layout, int bandSize, int blockX) {
         if (Math.floorMod(blockX, bandSize) != 0) {
             return false;
         }
-        return !rotating.layout().sameLaneAcrossBoundary(blockX, bandSize);
+        return !layout.sameLaneAcrossBoundary(blockX, bandSize);
     }
 
     /**
