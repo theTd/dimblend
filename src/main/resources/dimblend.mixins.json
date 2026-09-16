@@ -70,6 +70,7 @@
     "ShaderInstanceMixin",
     "twilight.ClientGameEventsMixin",
     "twilight.TFDimensionClientMixin",
+    "twilight.TwilightForestRenderInfoMixin",
     "twilight.StructureProtectionPacketMixin"
   ],
   "injectors": {

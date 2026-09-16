@@ -102,8 +102,8 @@
 
 - [x] 生成轨道：**标准宽轨**，有路基（`CorridorTrackProfile.TWILIGHT`）
 - [x] 时间锁定 12950–13050（对齐 TF 1.21.1 `fixed_time: 13000` 的永暮亮度；区间内缓慢随机游移。不可用 12600–12700：那一段仍在日落亮侧，lightmap 约为 13000 的 1.5 倍，地形会看起来像白天）
-- [x] 天气走原版
-- [x] 恢复生物群系 shader（`dimblend:rotating` 自定义 DimensionSpecialEffects：相机所在群系属于 twilightforest 时逐帧切到 TF 委托——永暮星空/无日月晚霞/TF 雾色曲线/低空与黑森林浓雾；`TwilightBandFog` 移植 TF FogHandler 雾距平滑）
+- [x] 天气走原版（服务端列天气仍随维度；客户端暮色带遮罩主世界雨/雷，避免天空盘、星空、薄荷雾被共用降水压暗）
+- [x] 恢复生物群系 shader（`dimblend:rotating` 自定义 DimensionSpecialEffects：相机所在群系属于 twilightforest 时逐帧切到 TF 委托——永暮星空/无日月晚霞/TF 雾色曲线/低空与黑森林浓雾；`TwilightBandFog` 只移植 1.21.1 FogHandler 的雾距平滑，不二次乘 dusk 雾色。极光 sheet 与 `isFoggyAt` 的绝对 Y 随 +64 抬升）
 
 ### 星光（Eternal Starlight）
 

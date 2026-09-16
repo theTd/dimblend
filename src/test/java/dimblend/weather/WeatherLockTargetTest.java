@@ -24,4 +24,13 @@ class WeatherLockTargetTest {
         assertFalse(WeatherLockTarget.clearSky("unknown"));
         assertFalse(WeatherLockTarget.clearSky("mod"));
     }
+
+    @Test
+    void clientMaskIncludesTwilightButNotOtherUnlockedLanes() {
+        assertTrue(WeatherLockTarget.clientClearSky("twilight"));
+        assertTrue(WeatherLockTarget.clientClearSky("underground"));
+        assertFalse(WeatherLockTarget.clientClearSky("surface"));
+        assertFalse(WeatherLockTarget.clientClearSky("starlight"));
+        assertFalse(WeatherLockTarget.clientClearSky("end"));
+    }
 }

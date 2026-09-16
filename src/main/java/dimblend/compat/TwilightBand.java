@@ -22,6 +22,20 @@ import net.minecraft.world.level.levelgen.Heightmap;
 public final class TwilightBand {
     public static final int DEFAULT_Y_OFFSET = 64;
 
+    /** World Y of TF's aurora sheet in the real twilight_forest dimension. */
+    public static final int TF_AURORA_Y = 256;
+
+    /** {@code TwilightForestRenderInfo.isFoggyAt} treats Y above this as out of the dark-forest canopy. */
+    public static final int TF_FOGGY_AT_CEILING_Y = 20;
+
+    /**
+     * Absolute Y for a TF-authored client effect after the rotating-dimension
+     * terrain lift. No-op when {@code rotating} is false.
+     */
+    public static double liftedEffectY(double tfWorldY, boolean rotating) {
+        return rotating ? tfWorldY + DEFAULT_Y_OFFSET : tfWorldY;
+    }
+
     private TwilightBand() {
     }
 

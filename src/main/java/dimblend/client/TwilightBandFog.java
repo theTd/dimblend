@@ -10,7 +10,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.material.FogType;
-import net.neoforged.neoforge.client.event.ViewportEvent.ComputeFogColor;
 import net.neoforged.neoforge.client.event.ViewportEvent.RenderFog;
 import net.neoforged.neoforge.event.level.LevelEvent.Unload;
 
@@ -23,6 +22,13 @@ import net.neoforged.neoforge.event.level.LevelEvent.Unload;
  * the rotating dimension, so the same behavior is reproduced here behind the
  * dimblend-specific gate (rotating dimension + camera-side twilightforest
  * biome).
+ *
+ * <p>Fog <em>color</em> is not ported. TF 1.21.1's FogHandler has no color
+ * pass; dusk darkening already lives in
+ * {@code TwilightForestRenderInfo.getBrightnessDependentFogColor}, which
+ * {@link RotatingDimensionEffects} delegates to. A second 0.94/0.06 multiply
+ * (as in later TF sources) made the mint horizon fog roughly twice as dark
+ * as the real TF dimension.</p>
  *
  * <p>One deliberate deviation from the TF original: the chunk-loaded latches
  * are re-armed whenever the gate flips from off to on. TF only ever enters
@@ -42,34 +48,8 @@ public final class TwilightBandFog {
     private static boolean terrainChunkLoaded = false;
     private static float terrainFar = 0.0F;
     private static float terrainNear = 0.0F;
-    private static float spookyPercent = 0.0F;
 
     private TwilightBandFog() {
-    }
-
-    public static void onComputeFogColor(ComputeFogColor event) {
-        if (!(event.getCamera().getEntity() instanceof LocalPlayer player)
-                || !(player.level() instanceof ClientLevel client)
-                || !(client.effects() instanceof RotatingDimensionEffects)
-                || !RotatingDimensionEffects.isTwilightBiome(client, player.blockPosition())) {
-            return;
-        }
-        float[] colors = new float[]{event.getRed(), event.getGreen(), event.getBlue()};
-        boolean spooky = isSpooky(client, player);
-        double time = 13000;
-        double d0 = Mth.frac(time / 24000.0F - 0.25F);
-        double d1 = 0.5F - Math.cos(d0 * Math.PI) / 2.0F;
-        double d2 = (d0 * 2.0F + d1) / 3.0F;
-        float daylight = Mth.clamp(Mth.cos((float) (d2 * (Math.PI * 2))) * 2.0F + 0.5F, 0.0F, 1.0F);
-        if (spooky) {
-            spookyPercent += 0.005F;
-        } else {
-            spookyPercent -= 0.005F;
-        }
-        spookyPercent = Mth.clamp(spookyPercent, 0.0F, 1.0F);
-        event.setRed(Mth.clampedLerp(spookyPercent, colors[0] * daylight * 0.94F + 0.06F, colors[0]));
-        event.setGreen(Mth.clampedLerp(spookyPercent, colors[1] * daylight * 0.94F + 0.06F, colors[1]));
-        event.setBlue(Mth.clampedLerp(spookyPercent, colors[2] * daylight * 0.91F + 0.09F, colors[2]));
     }
 
     public static void onRenderFog(RenderFog event) {
@@ -124,7 +104,6 @@ public final class TwilightBandFog {
         active = false;
         skyChunkLoaded = false;
         terrainChunkLoaded = false;
-        spookyPercent = 0.0F;
     }
 
     private static boolean isSpooky(ClientLevel level, LocalPlayer player) {
