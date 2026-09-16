@@ -3,6 +3,8 @@ package dimblend.mixin;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dimblend.time.ServerBandTime;
+import dimblend.weather.ServerBandWeather;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Mixin;
 
@@ -15,6 +17,7 @@ public abstract class LivingEntityTickMixin {
             original.call();
             return;
         }
-        ServerBandTime.run(self.level(), self.blockPosition(), original::call);
+        BlockPos pos = self.blockPosition();
+        ServerBandTime.run(self.level(), pos, () -> ServerBandWeather.run(self.level(), pos, original::call));
     }
 }

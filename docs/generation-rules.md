@@ -68,6 +68,7 @@
 
 - [x] 生成轨道：**桦木宽轨**，有路基（`CorridorTrackProfile.SURFACE`）
 - [x] 时间恢复正常流逝
+- [x] 天气走原版
 - [x] 生成区间改为 **Y0 以上**（`OverworldSlice.SURFACE`：源 Y0–320，offset 0；底封在 Y-1）
 - [x] 仅生成 煤 / 铜 / 铁 / 金 / 锌 五种矿石（地表 lane 上其它矿物堆直接取消；锌走 `c:ores/zinc` + 方块 id）
 - [x] 取消晶洞类 feature（地表 lane 在 `ConfiguredFeature.place` 拦截 `GeodeConfiguration`，原版紫水晶及走同一配置的模组晶洞一并取消；地下及其它 lane 不拦。原因：地表切片 Y0–320，原版晶洞会在下层冒出来）
@@ -76,6 +77,7 @@
 
 - [x] 生成轨道：**深色橡木宽轨**，有路基（`CorridorTrackProfile.UNDERGROUND`）
 - [x] 时间锁定 22000
+- [x] 天气锁定晴（雨雪是维度级的：客户端按玩家纬度遮罩，服务端只在这些列上当晴天处理）
 - [x] 替换轨道上方 15 格宽内所有流体为玻璃（`OakTrackCorridor.replaceFluidStrip`：地下 lane 在 Z[-7,+7]、Y=64 到切片顶把流体换成玻璃；水/岩浆用蓝/红染色玻璃，其余流体用普通玻璃。八边形 1 格壳 `sealVaultShell` 仍保留，但不替换路基（Y=63）及以下）
 - [x] 阻止海洋生物群系及其变种生成（地下 slice 的 delegate 生成器换装 `OceanFilteredBiomeSource`：`minecraft:is_ocean` 标签 + 蘑菇岛统一回退平原；chunk 群系填充与海洋结构校验同源生效，`possibleBiomes` 同步滤除）
 - [x] 将地下全部生物群系显示为「地下」（显示层方案：Biome Notifier 兼容 mixin 给群系名追加「地下」后缀，如 平原 → 平原地下；未装 Biome Notifier 时无此提示，真实 id 不变）
@@ -84,36 +86,43 @@
 
 - [x] 生成轨道：**黑石宽轨**，无路基（`CorridorTrackProfile.NETHER`）
 - [x] 时间锁定 18000
+- [x] 天气走原版
 - [x] 阻止下界生物僵尸化（dimension_type 全局 `piglin_safe: true`）
 
 ### 末地（End）
 
 - [x] 生成轨道：**幻纱宽轨**，无路基（`CorridorTrackProfile.END`）
 - [x] 时间锁定 18000（末地/星光/深渊取「时间锁定」备选；客户端按玩家锁定，服务端世界时间照流）
+- [x] 天气走原版
 
 ### 暮色（Twilight Forest）
 
 - [x] 生成轨道：**标准宽轨**，有路基（`CorridorTrackProfile.TWILIGHT`）
 - [x] 时间锁定 12950–13050（对齐 TF 1.21.1 `fixed_time: 13000` 的永暮亮度；区间内缓慢随机游移。不可用 12600–12700：那一段仍在日落亮侧，lightmap 约为 13000 的 1.5 倍，地形会看起来像白天）
+- [x] 天气走原版
 - [x] 恢复生物群系 shader（`dimblend:rotating` 自定义 DimensionSpecialEffects：相机所在群系属于 twilightforest 时逐帧切到 TF 委托——永暮星空/无日月晚霞/TF 雾色曲线/低空与黑森林浓雾；`TwilightBandFog` 移植 TF FogHandler 雾距平滑）
 
 ### 星光（Eternal Starlight）
 
 - [x] 生成轨道：**标准宽轨**，取消路基（`CorridorTrackProfile.STARLIGHT`）
 - [x] 时间锁定 14000（取「时间锁定」备选）
+- [x] 天气走原版
 - [x] 阻止星光传送门结构生成（覆写 5 个 `eternal_starlight:has_portal_ruins_*` 群系 tag 为空，见 `docs/starlight-portal-structure.md`）
 
 ### 深暗（Deeper & Darker Otherside）
 
 - [x] 生成轨道：**标准宽轨**，无路基（`CorridorTrackProfile.OTHERSIDE`）
 - [x] 时间锁定 18000
+- [x] 天气锁定晴
 
 ### 天域（Aether Skylands）
 
 - [x] 生成轨道：**无枕木宽轨**，无路基（`CorridorTrackProfile.AETHER`）
 - [x] 时间锁定 4000
+- [x] 天气锁定晴
 
 ### 深渊（Voidscape）
 
 - [x] 生成轨道：**无枕木宽轨**，无路基（`CorridorTrackProfile.VOIDSCAPE`）
 - [x] 恢复 shader，或时间锁定 18000（取「时间锁定」备选）
+- [x] 天气锁定晴
