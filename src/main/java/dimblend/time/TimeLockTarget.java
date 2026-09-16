@@ -1,5 +1,7 @@
 package dimblend.time;
 
+import java.util.OptionalLong;
+
 /**
  * Per-band time-lock target for the rotating dimension, straight from the
  * north-star spec (docs/generation-rules.md §3). Lane names come from
@@ -18,7 +20,15 @@ public record TimeLockTarget(Mode mode, long time) {
         /** Fixed time of day in a 24000 tick cycle. */
         FIXED,
         /** Twilight dusk jitter around TF's {@code fixed_time: 13000}. */
-        TWILIGHT_JITTER
+        TWILIGHT_JITTER;
+
+        /**
+         * Unlock packets write this packet time back into client level data.
+         * Locked modes only pin reads; they must not touch the live field.
+         */
+        public OptionalLong restoreDayTime(long packetTime) {
+            return this == NONE ? OptionalLong.of(packetTime) : OptionalLong.empty();
+        }
     }
 
     /**
@@ -44,6 +54,17 @@ public record TimeLockTarget(Mode mode, long time) {
             case "twilight" -> TWILIGHT;
             default -> NONE;
         };
+    }
+
+    /**
+     * Value written into {@link TimeLockPayload#time()}. Locked bands send
+     * their pin; {@link Mode#NONE} sends the live world day time so the client
+     * can restore the still-running clock on unlock. The record's own
+     * {@link #time()} stays 0 for NONE so change-detection does not fire every
+     * tick on surface bands.
+     */
+    public long payloadTime(long worldDayTime) {
+        return mode == Mode.NONE ? worldDayTime : time;
     }
 
     private static TimeLockTarget fixed(long time) {

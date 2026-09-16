@@ -17,17 +17,13 @@ import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 /**
  * Server side of the per-band time lock. Each player in the rotating
  * dimension is told the {@link TimeLockTarget} of the band they stand in;
- * the client applies it visually (see ClientLevelMixin). Only changes are
- * sent, so this is silent while a player stays in one band.
+ * the client applies it visually (see ClientLevelMixin). Only mode/pin
+ * changes are sent, so this is silent while a player stays in one band.
+ * Unlock packets carry the live world day time (not the NONE sentinel 0)
+ * so the client can snap back to the clock that kept running under the lock.
  */
 public final class TimeLockSync {
-    private final Map<UUID, SentLock> sent = new HashMap<>();
-
-    private record SentLock(int modeId, long time) {
-        static SentLock of(TimeLockTarget target) {
-            return new SentLock(target.mode().ordinal(), target.time());
-        }
-    }
+    private final Map<UUID, TimeLockTarget> sent = new HashMap<>();
 
     @SubscribeEvent
     public void onPlayerTick(PlayerTickEvent.Post event) {
@@ -39,12 +35,26 @@ public final class TimeLockSync {
             this.sent.remove(player.getUUID());
             return;
         }
-        SentLock lock = SentLock.of(targetAt(level, player.getBlockX()));
-        SentLock previous = this.sent.put(player.getUUID(), lock);
-        if (lock.equals(previous)) {
+        TimeLockTarget target = targetAt(level, player.getBlockX());
+        TimeLockTarget previous = this.sent.put(player.getUUID(), target);
+        if (target.equals(previous)) {
             return;
         }
-        player.connection.send(new ClientboundCustomPayloadPacket(new TimeLockPayload(lock.modeId(), lock.time())));
+        // PrimaryLevelData: Level.getDayTime is mixed to the column lock.
+        Wire wire = Wire.of(target, level.getLevelData().getDayTime());
+        player.connection.send(new ClientboundCustomPayloadPacket(
+                new TimeLockPayload(wire.modeId(), wire.time())));
+    }
+
+    /**
+     * Packet body for a lock change. Change detection uses {@link TimeLockTarget}
+     * equality ({@code NONE.time() == 0}), not this payload time, so surface
+     * bands do not resend every tick as the world clock advances.
+     */
+    record Wire(int modeId, long time) {
+        static Wire of(TimeLockTarget target, long worldDayTime) {
+            return new Wire(target.mode().ordinal(), target.payloadTime(worldDayTime));
+        }
     }
 
     @SubscribeEvent

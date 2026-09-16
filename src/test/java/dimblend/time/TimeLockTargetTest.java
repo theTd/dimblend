@@ -3,6 +3,7 @@ package dimblend.time;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.OptionalLong;
 import org.junit.jupiter.api.Test;
 
 class TimeLockTargetTest {
@@ -27,5 +28,28 @@ class TimeLockTargetTest {
         assertEquals(4000L, TimeLockTarget.fromLane("aether").time());
         assertEquals(TimeLockTarget.Mode.NONE, TimeLockTarget.fromLane("surface").mode());
         assertEquals(TimeLockTarget.Mode.NONE, TimeLockTarget.fromLane("unknown").mode());
+    }
+
+    @Test
+    void nonePayloadCarriesWorldDayTime() {
+        assertEquals(0L, TimeLockTarget.NONE.time(), "sentinel stays 0 so change detection does not churn");
+        assertEquals(12345L, TimeLockTarget.NONE.payloadTime(12345L));
+        assertEquals(0L, TimeLockTarget.NONE.payloadTime(0L));
+        assertEquals(24000L * 40L + 6000L, TimeLockTarget.fromLane("surface").payloadTime(24000L * 40L + 6000L));
+    }
+
+    @Test
+    void lockedPayloadIgnoresWorldDayTime() {
+        assertEquals(18000L, TimeLockTarget.fromLane("nether").payloadTime(12345L));
+        assertEquals(4000L, TimeLockTarget.fromLane("aether").payloadTime(12345L));
+        assertEquals(0L, TimeLockTarget.fromLane("twilight").payloadTime(12345L));
+    }
+
+    @Test
+    void onlyNoneRestoresPacketTime() {
+        assertEquals(OptionalLong.of(12345L), TimeLockTarget.Mode.NONE.restoreDayTime(12345L));
+        assertEquals(OptionalLong.of(0L), TimeLockTarget.Mode.NONE.restoreDayTime(0L));
+        assertTrue(TimeLockTarget.Mode.FIXED.restoreDayTime(18000L).isEmpty());
+        assertTrue(TimeLockTarget.Mode.TWILIGHT_JITTER.restoreDayTime(13000L).isEmpty());
     }
 }

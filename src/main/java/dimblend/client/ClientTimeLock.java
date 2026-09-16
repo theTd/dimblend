@@ -10,7 +10,9 @@ import net.minecraft.util.Mth;
  * doDaylightCycle gamerule were false) and ClientLevelDataMixin shadows
  * day-time reads, so the celestial sphere stays pinned no matter what writes
  * the real time into the level data (e.g. the server's periodic time sync
- * packets).
+ * packets). The day-time field itself is not overwritten with the pin;
+ * unlock writes the world clock carried on the NONE packet via
+ * {@link ClientDayTimeWrite}.
  *
  * <p>Twilight dusk is a clamped random walk, not a per-tick full-range roll:
  * the latter visibly shook the sun. The walk shuffles within

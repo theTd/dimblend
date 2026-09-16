@@ -60,9 +60,11 @@ twilight jittering in 12950–13050 (TF {@code fixed_time: 13000}), aether 4000,
 normally. For locked bands the client daylight cycle is faked off
 (doDaylightCycle=false semantics) and day-time reads are shadowed, so the
 celestial sphere cannot be dragged by the server's periodic time syncs. The
-server world clock still flows; spawn, entity ticks and block ticks in a
-locked band read that band's target instead ({@code ServerBandTime}), so End
-endermen keep appearing instead of tracking the shared overworld day cycle.
+server world clock still flows; leaving a locked band restores the client's
+day time to that clock instead of waiting for the next vanilla time sync.
+Spawn, entity ticks and block ticks in a locked band read that band's target
+instead ({@code ServerBandTime}), so End endermen keep appearing instead of
+tracking the shared overworld day cycle.
 End bands additionally swap the overworld sky for vanilla's End skybox
 ({@code end_sky.png}, no sun/moon/stars) via {@code RotatingDimensionEffects},
 keyed off the same per-player lane sync as the HUD. Starlight bands restore

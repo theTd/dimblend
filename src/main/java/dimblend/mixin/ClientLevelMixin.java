@@ -11,9 +11,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Write-side half of the per-player time lock: while a band lock is active,
  * the client behaves exactly as if the doDaylightCycle gamerule were false —
- * it never advances the day time on its own. The game time still advances so
- * clouds and animations keep moving. Read-side pinning lives in
- * ClientLevelDataMixin.
+ * it never advances the day time on its own. Vanilla {@code tickTime} reads
+ * {@code getDayTime} to increment, and that getter is shadowed to the pin, so
+ * letting it run would smash the live clock. Game time still advances so
+ * clouds and animations keep moving. The day-time <em>field</em> is left
+ * alone: read-side pinning lives in ClientLevelDataMixin, and vanilla time
+ * sync plus the unlock packet keep the field on the world clock.
  */
 @Mixin(ClientLevel.class)
 public abstract class ClientLevelMixin {
@@ -24,9 +27,6 @@ public abstract class ClientLevelMixin {
             ci.cancel();
             self.setGameTime(self.getGameTime() + 1L);
             ClientTimeLock.advanceTick();
-            // Write through to the data object directly: ClientLevel.setDayTime is NeoForge-patched
-            // to force-enable the doDaylightCycle gamerule on every call, which we must not do here.
-            ((ClientLevelAccessor) self).dimblend$getClientLevelData().setDayTime(ClientTimeLock.currentDayTime());
         }
     }
 }

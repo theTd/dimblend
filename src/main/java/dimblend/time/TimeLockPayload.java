@@ -1,5 +1,6 @@
 package dimblend.time;
 
+import dimblend.client.ClientDayTimeWrite;
 import dimblend.client.ClientTimeLock;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -11,10 +12,11 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 /**
  * Server → client push telling one client which time target applies at the
- * band it currently stands in. Registered on both sides via
- * {@link #register(PayloadRegistrar)}; the handler only ever runs on the
- * client, so the {@link ClientTimeLock} reference is resolved lazily and is
- * safe on a dedicated server.
+ * band it currently stands in. {@code time} is the pin for locked modes and
+ * the live world day time for {@link TimeLockTarget.Mode#NONE} (unlock restore).
+ * Registered on both sides via {@link #register(PayloadRegistrar)}; the
+ * handler only ever runs on the client, so the {@link ClientTimeLock}
+ * reference is resolved lazily and is safe on a dedicated server.
  */
 public record TimeLockPayload(int modeId, long time) implements CustomPacketPayload {
     public static final CustomPacketPayload.Type<TimeLockPayload> TYPE =
@@ -40,6 +42,9 @@ public record TimeLockPayload(int modeId, long time) implements CustomPacketPayl
         if (payload.modeId() < 0 || payload.modeId() >= modes.length) {
             return;
         }
-        ClientTimeLock.apply(modes[payload.modeId()], payload.time());
+        TimeLockTarget.Mode mode = modes[payload.modeId()];
+        ClientTimeLock.apply(mode, payload.time());
+        mode.restoreDayTime(payload.time()).ifPresent(dayTime ->
+                ClientDayTimeWrite.restore(context.player().level(), dayTime));
     }
 }
