@@ -30,4 +30,11 @@ public abstract class LevelDayTimeMixin {
             cir.setReturnValue(ServerBandTime.lockedDayTime());
         }
     }
+
+    @Inject(method = "getSkyDarken", at = @At("HEAD"), cancellable = true)
+    private void dimblend$bandSkyDarken(CallbackInfoReturnable<Integer> cir) {
+        if ((Object) this instanceof ServerLevel && ServerBandTime.locked()) {
+            cir.setReturnValue(ServerBandTime.lockedSkyDarken((Level) (Object) this));
+        }
+    }
 }

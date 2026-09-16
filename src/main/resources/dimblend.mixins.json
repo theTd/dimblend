@@ -10,6 +10,7 @@
     "ConstantHeightMixin",
     "LivingEntityTickMixin",
     "LevelDayTimeMixin",
+    "NaturalSpawnerMixin",
     "LevelWeatherMixin",
     "PhantomSpawnerMixin",
     "ServerLevelPrecipitationMixin",

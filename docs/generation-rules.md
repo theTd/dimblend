@@ -95,6 +95,8 @@
 - [x] 生成轨道：**幻纱宽轨**，无路基（`CorridorTrackProfile.END`）
 - [x] 时间锁定 18000（末地/星光/深渊取「时间锁定」备选；客户端按玩家锁定，服务端世界时间照流）
 - [x] 天气走原版
+- [x] 恢复末地天空（`RotatingDimensionEffects`：玩家 `lane == end` 时 `SkyType.END`，原版画 `end_sky.png`，无主世界日月星；雾色/无云/forceBrightLightmap 对齐 `EndEffects`。18000 锁只管昼夜读数，不管天空盒）
+- [x] 服务端刷怪按纬度锁夜（`NaturalSpawner` 推 `ServerBandTime`，`getSkyDarken` 按 18000 计算；末影人不会因全局白天补不上而消失。岛面仍有 skylight，密度接近主世界夜晚而非原版末地无天空光）
 
 ### 暮色（Twilight Forest）
 

@@ -24,4 +24,9 @@ public final class ClientBandLane {
     public static boolean underground() {
         return "underground".equals(lane);
     }
+
+    /** True while the player stands in an End-delegate band. */
+    public static boolean end() {
+        return "end".equals(lane);
+    }
 }

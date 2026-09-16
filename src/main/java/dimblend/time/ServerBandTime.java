@@ -12,7 +12,9 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
 /**
  * Server-side counterpart of {@link dimblend.client.ClientTimeLock}: while a
  * rotating-dimension tick is attributed to a column, {@code isDay}/{@code isNight}
- * / {@code getDayTime} read this stack instead of the shared {@code skyDarken}.
+ * / {@code getDayTime}/{@code getSkyDarken} read this stack instead of the shared
+ * {@code skyDarken} field. Natural spawn must push the stack too: monster light
+ * checks use {@code getSkyDarken}, not {@code isNight}.
  */
 public final class ServerBandTime {
     private static final ThreadLocal<ArrayDeque<TimeLockTarget>> STACK = ThreadLocal.withInitial(ArrayDeque::new);
@@ -63,6 +65,15 @@ public final class ServerBandTime {
             return TWILIGHT_DAY_TIME;
         }
         return target.time();
+    }
+
+    /**
+     * Vanilla {@link Level#updateSkyBrightness()} formula, evaluated at the
+     * locked day time. Must stay in lockstep with that method so monster spawn
+     * light checks see the same night the client sky lock shows.
+     */
+    public static int lockedSkyDarken(Level level) {
+        return SkyDarken.of(lockedDayTime(), level.getRainLevel(1.0F), level.getThunderLevel(1.0F));
     }
 
     public static void run(Level level, BlockPos pos, Runnable body) {
