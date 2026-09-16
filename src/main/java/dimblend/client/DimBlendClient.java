@@ -23,6 +23,7 @@ public final class DimBlendClient {
         modBus.addListener(DimBlendClient::onRegisterDimensionSpecialEffects);
         NeoForge.EVENT_BUS.addListener(TwilightBandFog::onRenderFog);
         NeoForge.EVENT_BUS.addListener(TwilightBandFog::onLevelUnload);
+        NeoForge.EVENT_BUS.addListener(RotatingDimensionEffects::onLevelUnload);
     }
 
     public static void onRegisterGuiLayers(RegisterGuiLayersEvent event) {

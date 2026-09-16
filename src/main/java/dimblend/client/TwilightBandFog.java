@@ -20,7 +20,7 @@ import net.neoforged.neoforge.event.level.LevelEvent.Unload;
  * the spooky forest). TF's handler is gated on
  * {@code effects() instanceof TwilightForestRenderInfo}, which never matches
  * the rotating dimension, so the same behavior is reproduced here behind the
- * dimblend-specific gate (rotating dimension + camera-side twilightforest
+ * dimblend-specific gate (rotating dimension + player-column twilightforest noise
  * biome).
  *
  * <p>Fog <em>color</em> is not ported. TF 1.21.1's FogHandler has no color
@@ -56,8 +56,21 @@ public final class TwilightBandFog {
         if (event.getType() != FogType.NONE
                 || !(Minecraft.getInstance().cameraEntity instanceof LocalPlayer player)
                 || !(player.level() instanceof ClientLevel clientLevel)
-                || !(clientLevel.effects() instanceof RotatingDimensionEffects)
-                || !RotatingDimensionEffects.isTwilightBiome(clientLevel, player.blockPosition())) {
+                || !(clientLevel.effects() instanceof RotatingDimensionEffects)) {
+            if (active) {
+                active = false;
+                skyChunkLoaded = false;
+                terrainChunkLoaded = false;
+            }
+            return;
+        }
+        if (!clientLevel.isLoaded(player.blockPosition())) {
+            if (active) {
+                holdFog(event);
+            }
+            return;
+        }
+        if (!RotatingDimensionEffects.isTwilightBiome(clientLevel, player.blockPosition())) {
             if (active) {
                 active = false;
                 skyChunkLoaded = false;
@@ -77,7 +90,7 @@ public final class TwilightBandFog {
                 skyNear = Mth.lerp(0.003F * (skyNear < near ? 0.5F : 2.0F), skyNear, near);
                 event.setFarPlaneDistance(skyFar);
                 event.setNearPlaneDistance(skyNear);
-            } else if (clientLevel.isLoaded(player.blockPosition())) {
+            } else {
                 skyChunkLoaded = true;
                 skyFar = isSpooky(clientLevel, player) ? event.getFarPlaneDistance() * 0.5F : event.getFarPlaneDistance();
                 skyNear = isSpooky(clientLevel, player) ? 0.0F : event.getNearPlaneDistance();
@@ -91,7 +104,7 @@ public final class TwilightBandFog {
             terrainNear = Mth.lerp(0.003F * (terrainNear < near ? 0.5F : 2.0F), terrainNear, near);
             event.setFarPlaneDistance(terrainFar);
             event.setNearPlaneDistance(terrainNear);
-        } else if (skyChunkLoaded || clientLevel.isLoaded(player.blockPosition())) {
+        } else {
             terrainChunkLoaded = true;
             terrainFar = isSpooky(clientLevel, player) ? event.getFarPlaneDistance() * 0.5F : event.getFarPlaneDistance();
             terrainNear = isSpooky(clientLevel, player) ? terrainFar * 0.75F : event.getNearPlaneDistance();
@@ -106,7 +119,21 @@ public final class TwilightBandFog {
         terrainChunkLoaded = false;
     }
 
+    private static void holdFog(RenderFog event) {
+        if (event.getMode() == FogMode.FOG_SKY) {
+            if (skyChunkLoaded) {
+                event.setCanceled(true);
+                event.setFarPlaneDistance(skyFar);
+                event.setNearPlaneDistance(skyNear);
+            }
+        } else if (terrainChunkLoaded) {
+            event.setCanceled(true);
+            event.setFarPlaneDistance(terrainFar);
+            event.setNearPlaneDistance(terrainNear);
+        }
+    }
+
     private static boolean isSpooky(ClientLevel level, LocalPlayer player) {
-        return level.getBiome(player.blockPosition()).is(SPOOKY_FOREST);
+        return level.getBiomeManager().getNoiseBiomeAtPosition(player.blockPosition()).is(SPOOKY_FOREST);
     }
 }

@@ -9,6 +9,7 @@ import net.minecraft.client.renderer.DimensionSpecialEffects;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.event.level.LevelEvent;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import twilightforest.client.TwilightForestRenderInfo;
@@ -34,10 +35,15 @@ import twilightforest.client.TwilightForestRenderInfo;
  * skybox.</p>
  *
  * <p>The effects instance is a per-dimension singleton, so the band switch is
- * a per-frame predicate. Twilight and Starlight key off camera biome so the
- * binary bits (stars, sun/moon / dead star) flip on the same seam the sky-disc
- * color already interpolates. End-sky lanes key off {@link ClientBandLane}
- * because they meet neighbors at a partition wall, not a biome blend.</p>
+ * a per-frame predicate. Twilight and Starlight key off the camera's noise
+ * biome (the same quart sample {@code getSkyColor} uses) so the binary bits
+ * (stars, sun/moon / dead star) flip on that seam without Voronoi chatter.
+ * {@link net.minecraft.world.level.biome.BiomeManager#getBiome} zooms eight
+ * neighbor quarts; on the client an unloaded neighbor is plains, which made
+ * the overlay twitch a few times when walking into a twilight or starlight
+ * band. Unloaded camera quarts keep the last overlay instead of snapping to
+ * plains. End-sky lanes key off {@link ClientBandLane} because they meet
+ * neighbors at a partition wall, not a biome blend.</p>
  *
  * <p>Constructed with the same parameters TF uses for its own registration
  * (cloud level 128, SkyType.NONE, no forced/constant lightmap). The star
@@ -54,6 +60,8 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
     private final DimensionSpecialEffects starlight = new ESDimensionSpecialEffects(
             160.0F, false, DimensionSpecialEffects.SkyType.NONE, false, false);
     private final DimensionSpecialEffects.EndEffects end = new DimensionSpecialEffects.EndEffects();
+
+    private static RotatingSkyOverlay lastOverlay = RotatingSkyOverlay.NONE;
 
     @Override
     public DimensionSpecialEffects.SkyType skyType() {
@@ -115,13 +123,13 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
     @Override
     public boolean renderSnowAndRain(ClientLevel level, int ticks, float partialTick,
             LightTexture lightTexture, double camX, double camY, double camZ) {
-        return inTwilightZone()
+        return currentOverlay() == RotatingSkyOverlay.TWILIGHT
                 && twilight.renderSnowAndRain(level, ticks, partialTick, lightTexture, camX, camY, camZ);
     }
 
     @Override
     public boolean tickRain(ClientLevel level, int ticks, Camera camera) {
-        return inTwilightZone() && twilight.tickRain(level, ticks, camera);
+        return currentOverlay() == RotatingSkyOverlay.TWILIGHT && twilight.tickRain(level, ticks, camera);
     }
 
     @Nullable
@@ -135,45 +143,37 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
     }
 
     private static RotatingSkyOverlay currentOverlay() {
-        return RotatingSkyOverlay.of(inTwilightZone(), inStarlightZone(), inEndZone());
-    }
-
-    /**
-     * True while the main camera samples a twilightforest-namespace biome.
-     * Biome lookups are the same signal the sky/fog color pipelines use, so
-     * the binary switch lands exactly where the color interpolation crosses.
-     */
-    private static boolean inTwilightZone() {
-        return cameraBiomeNamespace("twilightforest");
-    }
-
-    private static boolean inEndZone() {
-        return ClientBandLane.endSky();
-    }
-
-    /**
-     * True while the main camera samples an eternal_starlight-namespace biome.
-     * Same camera-biome signal as twilight, so the dead-star sky flips with
-     * the sky-disc color rather than waiting on the lane packet.
-     */
-    private static boolean inStarlightZone() {
-        return cameraBiomeNamespace("eternal_starlight");
-    }
-
-    private static boolean cameraBiomeNamespace(String namespace) {
         Minecraft minecraft = Minecraft.getInstance();
         if (!(minecraft.level instanceof ClientLevel level)) {
-            return false;
+            lastOverlay = RotatingSkyOverlay.NONE;
+            return lastOverlay;
         }
-        return isBiomeNamespace(level, minecraft.gameRenderer.getMainCamera().getBlockPosition(), namespace);
+        BlockPos pos = minecraft.gameRenderer.getMainCamera().getBlockPosition();
+        RotatingSkyOverlay sampled = RotatingSkyOverlay.of(
+                isBiomeNamespace(level, pos, "twilightforest"),
+                isBiomeNamespace(level, pos, "eternal_starlight"),
+                ClientBandLane.endSky());
+        lastOverlay = RotatingSkyOverlay.holdIfUnloaded(level.isLoaded(pos), sampled, lastOverlay);
+        return lastOverlay;
     }
 
+    static void onLevelUnload(LevelEvent.Unload event) {
+        if (event.getLevel().isClientSide()) {
+            lastOverlay = RotatingSkyOverlay.NONE;
+        }
+    }
+
+    /**
+     * True while this block's noise biome is a twilightforest-namespace biome.
+     * Quart sample, not Voronoi {@code getBiome}, so neighbor-chunk plains
+     * fallback cannot flip the fog gate.
+     */
     static boolean isTwilightBiome(ClientLevel level, BlockPos pos) {
         return isBiomeNamespace(level, pos, "twilightforest");
     }
 
     private static boolean isBiomeNamespace(ClientLevel level, BlockPos pos, String namespace) {
-        return level.getBiome(pos).unwrapKey()
+        return level.getBiomeManager().getNoiseBiomeAtPosition(pos).unwrapKey()
                 .map(key -> key.location().getNamespace().equals(namespace))
                 .orElse(false);
     }
