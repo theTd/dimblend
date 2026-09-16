@@ -8,10 +8,10 @@ import java.util.OptionalLong;
  * {@link dimblend.worldgen.BandLayout#laneName}.
  *
  * <p>Starlight keeps the 14000 lock for day-cycle reads; the starlight skybox
- * itself is restored in RotatingDimensionEffects. Voidscape uses the spec's
- * "时间锁定" fallback (the "恢复纬度效果" alternative is not implemented). End
- * keeps the 18000 lock for day-cycle reads; the End skybox itself is restored
- * in RotatingDimensionEffects.
+ * itself is restored in RotatingDimensionEffects. End-sky lanes (end /
+ * underground / nether / deeperdarker / voidscape) keep the 18000 lock for
+ * day-cycle reads; those lanes restore the End skybox in
+ * RotatingDimensionEffects.
  */
 public record TimeLockTarget(Mode mode, long time) {
     public enum Mode {

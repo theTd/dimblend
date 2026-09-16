@@ -17,7 +17,8 @@ import twilightforest.client.TwilightForestRenderInfo;
  * Dimension effects for the rotating dimension: vanilla overworld visuals by
  * default, Twilight Forest visuals while the camera samples a twilightforest
  * biome, Eternal Starlight sky while the camera samples an eternal_starlight
- * biome, and vanilla End sky while the player stands in an End band.
+ * biome, and vanilla End sky while the player stands in an End-sky lane
+ * (end / underground / nether / deeperdarker / voidscape).
  *
  * <p>Restores the twilight band's "biome shader" (perma-dusk starfield, no
  * sun/moon/sunset, TF fog curve, low-Y / dark-forest fog) that lives in TF's
@@ -27,7 +28,7 @@ import twilightforest.client.TwilightForestRenderInfo;
  * FogHandler color pass. Starlight bands delegate {@link ESSkyRenderer}
  * (dead star, custom starfield, {@link SkyType#NONE}) the same way; time lock
  * 14000 still applies to day-cycle reads, not the celestial pose (ES pins the
- * dead star at 12500). End bands flip {@link DimensionSpecialEffects.SkyType#END}
+ * dead star at 12500). End-sky lanes flip {@link DimensionSpecialEffects.SkyType#END}
  * so vanilla {@code renderEndSky} draws {@code end_sky.png} instead of the overworld
  * sun/moon/stars; time lock 18000 still applies to day-cycle reads, not the
  * skybox.</p>
@@ -35,8 +36,8 @@ import twilightforest.client.TwilightForestRenderInfo;
  * <p>The effects instance is a per-dimension singleton, so the band switch is
  * a per-frame predicate. Twilight and Starlight key off camera biome so the
  * binary bits (stars, sun/moon / dead star) flip on the same seam the sky-disc
- * color already interpolates. End keys off {@link ClientBandLane} because End
- * bands meet neighbors at a partition wall, not a biome blend.</p>
+ * color already interpolates. End-sky lanes key off {@link ClientBandLane}
+ * because they meet neighbors at a partition wall, not a biome blend.</p>
  *
  * <p>Constructed with the same parameters TF uses for its own registration
  * (cloud level 128, SkyType.NONE, no forced/constant lightmap). The star
@@ -147,7 +148,7 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
     }
 
     private static boolean inEndZone() {
-        return ClientBandLane.end();
+        return ClientBandLane.endSky();
     }
 
     /**

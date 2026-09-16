@@ -26,4 +26,20 @@ class ClientBandLaneTest {
             assertFalse(ClientBandLane.end(), lane);
         }
     }
+
+    @Test
+    void endSkyLanesUseEndSkybox() {
+        for (String lane : new String[]{"end", "underground", "nether", "deeperdarker", "voidscape"}) {
+            ClientBandLane.apply(lane);
+            assertTrue(ClientBandLane.endSky(), lane);
+        }
+    }
+
+    @Test
+    void otherLanesDoNotUseEndSkybox() {
+        for (String lane : new String[]{"surface", "twilight", "starlight", "aether", "unknown"}) {
+            ClientBandLane.apply(lane);
+            assertFalse(ClientBandLane.endSky(), lane);
+        }
+    }
 }

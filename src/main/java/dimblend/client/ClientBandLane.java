@@ -29,4 +29,16 @@ public final class ClientBandLane {
     public static boolean end() {
         return "end".equals(lane);
     }
+
+    /**
+     * True while the player stands in a lane that uses vanilla's End skybox
+     * (end / underground / nether / deeperdarker / voidscape). Same partition-wall
+     * signal as {@link #end()}; not a camera-biome lookup.
+     */
+    public static boolean endSky() {
+        return switch (lane) {
+            case "underground", "nether", "end", "deeperdarker", "voidscape" -> true;
+            default -> false;
+        };
+    }
 }

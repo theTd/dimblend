@@ -65,9 +65,14 @@ day time to that clock instead of waiting for the next vanilla time sync.
 Spawn, entity ticks and block ticks in a locked band read that band's target
 instead ({@code ServerBandTime}), so End endermen keep appearing instead of
 tracking the shared overworld day cycle.
-End bands additionally swap the overworld sky for vanilla's End skybox
-({@code end_sky.png}, no sun/moon/stars) via {@code RotatingDimensionEffects},
-keyed off the same per-player lane sync as the HUD. Starlight bands restore
+End, underground, Nether, Otherside and Voidscape bands additionally swap the
+overworld sky for vanilla's End skybox ({@code end_sky.png}, no sun/moon/stars)
+via {@code RotatingDimensionEffects}, keyed off the same per-player lane sync
+as the HUD. Twilight bands reuse TF's
+starfield and fog-distance curve; fog color is not double-darkened, the aurora
+sheet and dark-forest fog ceiling follow the +64 terrain lift, and the client
+masks leaked overworld rain/thunder so the mint dusk sky is not greyed out.
+Starlight bands restore
 Eternal Starlight's dead-star sky ({@code ESSkyRenderer}) while the camera
 samples an {@code eternal_starlight} biome.
 

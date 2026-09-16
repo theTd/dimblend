@@ -3,7 +3,8 @@ package dimblend.client;
 /**
  * Which extra sky overlay the rotating dimension should use this frame.
  * Twilight (camera biome) wins over Starlight (camera biome) wins over End
- * (player lane); none means vanilla overworld sky.
+ * skybox (player lane: end / underground / nether / deeperdarker / voidscape);
+ * none means vanilla overworld sky.
  */
 public enum RotatingSkyOverlay {
     NONE,
