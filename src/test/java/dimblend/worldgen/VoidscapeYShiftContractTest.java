@@ -78,6 +78,26 @@ class VoidscapeYShiftContractTest {
                         + "), otherwise the antispire window and the world floor diverge");
     }
 
+    /**
+     * Vanilla's aquifer fluid picker decides lava from absolute constants in
+     * {@code createFluidPicker}: a hardcoded Y=-54 magma surface and the settings' own sea
+     * level ({@code y < min(-54, seaLevel) ? lava : defaultFluid}). The shifted band reaches
+     * down to Y=-64, so unless the sea level travels with the terrain the band inherits lava
+     * that {@code voidscape:void} never has, and {@code getSeaLevel()} keeps reporting the
+     * unshifted level. Pin the override so it cannot silently revert to {@code null}.
+     */
+    @Test
+    void voidscapeShiftMovesTheAquiferSeaLevel() throws Exception {
+        String source = Files.readString(
+                Path.of("src/main/java/dimblend/worldgen/YShiftedChunkGenerator.java"), StandardCharsets.UTF_8);
+        assertTrue(
+                source.contains("settings.seaLevel() + yOffset"),
+                "y_shifted must move the source sea level by the offset, or the shifted band is lava flooded");
+        assertTrue(
+                source.contains("YShiftedNoiseSettings.wrap(noise.generatorSettings(), yOffset"),
+                "the shifted settings must be rebuilt with that override");
+    }
+
     private static int readInt(String json, String key, int from) {
         int at = json.indexOf(key, from);
         assertTrue(at >= 0, "missing " + key);

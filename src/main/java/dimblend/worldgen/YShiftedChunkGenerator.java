@@ -42,7 +42,12 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemp
  * after codec construction (bean injection stays intact).
  *
  * <p>{@code y_offset: -64} drops Voidscape islands so the Y=64 corridor sits 64 blocks
- * higher relative to the original island surface.
+ * higher relative to the original island surface. The sea level travels with them
+ * ({@link #applyShift} passes {@code seaLevel + yOffset}), which puts vanilla's aquifer
+ * lava threshold — {@code min(-54, seaLevel)} — at the rotating dimension's floor, so the
+ * shifted band keeps Voidscape's lava-free voids. The hardcoded -54 magma surface itself is
+ * not moved; it is out of reach. See the fluid surface entry in
+ * {@code docs/generation-rules.md}.
  */
 public final class YShiftedChunkGenerator extends ChunkGenerator {
     /**
@@ -222,6 +227,9 @@ public final class YShiftedChunkGenerator extends ChunkGenerator {
         }
         NoiseGeneratorSettings settings = noise.generatorSettings().value();
         if (YShiftedNoiseSettings.alreadyShifted(settings, yOffset)) {
+            // The shifted form is what the world saved, so a world written by an older build
+            // keeps its own (unshifted) sea level here; see the note on this idempotency
+            // guard in docs/generation-rules.md.
             return;
         }
         if (settings.noiseRouter().finalDensity() instanceof YShiftedDensity shifted) {
@@ -232,7 +240,15 @@ public final class YShiftedChunkGenerator extends ChunkGenerator {
         BiomeSource biomes = YShiftedBiomeSource.wrap(inner.getBiomeSource(), yOffset);
         ((ChunkGeneratorAccessor) inner).dimblend$setBiomeSource(biomes);
         inner.refreshFeaturesPerStep();
-        var shifted = YShiftedNoiseSettings.wrap(noise.generatorSettings(), yOffset, null);
+        // Vanilla's aquifer fluid picker decides lava from two absolute values: the hardcoded
+        // Y=-54 magma surface and the settings' own sea level (y < min(-54, seaLevel) ? lava :
+        // defaultFluid). Moving the sea level with the terrain puts that threshold at -64, i.e.
+        // at the rotating dimension's floor, so the lava branch is unreachable inside the
+        // world and the shifted band keeps Voidscape's lava-free voids (its own dimension has
+        // floor Y=0 and never sees lava). getSeaLevel() reports the shifted level too. The
+        // -54 constant itself is untouched — it is simply out of reach. Twilight's wrapper
+        // configures the same quantity as sea_level: 64.
+        var shifted = YShiftedNoiseSettings.wrap(noise.generatorSettings(), yOffset, settings.seaLevel() + yOffset);
         ((NoiseBasedChunkGeneratorAccessor) noise).dimblend$setSettings(shifted);
         ((NoiseBasedChunkGeneratorAccessor) noise).dimblend$setGlobalFluidPicker(
                 Suppliers.memoize(() -> NoiseBasedChunkGeneratorAccessor.dimblend$createFluidPicker(shifted.value())));
