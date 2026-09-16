@@ -18,7 +18,7 @@ class TimeLockTargetTest {
     @Test
     void fromLaneTable() {
         assertEquals(TimeLockTarget.Mode.TWILIGHT_JITTER, TimeLockTarget.fromLane("twilight").mode());
-        assertEquals(22000L, TimeLockTarget.fromLane("underground").time());
+        assertEquals(18000L, TimeLockTarget.fromLane("underground").time());
         assertEquals(18000L, TimeLockTarget.fromLane("nether").time());
         assertEquals(18000L, TimeLockTarget.fromLane("end").time());
         assertEquals(18000L, TimeLockTarget.fromLane("deeperdarker").time());

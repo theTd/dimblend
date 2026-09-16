@@ -36,8 +36,7 @@ public record TimeLockTarget(Mode mode, long time) {
 
     public static TimeLockTarget fromLane(String laneName) {
         return switch (laneName) {
-            case "underground" -> fixed(22000L);
-            case "nether", "end", "deeperdarker", "voidscape" -> fixed(18000L);
+            case "underground", "nether", "end", "deeperdarker", "voidscape" -> fixed(18000L);
             case "starlight" -> fixed(14000L);
             case "aether" -> fixed(4000L);
             case "twilight" -> TWILIGHT;

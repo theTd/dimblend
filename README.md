@@ -55,7 +55,7 @@ corridor sink onto the roadbed rather than standing on the rail. Event-less
 removal paths (wither, `/setblock`, Create drills) are not covered.
 
 **Per-band time lock**: while in the rotating dimension, each player's client
-time is pinned to the band they stand in (underground 22000, nether 18000,
+time is pinned to the band they stand in (underground 18000, nether 18000,
 twilight jittering in 12950–13050 (TF {@code fixed_time: 13000}), aether 4000, ...), surface bands flow
 normally. For locked bands the client daylight cycle is faked off
 (doDaylightCycle=false semantics) and day-time reads are shadowed, so the
