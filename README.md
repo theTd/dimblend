@@ -19,7 +19,7 @@ generators, picked by a seeded lane layout:
 | `deeperdarker:otherside` | Deeper & Darker Otherside |
 | `aether:skylands` | Aether skylands |
 | `eternal_starlight:biome_based` | Eternal Starlight |
-| `voidscape:void` | Voidscape void islands |
+| `dimblend:y_shifted` wrapping `voidscape:void` | Voidscape void islands, terrain lowered −64 |
 | `dimblend:y_shifted_noise` | Twilight Forest's own noise settings, terrain lifted +64 |
 
 The lane layout is deterministic per seed and distance-aware: regions 0–21 from
@@ -65,10 +65,15 @@ day time to that clock instead of waiting for the next vanilla time sync.
 Spawn, entity ticks and block ticks in a locked band read that band's target
 instead ({@code ServerBandTime}), so End endermen keep appearing instead of
 tracking the shared overworld day cycle.
-End, underground, Nether, Otherside and Voidscape bands additionally swap the
+End, underground, Nether and Otherside bands additionally swap the
 overworld sky for vanilla's End skybox ({@code end_sky.png}, no sun/moon/stars)
 via {@code RotatingDimensionEffects}, keyed off the same per-player lane sync
-as the HUD. Twilight bands reuse TF's
+as the HUD. Voidscape bands delegate Voidscape's own portal-shader sky
+({@code voidscape:void} DimensionSpecialEffects) instead, and answer sky light as
+0 — an empty sky light layer, so no sky bytes are saved or sent and data-layer
+readers such as Sodium see 0 too — the same thing Voidscape's
+{@code has_skylight: false} dimension reports; the rotating dimension keeps its
+sky engine for every other lane. Twilight bands reuse TF's
 starfield and fog-distance curve; fog color is not double-darkened, the aurora
 sheet and dark-forest fog ceiling follow the +64 terrain lift, and the client
 masks leaked overworld rain/thunder so the mint dusk sky is not greyed out.

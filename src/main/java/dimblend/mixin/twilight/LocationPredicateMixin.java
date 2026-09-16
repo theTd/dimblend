@@ -1,6 +1,7 @@
 package dimblend.mixin.twilight;
 
 import dimblend.compat.TwilightBand;
+import dimblend.compat.VoidscapeBand;
 import java.util.Optional;
 import net.minecraft.advancements.critereon.LocationPredicate;
 import net.minecraft.core.BlockPos;
@@ -25,7 +26,7 @@ public abstract class LocationPredicateMixin {
                     target = "Lnet/minecraft/server/level/ServerLevel;dimension()Lnet/minecraft/resources/ResourceKey;"
             )
     )
-    private ResourceKey<Level> dimblend$twilightBandCountsAsTf(
+    private ResourceKey<Level> dimblend$bandCountsAsModDimension(
             ServerLevel level,
             ServerLevel levelArg,
             double x,
@@ -34,10 +35,15 @@ public abstract class LocationPredicateMixin {
     ) {
         ResourceKey<Level> actual = level.dimension();
         Optional<ResourceKey<Level>> wanted = this.dimension();
-        if (wanted.isPresent()
-                && wanted.get() == TFDimension.DIMENSION_KEY
-                && TwilightBand.isTwilightPos(level, BlockPos.containing(x, y, z))) {
+        if (wanted.isEmpty()) {
+            return actual;
+        }
+        BlockPos pos = BlockPos.containing(x, y, z);
+        if (wanted.get() == TFDimension.DIMENSION_KEY && TwilightBand.isTwilightPos(level, pos)) {
             return TFDimension.DIMENSION_KEY;
+        }
+        if (wanted.get() == VoidscapeBand.VOIDSCAPE_LEVEL && VoidscapeBand.isVoidscapePos(level, pos)) {
+            return VoidscapeBand.VOIDSCAPE_LEVEL;
         }
         return actual;
     }

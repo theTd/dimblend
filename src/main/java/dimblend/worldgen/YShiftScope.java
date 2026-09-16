@@ -4,9 +4,11 @@ import java.util.ArrayDeque;
 import java.util.function.Supplier;
 
 /**
- * Thread-local Y offset while a {@link YShiftedNoiseChunkGenerator} is generating.
- * Used by Twilight Forest mixins that read hardcoded sea-level Y instead of
- * {@link net.minecraft.world.level.levelgen.WorldGenerationContext}.
+ * Thread-local Y offset while a y-shifted delegate is generating.
+ * {@link YShiftedNoiseChunkGenerator} (Twilight) and {@link YShiftedChunkGenerator}
+ * (Voidscape) both push their offset here. Used by Twilight Forest mixins that read
+ * hardcoded sea-level Y, and by {@code WorldGenerationContextMixin} when the
+ * generating instance is the inner Voidscape generator rather than the wrapper.
  */
 public final class YShiftScope {
     private static final ThreadLocal<ArrayDeque<Integer>> STACK = ThreadLocal.withInitial(ArrayDeque::new);

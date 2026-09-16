@@ -30,14 +30,20 @@ public final class ClientBandLane {
         return "end".equals(lane);
     }
 
+    /** True while the player stands in a Voidscape-delegate band. */
+    public static boolean voidscape() {
+        return "voidscape".equals(lane);
+    }
+
     /**
      * True while the player stands in a lane that uses vanilla's End skybox
-     * (end / underground / nether / deeperdarker / voidscape). Same partition-wall
-     * signal as {@link #end()}; not a camera-biome lookup.
+     * (end / underground / nether / deeperdarker). Voidscape uses Voidscape's
+     * own portal-shader sky instead. Same partition-wall signal as {@link #end()};
+     * not a camera-biome lookup.
      */
     public static boolean endSky() {
         return switch (lane) {
-            case "underground", "nether", "end", "deeperdarker", "voidscape" -> true;
+            case "underground", "nether", "end", "deeperdarker" -> true;
             default -> false;
         };
     }

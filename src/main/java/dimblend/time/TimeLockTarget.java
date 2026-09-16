@@ -10,8 +10,8 @@ import java.util.OptionalLong;
  * <p>Starlight keeps the 14000 lock for day-cycle reads; the starlight skybox
  * itself is restored in RotatingDimensionEffects. End-sky lanes (end /
  * underground / nether / deeperdarker / voidscape) keep the 18000 lock for
- * day-cycle reads; those lanes restore the End skybox in
- * RotatingDimensionEffects.
+ * day-cycle reads. End-sky lanes restore the End skybox in
+ * RotatingDimensionEffects; voidscape restores Voidscape's own effects.
  */
 public record TimeLockTarget(Mode mode, long time) {
     public enum Mode {

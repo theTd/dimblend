@@ -2,24 +2,29 @@ package dimblend.client;
 
 import cn.leolezury.eternalstarlight.common.client.ESDimensionSpecialEffects;
 import cn.leolezury.eternalstarlight.common.client.renderer.world.ESSkyRenderer;
+import com.mojang.logging.LogUtils;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.DimensionSpecialEffects;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.client.DimensionSpecialEffectsManager;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
+import org.slf4j.Logger;
 import twilightforest.client.TwilightForestRenderInfo;
 
 /**
  * Dimension effects for the rotating dimension: vanilla overworld visuals by
  * default, Twilight Forest visuals while the camera samples a twilightforest
  * biome, Eternal Starlight sky while the camera samples an eternal_starlight
- * biome, and vanilla End sky while the player stands in an End-sky lane
- * (end / underground / nether / deeperdarker / voidscape).
+ * biome, Voidscape's portal-shader sky while the player stands in a voidscape
+ * lane, and vanilla End sky while the player stands in an End-sky lane
+ * (end / underground / nether / deeperdarker).
  *
  * <p>Restores the twilight band's "biome shader" (perma-dusk starfield, no
  * sun/moon/sunset, TF fog curve, low-Y / dark-forest fog) that lives in TF's
@@ -29,7 +34,9 @@ import twilightforest.client.TwilightForestRenderInfo;
  * FogHandler color pass. Starlight bands delegate {@link ESSkyRenderer}
  * (dead star, custom starfield, {@link SkyType#NONE}) the same way; time lock
  * 14000 still applies to day-cycle reads, not the celestial pose (ES pins the
- * dead star at 12500). End-sky lanes flip {@link DimensionSpecialEffects.SkyType#END}
+ * dead star at 12500). Voidscape lanes delegate the {@code voidscape:void}
+ * effects instance ({@code SkyType.NONE}, portal-shader cube via
+ * {@code VoidSkyRenderer}). End-sky lanes flip {@link DimensionSpecialEffects.SkyType#END}
  * so vanilla {@code renderEndSky} draws {@code end_sky.png} instead of the overworld
  * sun/moon/stars; time lock 18000 still applies to day-cycle reads, not the
  * skybox.</p>
@@ -42,7 +49,7 @@ import twilightforest.client.TwilightForestRenderInfo;
  * neighbor quarts; on the client an unloaded neighbor is plains, which made
  * the overlay twitch a few times when walking into a twilight or starlight
  * band. Unloaded camera quarts keep the last overlay instead of snapping to
- * plains. End-sky lanes key off {@link ClientBandLane} because they meet
+ * plains. Voidscape and End-sky lanes key off {@link ClientBandLane} because they meet
  * neighbors at a partition wall, not a biome blend.</p>
  *
  * <p>Constructed with the same parameters TF uses for its own registration
@@ -60,6 +67,10 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
     private final DimensionSpecialEffects starlight = new ESDimensionSpecialEffects(
             160.0F, false, DimensionSpecialEffects.SkyType.NONE, false, false);
     private final DimensionSpecialEffects.EndEffects end = new DimensionSpecialEffects.EndEffects();
+    private static final ResourceLocation VOIDSCAPE_EFFECTS =
+            ResourceLocation.fromNamespaceAndPath("voidscape", "void");
+    private static final Logger LOGGER = LogUtils.getLogger();
+    private static boolean loggedMissingVoidscapeEffects;
 
     private static RotatingSkyOverlay lastOverlay = RotatingSkyOverlay.NONE;
 
@@ -116,6 +127,8 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
                     projectionMatrix, isFoggy, setupFog);
             case STARLIGHT -> ESSkyRenderer.renderSky(level, modelViewMatrix, projectionMatrix,
                     partialTick, camera, setupFog);
+            case VOIDSCAPE -> voidscapeEffects().renderSky(level, ticks, partialTick, modelViewMatrix, camera,
+                    projectionMatrix, isFoggy, setupFog);
             case END, NONE -> false;
         };
     }
@@ -137,9 +150,19 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
         return switch (currentOverlay()) {
             case TWILIGHT -> twilight;
             case STARLIGHT -> starlight;
+            case VOIDSCAPE -> voidscapeEffects();
             case END -> end;
             case NONE -> null;
         };
+    }
+
+    private static DimensionSpecialEffects voidscapeEffects() {
+        DimensionSpecialEffects effects = DimensionSpecialEffectsManager.getForType(VOIDSCAPE_EFFECTS);
+        if (!loggedMissingVoidscapeEffects && effects.skyType() != DimensionSpecialEffects.SkyType.NONE) {
+            loggedMissingVoidscapeEffects = true;
+            LOGGER.warn("voidscape:void dimension effects missing; voidscape lane will not use VoidSkyRenderer");
+        }
+        return effects;
     }
 
     private static RotatingSkyOverlay currentOverlay() {
@@ -152,6 +175,7 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
         RotatingSkyOverlay sampled = RotatingSkyOverlay.of(
                 isBiomeNamespace(level, pos, "twilightforest"),
                 isBiomeNamespace(level, pos, "eternal_starlight"),
+                ClientBandLane.voidscape(),
                 ClientBandLane.endSky());
         lastOverlay = RotatingSkyOverlay.holdIfUnloaded(level.isLoaded(pos), sampled, lastOverlay);
         return lastOverlay;

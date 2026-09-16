@@ -2,6 +2,7 @@ package dimblend.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import dimblend.compat.VoidscapeBand;
 import dimblend.time.ServerBandTime;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -29,6 +30,7 @@ public abstract class NaturalSpawnerMixin {
             NaturalSpawner.AfterSpawnCallback callback,
             Operation<Void> original
     ) {
-        ServerBandTime.run(level, pos, () -> original.call(category, level, chunk, pos, filter, callback));
+        ServerBandTime.run(level, pos, () -> VoidscapeBand.run(level, pos,
+                () -> original.call(category, level, chunk, pos, filter, callback)));
     }
 }

@@ -97,7 +97,7 @@
 - [x] 生成轨道：**幻纱宽轨**，无路基（`CorridorTrackProfile.END`）
 - [x] 时间锁定 18000（末地/星光/深渊取「时间锁定」备选；客户端按玩家锁定，服务端世界时间照流）
 - [x] 天气走原版
-- [x] 恢复末地天空（`RotatingDimensionEffects`：玩家 `endSky` 纬度（end / underground / nether / deeperdarker / voidscape）时 `SkyType.END`，原版画 `end_sky.png`，无主世界日月星；雾色/无云/forceBrightLightmap 对齐 `EndEffects`。18000 锁只管昼夜读数，不管天空盒）
+- [x] 恢复末地天空（`RotatingDimensionEffects`：玩家 `endSky` 纬度（end / underground / nether / deeperdarker）时 `SkyType.END`，原版画 `end_sky.png`，无主世界日月星；雾色/无云/forceBrightLightmap 对齐 `EndEffects`。18000 锁只管昼夜读数，不管天空盒。voidscape 走自己的 shader，见下）
 - [x] 服务端刷怪按纬度锁夜（`NaturalSpawner` 推 `ServerBandTime`，`getSkyDarken` 按 18000 计算；末影人不会因全局白天补不上而消失。岛面仍有 skylight，密度接近主世界夜晚而非原版末地无天空光）
 
 ### 暮色（Twilight Forest）
@@ -131,6 +131,11 @@
 ### 深渊（Voidscape）
 
 - [x] 生成轨道：**无枕木宽轨**，无路基（`CorridorTrackProfile.VOIDSCAPE`）
-- [x] 恢复 shader，或时间锁定 18000（取「时间锁定」备选）；天空套用末地天空盒（与末地相同：`ClientBandLane.endSky()` → `SkyType.END` / `end_sky.png`）
+- [x] 恢复 Voidscape shader（`RotatingDimensionEffects` 在 voidscape lane 委托 `voidscape:void` 的 `DimensionSpecialEffects` / `VoidSkyRenderer`）；时间锁定 18000 只管昼夜读数。`isInVoidDimension` 经 mixin 把 rotating 深渊 lane 视作虚空（光照/雾/灌注/死亡/刷怪）
+- [x] 天空光恒为 0（真维度 `has_skylight: false`：光引擎没有天空层，读恒 0、也没有天光数据可存。rotating 必须给其它 lane 保留天空层，故按 X 列屏蔽：深渊 lane 内 `SkyLightSectionStorage.getLightValue` 读 0，`LayerLightSectionStorage.getDataLayerData` 交回全 0 空天光层——存档不写 `SkyLight`、光照包按「空层」发（客户端排队全 0 层），Sodium 等直读数据层的消费者同样读 0（返回 null 会被 Sodium 当成天空光 15，反而把洞穴/岛内照亮）；方块光与其它 lane 不受影响。随之与真维度一致：深渊带地表亮度、刷怪暗度、作物不再靠天光生长、岛面不再日晒。末地带仍按「末地」条目显式保留 skylight）
 - [x] 天气锁定晴
 - [x] 下界层疣猪落地刷怪：原版疣猪兽无 SpawnPlacements（NO_RESTRICTIONS），3D 群系柱半空刷出后会被换成疣猪从天上掉；rotating 里 SpawnPlacementCheck 要求 ON_GROUND，对齐 Voidscape 自己维度的 PositionCheck
+- [x] 地形相对原维度下移 64（`dimblend:y_shifted` 包 `voidscape:void`，`y_offset: -64`；走廊仍在 Y=64，相对岛面抬高 64。密度/群系走与暮色相同的 `YShiftedDensity`，保留 Voidscape 自己的 chunk generator）
+- [x] 反尖塔恢复生成（`SpireFeature.checkForRoom` 的 `p.getY() <= 0` 是 Voidscape 自己维度的世界底；地形下移 64 后反尖塔层（群系界 Y32 → 平移后 Y-32，向下到世界底）整层落在 Y<0，原判定在候选列的第一个方块就返回 false，深渊带里一根都不长。`SpireFeatureMixin` 改按 `level.getMinBuildHeight()` 判定：原维度世界底仍是 0、逐位不变；rotating 里世界底是 -64，反尖塔重新生成。同种子探针实测：rotating 同区 2 tips/49 chunk（对照 `voidscape:void` 3 tips/49 chunk），多区抽样 1 tips/75 chunk 对对照 3 tips/50 chunk）
+- [ ] 深渊带流体面未随平移（vanilla `NoiseBasedChunkGenerator.createFluidPicker` 的岩浆面是绝对 Y=-54，`YShiftedChunkGenerator.applyShift` 传 `seaLevelOverride = null`，picker 与未平移时逐字节相同）：平移后频带 Y≤-55 被岩浆填充（同种子探针实测占频带约 12~18%，对照 `voidscape:void` 0%；打点里 `NO_AIR_GAP` 的首个非空气方块为 bedrock 402 次、lava 仅 6 次），即岩浆与反尖塔生成并存、对数量影响很小，属地形保真问题。反尖塔密度是否系统性低于原维度**未被抽样证明**（同区 2/49 vs 3/49、多区 1/75 vs 3/50，Poisson p 均不显著）；要证实应比较**同 (x,z) 列**在两维度下相对各自世界底的空气间隙长度（密度场是精确平移，可消掉种子与地形方差）。修法：照暮色模式传 `seaLevelOverride = seaLevel + y_offset`（顺带修 `getSeaLevel()` 仍返回未平移的 0）；未来验收：`band lava == 0`、`getSeaLevel() == -64`。本轮未改）
+- [x] 禁用 rotating 内的 Voidscape 传送（`LevelUtilMixin.getDimensionForTeleport` 在 rotating 返回空：`PortalBlock.entityInside` 不再武装 `Insanity.inPortal`，站在虚空门里既不传送也不累计被吸入虚空的读数，门方块/粒子/音效保留。不修的话 `isInVoidDimension` 已把深渊 lane 认作虚空，「虚空」一侧的目的地是 `minecraft:overworld`，门会把区段里的玩家扔进真主世界；另一侧则进独立 `voidscape:void`。`InsanityMixin.canTeleport` 在 rotating 恒 false：基岩入虚空的判定按维度自己的世界底（`minBuildHeight + 15`，rotating 是 -49）。地板封得比 -49 高的区段（地表/地下带底封 Y=-1）够不着，正是缺口报告里那条「不可达」；地板基岩低到 -49 的区段（深渊带的基岩岛体一路到 -64，但那条 lane 已算虚空、走不到这个分支）则会把人送去独立维度。故 rotating 内一律关闭：不启动倒计时，跨维度携带进来的倒计时也会被取消。深渊带与其它区段一样靠走廊通行；外部维度（真主世界 ↔ 独立 void 维度）的门行为不变。见 `VoidscapeMixinContractTest.rotatingBansVoidscapeTeleports`）

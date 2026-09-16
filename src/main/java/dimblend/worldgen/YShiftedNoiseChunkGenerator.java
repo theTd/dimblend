@@ -23,8 +23,6 @@ import net.minecraft.world.level.levelgen.blending.Blender;
 import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
-import net.minecraft.world.level.levelgen.NoiseRouter;
-import net.minecraft.world.level.levelgen.NoiseSettings;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager;
 
@@ -70,7 +68,7 @@ public final class YShiftedNoiseChunkGenerator extends NoiseBasedChunkGenerator 
             int yOffset,
             @Nullable Integer seaLevelOverride
     ) {
-        super(YShiftedBiomeSource.wrap(biomeSource, yOffset), wrap(sourceSettings, yOffset, seaLevelOverride));
+        super(YShiftedBiomeSource.wrap(biomeSource, yOffset), YShiftedNoiseSettings.wrap(sourceSettings, yOffset, seaLevelOverride));
         this.sourceBiomes = biomeSource;
         this.sourceSettings = sourceSettings;
         this.yOffset = yOffset;
@@ -168,51 +166,5 @@ public final class YShiftedNoiseChunkGenerator extends NoiseBasedChunkGenerator 
             GenerationStep.Carving step
     ) {
         YShiftScope.run(this.yOffset, () -> super.applyCarvers(level, seed, random, biomes, structures, chunk, step));
-    }
-
-    private static Holder<NoiseGeneratorSettings> wrap(
-            Holder<NoiseGeneratorSettings> source,
-            int yOffset,
-            @Nullable Integer seaLevelOverride
-    ) {
-        NoiseGeneratorSettings settings = source.value();
-        NoiseRouter router = settings.noiseRouter();
-        NoiseRouter shiftedRouter = new NoiseRouter(
-                router.barrierNoise(),
-                router.fluidLevelFloodednessNoise(),
-                router.fluidLevelSpreadNoise(),
-                router.lavaNoise(),
-                router.temperature(),
-                router.vegetation(),
-                router.continents(),
-                router.erosion(),
-                router.depth(),
-                router.ridges(),
-                new YShiftedDensity(router.initialDensityWithoutJaggedness(), yOffset),
-                new YShiftedDensity(router.finalDensity(), yOffset),
-                router.veinToggle(),
-                router.veinRidged(),
-                router.veinGap());
-        NoiseSettings sourceNoise = settings.noiseSettings();
-        int expandedHeight = sourceNoise.height() + Math.max(0, yOffset);
-        expandedHeight = (expandedHeight + 15) / 16 * 16;
-        NoiseSettings shiftedNoise = NoiseSettings.create(
-                sourceNoise.minY(),
-                expandedHeight,
-                sourceNoise.noiseSizeHorizontal(),
-                sourceNoise.noiseSizeVertical());
-        NoiseGeneratorSettings shifted = new NoiseGeneratorSettings(
-                shiftedNoise,
-                settings.defaultBlock(),
-                settings.defaultFluid(),
-                shiftedRouter,
-                settings.surfaceRule(),
-                settings.spawnTarget(),
-                seaLevelOverride != null ? seaLevelOverride.intValue() : settings.seaLevel(),
-                settings.disableMobGeneration(),
-                settings.aquifersEnabled(),
-                settings.oreVeinsEnabled(),
-                settings.useLegacyRandomSource());
-        return Holder.direct(shifted);
     }
 }

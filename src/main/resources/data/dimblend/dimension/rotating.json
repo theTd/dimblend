@@ -307422,7 +307422,10 @@
         "settings": "eternal_starlight:starlight"
       },
       {
-        "type": "voidscape:void",
+        "type": "dimblend:y_shifted",
+        "y_offset": -64,
+        "inner": {
+          "type": "voidscape:void",
         "biome_source": {
           "type": "voidscape:layered",
           "layerBottomDownwards": {
@@ -307472,6 +307475,7 @@
           ]
         },
         "settings": "voidscape:void"
+        }
       },
       {
         "type": "dimblend:y_shifted_noise",

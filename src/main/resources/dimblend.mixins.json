@@ -8,6 +8,7 @@
     "BetterCavesMasterControllerMixin",
     "BlockStateRandomTickMixin",
     "ConstantHeightMixin",
+    "LayerLightSectionStorageMixin",
     "LivingEntityTickMixin",
     "LevelDayTimeMixin",
     "NaturalSpawnerMixin",
@@ -23,6 +24,7 @@
     "JigsawStructureMixin",
     "DecorationClearanceMixin",
     "DistanceManagerAccessor",
+    "ChunkGeneratorAccessor",
     "ChunkMapAccessor",
     "ChunkMapMixin",
     "ChunkHolderMixin",
@@ -33,8 +35,10 @@
     "BiasedToBottomHeightMixin",
     "UniformHeightMixin",
     "MobSunBurnMixin",
+    "NoiseBasedChunkGeneratorAccessor",
     "NoiseBasedChunkGeneratorMixin",
     "SignalPropagatorMixin",
+    "SkyLightSectionStorageMixin",
     "StructureStartMixin",
     "TrackPropagatorMixin",
     "VerticalAnchorAbsoluteMixin",
@@ -56,7 +60,16 @@
     "twilight.TFPortalBlockMixin",
     "twilight.TFTeleportCommandMixin",
     "twilight.TravellersGearLogicMixin",
-    "twilight.YetiCaveStructureMixin"
+    "twilight.YetiCaveStructureMixin",
+    "voidscape.BlockTransformerItemMixin",
+    "voidscape.EtherealPlantGeneratorMixin",
+    "voidscape.GerminatorBlockEntityMixin",
+    "voidscape.InsanityMixin",
+    "voidscape.LevelUtilMixin",
+    "voidscape.SpireFeatureMixin",
+
+    "voidscape.VoidDimensionDeathHandlerMixin",
+    "voidscape.VoidicCrystalOreGeneratorMixin"
   ],
   "client": [
     "BiomeManagerMixin",
@@ -71,7 +84,8 @@
     "twilight.ClientGameEventsMixin",
     "twilight.TFDimensionClientMixin",
     "twilight.TwilightForestRenderInfoMixin",
-    "twilight.StructureProtectionPacketMixin"
+    "twilight.StructureProtectionPacketMixin",
+    "voidscape.LevelUtilClientMixin"
   ],
   "injectors": {
     "defaultRequire": 1

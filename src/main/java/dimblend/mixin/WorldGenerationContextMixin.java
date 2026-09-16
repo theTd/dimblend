@@ -1,6 +1,8 @@
 package dimblend.mixin;
 
 import dimblend.worldgen.WorldGenerationContextExtension;
+import dimblend.worldgen.YShiftScope;
+import dimblend.worldgen.YShiftedChunkGenerator;
 import dimblend.worldgen.YShiftedNoiseChunkGenerator;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.chunk.ChunkGenerator;
@@ -20,7 +22,13 @@ public abstract class WorldGenerationContextMixin implements WorldGenerationCont
     private void dimblend$captureShift(ChunkGenerator generator, LevelHeightAccessor height, CallbackInfo ci) {
         if (generator instanceof YShiftedNoiseChunkGenerator shifted) {
             this.dimblend$absoluteOffset = shifted.yOffset();
+            return;
         }
+        if (generator instanceof YShiftedChunkGenerator shifted) {
+            this.dimblend$absoluteOffset = shifted.yOffset();
+            return;
+        }
+        this.dimblend$absoluteOffset = YShiftScope.current();
     }
 
     @Override

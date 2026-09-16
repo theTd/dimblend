@@ -10,6 +10,7 @@ import dimblend.diagnostics.HangWatchdog;
 import dimblend.compat.CorridorTrackProtector;
 import dimblend.compat.CreateTrackGraphCompat;
 import dimblend.compat.TerraBlenderRotatingCompat;
+import dimblend.compat.VoidscapeBand;
 import dimblend.compat.VoidscapeNetherDezombify;
 import dimblend.gametest.CopycatObsidianHardnessGameTests;
 import dimblend.time.TimeLockPayload;
@@ -66,6 +67,14 @@ public final class DimBlend {
         NeoForge.EVENT_BUS.addListener(WarpGatePassageGuard::onEntityTickPost);
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, VoidscapeNetherDezombify::onSpawnPlacementCheck);
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, VoidscapeNetherDezombify::onFinalizeSpawn);
+        NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, VoidscapeBand::onPlayerTickEnter);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, VoidscapeBand::onPlayerTickExit);
+        NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, VoidscapeBand::onSpawnPlacementEnter);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, VoidscapeBand::onSpawnPlacementExit);
+        NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, VoidscapeBand::onSpawnPositionEnter);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, VoidscapeBand::onSpawnPositionExit);
+        NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, VoidscapeBand::onFinalizeSpawnEnter);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, VoidscapeBand::onFinalizeSpawnExit);
         NeoForge.EVENT_BUS.register(MONITOR);
         NeoForge.EVENT_BUS.register(WATCHDOG);
     }

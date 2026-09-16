@@ -175,9 +175,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         HolderLookup<StructureSet> structureSets = access.lookupOrThrow(Registries.STRUCTURE_SET);
         for (int i = 0; i < count; i++) {
             ChunkGenerator delegate = this.delegates.get(i);
-            ChunkGenerator noiseSource = delegate instanceof SlicedOverworldChunkGenerator sliced
-                    ? sliced.inner()
-                    : delegate;
+            ChunkGenerator noiseSource = BandLayout.unwrap(delegate);
             if (noiseSource instanceof NoiseBasedChunkGenerator noise) {
                 randoms[i] = RandomState.create(
                         noise.generatorSettings().value(),

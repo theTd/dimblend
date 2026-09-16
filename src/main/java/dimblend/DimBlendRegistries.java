@@ -8,6 +8,7 @@ import dimblend.worldgen.RotatingChunkGenerator;
 import dimblend.worldgen.SlicedOverworldBiomeSource;
 import dimblend.worldgen.SlicedOverworldChunkGenerator;
 import dimblend.worldgen.YShiftedBiomeSource;
+import dimblend.worldgen.YShiftedChunkGenerator;
 import dimblend.worldgen.YShiftedDensity;
 import dimblend.worldgen.YShiftedNoiseChunkGenerator;
 
@@ -61,6 +62,8 @@ public final class DimBlendRegistries {
 
     public static final DeferredHolder<MapCodec<? extends ChunkGenerator>, MapCodec<YShiftedNoiseChunkGenerator>> Y_SHIFTED_NOISE_GENERATOR =
             CHUNK_GENERATORS.register("y_shifted_noise", () -> YShiftedNoiseChunkGenerator.CODEC);
+    public static final DeferredHolder<MapCodec<? extends ChunkGenerator>, MapCodec<YShiftedChunkGenerator>> Y_SHIFTED_GENERATOR =
+            CHUNK_GENERATORS.register("y_shifted", () -> YShiftedChunkGenerator.CODEC);
 
     public static final DeferredHolder<MapCodec<? extends DensityFunction>, MapCodec<YShiftedDensity>> Y_SHIFTED_DENSITY =
             DENSITY_FUNCTION_TYPES.register("y_shifted", () -> YShiftedDensity.DIRECT_CODEC);

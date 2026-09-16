@@ -121,6 +121,22 @@ public final class BandLayout {
         return settings != null && "dimblend".equals(settings.getNamespace()) && settings.getPath().contains("twilight");
     }
 
+    /**
+     * Peel dimblend wrappers so lane identity sees the source generator
+     * ({@code voidscape:void} inside {@code dimblend:y_shifted}, overworld inside a slice).
+     * Does not unwrap {@link YShiftedNoiseChunkGenerator}: that <em>is</em> the Twilight
+     * delegate, and its settings holder is a runtime-only direct value.
+     */
+    public static ChunkGenerator unwrap(ChunkGenerator delegate) {
+        if (delegate instanceof YShiftedChunkGenerator shifted) {
+            return unwrap(shifted.inner());
+        }
+        if (delegate instanceof SlicedOverworldChunkGenerator sliced) {
+            return unwrap(sliced.inner());
+        }
+        return delegate;
+    }
+
     /** Voidscape void islands use bedrock as terrain; corridor must carve through it. */
     public static boolean isVoidscape(ChunkGenerator delegate) {
         ResourceLocation id = identity(delegate);
@@ -166,6 +182,13 @@ public final class BandLayout {
      */
     @javax.annotation.Nullable
     private static ResourceLocation identity(ChunkGenerator delegate) {
+        if (delegate instanceof YShiftedChunkGenerator shifted) {
+            ResourceLocation stored = shifted.sourceIdentity();
+            if (stored != null) {
+                return stored;
+            }
+        }
+        delegate = unwrap(delegate);
         ResourceLocation settings = noiseSettings(delegate);
         if (settings != null) {
             return settings;
@@ -284,9 +307,7 @@ public final class BandLayout {
     }
 
     private static ResourceLocation noiseSettings(ChunkGenerator delegate) {
-        if (delegate instanceof SlicedOverworldChunkGenerator sliced) {
-            delegate = sliced.inner();
-        }
+        delegate = unwrap(delegate);
         if (!(delegate instanceof NoiseBasedChunkGenerator noise)) {
             return null;
         }
