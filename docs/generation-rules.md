@@ -133,3 +133,4 @@
 - [x] 生成轨道：**无枕木宽轨**，无路基（`CorridorTrackProfile.VOIDSCAPE`）
 - [x] 恢复 shader，或时间锁定 18000（取「时间锁定」备选）；天空套用末地天空盒（与末地相同：`ClientBandLane.endSky()` → `SkyType.END` / `end_sky.png`）
 - [x] 天气锁定晴
+- [x] 下界层疣猪落地刷怪：原版疣猪兽无 SpawnPlacements（NO_RESTRICTIONS），3D 群系柱半空刷出后会被换成疣猪从天上掉；rotating 里 SpawnPlacementCheck 要求 ON_GROUND，对齐 Voidscape 自己维度的 PositionCheck

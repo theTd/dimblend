@@ -25,6 +25,18 @@ class VoidscapeNetherDezombifyTest {
     }
 
     @Test
+    void onlyZoglinNeedsGroundPlacement() {
+        assertTrue(VoidscapeNetherDezombifyRules.needsGroundPlacement("minecraft", "zoglin"));
+        assertFalse(VoidscapeNetherDezombifyRules.needsGroundPlacement("minecraft", "zombified_piglin"));
+        assertFalse(VoidscapeNetherDezombifyRules.needsGroundPlacement("minecraft", "hoglin"));
+        assertFalse(VoidscapeNetherDezombifyRules.needsGroundPlacement("minecraft", "ghast"));
+        assertFalse(VoidscapeNetherDezombifyRules.needsGroundPlacement("minecraft", "blaze"));
+        assertFalse(VoidscapeNetherDezombifyRules.needsGroundPlacement("voidscape", "voidling"));
+        assertFalse(VoidscapeNetherDezombifyRules.needsGroundPlacement("minecraft", null));
+        assertFalse(VoidscapeNetherDezombifyRules.needsGroundPlacement(null, "zoglin"));
+    }
+
+    @Test
     void onlyVoidscapeNetherBiomeMatches() {
         assertTrue(VoidscapeNetherDezombifyRules.isVoidscapeNether("voidscape", "nether"));
         assertFalse(VoidscapeNetherDezombifyRules.isVoidscapeNether("voidscape", "overworld"));

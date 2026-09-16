@@ -29,4 +29,15 @@ public final class VoidscapeNetherDezombifyRules {
             default -> null;
         };
     }
+
+    /**
+     * Vanilla never registers {@code SpawnPlacements} for zoglin (they only
+     * appear via hoglin conversion), so the default placement is
+     * {@code NO_RESTRICTIONS}. Voidscape's own dimension patches that with an
+     * ON_GROUND {@code PositionCheck}; rotating must do the same or zoglins
+     * spawn in the 3D nether biome column's air and get swapped to falling hoglins.
+     */
+    public static boolean needsGroundPlacement(String namespace, String path) {
+        return "minecraft".equals(namespace) && "zoglin".equals(path);
+    }
 }

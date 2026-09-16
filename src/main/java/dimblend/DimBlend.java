@@ -64,6 +64,7 @@ public final class DimBlend {
         NeoForge.EVENT_BUS.addListener(RegionBoundaryWallProtector::onExplosionDetonate);
         NeoForge.EVENT_BUS.addListener(RegionBoundaryWallProtector::onPistonPre);
         NeoForge.EVENT_BUS.addListener(WarpGatePassageGuard::onEntityTickPost);
+        NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, VoidscapeNetherDezombify::onSpawnPlacementCheck);
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, VoidscapeNetherDezombify::onFinalizeSpawn);
         NeoForge.EVENT_BUS.register(MONITOR);
         NeoForge.EVENT_BUS.register(WATCHDOG);

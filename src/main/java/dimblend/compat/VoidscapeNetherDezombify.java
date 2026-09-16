@@ -11,19 +11,48 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.SpawnPlacementTypes;
 import net.minecraft.world.level.biome.Biome;
 import net.neoforged.neoforge.event.EventHooks;
 import net.neoforged.neoforge.event.entity.living.FinalizeSpawnEvent;
+import net.neoforged.neoforge.event.entity.living.MobSpawnEvent;
 
 /**
  * Voidscape's {@code voidscape:nether} biome JSON spawns zombified piglins and
  * zoglins because Voidscape's own dimension is {@code piglin_safe: false}.
  * DimBlend's rotating dimension is piglin-safe, so those natural spawns are
- * swapped to piglin / hoglin at finalize time. Vanilla nether biomes already
- * spawn both forms and are left alone.
+ * swapped to piglin / hoglin at finalize time. Vanilla never registers
+ * spawn placement for zoglin, so rotating also rejects mid-air zoglin
+ * attempts ({@link #onSpawnPlacementCheck}) before that swap. Vanilla nether
+ * biomes already spawn both living forms and are left alone.
  */
 public final class VoidscapeNetherDezombify {
     private VoidscapeNetherDezombify() {
+    }
+
+    /**
+     * Zoglins have no vanilla spawn placement. Block mid-air natural spawns in
+     * rotating Voidscape nether before {@link #onFinalizeSpawn} swaps them to hoglins.
+     */
+    public static void onSpawnPlacementCheck(MobSpawnEvent.SpawnPlacementCheck event) {
+        if (event.getSpawnType() != MobSpawnType.NATURAL) {
+            return;
+        }
+        ServerLevel level = event.getLevel().getLevel();
+        if (level.dimension() != DimBlendRegistries.ROTATING_LEVEL) {
+            return;
+        }
+        ResourceLocation type = BuiltInRegistries.ENTITY_TYPE.getKey(event.getEntityType());
+        if (type == null
+                || !VoidscapeNetherDezombifyRules.needsGroundPlacement(type.getNamespace(), type.getPath())) {
+            return;
+        }
+        if (!isVoidscapeNether(level.getBiome(event.getPos()))) {
+            return;
+        }
+        if (!SpawnPlacementTypes.ON_GROUND.isSpawnPositionOk(event.getLevel(), event.getPos(), event.getEntityType())) {
+            event.setResult(MobSpawnEvent.SpawnPlacementCheck.Result.FAIL);
+        }
     }
 
     public static void onFinalizeSpawn(FinalizeSpawnEvent event) {
