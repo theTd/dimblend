@@ -70,6 +70,7 @@
 - [x] 时间恢复正常流逝
 - [x] 生成区间改为 **Y0 以上**（`OverworldSlice.SURFACE`：源 Y0–320，offset 0；底封在 Y-1）
 - [x] 仅生成 煤 / 铜 / 铁 / 金 / 锌 五种矿石（地表 lane 上其它矿物堆直接取消；锌走 `c:ores/zinc` + 方块 id）
+- [x] 取消晶洞类 feature（地表 lane 在 `ConfiguredFeature.place` 拦截 `GeodeConfiguration`，原版紫水晶及走同一配置的模组晶洞一并取消；地下及其它 lane 不拦。原因：地表切片 Y0–320，原版晶洞会在下层冒出来）
 
 ### 地下（Underground）
 

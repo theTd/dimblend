@@ -1,6 +1,7 @@
 package dimblend.mixin;
 
 import dimblend.worldgen.BuildingLikeFeatures;
+import dimblend.worldgen.GeodeRules;
 import dimblend.worldgen.OakTrackCorridor;
 import dimblend.worldgen.OrePileRules;
 import dimblend.worldgen.TreeLikeFeatures;
@@ -19,7 +20,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Funnels every biome-decoration feature placement (vanilla and modded alike — custom Feature
- * classes never go through TreeFeature). Ore piles in the rotating dimension are gated by
+ * classes never go through TreeFeature). Surface-lane geodes are cancelled by
+ * {@link GeodeRules} and ore piles in the rotating dimension are gated by
  * {@link OrePileRules} before the corridor retreat rules: small buildings that ride the
  * decoration pipeline instead of structure starts (Twilight Forest huts, wells, ruins,
  * graveyards) retreat from the whole no-structure zone, while tree/fungus-like features
@@ -43,6 +45,11 @@ public abstract class ConfiguredFeatureMixin {
             BlockPos pos,
             CallbackInfoReturnable<Boolean> cir
     ) {
+        Boolean geode = GeodeRules.intercept(config(), level, pos);
+        if (geode != null) {
+            cir.setReturnValue(geode);
+            return;
+        }
         Boolean orePile = OrePileRules.intercept(feature(), config(), level, generator, random, pos);
         if (orePile != null) {
             cir.setReturnValue(orePile);
