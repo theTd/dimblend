@@ -7,6 +7,7 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dimblend.mixin.ChunkGeneratorAccessor;
 import dimblend.mixin.NoiseBasedChunkGeneratorAccessor;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
@@ -232,9 +233,11 @@ public final class YShiftedChunkGenerator extends ChunkGenerator {
             // guard in docs/generation-rules.md.
             return;
         }
-        if (settings.noiseRouter().finalDensity() instanceof YShiftedDensity shifted) {
+        OptionalInt existing = YShiftedNoiseSettings.existingShiftOffset(
+                settings.noiseRouter().finalDensity());
+        if (existing.isPresent()) {
             throw new IllegalStateException(
-                    "dimblend:y_shifted inner is already shifted by " + shifted.offset()
+                    "dimblend:y_shifted inner is already shifted by " + existing.getAsInt()
                             + ", cannot apply " + yOffset);
         }
         BiomeSource biomes = YShiftedBiomeSource.wrap(inner.getBiomeSource(), yOffset);
