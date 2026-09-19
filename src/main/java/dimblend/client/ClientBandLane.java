@@ -37,13 +37,25 @@ public final class ClientBandLane {
 
     /**
      * True while the player stands in a lane that uses vanilla's End skybox
-     * (end / underground / nether / deeperdarker). Voidscape uses Voidscape's
-     * own portal-shader sky instead. Same partition-wall signal as {@link #end()};
-     * not a camera-biome lookup.
+     * (end / deeperdarker). Underground and nether use {@link #netherSky()}
+     * instead; Voidscape uses Voidscape's own portal-shader sky. Same
+     * partition-wall signal as {@link #end()}; not a camera-biome lookup.
      */
     public static boolean endSky() {
         return switch (lane) {
-            case "underground", "nether", "end", "deeperdarker" -> true;
+            case "end", "deeperdarker" -> true;
+            default -> false;
+        };
+    }
+
+    /**
+     * True while the player stands in a lane that uses vanilla's Nether
+     * effects (underground / nether): {@code SkyType.NONE}, thick fog,
+     * constant ambient light. Same partition-wall signal as {@link #endSky()}.
+     */
+    public static boolean netherSky() {
+        return switch (lane) {
+            case "underground", "nether" -> true;
             default -> false;
         };
     }

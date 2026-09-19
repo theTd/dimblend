@@ -78,7 +78,7 @@
 
 - [x] 生成轨道：**深色橡木宽轨**，有路基（`CorridorTrackProfile.UNDERGROUND`）
 - [x] 时间锁定 18000
-- [x] 天空套用末地天空盒（与末地相同：`ClientBandLane.endSky()` → `SkyType.END` / `end_sky.png`）
+- [x] 天空套用下界 Effects（与下界相同：`ClientBandLane.netherSky()` → `NetherEffects`：`SkyType.NONE` / 浓雾 / constantAmbientLight）
 - [x] 天气锁定晴（雨雪是维度级的：客户端按玩家纬度遮罩，服务端只在这些列上当晴天处理）
 - [x] 替换轨道上方 15 格宽内所有流体为玻璃（`OakTrackCorridor.replaceFluidStrip`：地下 lane 在 Z[-7,+7]、Y=64 到切片顶把流体换成玻璃；水/岩浆用蓝/红染色玻璃，其余流体用普通玻璃。八边形 1 格壳 `sealVaultShell` 仍保留，但不替换路基（Y=63）及以下）
 - [x] 阻止海洋生物群系及其变种生成（地下 slice 的 delegate 生成器换装 `OceanFilteredBiomeSource`：`minecraft:is_ocean` 标签 + 蘑菇岛统一回退平原；chunk 群系填充与海洋结构校验同源生效，`possibleBiomes` 同步滤除）
@@ -88,7 +88,7 @@
 
 - [x] 生成轨道：**黑石宽轨**，无路基（`CorridorTrackProfile.NETHER`）
 - [x] 时间锁定 18000
-- [x] 天空套用末地天空盒（与末地相同：`ClientBandLane.endSky()` → `SkyType.END` / `end_sky.png`）
+- [x] 天空套用下界 Effects（`ClientBandLane.netherSky()` → `NetherEffects`：`SkyType.NONE` / 浓雾 / constantAmbientLight；与地下相同）
 - [x] 天气走原版
 - [x] 阻止下界生物僵尸化（dimension_type 全局 `piglin_safe: true`；Voidscape `voidscape:nether` 刷怪表直接刷僵尸猪灵/僵尸疣猪兽，rotating 里在 finalizeSpawn 换成猪灵/疣猪兽）
 
@@ -97,7 +97,7 @@
 - [x] 生成轨道：**幻纱宽轨**，无路基（`CorridorTrackProfile.END`）
 - [x] 时间锁定 18000（末地/星光/深渊取「时间锁定」备选；客户端按玩家锁定，服务端世界时间照流）
 - [x] 天气走原版
-- [x] 恢复末地天空（`RotatingDimensionEffects`：玩家 `endSky` 纬度（end / underground / nether / deeperdarker）时 `SkyType.END`，原版画 `end_sky.png`，无主世界日月星；雾色/无云/forceBrightLightmap 对齐 `EndEffects`。18000 锁只管昼夜读数，不管天空盒。voidscape 走自己的 shader，见下）
+- [x] 恢复末地天空（`RotatingDimensionEffects`：玩家 `endSky` 纬度（end / deeperdarker）时 `SkyType.END`，原版画 `end_sky.png`，无主世界日月星；雾色/无云/forceBrightLightmap 对齐 `EndEffects`。地下/下界改走 `netherSky` → `NetherEffects`。18000 锁只管昼夜读数，不管天空盒。voidscape 走自己的 shader，见下）
 - [x] 服务端刷怪按纬度锁夜（`NaturalSpawner` 推 `ServerBandTime`，`getSkyDarken` 按 18000 计算；末影人不会因全局白天补不上而消失。岛面仍有 skylight，密度接近主世界夜晚而非原版末地无天空光）
 
 ### 暮色（Twilight Forest）
@@ -119,7 +119,7 @@
 
 - [x] 生成轨道：**标准宽轨**，无路基（`CorridorTrackProfile.OTHERSIDE`）
 - [x] 时间锁定 18000
-- [x] 天空套用末地天空盒（与末地相同：`ClientBandLane.endSky()` → `SkyType.END` / `end_sky.png`）
+- [x] 天空套用末地天空盒（与末地相同：`ClientBandLane.endSky()` → `SkyType.END` / `end_sky.png`；地下/下界已改走 `netherSky`）
 - [x] 天气锁定晴
 
 ### 天域（Aether Skylands）

@@ -4,16 +4,19 @@ package dimblend.client;
  * Which extra sky overlay the rotating dimension should use this frame.
  * Twilight (camera noise biome) wins over Starlight (camera noise biome) wins over
  * Voidscape's portal-shader sky (player lane) wins over End skybox (player lane:
- * end / underground / nether / deeperdarker); none means vanilla overworld sky.
+ * end / deeperdarker) wins over Nether effects (player lane: underground / nether);
+ * none means vanilla overworld sky.
  */
 public enum RotatingSkyOverlay {
     NONE,
     TWILIGHT,
     STARLIGHT,
     VOIDSCAPE,
-    END;
+    END,
+    NETHER;
 
-    public static RotatingSkyOverlay of(boolean twilight, boolean starlight, boolean voidscape, boolean end) {
+    public static RotatingSkyOverlay of(
+            boolean twilight, boolean starlight, boolean voidscape, boolean end, boolean nether) {
         if (twilight) {
             return TWILIGHT;
         }
@@ -26,6 +29,9 @@ public enum RotatingSkyOverlay {
         if (end) {
             return END;
         }
+        if (nether) {
+            return NETHER;
+        }
         return NONE;
     }
 
@@ -33,7 +39,7 @@ public enum RotatingSkyOverlay {
      * Unloaded client quarts fall back to plains, which would otherwise flip the
      * sky off for a few frames while neighbor chunks stream in. Keep the last
      * loaded twilight/starlight sample until the camera quart is actually
-     * present. Lane-keyed skies (Voidscape / End) always take the live
+     * present. Lane-keyed skies (Voidscape / End / Nether) always take the live
      * {@code sampled} value so they do not freeze after leaving the lane.
      */
     public static RotatingSkyOverlay holdIfUnloaded(
@@ -45,6 +51,6 @@ public enum RotatingSkyOverlay {
     }
 
     boolean laneKeyed() {
-        return this == END || this == VOIDSCAPE;
+        return this == END || this == VOIDSCAPE || this == NETHER;
     }
 }

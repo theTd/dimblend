@@ -8,39 +8,45 @@ import org.junit.jupiter.api.Test;
 
 class RotatingSkyOverlayTest {
     @Test
-    void twilightWinsOverStarlightVoidscapeAndEnd() {
-        assertEquals(RotatingSkyOverlay.TWILIGHT, RotatingSkyOverlay.of(true, true, true, true));
-        assertEquals(RotatingSkyOverlay.TWILIGHT, RotatingSkyOverlay.of(true, true, false, false));
-        assertEquals(RotatingSkyOverlay.TWILIGHT, RotatingSkyOverlay.of(true, false, true, true));
-        assertEquals(RotatingSkyOverlay.TWILIGHT, RotatingSkyOverlay.of(true, false, false, false));
+    void twilightWinsOverStarlightVoidscapeEndAndNether() {
+        assertEquals(RotatingSkyOverlay.TWILIGHT, RotatingSkyOverlay.of(true, true, true, true, true));
+        assertEquals(RotatingSkyOverlay.TWILIGHT, RotatingSkyOverlay.of(true, true, false, false, false));
+        assertEquals(RotatingSkyOverlay.TWILIGHT, RotatingSkyOverlay.of(true, false, true, true, true));
+        assertEquals(RotatingSkyOverlay.TWILIGHT, RotatingSkyOverlay.of(true, false, false, false, false));
     }
 
     @Test
-    void starlightWinsOverVoidscapeAndEnd() {
-        assertEquals(RotatingSkyOverlay.STARLIGHT, RotatingSkyOverlay.of(false, true, true, true));
-        assertEquals(RotatingSkyOverlay.STARLIGHT, RotatingSkyOverlay.of(false, true, false, false));
+    void starlightWinsOverVoidscapeEndAndNether() {
+        assertEquals(RotatingSkyOverlay.STARLIGHT, RotatingSkyOverlay.of(false, true, true, true, true));
+        assertEquals(RotatingSkyOverlay.STARLIGHT, RotatingSkyOverlay.of(false, true, false, false, false));
     }
 
     @Test
-    void voidscapeWinsOverEnd() {
-        assertEquals(RotatingSkyOverlay.VOIDSCAPE, RotatingSkyOverlay.of(false, false, true, true));
-        assertEquals(RotatingSkyOverlay.VOIDSCAPE, RotatingSkyOverlay.of(false, false, true, false));
+    void voidscapeWinsOverEndAndNether() {
+        assertEquals(RotatingSkyOverlay.VOIDSCAPE, RotatingSkyOverlay.of(false, false, true, true, true));
+        assertEquals(RotatingSkyOverlay.VOIDSCAPE, RotatingSkyOverlay.of(false, false, true, false, false));
     }
 
     @Test
-    void endWhenNotTwilightStarlightOrVoidscape() {
-        assertEquals(RotatingSkyOverlay.END, RotatingSkyOverlay.of(false, false, false, true));
+    void endWinsOverNether() {
+        assertEquals(RotatingSkyOverlay.END, RotatingSkyOverlay.of(false, false, false, true, true));
+        assertEquals(RotatingSkyOverlay.END, RotatingSkyOverlay.of(false, false, false, true, false));
     }
 
     @Test
-    void noneOutsideTwilightStarlightVoidscapeAndEnd() {
-        assertEquals(RotatingSkyOverlay.NONE, RotatingSkyOverlay.of(false, false, false, false));
+    void netherWhenNotTwilightStarlightVoidscapeOrEnd() {
+        assertEquals(RotatingSkyOverlay.NETHER, RotatingSkyOverlay.of(false, false, false, false, true));
+    }
+
+    @Test
+    void noneOutsideTwilightStarlightVoidscapeEndAndNether() {
+        assertEquals(RotatingSkyOverlay.NONE, RotatingSkyOverlay.of(false, false, false, false, false));
     }
 
     @Test
     void holdIfUnloadedKeepsPreviousSample() {
         RotatingSkyOverlay previous = RotatingSkyOverlay.TWILIGHT;
-        RotatingSkyOverlay plainsFallback = RotatingSkyOverlay.of(false, false, false, false);
+        RotatingSkyOverlay plainsFallback = RotatingSkyOverlay.of(false, false, false, false, false);
         assertEquals(
                 RotatingSkyOverlay.TWILIGHT,
                 RotatingSkyOverlay.holdIfUnloaded(false, plainsFallback, previous));
@@ -70,6 +76,12 @@ class RotatingSkyOverlayTest {
         assertEquals(
                 RotatingSkyOverlay.VOIDSCAPE,
                 RotatingSkyOverlay.holdIfUnloaded(false, RotatingSkyOverlay.VOIDSCAPE, RotatingSkyOverlay.NONE));
+        assertEquals(
+                RotatingSkyOverlay.NETHER,
+                RotatingSkyOverlay.holdIfUnloaded(false, RotatingSkyOverlay.NETHER, RotatingSkyOverlay.TWILIGHT));
+        assertEquals(
+                RotatingSkyOverlay.NETHER,
+                RotatingSkyOverlay.holdIfUnloaded(false, RotatingSkyOverlay.NETHER, RotatingSkyOverlay.NONE));
     }
 
     @Test
@@ -81,17 +93,24 @@ class RotatingSkyOverlayTest {
                 RotatingSkyOverlay.NONE,
                 RotatingSkyOverlay.holdIfUnloaded(false, RotatingSkyOverlay.NONE, RotatingSkyOverlay.VOIDSCAPE));
         assertEquals(
+                RotatingSkyOverlay.NONE,
+                RotatingSkyOverlay.holdIfUnloaded(false, RotatingSkyOverlay.NONE, RotatingSkyOverlay.NETHER));
+        assertEquals(
                 RotatingSkyOverlay.STARLIGHT,
                 RotatingSkyOverlay.holdIfUnloaded(false, RotatingSkyOverlay.STARLIGHT, RotatingSkyOverlay.END));
         assertEquals(
                 RotatingSkyOverlay.STARLIGHT,
                 RotatingSkyOverlay.holdIfUnloaded(false, RotatingSkyOverlay.STARLIGHT, RotatingSkyOverlay.VOIDSCAPE));
+        assertEquals(
+                RotatingSkyOverlay.STARLIGHT,
+                RotatingSkyOverlay.holdIfUnloaded(false, RotatingSkyOverlay.STARLIGHT, RotatingSkyOverlay.NETHER));
     }
 
     @Test
-    void laneKeyedOverlaysAreEndAndVoidscape() {
+    void laneKeyedOverlaysAreEndVoidscapeAndNether() {
         assertTrue(RotatingSkyOverlay.END.laneKeyed());
         assertTrue(RotatingSkyOverlay.VOIDSCAPE.laneKeyed());
+        assertTrue(RotatingSkyOverlay.NETHER.laneKeyed());
         assertFalse(RotatingSkyOverlay.TWILIGHT.laneKeyed());
         assertFalse(RotatingSkyOverlay.STARLIGHT.laneKeyed());
         assertFalse(RotatingSkyOverlay.NONE.laneKeyed());

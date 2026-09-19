@@ -23,8 +23,9 @@ import twilightforest.client.TwilightForestRenderInfo;
  * default, Twilight Forest visuals while the camera samples a twilightforest
  * biome, Eternal Starlight sky while the camera samples an eternal_starlight
  * biome, Voidscape's portal-shader sky while the player stands in a voidscape
- * lane, and vanilla End sky while the player stands in an End-sky lane
- * (end / underground / nether / deeperdarker).
+ * lane, vanilla End sky while the player stands in an End-sky lane
+ * (end / deeperdarker), and vanilla Nether effects while the player stands in
+ * a Nether-sky lane (underground / nether).
  *
  * <p>Restores the twilight band's "biome shader" (perma-dusk starfield, no
  * sun/moon/sunset, TF fog curve, low-Y / dark-forest fog) that lives in TF's
@@ -39,7 +40,8 @@ import twilightforest.client.TwilightForestRenderInfo;
  * {@code VoidSkyRenderer}). End-sky lanes flip {@link DimensionSpecialEffects.SkyType#END}
  * so vanilla {@code renderEndSky} draws {@code end_sky.png} instead of the overworld
  * sun/moon/stars; time lock 18000 still applies to day-cycle reads, not the
- * skybox.</p>
+ * skybox. Nether-sky lanes delegate {@link DimensionSpecialEffects.NetherEffects}
+ * ({@code SkyType.NONE}, thick fog, constant ambient light, no clouds).</p>
  *
  * <p>The effects instance is a per-dimension singleton, so the band switch is
  * a per-frame predicate. Twilight and Starlight key off the camera's noise
@@ -49,8 +51,8 @@ import twilightforest.client.TwilightForestRenderInfo;
  * neighbor quarts; on the client an unloaded neighbor is plains, which made
  * the overlay twitch a few times when walking into a twilight or starlight
  * band. Unloaded camera quarts keep the last overlay instead of snapping to
- * plains. Voidscape and End-sky lanes key off {@link ClientBandLane} because they meet
- * neighbors at a partition wall, not a biome blend.</p>
+ * plains. Voidscape, End-sky and Nether-sky lanes key off {@link ClientBandLane}
+ * because they meet neighbors at a partition wall, not a biome blend.</p>
  *
  * <p>Constructed with the same parameters TF uses for its own registration
  * (cloud level 128, SkyType.NONE, no forced/constant lightmap). The star
@@ -67,6 +69,7 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
     private final DimensionSpecialEffects starlight = new ESDimensionSpecialEffects(
             160.0F, false, DimensionSpecialEffects.SkyType.NONE, false, false);
     private final DimensionSpecialEffects.EndEffects end = new DimensionSpecialEffects.EndEffects();
+    private final DimensionSpecialEffects.NetherEffects nether = new DimensionSpecialEffects.NetherEffects();
     private static final ResourceLocation VOIDSCAPE_EFFECTS =
             ResourceLocation.fromNamespaceAndPath("voidscape", "void");
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -96,6 +99,12 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
     public boolean forceBrightLightmap() {
         DimensionSpecialEffects overlay = overlayEffects();
         return overlay != null ? overlay.forceBrightLightmap() : super.forceBrightLightmap();
+    }
+
+    @Override
+    public boolean constantAmbientLight() {
+        DimensionSpecialEffects overlay = overlayEffects();
+        return overlay != null ? overlay.constantAmbientLight() : super.constantAmbientLight();
     }
 
     @Override
@@ -129,7 +138,7 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
                     partialTick, camera, setupFog);
             case VOIDSCAPE -> voidscapeEffects().renderSky(level, ticks, partialTick, modelViewMatrix, camera,
                     projectionMatrix, isFoggy, setupFog);
-            case END, NONE -> false;
+            case END, NETHER, NONE -> false;
         };
     }
 
@@ -152,6 +161,7 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
             case STARLIGHT -> starlight;
             case VOIDSCAPE -> voidscapeEffects();
             case END -> end;
+            case NETHER -> nether;
             case NONE -> null;
         };
     }
@@ -176,7 +186,8 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
                 isBiomeNamespace(level, pos, "twilightforest"),
                 isBiomeNamespace(level, pos, "eternal_starlight"),
                 ClientBandLane.voidscape(),
-                ClientBandLane.endSky());
+                ClientBandLane.endSky(),
+                ClientBandLane.netherSky());
         lastOverlay = RotatingSkyOverlay.holdIfUnloaded(level.isLoaded(pos), sampled, lastOverlay);
         return lastOverlay;
     }
