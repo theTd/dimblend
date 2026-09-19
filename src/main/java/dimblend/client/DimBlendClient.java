@@ -27,10 +27,9 @@ public final class DimBlendClient {
     }
 
     public static void onRegisterGuiLayers(RegisterGuiLayersEvent event) {
-        // Wrap the vanilla armor layer so the band progress bar is drawn in the
-        // same layer slot, immediately after the armor row: the leftHeight read
-        // inside BandProgressHud then always matches what the armor row just used.
-        event.wrapLayer(VanillaGuiLayers.ARMOR_LEVEL, layer -> (graphics, partialTick) -> {
+        // Wrap the vanilla hotbar so the band progress bar is drawn in the
+        // bottom-anchored hotbar strip, immediately after the hotbar itself.
+        event.wrapLayer(VanillaGuiLayers.HOTBAR, layer -> (graphics, partialTick) -> {
             layer.render(graphics, partialTick);
             BandProgressHud.render(graphics);
         });

@@ -9,27 +9,32 @@ import net.minecraft.world.entity.player.Player;
 
 /**
  * Progress bar tracking how far the player has travelled through the current
- * dimblend band, rendered in the armor HUD's column: exactly as wide as the
- * vanilla armor row (10 icon slots at an 8px step plus the 9px sprite width of
- * the last icon). With armor worn it sits directly above the armor icons; with
- * no armor it occupies the armor row's own slot. The band number is drawn
- * centered on the bar.
+ * dimblend band, rendered to the left of the vanilla hotbar and snapped to the
+ * bottom of the screen: exactly as wide as the vanilla armor row (10 icon slots
+ * at an 8px step plus the 9px sprite width of the last icon). It sits in the
+ * bottom strip next to the hotbar with a small hotbar-style edge margin
+ * (3px off the screen bottom, 6px off the hotbar), so it never overlaps the
+ * armor/health rows. The band number is drawn centered on the bar.
  *
- * <p>Invoked from the wrapper around {@code VanillaGuiLayers.ARMOR_LEVEL}
- * immediately after the vanilla armor layer renders, so the {@code Gui.leftHeight}
- * read below is the exact value the armor row just used — no cross-layer drift.
+ * <p>Invoked from the wrapper around {@code VanillaGuiLayers.HOTBAR}
+ * immediately after the vanilla hotbar renders, so the bar always tracks the
+ * hotbar-anchored bottom area.
  */
 public final class BandProgressHud {
     private static final int BAR_WIDTH = 81; // armor row: 10 icons * 8px step, last sprite 9px wide
     private static final int BAR_HEIGHT = 5;
-    private static final int GAP_ABOVE_ARMOR = 1;
+    private static final int HOTBAR_HALF_WIDTH = 91; // vanilla hotbar is 182px wide, centered
+    private static final int OFFHAND_SLOT_WIDTH = 29; // vanilla offhand slot parked left of the hotbar
+    private static final int GAP_FROM_HOTBAR = 6;
+    private static final int BOTTOM_MARGIN = 3;
+    private static final int MIN_LEFT_MARGIN = 2;
     private static final int BACKGROUND_COLOR = 0xA0000000;
     private static final int FILL_COLOR = 0xFFE0A020;
 
     private BandProgressHud() {
     }
 
-    /** Must be called right after the vanilla ARMOR_LEVEL layer rendered this frame. */
+    /** Must be called right after the vanilla HOTBAR layer rendered this frame. */
     public static void render(GuiGraphics graphics) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.options.hideGui) {
@@ -50,14 +55,19 @@ public final class BandProgressHud {
             return;
         }
 
-        int armorValue = player.getArmorValue();
-        // With armor drawn, the armor layer already added +10 to leftHeight and its
-        // icons sit at guiHeight - leftHeight + 10; without armor nothing was drawn
-        // and the would-be row slot starts at guiHeight - leftHeight.
-        int slotTop = graphics.guiHeight() - mc.gui.leftHeight + (armorValue > 0 ? 10 : 0);
-        int barTop = armorValue > 0 ? slotTop - GAP_ABOVE_ARMOR - BAR_HEIGHT : slotTop;
+        int hotbarLeft = graphics.guiWidth() / 2 - HOTBAR_HALF_WIDTH;
+        // Snap to the screen bottom with a small hotbar-style edge margin,
+        // parked in the gap left of the hotbar. When the offhand slot is shown
+        // it occupies the 29px directly left of the hotbar, so anchor further
+        // left to avoid painting over it. Clamped so narrow windows never push
+        // the bar off-screen.
+        int anchorRight = hotbarLeft;
+        if (!player.getOffhandItem().isEmpty()) {
+            anchorRight -= OFFHAND_SLOT_WIDTH;
+        }
+        int left = Math.max(MIN_LEFT_MARGIN, anchorRight - GAP_FROM_HOTBAR - BAR_WIDTH);
+        int barTop = graphics.guiHeight() - BOTTOM_MARGIN - BAR_HEIGHT;
 
-        int left = graphics.guiWidth() / 2 - 91;
         graphics.fill(left, barTop, left + BAR_WIDTH, barTop + BAR_HEIGHT, BACKGROUND_COLOR);
         int blockX = player.getBlockX();
         int region = BandLayout.regionOfBlockX(blockX, bandSize);
