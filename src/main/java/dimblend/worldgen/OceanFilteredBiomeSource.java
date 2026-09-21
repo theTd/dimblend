@@ -70,6 +70,16 @@ public final class OceanFilteredBiomeSource extends BiomeSource {
     }
 
     private static boolean isExcluded(Holder<Biome> biome) {
+        return isExcludedBiome(biome);
+    }
+
+    /**
+     * Shares the exclusion predicate with the underground terrain backfill in
+     * {@link SlicedOverworldChunkGenerator}: a column whose unfiltered biome is excluded
+     * here gets land-like rock instead of the ocean bowl, so biome label and terrain
+     * stay consistent.
+     */
+    public static boolean isExcludedBiome(Holder<Biome> biome) {
         return biome.is(BiomeTags.IS_OCEAN) || biome.is(Biomes.MUSHROOM_FIELDS);
     }
 
