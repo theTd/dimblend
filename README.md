@@ -22,13 +22,14 @@ generators, picked by a seeded lane layout:
 | `dimblend:y_shifted` wrapping `voidscape:void` | Voidscape void islands, terrain lowered −64 |
 | `dimblend:y_shifted_noise` | Twilight Forest's own noise settings, terrain lifted +64 |
 
-The lane layout is deterministic per seed and distance-aware: regions 0–21 from
+The lane layout is deterministic per seed and distance-aware: regions 0–20 from
 spawn follow a fixed script (surface / underground / nether, then one band each
-of Aether, Twilight, Starlight, Otherside and Voidscape), region 32 is always
-the End; regions 22–31 draw from every lane except End, and regions 33+ draw
-from the full pool including End (surface weighted 3×). Each eligible terrain
-is guaranteed at least once per random window (22–31, then every 16 regions
-from 33; positive and negative sides independently). Changing this layout does
+of Aether, Twilight, Starlight and Otherside, closing with surface), region 32 is always
+the End and region 33 is always Voidscape; regions 21–31 draw from the above lanes
+(excluding End and Voidscape), and regions 34+ draw from the full pool including
+End and Voidscape (surface weighted 2×, no two adjacent regions the same). Each eligible terrain
+is guaranteed at least once per random window (21–31, then every 16 regions
+from 34; positive and negative sides independently). Changing this layout does
 not rewrite already-generated chunks — exploring an old rotating world can
 meet a seam between the previous sequence and the new one; start a new world
 for a consistent map. Adjacent surface/Twilight bands are merged across a
