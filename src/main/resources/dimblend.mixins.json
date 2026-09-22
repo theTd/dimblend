@@ -18,8 +18,6 @@
     "TrapezoidHeightMixin",
     "VeryBiasedToBottomHeightMixin",
     "BlockBehaviourMixin",
-    "BlockStateBaseMixin",
-    "IBlockStateExtensionMixin",
     "ConfiguredFeatureMixin",
     "EndGatewayBlockMixin",
     "JigsawStructureMixin",

@@ -12,7 +12,6 @@ import dimblend.compat.CreateTrackGraphCompat;
 import dimblend.compat.TerraBlenderRotatingCompat;
 import dimblend.compat.VoidscapeBand;
 import dimblend.compat.VoidscapeNetherDezombify;
-import dimblend.gametest.CopycatObsidianHardnessGameTests;
 import dimblend.time.TimeLockPayload;
 import dimblend.time.TimeLockSync;
 import dimblend.worldgen.ChunkGenMonitor;
@@ -29,7 +28,6 @@ import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
-import net.neoforged.neoforge.event.RegisterGameTestsEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
@@ -48,7 +46,6 @@ public final class DimBlend {
         NeoForge.EVENT_BUS.register(PREGEN);
         NeoForge.EVENT_BUS.addListener(DimBlend::onRegisterCommands);
         modBus.addListener(DimBlend::onRegisterPayloads);
-        modBus.addListener(DimBlend::onRegisterGameTests);
         NeoForge.EVENT_BUS.register(TIME_LOCK);
         NeoForge.EVENT_BUS.register(BAND_INFO);
         NeoForge.EVENT_BUS.register(BAND_LANE);
@@ -93,10 +90,6 @@ public final class DimBlend {
 
     private static void onRegisterCommands(RegisterCommandsEvent event) {
         DimBlendCommands.register(event.getDispatcher());
-    }
-
-    private static void onRegisterGameTests(RegisterGameTestsEvent event) {
-        event.register(CopycatObsidianHardnessGameTests.class);
     }
 
     private static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
