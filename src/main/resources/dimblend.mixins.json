@@ -21,6 +21,7 @@
     "BlockStateBaseMixin",
     "IBlockStateExtensionMixin",
     "ConfiguredFeatureMixin",
+    "EndGatewayBlockMixin",
     "JigsawStructureMixin",
     "DecorationClearanceMixin",
     "DistanceManagerAccessor",
