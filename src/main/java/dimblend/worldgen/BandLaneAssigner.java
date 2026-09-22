@@ -6,13 +6,13 @@ import java.util.Map;
 /**
  * Seeded sequential assignment of rotating-dimension regions to delegate indexes.
  *
- * <p>Fixed distances (0–21, 32) are pinned to the north-star script. Random
+ * <p>Fixed distances (0–20, 32, 33) are pinned to the north-star script. Random
  * distances draw from the remaining pools, keep adjacent regions on different
  * delegates, and guarantee every eligible delegate appears at least once in
- * each coverage window: 22–31, then repeating 16-wide windows from 33.
+ * each coverage window: 21–31, then repeating 16-wide windows from 34.
  */
 public final class BandLaneAssigner {
-    public static final int SURFACE_WEIGHT = 3;
+    public static final int SURFACE_WEIGHT = 2;
 
     public static final byte SURFACE = 0;
     public static final byte UNDERGROUND = 1;
@@ -25,13 +25,13 @@ public final class BandLaneAssigner {
     public static final byte VOIDSCAPE = 8;
     public static final byte MOD = 9;
 
-    static final int MID_RANDOM_START = 22;
+    static final int MID_RANDOM_START = 21;
     static final int MID_RANDOM_END = 31;
-    static final int FAR_RANDOM_START = 33;
+    static final int FAR_RANDOM_START = 34;
     static final int FAR_WINDOW = 16;
 
     private static final byte[] POOL_MID = {
-            SURFACE, UNDERGROUND, NETHER, AETHER, TWILIGHT, STARLIGHT, OTHERSIDE, VOIDSCAPE, MOD
+            SURFACE, UNDERGROUND, NETHER, AETHER, TWILIGHT, STARLIGHT, OTHERSIDE
     };
     private static final byte[] POOL_FAR = {
             SURFACE, UNDERGROUND, NETHER, END, AETHER, TWILIGHT, STARLIGHT, OTHERSIDE, VOIDSCAPE, MOD
@@ -96,6 +96,11 @@ public final class BandLaneAssigner {
         boolean[] seen = seenInWindow(region, distance, wanted);
         int missing = missingCount(wanted, seen);
         int remaining = windowEnd(distance) - distance + 1;
+        // Forced-unseen and adjacency coexist without backtracking under the current
+        // pool/window sizes: windows (11/16 slots) are wider than their pools, so force
+        // never fires at a window head whose previous region is fixed; deeper in the
+        // window the previous pick is always marked seen, hence a lone unseen candidate
+        // never equals it and the filtered roll cannot fail.
         boolean forceUnseen = remaining <= missing;
         int picked = roll(region, previous, wanted, forceUnseen ? seen : null);
         if (picked >= 0) {
@@ -195,15 +200,15 @@ public final class BandLaneAssigner {
 
     static int fixedKind(int distance) {
         return switch (distance) {
-            case 0, 1, 3, 4, 8, 9, 14, 15, 21 -> SURFACE;
+            case 0, 1, 3, 4, 8, 9, 14, 15, 20 -> SURFACE;
             case 2, 5, 6, 10, 13 -> UNDERGROUND;
             case 7, 11, 12 -> NETHER;
             case 16 -> AETHER;
             case 17 -> TWILIGHT;
             case 18 -> STARLIGHT;
             case 19 -> OTHERSIDE;
-            case 20 -> VOIDSCAPE;
             case 32 -> END;
+            case 33 -> VOIDSCAPE;
             default -> -1;
         };
     }

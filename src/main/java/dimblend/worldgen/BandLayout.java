@@ -84,7 +84,7 @@ public final class BandLayout {
 
     /**
      * Fixed lane for distance |region| from spawn. Null = random pool.
-     * Script is 0–21 plus 32; positive and negative sides mirror the same sequence.
+     * Script is 0–20 plus 32–33; positive and negative sides mirror the same sequence.
      */
     @javax.annotation.Nullable
     private static Lane fixedLane(int distance) {

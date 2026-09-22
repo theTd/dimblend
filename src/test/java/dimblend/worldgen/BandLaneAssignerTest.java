@@ -26,14 +26,16 @@ class BandLaneAssignerTest {
         int[] expected = {
             0, 0, 1, 0, 0, 1, 1, 2,
             0, 0, 1, 2, 2, 1, 0, 0,
-            4, 5, 6, 7, 8, 0
+            4, 5, 6, 7, 0
         };
-        for (int region = 0; region <= 21; region++) {
+        for (int region = 0; region <= 20; region++) {
             assertEquals(expected[region], assigner.delegateIndex(region), "region " + region);
             assertEquals(expected[region], assigner.delegateIndex(-region), "region -" + region);
         }
         assertEquals(3, assigner.delegateIndex(32));
         assertEquals(3, assigner.delegateIndex(-32));
+        assertEquals(8, assigner.delegateIndex(33));
+        assertEquals(8, assigner.delegateIndex(-33));
     }
 
     @Test
@@ -47,26 +49,29 @@ class BandLaneAssignerTest {
     void coverageAndAdjacencyHoldAcrossSeeds() {
         for (long seed = 0; seed < 256; seed++) {
             BandLaneAssigner assigner = new BandLaneAssigner(PRODUCTION_KINDS, seed);
-            assertRandomAdjacentDistinct(assigner, 21, 80, seed);
-            assertRandomAdjacentDistinct(assigner, -80, -21, seed);
-            assertWindowCoverage(assigner, PRODUCTION_KINDS, 22, 31, seed);
-            assertWindowCoverage(assigner, PRODUCTION_KINDS, -31, -22, seed);
-            assertWindowCoverage(assigner, PRODUCTION_KINDS, 33, 48, seed);
-            assertWindowCoverage(assigner, PRODUCTION_KINDS, 49, 64, seed);
-            assertWindowCoverage(assigner, PRODUCTION_KINDS, 65, 80, seed);
-            assertWindowCoverage(assigner, PRODUCTION_KINDS, -48, -33, seed);
-            assertWindowCoverage(assigner, PRODUCTION_KINDS, -64, -49, seed);
-            assertPool(assigner, 22, 31, BandLaneAssigner.pool(22), seed);
-            assertPool(assigner, 33, 48, BandLaneAssigner.pool(33), seed);
+            assertRandomAdjacentDistinct(assigner, 20, 81, seed);
+            assertRandomAdjacentDistinct(assigner, -81, -20, seed);
+            assertFixedRandomBoundariesDistinct(assigner, seed);
+            assertWindowCoverage(assigner, PRODUCTION_KINDS, 21, 31, seed);
+            assertWindowCoverage(assigner, PRODUCTION_KINDS, -31, -21, seed);
+            assertWindowCoverage(assigner, PRODUCTION_KINDS, 34, 49, seed);
+            assertWindowCoverage(assigner, PRODUCTION_KINDS, 50, 65, seed);
+            assertWindowCoverage(assigner, PRODUCTION_KINDS, 66, 81, seed);
+            assertWindowCoverage(assigner, PRODUCTION_KINDS, -49, -34, seed);
+            assertWindowCoverage(assigner, PRODUCTION_KINDS, -65, -50, seed);
+            assertPool(assigner, 21, 31, BandLaneAssigner.pool(21), seed);
+            assertPool(assigner, 34, 49, BandLaneAssigner.pool(34), seed);
         }
     }
 
     @Test
-    void midWindowExcludesEnd() {
+    void midWindowExcludesEndAndVoidscape() {
         for (long seed = 0; seed < 64; seed++) {
             BandLaneAssigner assigner = new BandLaneAssigner(PRODUCTION_KINDS, seed);
-            for (int region = 22; region <= 31; region++) {
-                assertNotEquals(3, assigner.delegateIndex(region), "end leaked into mid window seed " + seed);
+            for (int region = 21; region <= 31; region++) {
+                int kind = PRODUCTION_KINDS[assigner.delegateIndex(region)];
+                assertNotEquals(BandLaneAssigner.END, kind, "end leaked into mid window seed " + seed);
+                assertNotEquals(BandLaneAssigner.VOIDSCAPE, kind, "voidscape leaked into mid window seed " + seed);
             }
         }
     }
@@ -89,8 +94,36 @@ class BandLaneAssignerTest {
             assertEquals(0, assigner.delegateIndex(-16), "region -16 without aether seed " + seed);
             assertEquals(4, assigner.delegateIndex(17), "twilight still present seed " + seed);
             assertRandomAdjacentDistinct(assigner, 21, 48, seed);
-            assertWindowCoverage(assigner, kinds, 22, 31, seed);
-            assertWindowCoverage(assigner, kinds, 33, 48, seed);
+            assertWindowCoverage(assigner, kinds, 21, 31, seed);
+            assertWindowCoverage(assigner, kinds, 34, 49, seed);
+        }
+    }
+
+    @Test
+    void modDelegateExcludedFromMidButCoveredInFar() {
+        byte[] kinds = {
+            BandLaneAssigner.SURFACE,
+            BandLaneAssigner.UNDERGROUND,
+            BandLaneAssigner.NETHER,
+            BandLaneAssigner.END,
+            BandLaneAssigner.AETHER,
+            BandLaneAssigner.TWILIGHT,
+            BandLaneAssigner.STARLIGHT,
+            BandLaneAssigner.OTHERSIDE,
+            BandLaneAssigner.VOIDSCAPE,
+            BandLaneAssigner.MOD
+        };
+        for (byte kind : BandLaneAssigner.pool(21)) {
+            assertNotEquals(BandLaneAssigner.MOD, kind, "MOD must stay out of the mid pool");
+        }
+        for (long seed = 0; seed < 64; seed++) {
+            BandLaneAssigner assigner = new BandLaneAssigner(kinds, seed);
+            for (int region = 21; region <= 31; region++) {
+                assertNotEquals(
+                        BandLaneAssigner.MOD, kinds[assigner.delegateIndex(region)],
+                        "MOD leaked into mid window seed " + seed);
+            }
+            assertWindowCoverage(assigner, kinds, 34, 49, seed);
         }
     }
 
@@ -99,12 +132,12 @@ class BandLaneAssignerTest {
         boolean differed = false;
         for (long seed = 0; seed < 256; seed++) {
             BandLaneAssigner assigner = new BandLaneAssigner(PRODUCTION_KINDS, seed);
-            if (assigner.delegateIndex(22) != assigner.delegateIndex(-22)) {
+            if (assigner.delegateIndex(21) != assigner.delegateIndex(-21)) {
                 differed = true;
                 break;
             }
         }
-        assertTrue(differed, "signed-region mix should let +22 and -22 diverge on some seeds");
+        assertTrue(differed, "signed-region mix should let +21 and -21 diverge on some seeds");
     }
 
     @Test
@@ -122,6 +155,18 @@ class BandLaneAssignerTest {
             out[i] = assigner.delegateIndex(from + i);
         }
         return out;
+    }
+
+    private static void assertFixedRandomBoundariesDistinct(BandLaneAssigner assigner, long seed) {
+        int[][] boundaries = {{20, 21}, {31, 32}, {33, 34}};
+        for (int[] boundary : boundaries) {
+            assertNotEquals(
+                    assigner.delegateIndex(boundary[0]), assigner.delegateIndex(boundary[1]),
+                    "fixed/random boundary matched at seed " + seed + " region " + boundary[1]);
+            assertNotEquals(
+                    assigner.delegateIndex(-boundary[0]), assigner.delegateIndex(-boundary[1]),
+                    "fixed/random boundary matched at seed " + seed + " region -" + boundary[1]);
+        }
     }
 
     private static void assertRandomAdjacentDistinct(BandLaneAssigner assigner, int from, int to, long seed) {
