@@ -154,6 +154,15 @@ dependencies {
             prefer(project.sable_companion_version)
         }
     }
+    // Compile-only: Simurail (train physics) integration + its Sable API supertypes
+    // (javac needs them to resolve PhysicsBogeyBlockEntity's hierarchy). Vendored because
+    // neither publishes to a public Maven in a deterministic way (Simurail: GitHub only;
+    // Sable here is the cui-modded 2.0.5 build, not stock). File names pin the exact builds;
+    // the run/mods copies are gitignored dev installs — libs/ is the tracked source.
+    // Must stay compileOnly + optional at runtime: the Simurail mixin config is
+    // required=false so a missing Simurail/Sable install skips it.
+    compileOnly files("libs/simurail-1.21.1-0.0.0-a+ecd2dd3.jar")
+    compileOnly files("libs/sable-neoforge-1.21.1-2.0.5_cui-modded.jar")
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

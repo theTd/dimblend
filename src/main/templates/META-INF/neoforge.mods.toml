@@ -53,6 +53,12 @@ Adds a rotating dimension that cycles Overworld, End, Nether, and Twilight Fores
 [[mixins]]
 config="${mod_id}.mixins.json"
 
+# Simurail (train physics) lock: separate config with required=false so the game
+# still boots when Simurail is not installed; the redirect inside fails loudly
+# (require=1) only when Simurail IS present but drifted.
+[[mixins]]
+config="${mod_id}.simurail.mixins.json"
+
 # The [[accessTransformers]] block allows you to declare where your AT file is.
 # If this block is omitted, a fallback attempt will be made to load an AT from META-INF/accesstransformer.cfg
 #[[accessTransformers]]
@@ -144,6 +150,13 @@ config="${mod_id}.mixins.json"
 
 [[dependencies.${mod_id}]]
     modId="sable"
+    type="optional"
+    versionRange="[0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="simurail"
     type="optional"
     versionRange="[0,)"
     ordering="AFTER"

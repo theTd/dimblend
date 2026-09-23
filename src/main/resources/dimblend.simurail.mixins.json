@@ -1,0 +1,12 @@
+{
+  "required": false,
+  "package": "dimblend.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "minVersion": "0.8",
+  "mixins": [
+    "simurail.PhysicsBogeyAxleLockMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
