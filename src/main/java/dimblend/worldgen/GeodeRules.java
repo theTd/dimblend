@@ -11,8 +11,7 @@ import net.minecraft.world.level.levelgen.feature.configurations.GeodeConfigurat
  * Surface-lane geode policy for the rotating dimension, applied at
  * {@code ConfiguredFeature#place}. Vanilla amethyst and any mod feature that
  * uses {@link GeodeConfiguration} (BOP and others) are cancelled on the
- * surface lane so they cannot punch through the Y0–320 surface slice.
- * Underground and other lanes are left untouched.
+ * surface lane. Underground and other lanes are left untouched.
  */
 public final class GeodeRules {
     private GeodeRules() {

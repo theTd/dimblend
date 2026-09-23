@@ -3,7 +3,13 @@ package dimblend.worldgen;
 import com.mojang.serialization.Codec;
 
 public enum OverworldSlice {
-    SURFACE("surface", 0, 0, 320, true, false),
+    /**
+     * Surface lane keeps the full overworld depth (source Y-64–320, offset 0).
+     * No depth cut and no top/bottom bedrock seal; instead
+     * {@link SlicedOverworldChunkGenerator} replaces stone/deepslate below Y32
+     * with bedrock, preserving air, fluids, ores and structures.
+     */
+    SURFACE("surface", 0, -64, 320, false, false),
     UNDERGROUND("underground", 64, -64, 32, true, true);
 
     public static final Codec<OverworldSlice> CODEC = Codec.STRING.xmap(OverworldSlice::byName, OverworldSlice::serializedName);
@@ -79,6 +85,12 @@ public enum OverworldSlice {
                 || (this.topBedrock && targetY == this.targetMaxExclusiveY());
     }
 
+    /**
+     * Only meaningful when {@link #bottomBedrock()} or {@link #topBedrock()} is
+     * true; for a seal-free slice (e.g. SURFACE) this returns an out-of-world
+     * Y that {@link #isSealY(int)} never matches, so callers must not treat it
+     * as a floor level.
+     */
     public int sealY() {
         return this.topBedrock ? this.targetMaxExclusiveY() : this.targetMinY() - 1;
     }

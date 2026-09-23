@@ -47,6 +47,12 @@ import org.slf4j.Logger;
 
 public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
     private static final Logger LOGGER = LogUtils.getLogger();
+    /**
+     * Surface bedrock plug: stone/deepslate strictly below this target Y
+     * becomes bedrock. Air, fluids, ores and structures are preserved so
+     * caves stay walkable.
+     */
+    static final int SURFACE_BEDROCK_BELOW_Y = 32;
     public static final MapCodec<SlicedOverworldChunkGenerator> CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
             ChunkGenerator.CODEC.fieldOf("inner").forGetter(generator -> generator.inner),
             OverworldSlice.CODEC.fieldOf("slice").forGetter(generator -> generator.slice)
@@ -571,17 +577,15 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
         if (this.slice.isSealY(targetY)) {
             return bedrock;
         }
+        if (this.slice == OverworldSlice.SURFACE
+                && targetY < SURFACE_BEDROCK_BELOW_Y
+                && (current.is(Blocks.STONE) || current.is(Blocks.DEEPSLATE))) {
+            return bedrock;
+        }
         if (targetY < targetMin || targetY >= targetMaxExclusive) {
             return air;
         }
         return current;
-    }
-
-
-    private int sealedHeight() {
-        return this.slice.topBedrock()
-                ? this.slice.targetMaxExclusiveY()
-                : this.slice.targetMinY();
     }
 
     private void reprimeHeightmaps(ChunkAccess chunk) {
