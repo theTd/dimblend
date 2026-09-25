@@ -47,11 +47,14 @@ class BandLaneAssignerTest {
 
     @Test
     void coverageAndAdjacencyHoldAcrossSeeds() {
+        boolean sawSurfaceAt21 = false;
+        boolean sawNonSurfaceAt21 = false;
+        boolean sawLongSurfaceRun = false;
         for (long seed = 0; seed < 256; seed++) {
             BandLaneAssigner assigner = new BandLaneAssigner(PRODUCTION_KINDS, seed);
-            assertRandomAdjacentDistinct(assigner, 20, 81, seed);
-            assertRandomAdjacentDistinct(assigner, -81, -20, seed);
-            assertFixedRandomBoundariesDistinct(assigner, seed);
+            assertSurfaceRunsAndDistinctOthers(assigner, PRODUCTION_KINDS, 21, 81, seed);
+            assertSurfaceRunsAndDistinctOthers(assigner, PRODUCTION_KINDS, -81, -21, seed);
+            assertFixedEndBoundariesDistinct(assigner, seed);
             assertWindowCoverage(assigner, PRODUCTION_KINDS, 21, 31, seed);
             assertWindowCoverage(assigner, PRODUCTION_KINDS, -31, -21, seed);
             assertWindowCoverage(assigner, PRODUCTION_KINDS, 34, 49, seed);
@@ -61,7 +64,19 @@ class BandLaneAssignerTest {
             assertWindowCoverage(assigner, PRODUCTION_KINDS, -65, -50, seed);
             assertPool(assigner, 21, 31, BandLaneAssigner.pool(21), seed);
             assertPool(assigner, 34, 49, BandLaneAssigner.pool(34), seed);
+            if (PRODUCTION_KINDS[assigner.delegateIndex(21)] == BandLaneAssigner.SURFACE) {
+                sawSurfaceAt21 = true;
+            } else {
+                sawNonSurfaceAt21 = true;
+            }
+            if (hasSurfaceRunAtLeast(assigner, PRODUCTION_KINDS, 19, 81, 3)
+                    || hasSurfaceRunAtLeast(assigner, PRODUCTION_KINDS, -81, -19, 3)) {
+                sawLongSurfaceRun = true;
+            }
         }
+        assertTrue(sawSurfaceAt21, "expected some seed to attach region 21 to fixed surface 20");
+        assertTrue(sawNonSurfaceAt21, "expected some seed to leave region 21 non-surface");
+        assertTrue(sawLongSurfaceRun, "expected a surface run of length >= 3");
     }
 
     @Test
@@ -93,7 +108,7 @@ class BandLaneAssignerTest {
             assertEquals(0, assigner.delegateIndex(16), "region 16 without aether seed " + seed);
             assertEquals(0, assigner.delegateIndex(-16), "region -16 without aether seed " + seed);
             assertEquals(4, assigner.delegateIndex(17), "twilight still present seed " + seed);
-            assertRandomAdjacentDistinct(assigner, 21, 48, seed);
+            assertSurfaceRunsAndDistinctOthers(assigner, kinds, 21, 48, seed);
             assertWindowCoverage(assigner, kinds, 21, 31, seed);
             assertWindowCoverage(assigner, kinds, 34, 49, seed);
         }
@@ -124,6 +139,7 @@ class BandLaneAssignerTest {
                         "MOD leaked into mid window seed " + seed);
             }
             assertWindowCoverage(assigner, kinds, 34, 49, seed);
+            assertSurfaceRunsAndDistinctOthers(assigner, kinds, 21, 49, seed);
         }
     }
 
@@ -157,8 +173,8 @@ class BandLaneAssignerTest {
         return out;
     }
 
-    private static void assertFixedRandomBoundariesDistinct(BandLaneAssigner assigner, long seed) {
-        int[][] boundaries = {{20, 21}, {31, 32}, {33, 34}};
+    private static void assertFixedEndBoundariesDistinct(BandLaneAssigner assigner, long seed) {
+        int[][] boundaries = {{31, 32}, {33, 34}};
         for (int[] boundary : boundaries) {
             assertNotEquals(
                     assigner.delegateIndex(boundary[0]), assigner.delegateIndex(boundary[1]),
@@ -169,13 +185,40 @@ class BandLaneAssignerTest {
         }
     }
 
-    private static void assertRandomAdjacentDistinct(BandLaneAssigner assigner, int from, int to, long seed) {
-        int previous = assigner.delegateIndex(from);
-        for (int region = from + 1; region <= to; region++) {
-            int current = assigner.delegateIndex(region);
-            assertNotEquals(previous, current, "adjacent delegates matched at seed " + seed + " region " + region);
-            previous = current;
+    private static void assertSurfaceRunsAndDistinctOthers(
+            BandLaneAssigner assigner, byte[] kinds, int from, int to, long seed) {
+        for (int region = from; region <= to; region++) {
+            if (BandLaneAssigner.fixedKind(Math.abs(region)) >= 0) {
+                continue;
+            }
+            int index = assigner.delegateIndex(region);
+            int left = assigner.delegateIndex(region - 1);
+            int right = assigner.delegateIndex(region + 1);
+            if (kinds[index] == BandLaneAssigner.SURFACE) {
+                boolean besideSurface = kinds[left] == BandLaneAssigner.SURFACE
+                        || kinds[right] == BandLaneAssigner.SURFACE;
+                assertTrue(besideSurface, "isolated surface at seed " + seed + " region " + region);
+            } else {
+                assertNotEquals(index, left, "adjacent delegates matched at seed " + seed + " region " + region);
+                assertNotEquals(index, right, "adjacent delegates matched at seed " + seed + " region " + region);
+            }
         }
+    }
+
+    private static boolean hasSurfaceRunAtLeast(
+            BandLaneAssigner assigner, byte[] kinds, int from, int to, int length) {
+        int run = 0;
+        for (int region = from; region <= to; region++) {
+            if (kinds[assigner.delegateIndex(region)] == BandLaneAssigner.SURFACE) {
+                run++;
+                if (run >= length) {
+                    return true;
+                }
+            } else {
+                run = 0;
+            }
+        }
+        return false;
     }
 
     private static void assertWindowCoverage(BandLaneAssigner assigner, byte[] kinds, int from, int to, long seed) {

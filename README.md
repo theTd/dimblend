@@ -27,7 +27,11 @@ spawn follow a fixed script (surface / underground / nether, then one band each
 of Aether, Twilight, Starlight and Otherside, closing with surface), region 32 is always
 the End and region 33 is always Voidscape; regions 21–31 draw from the above lanes
 (excluding End and Voidscape), and regions 34+ draw from the full pool including
-End and Voidscape (surface weighted 2×, no two adjacent regions the same). Each eligible terrain
+End and Voidscape (surface weighted 2×). Non-surface lanes never repeat on
+adjacent regions. Surface bands in the random stretch occur in runs of at least
+two — longer runs are allowed — so a random surface band is never isolated; a
+run may attach to the fixed surface at region 20 or cross a far-window boundary.
+Each eligible terrain
 is guaranteed at least once per random window (21–31, then every 16 regions
 from 34; positive and negative sides independently). Changing this layout does
 not rewrite already-generated chunks — exploring an old rotating world can

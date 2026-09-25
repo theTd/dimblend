@@ -7,9 +7,13 @@ import java.util.Map;
  * Seeded sequential assignment of rotating-dimension regions to delegate indexes.
  *
  * <p>Fixed distances (0–20, 32, 33) are pinned to the north-star script. Random
- * distances draw from the remaining pools, keep adjacent regions on different
- * delegates, and guarantee every eligible delegate appears at least once in
- * each coverage window: 21–31, then repeating 16-wide windows from 34.
+ * distances draw from the remaining pools. Non-surface delegates stay different
+ * from the previous region. A random surface region is never isolated: runs are
+ * at least two long (longer runs allowed), may attach to the fixed surface at
+ * |20|, and may cross a far-window boundary. Every eligible delegate appears at
+ * least once per coverage window: 21–31, then repeating 16-wide windows from 34.
+ * Surface keeps weight 2 on the roll that opens or extends a run; the cell that
+ * closes a newly opened run repeats the opener's delegate without rolling.
  */
 public final class BandLaneAssigner {
     public static final int SURFACE_WEIGHT = 2;
@@ -92,33 +96,65 @@ public final class BandLaneAssigner {
             int index = firstOf((byte) fixed);
             return index >= 0 ? index : firstOf(SURFACE);
         }
+        // The closer of a run opened on the spawn side is not rolled: it repeats that
+        // delegate. Derived from the cache so a later delegateIndex call can resume a
+        // partially walked side without a sticky pending flag.
+        if (mustClose(region)) {
+            return this.cachedIndex(region - Integer.signum(region));
+        }
         byte[] wanted = pool(distance);
         boolean[] seen = seenInWindow(region, distance, wanted);
-        int missing = missingCount(wanted, seen);
+        int otherMissing = missingNonSurface(wanted, seen);
+        boolean surfaceSeen = surfaceSeen(seen);
+        boolean previousSurface = this.kinds[previous] == SURFACE;
+        boolean outwardRandom = fixedKind(distance + 1) < 0;
         int remaining = windowEnd(distance) - distance + 1;
-        // Forced-unseen and adjacency coexist without backtracking under the current
-        // pool/window sizes: windows (11/16 slots) are wider than their pools, so force
-        // never fires at a window head whose previous region is fixed; deeper in the
-        // window the previous pick is always marked seen, hence a lone unseen candidate
-        // never equals it and the filtered roll cannot fail.
-        boolean forceUnseen = remaining <= missing;
-        int picked = roll(region, previous, wanted, forceUnseen ? seen : null);
-        if (picked >= 0) {
-            return picked;
+        // Cost, not count: an unseen surface needs 2 slots unless it can attach to the
+        // previous surface or close across the window edge. Windows stay wider than that
+        // cost (mid 11 >= 8, far 16 >= 10, far+MOD 16 >= 11), so force never starts at a
+        // window head and never asks the last in-window slot to begin a pair whose closer
+        // would land on a fixed non-surface (region 31 / -31).
+        int surfaceCost = surfaceCost(surfaceSeen, previousSurface, remaining, outwardRandom);
+        boolean forceUnseen = remaining <= otherMissing + surfaceCost;
+        boolean canAttach = previousSurface;
+        boolean canOpen = !previousSurface && outwardRandom && openBudget(remaining, otherMissing);
+        int picked = roll(region, previous, wanted, forceUnseen ? seen : null, canAttach, canOpen);
+        if (picked < 0) {
+            throw new IllegalStateException("no legal delegate for region " + region);
         }
-        if (forceUnseen) {
-            picked = roll(region, previous, wanted, null);
-            if (picked >= 0) {
-                return picked;
-            }
-        }
-        return previous;
+        return picked;
     }
 
-    private int roll(int region, int previous, byte[] wanted, boolean[] seen) {
+    /**
+     * True when {@code region}'s spawn-side neighbor opened a surface run that is still
+     * length 1. Fixed surface at |20| does not open a run: attaching there is optional,
+     * and the attached cell already has a surface neighbor so the outward cell stays free.
+     */
+    private boolean mustClose(int region) {
+        int step = Integer.signum(region);
+        int spawnSide = region - step;
+        if (fixedKind(Math.abs(spawnSide)) >= 0) {
+            return false;
+        }
+        if (this.kinds[this.cachedIndex(spawnSide)] != SURFACE) {
+            return false;
+        }
+        int anchor = spawnSide - step;
+        return this.kinds[this.cachedIndex(anchor)] != SURFACE;
+    }
+
+    private int cachedIndex(int region) {
+        Integer index = this.cache.get(region);
+        if (index == null) {
+            throw new IllegalStateException("region " + region + " assigned out of order");
+        }
+        return index;
+    }
+
+    private int roll(int region, int previous, byte[] wanted, boolean[] seen, boolean canAttach, boolean canOpen) {
         int total = 0;
         for (int i = 0; i < this.kinds.length; i++) {
-            if (!eligible(i, previous, wanted, seen)) {
+            if (!eligible(i, previous, wanted, seen, canAttach, canOpen)) {
                 continue;
             }
             total += weight(this.kinds[i]);
@@ -132,7 +168,7 @@ public final class BandLaneAssigner {
         }
         roll %= total;
         for (int i = 0; i < this.kinds.length; i++) {
-            if (!eligible(i, previous, wanted, seen)) {
+            if (!eligible(i, previous, wanted, seen, canAttach, canOpen)) {
                 continue;
             }
             int w = weight(this.kinds[i]);
@@ -144,14 +180,41 @@ public final class BandLaneAssigner {
         return -1;
     }
 
-    private boolean eligible(int index, int previous, byte[] wanted, boolean[] seen) {
-        if (index == previous) {
-            return false;
-        }
+    private boolean eligible(int index, int previous, byte[] wanted, boolean[] seen, boolean canAttach, boolean canOpen) {
         if (!contains(wanted, this.kinds[index])) {
             return false;
         }
-        return seen == null || !seen[index];
+        if (seen != null && seen[index]) {
+            return false;
+        }
+        if (this.kinds[index] == SURFACE) {
+            // Attach/extend keeps the run on one delegate. A new run may roll any surface
+            // delegate; the closer then repeats whichever index this roll picked.
+            if (canAttach) {
+                return index == previous;
+            }
+            return canOpen && index != previous;
+        }
+        return index != previous;
+    }
+
+    private static int surfaceCost(boolean surfaceSeen, boolean previousSurface, int remaining, boolean outwardRandom) {
+        if (surfaceSeen) {
+            return 0;
+        }
+        if (previousSurface || remaining >= 2) {
+            return previousSurface ? 1 : 2;
+        }
+        if (remaining == 1 && outwardRandom) {
+            return 1;
+        }
+        return remaining + 1;
+    }
+
+    /** Slots a new surface run may spend without crowding out unseen non-surface delegates. */
+    private static boolean openBudget(int remaining, int otherMissing) {
+        int spent = remaining >= 2 ? 2 : 1;
+        return remaining >= spent && remaining - spent >= otherMissing;
     }
 
     private boolean[] seenInWindow(int region, int distance, byte[] wanted) {
@@ -167,14 +230,24 @@ public final class BandLaneAssigner {
         return seen;
     }
 
-    private int missingCount(byte[] wanted, boolean[] seen) {
+    private int missingNonSurface(byte[] wanted, boolean[] seen) {
         int missing = 0;
         for (int i = 0; i < this.kinds.length; i++) {
-            if (contains(wanted, this.kinds[i]) && !seen[i]) {
-                missing++;
+            if (this.kinds[i] == SURFACE || !contains(wanted, this.kinds[i]) || seen[i]) {
+                continue;
             }
+            missing++;
         }
         return missing;
+    }
+
+    private boolean surfaceSeen(boolean[] seen) {
+        for (int i = 0; i < this.kinds.length; i++) {
+            if (seen[i] && this.kinds[i] == SURFACE) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static byte[] pool(int distance) {
