@@ -1,0 +1,13 @@
+{
+  "replace": false,
+  "values": [
+    {
+      "id": "simurail:physics_bogey",
+      "required": false
+    },
+    {
+      "id": "simurail:automatic_coupler",
+      "required": false
+    }
+  ]
+}

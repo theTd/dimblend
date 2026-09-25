@@ -1,0 +1,38 @@
+{
+	"required": true,
+	"package": "dimblend.experience.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"plugin": "dimblend.experience.mixin.DimBlendMixinPlugin",
+	"mixins": [
+		"BeaconBlockEntityMixin",
+		"CopycatBlockStateBaseMixin",
+		"CopycatBlockStateExtensionMixin",
+		"MerchantOfferAccessor",
+		"VillagerAccessor",
+		"VillagerMasterMixin",
+		"WaterSourceDowngradeMixin",
+		"compat.dimblend.WarpGateBlockMixin",
+		"compat.cdg.DieselEngineRampMixin",
+		"compat.cdg.EngineFuelGateMixin",
+		"compat.cdg.HugeDieselEngineMixin",
+		"compat.cca.ElectricMotorMixin",
+		"compat.cca.AlternatorIdleDrainMixin",
+		"compat.create.ItemDrainIrrigationMixin",
+		"compat.create.ItemDrainGrowthBoostMixin",
+		"compat.create.ItemDrainPipeRefillMixin",
+		"compat.simurail.PhysicsBogeyBrakeSoundMixin",
+		"compat.simurail.PhysicsBogeyLateralForceMixin",
+		"compat.simurail.AutomaticCouplerRedstoneMixin"
+	],
+	"client": [
+		"client.ItemStackNicknameMixin",
+		"compat.cca.ElectricMotorSoundClientMixin",
+		"compat.cca.ElectricMotorGoggleMixin",
+		"compat.create.ElectricMotorGeneratorStatsMixin",
+		"compat.simurail.PhysicsBogeyTrackSoundMixin",
+		"compat.simurail.PhysicsBogeyWideGaugeParticleMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

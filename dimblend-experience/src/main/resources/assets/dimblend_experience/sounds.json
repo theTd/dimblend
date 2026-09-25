@@ -1,0 +1,46 @@
+{
+  "bogey_track_loop": {
+    "category": "blocks",
+    "sounds": [
+      {
+        "name": "dimblend_experience:bogey_track_loop",
+        "attenuation_distance": 32
+      }
+    ]
+  },
+  "train_brake": {
+    "category": "blocks",
+    "sounds": ["dimblend_experience:train_brake"]
+  },
+  "brake_release": {
+    "category": "blocks",
+    "sounds": ["dimblend_experience:brake_release"]
+  },
+  "electric_motor_loop": {
+    "category": "blocks",
+    "sounds": [
+      {
+        "name": "dimblend_experience:electric_motor_loop",
+        "attenuation_distance": 16
+      }
+    ]
+  },
+  "electric_motor_startup": {
+    "category": "blocks",
+    "sounds": [
+      {
+        "name": "dimblend_experience:electric_motor_startup",
+        "attenuation_distance": 16
+      }
+    ]
+  },
+  "electric_motor_stopping": {
+    "category": "blocks",
+    "sounds": [
+      {
+        "name": "dimblend_experience:electric_motor_stopping",
+        "attenuation_distance": 16
+      }
+    ]
+  }
+}

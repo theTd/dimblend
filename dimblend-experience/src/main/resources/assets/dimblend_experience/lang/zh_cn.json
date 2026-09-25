@@ -1,0 +1,22 @@
+{
+	"message.dimblend_experience.nickname.empty": "§c昵称不能为空",
+	"message.dimblend_experience.nickname.too_long": "§c昵称最长 %s 字符",
+	"message.dimblend_experience.nickname.no_item_form": "§c注视的方块没有物品形态，无法起昵称",
+	"message.dimblend_experience.nickname.target_prompt": "§c主手拿物品，或注视一个方块",
+	"message.dimblend_experience.nickname.set": "§a已将 §f%s§a 的显示名改为「§f%s§a」（全服生效）",
+	"message.dimblend_experience.nickname.cleared": "§a已清除 §f%s§a 的昵称",
+	"message.dimblend_experience.nickname.nothing_to_clear": "§7%s 没有设置昵称",
+	"message.dimblend_experience.nickname.disabled": "§c物品昵称功能已关闭",
+	"message.dimblend_experience.nickname.no_permission": "§c没有权限修改物品昵称",
+	"key.categories.dimblend_experience": "DimBlend",
+	"key.dimblend_experience.nickname": "物品昵称",
+	"screen.dimblend_experience.nickname": "物品昵称",
+	"screen.dimblend_experience.nickname.hint": "新昵称",
+	"screen.dimblend_experience.nickname.confirm": "确定",
+	"screen.dimblend_experience.nickname.clear": "清除昵称",
+	"screen.dimblend_experience.nickname.cancel": "取消",
+	"screen.dimblend_experience.nickname.target": "目标：%s",
+	"screen.dimblend_experience.nickname.no_target": "主手拿物品，或注视一个方块",
+	"screen.dimblend_experience.nickname.no_item_form": "注视的方块没有物品形态",
+	"force_group.dimblend_experience.lateral_force": "横向力"
+}

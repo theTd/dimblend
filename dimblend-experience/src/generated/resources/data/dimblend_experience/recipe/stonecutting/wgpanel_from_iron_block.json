@@ -1,0 +1,17 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "factory_blocks"
+    }
+  ],
+  "type": "minecraft:stonecutting",
+  "group": "dimblend_factory",
+  "ingredient": {
+    "item": "minecraft:iron_block"
+  },
+  "result": {
+    "count": 4,
+    "id": "factory_blocks:wgpanel"
+  }
+}

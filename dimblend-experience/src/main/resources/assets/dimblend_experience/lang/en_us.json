@@ -1,0 +1,22 @@
+{
+  "message.dimblend_experience.nickname.empty": "§cNickname cannot be empty",
+  "message.dimblend_experience.nickname.too_long": "§cNickname is limited to %s characters",
+  "message.dimblend_experience.nickname.no_item_form": "§cThe block you are looking at has no item form",
+  "message.dimblend_experience.nickname.target_prompt": "§cHold an item or look at a block",
+  "message.dimblend_experience.nickname.set": "§aRenamed §f%s§a to \"§f%s§a\" (server-wide)",
+  "message.dimblend_experience.nickname.cleared": "§aCleared nickname of §f%s",
+  "message.dimblend_experience.nickname.nothing_to_clear": "§7%s has no nickname",
+  "message.dimblend_experience.nickname.disabled": "§cItem nicknames are disabled",
+  "message.dimblend_experience.nickname.no_permission": "§cYou cannot change item nicknames",
+  "key.categories.dimblend_experience": "DimBlend",
+  "key.dimblend_experience.nickname": "Item Nickname",
+  "screen.dimblend_experience.nickname": "Item Nickname",
+  "screen.dimblend_experience.nickname.hint": "New nickname",
+  "screen.dimblend_experience.nickname.confirm": "Confirm",
+  "screen.dimblend_experience.nickname.clear": "Clear Nickname",
+  "screen.dimblend_experience.nickname.cancel": "Cancel",
+  "screen.dimblend_experience.nickname.target": "Target: %s",
+  "screen.dimblend_experience.nickname.no_target": "Hold an item, or look at a block",
+  "screen.dimblend_experience.nickname.no_item_form": "That block has no item form",
+  "force_group.dimblend_experience.lateral_force": "Lateral Force"
+}

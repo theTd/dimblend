@@ -21,5 +21,8 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # 干净检出可构建的子集：experience/blocks 的 compileOnly 本地罐不入库
+      #（见根 README 与 experience docs/requirements-spec.md），CI 不覆盖它们；
+      # 本地全量构建仍用 ./gradlew build。
       - name: Build with Gradle
-        run: ./gradlew build
+        run: ./gradlew :dimblend:build :dimblend-craft:build

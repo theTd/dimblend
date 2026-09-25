@@ -1,0 +1,17 @@
+{
+	"required": true,
+	"package": "dimblend.blocks.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"minVersion": "0.8",
+	"plugin": "dimblend.blocks.mixin.DimBlendBlocksMixinPlugin",
+	"mixins": [
+		"BlockPropertiesAccessor",
+		"compat.copycats.CopycatsObsidianHardnessMixin",
+		"compat.create.CreateCopycatObsidianHardnessMixin"
+	],
+	"client": [
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}
