@@ -7,30 +7,16 @@ import org.junit.jupiter.api.Test;
 
 class WeatherLockTargetTest {
     @Test
-    void lockedLanesForceClearSky() {
-        assertTrue(WeatherLockTarget.clearSky("underground"));
-        assertTrue(WeatherLockTarget.clearSky("aether"));
-        assertTrue(WeatherLockTarget.clearSky("deeperdarker"));
-        assertTrue(WeatherLockTarget.clearSky("voidscape"));
-    }
-
-    @Test
-    void unlockedLanesKeepVanillaWeather() {
+    void surfaceLaneKeepsSharedWeather() {
         assertFalse(WeatherLockTarget.clearSky("surface"));
-        assertFalse(WeatherLockTarget.clearSky("nether"));
-        assertFalse(WeatherLockTarget.clearSky("end"));
-        assertFalse(WeatherLockTarget.clearSky("twilight"));
-        assertFalse(WeatherLockTarget.clearSky("starlight"));
-        assertFalse(WeatherLockTarget.clearSky("unknown"));
-        assertFalse(WeatherLockTarget.clearSky("mod"));
     }
 
     @Test
-    void clientMaskIncludesTwilightButNotOtherUnlockedLanes() {
-        assertTrue(WeatherLockTarget.clientClearSky("twilight"));
-        assertTrue(WeatherLockTarget.clientClearSky("underground"));
-        assertFalse(WeatherLockTarget.clientClearSky("surface"));
-        assertFalse(WeatherLockTarget.clientClearSky("starlight"));
-        assertFalse(WeatherLockTarget.clientClearSky("end"));
+    void everyOtherLaneIsLockedClear() {
+        for (String lane : new String[]{
+                "underground", "nether", "end", "twilight", "starlight",
+                "aether", "deeperdarker", "voidscape", "mod", "unknown"}) {
+            assertTrue(WeatherLockTarget.clearSky(lane), lane);
+        }
     }
 }

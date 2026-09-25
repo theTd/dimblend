@@ -73,7 +73,7 @@
 
 - [x] 生成轨道：**桦木宽轨**，有路基（`CorridorTrackProfile.SURFACE`）
 - [x] 时间恢复正常流逝
-- [x] 天气走原版
+- [x] 天气走原版（全维度唯一保留天气的 band；除地表外所有 band 一律锁定晴，机制见「地下」条目）
 - [x] 地表 band 不再切深度（`OverworldSlice.SURFACE`：源 Y-64–320，offset 0，无顶/底封）；Y32 以下的石头/深板岩替换为基岩（严格 y<32，仅 `STONE`/`DEEPSLATE`，空气/流体/矿石/结构保留，洞穴仍可走）
 - [x] 仅生成 煤 / 铜 / 铁 / 金 / 锌 五种矿石（地表 lane 上其它矿物堆直接取消；锌走 `c:ores/zinc` + 方块 id）
 - [x] 取消晶洞类 feature（地表 lane 在 `ConfiguredFeature.place` 拦截 `GeodeConfiguration`，原版紫水晶及走同一配置的模组晶洞一并取消；地下及其它 lane 不拦）
@@ -83,7 +83,7 @@
 - [x] 生成轨道：**深色橡木宽轨**，有路基（`CorridorTrackProfile.UNDERGROUND`）
 - [x] 时间锁定 18000
 - [x] 天空套用下界 Effects（与下界相同：`ClientBandLane.netherSky()` → `NetherEffects`：`SkyType.NONE` / 浓雾 / constantAmbientLight）
-- [x] 天气锁定晴（雨雪是维度级的：客户端按玩家纬度遮罩，服务端只在这些列上当晴天处理）
+- [x] 天气锁定晴（雨雪是维度级的：客户端按玩家纬度遮罩，服务端只在这些列上当晴天处理。已知偏差：刷怪光照仍读真实雨/雷——`ServerBandTime.lockedSkyDarken` 的雨/雷项、以及 `NaturalSpawner` 期间 `isThundering` 未走天气栈，雨/雷暴会把「看起来晴」的暮色、天域等 band 压暗刷怪光照甚至走雷暴刷怪分支；18000/14000 锁夜的 band 因 sun=0 基本不受影响。收尾可选：锁晴列把 `lockedSkyDarken` 雨/雷项取 0，并给 `NaturalSpawner` 补推天气栈）
 - [x] 替换轨道上方 15 格宽内所有流体为玻璃（`OakTrackCorridor.replaceFluidStrip`：地下 lane 在 Z[-7,+7]、Y=64 到切片顶把流体换成玻璃；水/岩浆用蓝/红染色玻璃，其余流体用普通玻璃。八边形 1 格壳 `sealVaultShell` 仍保留，但不替换路基（Y=63）及以下）
 - [x] 阻止海洋生物群系及其变种生成（地下 slice 的 delegate 生成器换装 `OceanFilteredBiomeSource`：`minecraft:is_ocean` 标签 + 蘑菇岛统一回退平原；chunk 群系填充与海洋结构校验同源生效，`possibleBiomes` 同步滤除。地形同步回填：同一批群系被过滤掉的柱子在 `fillFromNoise` 后把海平面及以下的气/水格按原版深板岩-石头分层夯实为陆地岩体（`SlicedOverworldChunkGenerator.backfillExcludedColumns`，存量固体/矿脉/基岩保留，后续表面规则在窗口内海底面按平原涂装、雕刻器/矿饰正常打洞布矿；`getBaseColumn` 同步回填，保持接缝采样与结构高程一致）。密度函数不动：只读写已生成的柱子，不改噪声场。已接受偏差：海滩/河流环带（海平面采到非排除群系）整柱不回填、海底沙砾等存量固体保留、0 高程深板岩一刀切（无 0~8 渐变）；回填写到海平面 63 是为雕刻/表面阶段一致，搬运只取源 -64~32，搬运后顶部为岩体切面+基岩封顶）
 - [x] 将地下全部生物群系显示为「地下」（显示层方案：Biome Notifier 兼容 mixin 给群系名追加「地下」后缀，如 平原 → 平原地下；未装 Biome Notifier 时无此提示，真实 id 不变）
@@ -93,14 +93,14 @@
 - [x] 生成轨道：**黑石宽轨**，无路基（`CorridorTrackProfile.NETHER`）
 - [x] 时间锁定 18000
 - [x] 天空套用下界 Effects（`ClientBandLane.netherSky()` → `NetherEffects`：`SkyType.NONE` / 浓雾 / constantAmbientLight；与地下相同）
-- [x] 天气走原版
+- [x] 天气锁定晴
 - [x] 阻止下界生物僵尸化（dimension_type 全局 `piglin_safe: true`；Voidscape `voidscape:nether` 刷怪表直接刷僵尸猪灵/僵尸疣猪兽，rotating 里在 finalizeSpawn 换成猪灵/疣猪兽）
 
 ### 末地（End）
 
 - [x] 生成轨道：**幻纱宽轨**，无路基（`CorridorTrackProfile.END`）
 - [x] 时间锁定 18000（末地/星光/深渊取「时间锁定」备选；客户端按玩家锁定，服务端世界时间照流）
-- [x] 天气走原版
+- [x] 天气锁定晴
 - [x] 恢复末地天空（`RotatingDimensionEffects`：玩家 `endSky` 纬度（end / deeperdarker）时 `SkyType.END`，原版画 `end_sky.png`，无主世界日月星；雾色/无云/forceBrightLightmap 对齐 `EndEffects`。地下/下界改走 `netherSky` → `NetherEffects`。18000 锁只管昼夜读数，不管天空盒。voidscape 走自己的 shader，见下）
 - [x] 服务端刷怪按纬度锁夜（`NaturalSpawner` 推 `ServerBandTime`，`getSkyDarken` 按 18000 计算；末影人不会因全局白天补不上而消失。岛面仍有 skylight，密度接近主世界夜晚而非原版末地无天空光）
 
@@ -108,14 +108,14 @@
 
 - [x] 生成轨道：**标准宽轨**，有路基（`CorridorTrackProfile.TWILIGHT`）
 - [x] 时间锁定 12950–13050（对齐 TF 1.21.1 `fixed_time: 13000` 的永暮亮度；区间内缓慢随机游移。不可用 12600–12700：那一段仍在日落亮侧，lightmap 约为 13000 的 1.5 倍，地形会看起来像白天）
-- [x] 天气走原版（服务端列天气仍随维度；客户端暮色带遮罩主世界雨/雷，避免天空盘、星空、薄荷雾被共用降水压暗）
+- [x] 天气锁定晴（服务端列判定 + 客户端遮罩；共用降水不再压暗天空盘、星空、薄荷雾）
 - [x] 恢复生物群系 shader（`dimblend:rotating` 自定义 DimensionSpecialEffects：相机所在群系属于 twilightforest 时逐帧切到 TF 委托——永暮星空/无日月晚霞/TF 雾色曲线/低空与黑森林浓雾；`TwilightBandFog` 只移植 1.21.1 FogHandler 的雾距平滑，不二次乘 dusk 雾色。极光 sheet 与 `isFoggyAt` 的绝对 Y 随 +64 抬升）
 
 ### 星光（Eternal Starlight）
 
 - [x] 生成轨道：**标准宽轨**，取消路基（`CorridorTrackProfile.STARLIGHT`）
 - [x] 时间锁定 14000（取「时间锁定」备选；只管昼夜读数，不管天体位置）
-- [x] 天气走原版
+- [x] 天气锁定晴
 - [x] 恢复星光天空（`RotatingDimensionEffects`：相机所在群系属于 eternal_starlight 时委托 `ESSkyRenderer`——死星/自定义星场/`SkyType.NONE`/云高 160；ES 天空把死星钉在 12500，与 14000 时间锁解耦）
 - [x] 阻止星光传送门结构生成（覆写 5 个 `eternal_starlight:has_portal_ruins_*` 群系 tag 为空，见 `docs/starlight-portal-structure.md`）
 

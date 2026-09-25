@@ -69,8 +69,11 @@ public final class ServerBandTime {
 
     /**
      * Vanilla {@link Level#updateSkyBrightness()} formula, evaluated at the
-     * locked day time. Must stay in lockstep with that method so monster spawn
-     * light checks see the same night the client sky lock shows.
+     * locked day time, so monster spawn light checks see the same night the
+     * client time lock shows. Only the day-time item is pinned here: rain and
+     * thunder still read the shared level, so rainy weather can still darken
+     * spawn light on clear-locked bands (known deviation, see
+     * docs/generation-rules.md).
      */
     public static int lockedSkyDarken(Level level) {
         return SkyDarken.of(lockedDayTime(), level.getRainLevel(1.0F), level.getThunderLevel(1.0F));

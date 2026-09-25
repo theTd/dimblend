@@ -7,14 +7,15 @@ import dimblend.weather.WeatherLockTarget;
  * lane already pushed by {@link dimblend.band.BandLaneSync} — rain is
  * dimension-wide, so the client only needs to know which lane the player
  * stands in, the same per-player-band mask as {@link ClientTimeLock}.
- * Twilight is included here (not on the server) so overworld rain cannot
- * darken the TF sky disc / stars.
+ * The mask follows {@link WeatherLockTarget#clearSky}: only the surface band
+ * renders the shared rain and thunder, every other lane is masked so its sky
+ * and fog are not tinted by the shared precipitation.
  */
 public final class ClientWeatherLock {
     private ClientWeatherLock() {
     }
 
     public static boolean active() {
-        return WeatherLockTarget.clientClearSky(ClientBandLane.lane());
+        return WeatherLockTarget.clearSky(ClientBandLane.lane());
     }
 }
