@@ -128,17 +128,19 @@ dependencies {
     // Compat stack is compile-only on purpose: these are mod jars and MDG would load
     // them into every dev run. When a feature needs runtime testing, promote the
     // relevant jar to localRuntime for that session instead.
-    compileOnly files("libs/createaddition-1.5.10.jar")
-    compileOnly files("libs/createdieselgenerators-1.21.1-1.3.15.jar")
+    // 开源 mod 走 Maven 定点版本（与单仓 ES/SnR 同模式），不 vendor blob；
+    // 只有无公开 Maven 的特殊构建（simurail/sable cui-modded）才留 files("libs/…")。
+    compileOnly "maven.modrinth:createaddition:neoforge-1.21.1-1.5.10"
+    compileOnly "maven.modrinth:create-diesel-generators:1.21.1-1.3.15"
     compileOnly files("libs/simurail-1.21.1-0.0.0-a+ecd2dd3.jar")
     compileOnly files("libs/sable-neoforge-1.21.1-2.0.5_cui-modded.jar")
     // sable 的 companion 类型（ActiveSableCompanion 继承链）在独立 companion jar 中
-    compileOnly files("libs/sable-companion-common-1.21.1-1.6.0.jar")
+    compileOnly "dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:${project.sable_companion_version}"
     // runData 需要完整构造 mod：TrainOffStructureRules / StructureBedGuard 是 @EventBusSubscriber，
     // FML 启动扫描会无条件加载它们，缺 sable 即 NoClassDefFoundError。localRuntime 仅进 dev 运行，
     // 不进发布 jar；其余 compat jar 仍保持 compileOnly（对应订阅者无第三方引用）。
     localRuntime files("libs/sable-neoforge-1.21.1-2.0.5_cui-modded.jar")
-    localRuntime files("libs/sable-companion-common-1.21.1-1.6.0.jar")
+    localRuntime "dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:${project.sable_companion_version}"
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

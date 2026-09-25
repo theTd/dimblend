@@ -30,7 +30,6 @@ C0 全体伪装方块硬度统一黑曜石 mixin。全部仅在 Copycats+ 在场
 
 ## libs jar
 
-`libs/copycats-3.0.4+mc.1.21.1-neoforge.jar` 为 compileOnly 依赖（C 板块编译基类），
-不入库（与 `dimblend-experience` 同政策）；出处与还原步骤见
-`dimblend-experience/docs/requirements-spec.md`「libs jar 清单」。
+Copycats+（C 板块编译基类）走 Modrinth Maven 定点版本
+（`maven.modrinth:copycats:3.0.4+mc.1.21.1-neoforge`，见 `build.gradle`），不 vendor blob。
 需运行时联测时临时将 `compileOnly` 提升为 `localRuntime`。

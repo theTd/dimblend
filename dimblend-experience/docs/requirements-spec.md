@@ -471,6 +471,11 @@
 
 ### libs jar 清单（5 个 addon 编译依赖）
 
+> 2026-09-25 单仓更新：开源三件（Copycats+ / CCA / CDG）与 sable-companion 已改走
+> Maven 定点版本（见 `dimblend-experience/build.gradle`、`dimblend-blocks/build.gradle`），
+> 不再需要本地 jar；`libs/` 仅剩无公开 Maven 的 simurail / sable cui-modded。
+> 下表保留作运行时版本对账依据。
+
 2026-09-19 从实例 `E:\misc\TrainTripWorld\mods` 原样复制到 `./libs`（字节级一致，SHA-256 已核对）。
 CDG 1.3.15 除外：2026-09-20 起 B 板块对齐最新版，jar 由同级源码
 `E:\misc\Create-Diesel-Generators`（1.21.1 分支，`mod_version=1.21.1-1.3.15`）

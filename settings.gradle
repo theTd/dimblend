@@ -1,8 +1,6 @@
 pluginManagement {
     repositories {
         gradlePluginPortal()
-        // dimblend-craft 仍用 NeoGradle userdev 插件（迁 ModDevGradle 另起独立任务），其插件从此仓库解析。
-        maven { url = 'https://maven.neoforged.net/releases' }
     }
 }
 

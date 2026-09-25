@@ -1,6 +1,5 @@
 // 单仓聚合根：不产出 jar，只收敛四个子工程的共享 Maven 仓库。
-// 各 mod 的插件版本、依赖声明保留在各自 build.gradle；
-// dimblend-craft 的 userdev -> ModDevGradle 迁移是合仓后的独立任务，本次不动它。
+// 各 mod 的插件版本、依赖声明保留在各自 build.gradle。
 // 注：插件 marker 仓库（如 userdev 插件的 maven.neoforged.net/releases）不在此列，
 // 收敛在 settings.gradle 的 pluginManagement 里。
 
@@ -19,7 +18,16 @@ subprojects {
         maven { url = "https://cursemaven.com" }
         maven { url = "https://maven.minecraftforge.net" }
         maven { url = "https://maven.createmod.net" }
-        maven { url = "https://mvn.devos.one/snapshots/" }
+        // Registrate MC1.21 线的唯一来源（dependencyInsight 已确认无传递依赖）。
+        // exclusive 避免其他坐标轮询这个慢快照仓。
+        exclusiveContent {
+            forRepository {
+                maven { url = "https://mvn.devos.one/snapshots/" }
+            }
+            filter {
+                includeGroup("com.tterrag.registrate")
+            }
+        }
         // Modrinth Maven 只服务 maven.modrinth group（如 SnR、Eternal Starlight）：
         // exclusive 避免 Gradle 为这些坐标轮询其他仓库（慢快照仓超时会拖死解析），
         // 也避免其他坐标误查 Modrinth。

@@ -1,6 +1,6 @@
 # Dimblend Craft
 
-NeoForge Mod，目标版本 Minecraft **1.21.1**（NeoForge `21.1.249`，NeoGradle `7.1.38`，Java 21），
+NeoForge Mod，目标版本 Minecraft **1.21.1**（NeoForge `21.1.249`，ModDevGradle `2.0.147`，Java 21），
 mod id 为 `dimblend_craft`，包名为 `dimblend.craft`。
 
 本 mod 是 **TrainTripWorld 整合包**专用的运行时配方调整工具：不改动任何上游 mod 文件，
@@ -30,7 +30,7 @@ TACZ** 的配方做批量修改与删除。规则明细见 `docs/配方修改需
 ```powershell
 # 以下命令一律在仓库根执行
 # 列出 run 配置并验证构建脚本（不下载游戏文件，最快）
-.\gradlew.bat :dimblend-craft:tasks --group="NeoGradle/Runs"
+.\gradlew.bat :dimblend-craft:tasks --group="Mod development tasks"
 
 # 构建 jar（输出 dimblend-craft/build/libs/dimblend_craft-0.1.0.jar）
 .\gradlew.bat :dimblend-craft:build
@@ -56,8 +56,8 @@ src/main/java/dimblend/craft/
 src/main/resources/
   META-INF/neoforge.mods.toml     # 由 gradle.properties 变量展开，切勿手写版本号
   data/c/tags/item/shulker_boxes.json  # 本 mod 提供的 c:shulker_boxes 标签（17 种潜影盒）
-gradle.properties                # mod 坐标 + userdev parchment 键；MC/Neo 共享键以根为准（此处为冻结影子，见文件头注释）
-build.gradle                     # NeoGradle userdev 配置、run、资源展开
+gradle.properties                # mod 坐标；MC/Neo/Parchment 共享键以根为准
+build.gradle                     # ModDevGradle 配置、run、资源展开
 docs/配方修改需求.md              # 需求冻结文档（规则表的唯一依据）
 ```
 

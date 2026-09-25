@@ -125,8 +125,8 @@ dependencies {
     implementation "com.tterrag.registrate:Registrate:MC1.21-1.3.0+67"
     // Copycats+ 提供创造模式伪装方块继承的行为基类（C 板块）。compile-only：这是 mod jar，
     // MDG 会把 implementation 的 mod 装进每个 dev run；需要运行时联测时临时提升为 localRuntime。
-    // jar 出处与还原步骤见 dimblend-experience 的 docs/requirements-spec.md「libs jar 清单」。
-    compileOnly files("libs/copycats-3.0.4+mc.1.21.1-neoforge.jar")
+    // 开源 mod 走 Modrinth Maven 定点版本，不 vendor blob。
+    compileOnly "maven.modrinth:copycats:3.0.4+mc.1.21.1-neoforge"
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.
