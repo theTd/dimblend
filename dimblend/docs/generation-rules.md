@@ -83,7 +83,7 @@
 - [x] 生成轨道：**深色橡木宽轨**，有路基（`CorridorTrackProfile.UNDERGROUND`）
 - [x] 时间锁定 18000
 - [x] 天空套用下界 Effects（与下界相同：`ClientBandLane.netherSky()` → `NetherEffects`：`SkyType.NONE` / 浓雾 / constantAmbientLight）
-- [x] 天气锁定晴（雨雪是维度级的：客户端按玩家纬度遮罩，服务端只在这些列上当晴天处理。已知偏差：刷怪光照仍读真实雨/雷——`ServerBandTime.lockedSkyDarken` 的雨/雷项、以及 `NaturalSpawner` 期间 `isThundering` 未走天气栈，雨/雷暴会把「看起来晴」的暮色、天域等 band 压暗刷怪光照甚至走雷暴刷怪分支；18000/14000 锁夜的 band 因 sun=0 基本不受影响。收尾可选：锁晴列把 `lockedSkyDarken` 雨/雷项取 0，并给 `NaturalSpawner` 补推天气栈）
+- [x] 天气锁定晴（雨雪雷是维度级共享状态，粗暴方案：玩家站在非地表 band 时每 tick 全维度 `setWeatherParameters` 强制转晴，不考虑多玩家互顶；回地表后雨不恢复，等原版循环重起。见 `ServerGlobalWeatherLock` / `BandLaneSync`）
 - [x] 替换轨道上方 15 格宽内所有流体为玻璃（`OakTrackCorridor.replaceFluidStrip`：地下 lane 在 Z[-7,+7]、Y=64 到切片顶把流体换成玻璃；水/岩浆用蓝/红染色玻璃，其余流体用普通玻璃。八边形 1 格壳 `sealVaultShell` 仍保留，但不替换路基（Y=63）及以下）
 - [x] 阻止海洋生物群系及其变种生成（地下 slice 的 delegate 生成器换装 `OceanFilteredBiomeSource`：`minecraft:is_ocean` 标签 + 蘑菇岛统一回退平原；chunk 群系填充与海洋结构校验同源生效，`possibleBiomes` 同步滤除。地形同步回填：同一批群系被过滤掉的柱子在 `fillFromNoise` 后把海平面及以下的气/水格按原版深板岩-石头分层夯实为陆地岩体（`SlicedOverworldChunkGenerator.backfillExcludedColumns`，存量固体/矿脉/基岩保留，后续表面规则在窗口内海底面按平原涂装、雕刻器/矿饰正常打洞布矿；`getBaseColumn` 同步回填，保持接缝采样与结构高程一致）。密度函数不动：只读写已生成的柱子，不改噪声场。已接受偏差：海滩/河流环带（海平面采到非排除群系）整柱不回填、海底沙砾等存量固体保留、0 高程深板岩一刀切（无 0~8 渐变）；回填写到海平面 63 是为雕刻/表面阶段一致，搬运只取源 -64~32，搬运后顶部为岩体切面+基岩封顶）
 - [x] 将地下全部生物群系显示为「地下」（显示层方案：Biome Notifier 兼容 mixin 给群系名追加「地下」后缀，如 平原 → 平原地下；未装 Biome Notifier 时无此提示，真实 id 不变）
@@ -108,7 +108,7 @@
 
 - [x] 生成轨道：**标准宽轨**，有路基（`CorridorTrackProfile.TWILIGHT`）
 - [x] 时间锁定 12950–13050（对齐 TF 1.21.1 `fixed_time: 13000` 的永暮亮度；区间内缓慢随机游移。不可用 12600–12700：那一段仍在日落亮侧，lightmap 约为 13000 的 1.5 倍，地形会看起来像白天）
-- [x] 天气锁定晴（服务端列判定 + 客户端遮罩；共用降水不再压暗天空盘、星空、薄荷雾）
+- [x] 天气锁定晴（粗暴全局转晴，机制见「地下」条目）
 - [x] 恢复生物群系 shader（`dimblend:rotating` 自定义 DimensionSpecialEffects：相机所在群系属于 twilightforest 时逐帧切到 TF 委托——永暮星空/无日月晚霞/TF 雾色曲线/低空与黑森林浓雾；`TwilightBandFog` 只移植 1.21.1 FogHandler 的雾距平滑，不二次乘 dusk 雾色。极光 sheet 与 `isFoggyAt` 的绝对 Y 随 +64 抬升）
 
 ### 星光（Eternal Starlight）

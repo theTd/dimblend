@@ -5,18 +5,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
-class WeatherLockTargetTest {
+class ServerGlobalWeatherLockTest {
     @Test
     void surfaceLaneKeepsSharedWeather() {
-        assertFalse(WeatherLockTarget.clearSky("surface"));
+        assertFalse(ServerGlobalWeatherLock.shouldClear("surface"));
     }
 
     @Test
-    void everyOtherLaneIsLockedClear() {
+    void everyOtherLaneForcesClear() {
         for (String lane : new String[]{
                 "underground", "nether", "end", "twilight", "starlight",
                 "aether", "deeperdarker", "voidscape", "mod", "unknown"}) {
-            assertTrue(WeatherLockTarget.clearSky(lane), lane);
+            assertTrue(ServerGlobalWeatherLock.shouldClear(lane), lane);
         }
     }
 }

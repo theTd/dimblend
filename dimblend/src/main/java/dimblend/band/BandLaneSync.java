@@ -1,6 +1,7 @@
 package dimblend.band;
 
 import dimblend.DimBlendRegistries;
+import dimblend.weather.ServerGlobalWeatherLock;
 import dimblend.worldgen.BandLayout;
 import dimblend.worldgen.RotatingChunkGenerator;
 import java.util.HashMap;
@@ -35,6 +36,7 @@ public final class BandLaneSync {
             return;
         }
         String lane = laneAt(level, player.getBlockX());
+        ServerGlobalWeatherLock.enforce(level, lane);
         String previous = this.sent.put(player.getUUID(), lane);
         if (lane.equals(previous)) {
             return;
