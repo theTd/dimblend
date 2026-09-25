@@ -50,8 +50,9 @@ public final class Config {
             .define("electricMotorBehavior", true);
 
     public static final ModConfigSpec.BooleanValue ALTERNATOR_IDLE_DRAIN = BUILDER
-            .comment("D 板块 D5：CCA 交流发电机转速输入 |rpm|<16 时内部储存 FE 自行流失"
-                    + "（每 tick 50、约每秒 1000，扣到 0 为止；停转 0rpm 同样流失）")
+            .comment("D 板块 D5：CCA 交流发电机无有效转速输入（本 tick 不产电：停转 0rpm /"
+                    + " 过载·冻结网络读数归零 / 最低转速门未满足）时内部储存 FE 自行流失"
+                    + "（每 tick 250、约每秒 5000，扣到 0 为止；有输入产电时不流失）")
             .define("alternatorIdleDrain", true);
 
     public static final ModConfigSpec.BooleanValue SIMURAIL_PROTECT = BUILDER

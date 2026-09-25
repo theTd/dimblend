@@ -170,8 +170,11 @@
   `MotorLoopSound.LOOP_VOLUME=0.5`）、可听范围约 16 格（sounds.json 三条目
   `attenuation_distance=16`；循环另显式 `Attenuation.LINEAR` 作防回归/自文档
   （基类默认即 LINEAR））
-- D5 交流发电机低转速流失（2026-09-23 新条目，2026-09-23 用户改量）：转速输入 |rpm|<16 时内部
-  储存 FE 自行减少约每秒 1000（每 tick 50，扣到 0 为止；停转 0rpm 同样流失）；
+- D5 交流发电机无输入自放电（2026-09-23 新条目；2026-09-25 用户回标收敛：此前
+  |rpm|<16 口径下 1~35rpm 产电跑不赢 50FE/t 漏电、有输入也净减少，收敛为无输入才放）：
+  仅当本 tick 不产电（产能门 `|speed|>0 && isSpeedRequirementFulfilled()`
+  为假：停转 0rpm / 过载·冻结网络读数归零 / 最低转速门未满足）时内部
+  储存 FE 自行减少约每秒 5000（每 tick 250，扣到 0 为止；有输入产电时不扣；2026-09-25 用户改量：1000→5000）；
   读数口径与产能门一致用 `getSpeed()`（过载/冻结返回 0，归并入流失判据）；
   新开关 `alternatorIdleDrain`（默认开）；`AlternatorIdleDrainMixin` 注入
   `AlternatorBlockEntity.tick` HEAD（ServerLevel 守卫 + config 门控）
@@ -370,7 +373,7 @@
 | nickname / nicknamePermission | A8（全局功能）/ 命令权限等级 | true / 0 |
 | dieselEngineBehavior | B | true |
 | electricMotorBehavior | D（含 D4 自定义音效替代 + D6 护目镜实际转速显示） | true |
-| alternatorIdleDrain | D5（交流发电机 <16rpm FE 流失） | true |
+| alternatorIdleDrain | D5（交流发电机无输入自放电） | true |
 | simurailProtect | E1 | true |
 | couplerRedstone | E5（true=红石信号不再断开车钩） | true |
 | assemblerGuard | F1 | true |
