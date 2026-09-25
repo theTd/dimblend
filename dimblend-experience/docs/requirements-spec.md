@@ -472,11 +472,11 @@
 
 ## 7. 决策记录
 
-### libs jar 清单（5 个 addon 编译依赖）
+### libs jar 清单（6 个 addon 编译依赖）
 
 > 2026-09-25 单仓更新：开源三件（Copycats+ / CCA / CDG）与 sable-companion 已改走
 > Maven 定点版本（见 `dimblend-experience/build.gradle`、`dimblend-blocks/build.gradle`），
-> 不再需要本地 jar；`libs/` 仅剩无公开 Maven 的 simurail / sable cui-modded。
+> 不再需要本地 jar；`libs/` 仅剩无公开 Maven 的 simurail / sable cui-modded / fluid。
 > 下表保留作运行时版本对账依据。
 
 2026-09-19 从实例 `E:\misc\TrainTripWorld\mods` 原样复制到 `./libs`（字节级一致，SHA-256 已核对）。
@@ -495,6 +495,7 @@ CDG 1.3.15 除外：2026-09-20 起 B 板块对齐最新版，jar 由同级源码
 | `createdieselgenerators-1.21.1-1.3.15.jar` | Create: Diesel Generators | 1.3.15（同级源码构建） |
 | `simurail-1.21.1-0.0.0-a+ecd2dd3.jar` | Create Simurail | 0.0.0-a（本地构建） |
 | `sable-neoforge-1.21.1-2.0.5_cui-modded.jar` | Sable | 2.0.5（cui-modded 定制构建） |
+| `fluid-2.0.1.jar` | Create: Fluid | 2.0.1（CurseForge 包，无公开 Maven；从运行实例 mods 目录原样复制，与实例一致） |
 
 依赖形态：`compileOnly files(...)`（编译可见、不进 runtimeClasspath、不进 POM）；
 需要运行测试时按需把相关 jar 临时提升为 `localRuntime`。
