@@ -2,7 +2,6 @@ package dimblend;
 
 import dimblend.block.WarpGateBlock;
 import dimblend.block.WarpGateBlockEntity;
-import dimblend.worldgen.OceanFilteredBiomeSource;
 import dimblend.worldgen.RotatingBiomeSource;
 import dimblend.worldgen.RotatingChunkGenerator;
 import dimblend.worldgen.SlicedOverworldBiomeSource;
@@ -55,8 +54,6 @@ public final class DimBlendRegistries {
 
     public static final DeferredHolder<MapCodec<? extends BiomeSource>, MapCodec<RotatingBiomeSource>> ROTATING_BIOME_SOURCE =
             BIOME_SOURCES.register("rotating", () -> RotatingBiomeSource.CODEC);
-    public static final DeferredHolder<MapCodec<? extends BiomeSource>, MapCodec<OceanFilteredBiomeSource>> OCEAN_FILTERED_BIOME_SOURCE =
-            BIOME_SOURCES.register("ocean_filtered", () -> OceanFilteredBiomeSource.CODEC);
     public static final DeferredHolder<MapCodec<? extends ChunkGenerator>, MapCodec<SlicedOverworldChunkGenerator>> SLICED_OVERWORLD_GENERATOR =
             CHUNK_GENERATORS.register("sliced_overworld", () -> SlicedOverworldChunkGenerator.CODEC);
 

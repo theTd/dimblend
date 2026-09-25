@@ -1,6 +1,5 @@
 package dimblend.worldgen;
 
-import com.mojang.logging.LogUtils;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import java.util.ArrayList;
@@ -26,11 +25,8 @@ import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeManager;
-import net.minecraft.world.level.biome.BiomeSource;
-import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.chunk.ChunkAccess;import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
 import net.minecraft.world.level.chunk.LevelChunkSection;
@@ -38,15 +34,12 @@ import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.levelgen.GenerationStep.Carving;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.Heightmap.Types;
-import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
 import net.minecraft.world.level.levelgen.structure.StructureSet;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager;
-import org.slf4j.Logger;
 
 public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
-    private static final Logger LOGGER = LogUtils.getLogger();
     /**
      * Surface bedrock plug: stone/deepslate strictly below this target Y
      * becomes bedrock. Air, fluids, ores and structures are preserved so
@@ -61,50 +54,15 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
     private final ChunkGenerator inner;
     private final OverworldSlice slice;
 
-    /**
-     * JSON entry point. Applies the underground ocean filter exactly once: rebuilding the
-     * delegate a second time (codec round-trip of an already filtered generator) hits the
-     * idempotence guard in {@link #applyUndergroundOceanFilter}.
-     */
+    /** JSON entry point. The underground slice keeps the delegate's own biome source untouched. */
     public static SlicedOverworldChunkGenerator parse(ChunkGenerator inner, OverworldSlice slice) {
-        return new SlicedOverworldChunkGenerator(applyUndergroundOceanFilter(inner, slice), slice);
+        return new SlicedOverworldChunkGenerator(inner, slice);
     }
 
     private SlicedOverworldChunkGenerator(ChunkGenerator inner, OverworldSlice slice) {
         super(slice.yOffset() == 0 ? inner.getBiomeSource() : new SlicedOverworldBiomeSource(inner.getBiomeSource(), slice));
         this.inner = inner;
         this.slice = slice;
-    }
-
-    /**
-     * The underground slice draws biomes from the full overworld climate, oceans included.
-     * generation-rules.md 地下 requires those to be replaced, and the swap has to happen
-     * on the delegate's own biome source: NoiseBasedChunkGenerator reads that field for
-     * both chunk biome filling and ocean-structure placement checks, so filtering any
-     * outer wrapper alone would leak oceans into stored chunks and structures. Only the
-     * exact vanilla {@code minecraft:noise} shape is rebuilt; subclasses (e.g.
-     * {@code dimblend:y_shifted_noise}) carry state this plain rebuild would drop, so they
-     * are skipped with a warning instead of being silently downcast.
-     */
-    private static ChunkGenerator applyUndergroundOceanFilter(ChunkGenerator inner, OverworldSlice slice) {
-        if (slice != OverworldSlice.UNDERGROUND) {
-            return inner;
-        }
-        if (!(inner instanceof NoiseBasedChunkGenerator noise)) {
-            LOGGER.warn("underground slice inner generator {} is not noise-based; ocean filter not installed", inner.getClass().getName());
-            return inner;
-        }
-        if (noise.getBiomeSource() instanceof OceanFilteredBiomeSource) {
-            return inner;
-        }
-        if (noise.getClass() != NoiseBasedChunkGenerator.class) {
-            LOGGER.warn(
-                    "underground slice inner generator {} is a NoiseBasedChunkGenerator subclass; ocean filter and terrain backfill skipped so its subclass state is not lost",
-                    noise.getClass().getName()
-            );
-            return inner;
-        }
-        return new NoiseBasedChunkGenerator(new OceanFilteredBiomeSource(noise.getBiomeSource()), noise.generatorSettings());
     }
 
     public ChunkGenerator inner() {
@@ -153,14 +111,7 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
             StructureManager structureManager,
             ChunkAccess chunk
     ) {
-        CompletableFuture<ChunkAccess> filled = this.inner.fillFromNoise(blender, randomState, structureManager, chunk);
-        if (!this.isOceanBackfillActive()) {
-            return filled;
-        }
-        return filled.thenApply(generated -> {
-            this.backfillExcludedColumns(generated, randomState);
-            return generated;
-        });
+        return this.inner.fillFromNoise(blender, randomState, structureManager, chunk);
     }
 
     @Override
@@ -251,9 +202,7 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
 
     @Override
     public NoiseColumn getBaseColumn(int x, int z, LevelHeightAccessor height, RandomState randomState) {
-        NoiseColumn source = this.isOceanBackfillActive()
-                ? this.backfilledSourceColumn(x, z, height, randomState)
-                : this.inner.getBaseColumn(x, z, height, randomState);
+        NoiseColumn source = this.inner.getBaseColumn(x, z, height, randomState);
         int minY = height.getMinBuildHeight();
         int depth = height.getHeight();
         BlockState[] states = new BlockState[depth];
@@ -266,111 +215,6 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
             states[i] = this.sealedState(targetY, state, bedrock, air);
         }
         return new NoiseColumn(minY, states);
-    }
-
-    /**
-     * True only for the underground slice whose delegate carries the ocean filter, the same
-     * gate as {@link #applyUndergroundOceanFilter}. Gating on the filter (instead of the
-     * slice alone) keeps biome label and terrain consistent: a subclass delegate that skips
-     * the filter keeps its original terrain rather than ending up with filled rock under an
-     * ocean biome label.
-     */
-    private boolean isOceanBackfillActive() {
-        return this.slice == OverworldSlice.UNDERGROUND
-                && this.inner instanceof NoiseBasedChunkGenerator noise
-                && noise.getBiomeSource() instanceof OceanFilteredBiomeSource;
-    }
-
-    /** The pre-filter biome source, used to detect columns the filter rewrites. */
-    private BiomeSource unfilteredBiomeSource() {
-        NoiseBasedChunkGenerator noise = (NoiseBasedChunkGenerator) this.inner;
-        BiomeSource source = noise.getBiomeSource();
-        return source instanceof OceanFilteredBiomeSource filtered ? filtered.inner() : source;
-    }
-
-    private boolean isExcludedColumn(BiomeSource detector, Climate.Sampler sampler, int blockX, int blockZ, int seaLevel) {
-        Holder<Biome> biome = detector.getNoiseBiome(
-                QuartPos.fromBlock(blockX),
-                QuartPos.fromBlock(seaLevel),
-                QuartPos.fromBlock(blockZ),
-                sampler);
-        return OceanFilteredBiomeSource.isExcludedBiome(biome);
-    }
-
-    /**
-     * Underground ocean-terrain backfill (no density surgery). The ocean bowl shape comes
-     * from the overworld {@code NoiseSettings} density field, which never reads the biome
-     * source, so swapping the biome label alone leaves trench walls and sea water behind.
-     * For columns the filter rewrites, every air/water cell at or below sea level becomes
-     * strata rock ({@link #strataFill}), i.e. the content the nearest land column holds in
-     * this source window (solid stone/deepslate: every land surface sits above the window
-     * top). Existing solids are kept, preserving veins, bedrock and bowl walls; later stages
-     * (surface rules on the plains biome, carvers, ore decoration) then treat the column as
-     * ordinary land.
-     */
-    private void backfillExcludedColumns(ChunkAccess chunk, RandomState randomState) {
-        NoiseBasedChunkGenerator noise = (NoiseBasedChunkGenerator) this.inner;
-        int seaLevel = noise.getSeaLevel();
-        BiomeSource detector = this.unfilteredBiomeSource();
-        Climate.Sampler sampler = randomState.sampler();
-        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        int minX = chunk.getPos().getMinBlockX();
-        int minZ = chunk.getPos().getMinBlockZ();
-        int minY = chunk.getMinBuildHeight();
-        boolean touched = false;
-        for (int lx = 0; lx < 16; lx++) {
-            for (int lz = 0; lz < 16; lz++) {
-                int x = minX + lx;
-                int z = minZ + lz;
-                if (!this.isExcludedColumn(detector, sampler, x, z, seaLevel)) {
-                    continue;
-                }
-                for (int y = minY; y <= seaLevel; y++) {
-                    BlockState current = chunk.getBlockState(cursor.set(x, y, z));
-                    if (shouldBackfill(current)) {
-                        chunk.setBlockState(cursor, strataFill(y), false);
-                        touched = true;
-                    }
-                }
-            }
-        }
-        if (touched) {
-            this.reprimeHeightmaps(chunk);
-        }
-    }
-
-    /**
-     * Same backfill applied to a sampled source column, so {@link #getBaseColumn} (and
-     * everything derived from it: underground {@link #getBaseHeight}, seam height sampling)
-     * sees the filled terrain instead of the raw ocean bowl.
-     */
-    private NoiseColumn backfilledSourceColumn(int x, int z, LevelHeightAccessor height, RandomState randomState) {
-        NoiseBasedChunkGenerator noise = (NoiseBasedChunkGenerator) this.inner;
-        NoiseColumn source = noise.getBaseColumn(x, z, height, randomState);
-        int seaLevel = noise.getSeaLevel();
-        if (!this.isExcludedColumn(this.unfilteredBiomeSource(), randomState.sampler(), x, z, seaLevel)) {
-            return source;
-        }
-        int minY = height.getMinBuildHeight();
-        int depth = height.getHeight();
-        BlockState[] states = new BlockState[depth];
-        for (int i = 0; i < depth; i++) {
-            int y = minY + i;
-            BlockState state = source.getBlock(y);
-            states[i] = y <= seaLevel && shouldBackfill(state)
-                    ? strataFill(y)
-                    : state;
-        }
-        return new NoiseColumn(minY, states);
-    }
-
-    static BlockState strataFill(int y) {
-        return y < 0 ? Blocks.DEEPSLATE.defaultBlockState() : Blocks.STONE.defaultBlockState();
-    }
-
-    /** Air and water (still + flowing; tag covers both) are replaced; lava and every solid stay. */
-    static boolean shouldBackfill(BlockState state) {
-        return state.isAir() || state.getFluidState().is(FluidTags.WATER);
     }
 
     @Override
