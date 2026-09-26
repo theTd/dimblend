@@ -14,6 +14,7 @@ import dimblend.compat.VoidscapeBand;
 import dimblend.compat.VoidscapeNetherDezombify;
 import dimblend.time.TimeLockPayload;
 import dimblend.time.TimeLockSync;
+import dimblend.weather.ServerGlobalWeatherLock;
 import dimblend.worldgen.ChunkGenMonitor;
 import dimblend.worldgen.PregenConfig;
 import dimblend.worldgen.PregenController;
@@ -49,6 +50,7 @@ public final class DimBlend {
         NeoForge.EVENT_BUS.register(TIME_LOCK);
         NeoForge.EVENT_BUS.register(BAND_INFO);
         NeoForge.EVENT_BUS.register(BAND_LANE);
+        NeoForge.EVENT_BUS.addListener(ServerGlobalWeatherLock::onLevelTick);
         if (FMLEnvironment.dist == Dist.CLIENT) {
             DimBlendClient.register(modBus);
         }
