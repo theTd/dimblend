@@ -7,6 +7,7 @@ import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import dimblend.experience.Config;
 import dimblend.experience.compat.cdg.CdgAttachments;
 import dimblend.experience.compat.cdg.CdgEngineState;
+import dimblend.experience.compat.cdg.CdgOverloadFuse;
 import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -22,21 +23,25 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * <li>B2 燃尽走原版停机（不干预）</li>
  * <li>B3 到额定后在 80%~100% 间随机跳变，每 1~3 秒取一次新值（计时在 tick
  * 状态机内推进，getter 纯读）</li>
- * <li>B4 已改为过载爆机（用户拍板）：运转中过载 → 方块直接破坏、按战利品表
- * 掉成物品；油箱余油不返还。破坏失败（极端情况）才回退闩锁逻辑</li>
+ * <li>B6 过载引信（用户拍板，不可中断）：运转中过载当 tick 播
+ * {@code diesel_overstress.ogg} 1 次、出力归零；6 秒（120 tick）后播
+ * {@code entity.generic.explode} 1 次 + 爆炸粒子（delta 1,1,1 / speed 0 /
+ * count 100），再破坏自毁掉落（余油不返还、无真实爆炸伤害）。红石关停/燃尽/
+ * 负载恢复都不取消引信。自毁破坏失败（极端情况）才回退闩锁逻辑</li>
  * </ul>
  * 目标：普通与组合式柴油机。巨型柴油机由 B5（HugeDieselEngineMixin）独立覆盖，
  * 本 mixin 不处理（cast 结构只接受 KineticBlockEntity）。
- * <p>B4 燃油门控不在这里：1.3.15 起燃油扣除统一走
+ * <p>燃油门控不在这里：1.3.15 起燃油扣除统一走
  * {@code fuelDebt += burn * getFuelThrottle()}，且组合式 tick 内已无
  * {@code enabled()} 直调点——门控收敛到 {@link EngineFuelGateMixin}
- *（{@code IEngine#getFuelThrottle} RETURN 注入，一处覆盖三类机型）。</p>
+ *（{@code IEngine#getFuelThrottle} RETURN 注入，一处覆盖三类机型；引信进行中
+ * 隐含闩锁，门控同口径生效）。</p>
  * <p>1.3.15 口径对齐：两目标类的 {@code getGeneratedSpeed()} 均含
  * {@code * getThrottle()}（模拟信号调速，未开启时恒 1）。本 mixin 的额定饱和判定
  * 与运转判定同步乘 throttle——与 getter 同源，模拟调速 0 即视为停转复位。</p>
  * <p>配置读取时机：所有 handler 先行 ServerLevel 守卫（双端方法），仅服务端
  * 读取 SERVER 配置——避免专用服务器客户端未加载该配置即抛异常。</p>
- * <p>状态持久化：附件带 codec 序列化，闩锁与点火计时跨区块卸载/存档重启保持。</p>
+ * <p>状态持久化：附件带 codec 序列化，闩锁/引信与点火计时跨区块卸载/存档重启保持。</p>
  */
 @Mixin({DieselEngineBlockEntity.class, ModularDieselEngineBlockEntity.class})
 public abstract class DieselEngineRampMixin {
@@ -89,16 +94,17 @@ public abstract class DieselEngineRampMixin {
     }
 
     /**
-     * 状态机（每 tick 收尾，仅服务端）：燃尽→解除闩锁复位；重新加油（油量
-     * 相对上次记录上升）→ 解除闩锁全新点火；运转中过载→<b>爆机</b>（破坏掉落，
-     * 失败回退闩锁）；运转中推进
+     * 状态机（每 tick 收尾，仅服务端）：引信进行中→只推进倒计时（不可中断，
+     * 到时爆音+粒子+自毁）；燃尽→解除闩锁复位；重新加油（油量
+     * 相对上次记录上升）→ 解除闩锁全新点火；运转中过载→<b>点引信</b>（警告音 1 次、
+     * 出力归零，6 秒后自毁，失败回退闩锁）；运转中推进
      * 爬梯计时与波动抽取计时（getGeneratedSpeed 纯读系数）；<b>停转（红石关停/
      * 模拟调速归零）复位</b>——与燃尽/重新加油的"全新点火"语义一致（复核裁定，第 2 轮的
      * 续转语义已回退）。
      * 到额定窗口为确定性饱和判定：{@code 16 + 2×(rampTicks/80) >= rawRated}，
      * 与 getter 的阶梯公式同源（翻轉点=getter 开始应用波动系数的点），不依赖
      * 当前转速——无冻结/无爬梯段空转/无相位漂移。
-     * 附件带序列化：闩锁跨区块卸载/存档重启保持；跃迁标脏。
+     * 附件带序列化：闩锁/引信跨区块卸载/存档重启保持；跃迁标脏。
      */
     @Inject(method = "tick", at = @At("RETURN"))
     public void dimblend$updateIgnitionState(CallbackInfo ci) {
@@ -115,6 +121,23 @@ public abstract class DieselEngineRampMixin {
 
         boolean fuel = engine.validFS();
         int fuelAmount = engine.getTank().getFluidAmount();
+        if (state.fuseActive) {
+            // B6 引信优先且不可中断：燃油/红石/负载状态都不再干预，只推进倒计时；
+            // 到时爆音+粒子+自毁（失败回退闩锁等重新加油）。组合式非 controller
+            // 油箱恒空、本就点不着引信，只有持油的 controller 能进此分支。
+            state.fuelPresent = fuel;
+            state.lastFuelAmount = fuelAmount;
+            if (CdgOverloadFuse.tickFuse(level, self.getBlockPos(), state,
+                    () -> level.destroyBlock(self.getBlockPos(), true))) {
+                state.overloadLatched = true;
+                state.rampTicks = 0;
+                state.fluctTicksLeft = 0;
+            }
+            // 引信倒计时每 tick 标脏：存档/崩溃窗口内丢失倒计时 vs 多一次 NBT 写，
+            // 取前者（需求：卸载/重启不中断引信）
+            self.setChanged();
+            return;
+        }
         if (state.overloadLatched) {
             // B4 重新加油触发启动：油量上升（相对上次记录）即解除闩锁全新点火
             if (fuel && fuelAmount > state.lastFuelAmount) {
@@ -135,16 +158,14 @@ public abstract class DieselEngineRampMixin {
         boolean enabled = engine.enabled();
         boolean overloaded = self.isOverStressed();
         if (enabled && overloaded) {
-            // B4：运转中过载 → 爆机：方块破坏、按战利品表掉成物品（油箱余油不返还）。
-            // 成功后 BE 即将卸载，后续附件写操作无害；失败才回退闩锁。
-            if (level.destroyBlock(self.getBlockPos(), true)) {
-                state.rampTicks = 0;
-                state.fluctTicksLeft = 0;
-                return;
+            // B6：运转中过载 → 点引信：警告音 1 次、出力立即归零（闩锁口径），
+            // 6 秒后爆音+粒子+自毁掉落（余油不返还）。成功后 BE 即将卸载，
+            // 后续附件写操作无害。
+            CdgOverloadFuse.startFuse(level, self.getBlockPos(), state);
+            if (wasLatched != state.overloadLatched) {
+                self.setChanged();
             }
-            state.overloadLatched = true;
-            state.rampTicks = 0;
-            state.fluctTicksLeft = 0;
+            return;
         }
         if (!state.overloadLatched) {
             // throttle 口径（1.3.15）：getter 额定 = upgrade.getSpeed * throttle，

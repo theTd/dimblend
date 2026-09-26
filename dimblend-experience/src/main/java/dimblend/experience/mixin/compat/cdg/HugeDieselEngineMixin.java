@@ -5,6 +5,7 @@ import com.jesz.createdieselgenerators.content.diesel_engine.huge.PoweredEngineS
 import dimblend.experience.Config;
 import dimblend.experience.compat.cdg.CdgAttachments;
 import dimblend.experience.compat.cdg.CdgEngineState;
+import dimblend.experience.compat.cdg.CdgOverloadFuse;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
@@ -26,12 +27,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * 饱和判定与该调用实参同源（{@code |getFuelSpeed * getThrottle|}，注意 1.3.15
  * 此处未乘 upgrade 倍率——与上游保持一致，不另做修正）。</p>
  *
- * <p>过载信号源 = {@code shaft.isOverStressed()}（轴为 GeneratingKineticBlockEntity）；
- * 爆机只炸引擎本体（用户拍板）：先调 {@code shaft.removeGenerator} 摘除轴侧登记
- * （否则轴残留末速空转），再 {@code destroyBlock(pos, true)} 按战利品表掉落，
- * 余油不返还。燃尽走原版停机（remainingTicks/enabled 原逻辑，不干预）。</p>
+ * <p>B6 过载引信（用户拍板，不可中断）：轴过载当 tick 先摘轴侧登记（否则轴残留
+ * 末速空转），再点引信——警告音 1 次、出力归零；6 秒后爆音 1 次 + 爆炸粒子
+ * （delta 1,1,1 / speed 0 / count 100），再 {@code destroyBlock(pos, true)}
+ * 破坏本体掉落（余油不返还、无真实爆炸伤害）。红石关停/燃尽/负载恢复都不取消引信。
+ * 自毁破坏失败（极端情况）才回退闩锁等重新加油。燃尽走原版停机（不干预）。</p>
  *
- * <p>状态复用 {@link CdgEngineState} 附件（rampTicks/fluct 系，持久化）；
+ * <p>状态复用 {@link CdgEngineState} 附件（rampTicks/fluct 系 + 引信，持久化）；
  * 全部 handler 先行 ServerLevel 守卫，仅服务端读 SERVER 配置。</p>
  */
 @Mixin(HugeDieselEngineBlockEntity.class)
@@ -52,7 +54,7 @@ public abstract class HugeDieselEngineMixin {
 
     /**
      * B5 调速：替换传给轴的额定转速为爬梯/波动值。tick 双端执行，
-     * 非服务端原样透传（轴转速客户端由网络同步）；闩锁（爆机失败回退）期间给 0。
+     * 非服务端原样透传（轴转速客户端由网络同步）；闩锁（引信进行中/爆机失败回退）期间给 0。
      */
     @ModifyArg(
             method = "tick()V",
@@ -82,8 +84,10 @@ public abstract class HugeDieselEngineMixin {
     }
 
     /**
-     * B5 计时 + 过载爆机（每 tick 收尾，仅服务端）：爬梯计时推进，到额定窗口
-     * （与替换公式同源的饱和判定）抽取波动系数；轴过载 → 摘登记 + 炸本体。
+     * B5 计时 + B6 过载引信（每 tick 收尾，仅服务端）：引信进行中→只推进倒计时
+     * （不可中断，到时摘登记+爆音+粒子+自毁）；闩锁回退→重新加油解除；
+     * 停转（无油/红石关停/燃尽/模拟调速归零）→复位爬梯计时（引信除外）；
+     * 轴过载 → 摘登记 + 点引信（警告音 1 次）。爬梯/波动计时与普通机同口径。
      */
     @Inject(method = "tick()V", at = @At("RETURN"))
     private void dimblend$hugeIgnitionAndOverload(CallbackInfo ci) {
@@ -94,14 +98,40 @@ public abstract class HugeDieselEngineMixin {
         if (!Config.DIESEL_ENGINE_BEHAVIOR.get()) {
             return;
         }
+        CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
+        boolean wasLatched = state.overloadLatched;
+        if (state.fuseActive) {
+            // B6 引信优先且不可中断：只推进倒计时；到时爆音+粒子+自毁
+            // （自毁前重摘一次登记——倒计时内轴登记可能被别的引擎 tick 覆盖写回；
+            // 轴已不在时跳过摘登记直接自毁，不停摆）。
+            // BE 存活守卫：本体已被手拆时 level.getBlockEntity(pos) 不再是 self，
+            // 不再自毁，只清引信（警告音/爆炸音已播完，不追回）。
+            BlockPos pos = self.getBlockPos();
+            if (CdgOverloadFuse.tickFuse(level, pos, state, () -> {
+                if (level.getBlockEntity(pos) != (Object) self) {
+                    return true;
+                }
+                PoweredEngineShaftBlockEntity s = self.getShaft();
+                if (s != null) {
+                    s.removeGenerator(pos);
+                }
+                return level.destroyBlock(pos, true);
+            })) {
+                state.overloadLatched = true;
+                state.rampTicks = 0;
+                state.fluctTicksLeft = 0;
+            }
+            // 引信倒计时每 tick 标脏（理由见 DieselEngineRampMixin）
+            self.setChanged();
+            return;
+        }
         PoweredEngineShaftBlockEntity shaft = self.getShaft();
         if (shaft == null) {
             return;
         }
-        CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
         int fuelAmount = self.getTank().getFluidAmount();
         if (state.overloadLatched) {
-            // 爆机失败回退：闩锁语义与普通机一致，重新加油（有效燃油且油量上升）解除、全新点火
+            // 自毁失败回退：闩锁语义与普通机一致，重新加油（有效燃油且油量上升）解除、全新点火
             if (self.validFS() && fuelAmount > state.lastFuelAmount) {
                 state.overloadLatched = false;
                 state.rampTicks = 0;
@@ -117,15 +147,13 @@ public abstract class HugeDieselEngineMixin {
             return;
         }
         if (shaft.isOverStressed()) {
-            // B5 过载损坏（只炸本体）：先摘轴侧登记防残留末速空转，再破坏掉落
+            // B6 过载损坏（只炸本体）：先摘轴侧登记防残留末速空转，再点引信
             BlockPos pos = self.getBlockPos();
             shaft.removeGenerator(pos);
-            if (level.destroyBlock(pos, true)) {
-                return;
+            CdgOverloadFuse.startFuse(level, pos, state);
+            if (wasLatched != state.overloadLatched) {
+                self.setChanged();
             }
-            state.overloadLatched = true;
-            state.rampTicks = 0;
-            state.fluctTicksLeft = 0;
             return;
         }
         // 饱和判定与传轴实参同源（见类 javadoc）：|getFuelSpeed * getThrottle|
@@ -142,5 +170,6 @@ public abstract class HugeDieselEngineMixin {
             state.fluctTicksLeft = 0;
         }
         // 不逐 tick 标脏（与普通机一致：只有闩锁跃迁才标；重载后重爬无代价）
+        // 引信 tick 内的倒计时不标脏：崩溃窗口内至多丢 1 tick 倒计时，可接受
     }
 }

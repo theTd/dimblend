@@ -1,0 +1,62 @@
+package dimblend.experience.compat.cdg;
+
+import dimblend.experience.ModSounds;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+
+import java.util.function.BooleanSupplier;
+
+/**
+ * B6 过载引信（不可中断，三类柴油机共用）：
+ * 过载当 tick {@link #startFuse} 播放 {@code diesel_overstress} 警告一次、出力归零；
+ * 此后每服务端 tick {@link #tickFuse} 递减，红石关停/燃尽/负载恢复都不取消；
+ * 120 tick（6 秒）到时播放 {@code entity.generic.explode} 一次 + 爆炸粒子
+ * （{@code minecraft:explosion}，delta 1,1,1 / speed 0 / count 100），再破坏自毁掉落。
+ * 仅自毁掉落，无地形/实体伤害（不调 {@code level.explode}）。
+ */
+public final class CdgOverloadFuse {
+
+    /** 引信时长：6 秒 × 20 tps。 */
+    public static final int FUSE_TICKS = 120;
+    /** 自爆粒子数：与 /particle minecraft:explosion ~ ~ ~ 1 1 1 0 100 同口径。 */
+    public static final int DETONATE_PARTICLE_COUNT = 100;
+
+    private CdgOverloadFuse() {
+    }
+
+    /** 点引信：警告音一次 + 出力闩锁归零（燃油门控走闩锁口径），倒计时 120 tick。 */
+    public static void startFuse(ServerLevel level, BlockPos pos, CdgEngineState state) {
+        state.fuseActive = true;
+        state.overloadLatched = true;
+        state.fuseTicksLeft = FUSE_TICKS;
+        state.rampTicks = 0;
+        state.fluctTicksLeft = 0;
+        level.playSound(null, pos, ModSounds.DIESEL_OVERSTRESS.get(), SoundSource.BLOCKS, 1.0F, 1.0F);
+    }
+
+    /**
+     * 推进引信 1 tick。到时播放爆炸声 + 粒子并调 destroy 自毁。
+     *
+     * @param destroy 调用方提供的自毁动作（含巨型机的摘轴 + BE 存活守卫），返回是否破坏成功
+     * @return 自毁失败回退（引信清除、闩锁保留）时为 true，调用方需 setChanged；其余 false
+     */
+    public static boolean tickFuse(ServerLevel level, BlockPos pos, CdgEngineState state, BooleanSupplier destroy) {
+        if (--state.fuseTicksLeft > 0) {
+            return false;
+        }
+        level.playSound(null, pos, SoundEvents.GENERIC_EXPLODE.value(), SoundSource.BLOCKS, 1.0F, 1.0F);
+        level.sendParticles(ParticleTypes.EXPLOSION,
+                pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5,
+                DETONATE_PARTICLE_COUNT, 1.0, 1.0, 1.0, 0.0);
+        state.fuseActive = false;
+        state.fuseTicksLeft = 0;
+        if (destroy.getAsBoolean()) {
+            return false;
+        }
+        // 破坏失败（极端情况）回退闩锁：停机等重新加油，不再重试爆炸
+        return true;
+    }
+}

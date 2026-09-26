@@ -36,6 +36,9 @@ public final class ModSounds {
     /** D7：电动马达过载锁存警报（|面板|>64rpm 且 kinetic 过载锁存期间，服务端每秒一次）。 */
     public static final DeferredHolder<SoundEvent, SoundEvent> ELECTRIC_MOTOR_OVERSTRESS =
             register("motor_overstress");
+    /** B6：柴油机过载引信警告（过载当 tick 服务端单次播放，6 秒后自毁）。 */
+    public static final DeferredHolder<SoundEvent, SoundEvent> DIESEL_OVERSTRESS =
+            register("diesel_overstress");
 
     private static DeferredHolder<SoundEvent, SoundEvent> register(String name) {
         return SOUNDS.register(name, () ->

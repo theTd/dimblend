@@ -51,5 +51,14 @@
         "attenuation_distance": 16
       }
     ]
+  },
+  "diesel_overstress": {
+    "category": "blocks",
+    "sounds": [
+      {
+        "name": "dimblend_experience:diesel_overstress",
+        "attenuation_distance": 32
+      }
+    ]
   }
 }
