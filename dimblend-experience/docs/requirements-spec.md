@@ -282,6 +282,22 @@
   `dimblend_experience:far_curse_max_health`（代码已确认天然共存），叠加效果留实机验证；
   不做禁用虚空侧的 mixin
 
+## 11. 板块 H：Create 蒸汽引擎过载两阶段（新增）
+
+- H1 第一阶段（过载连续计时 0..319 tick = 16 秒）：引擎运转（`isValid` 贴锅炉 + `getShaft()` 非 null）
+  且轴 `isOverStressed()` 时 overloadAge++；每 2 tick 在引擎中心播 `minecraft:cloud`
+  （count=1、delta=0、speed=0.05），每 20 tick 播 `steam_overstress`（单声道 1.49 秒，
+  1 秒间隔近无缝）。任一条件消失（过载解除/停机/轴缺失）即清零，声音粒子同时停
+- H2 第二阶段（满 320 tick 当 tick）：只破仍是 `create:powered_shaft` 的格
+  （`AllBlocks.POWERED_SHAFT.has`，`destroyBlock(shaftPos, true)` 按战利品表掉成 `create:shaft`），
+  引擎本体保留停转；`steam_exhaust` 播 1 次 + 8 秒（160 tick）排气粒子
+  （每 2 tick `minecraft:cloud` count=5、delta=0、speed=0.1）。过载解除不中断排气；
+  引擎被拆/区块卸载则 BE 不再 tick，自然终止
+- 实现 `SteamEngineOverloadMixin`（`SteamEngineBlockEntity.tick` RETURN）+ 纯函数
+  `SteamEngineOverload` / `SteamEngineOverloadMath`；状态全内存态（卸载清零）；
+  新开关 `steamEngineOverload`（默认开）；音效 `steam_overstress` / `steam_exhaust`
+  单声道入库（`attenuation_distance=32`）
+
 ## 6. 横切约定
 
 - 每个功能挂模组 Config 开关（默认开启）
@@ -398,6 +414,7 @@
 | structureBed | G2 | true |
 | isolatedWaterDowngrade | G3 | true |
 | portalBan | G4 | true |
+| steamEngineOverload | H（蒸汽引擎过载两阶段） | true |
 | rotatingDimensionId | A1–A6 作用域维度 id | "dimblend:rotating" |
 
 ### Mixin 清单（`dimblend_experience.mixins.json`，plugin 按模组存在性过滤）
@@ -411,6 +428,7 @@
 | compat.cca.AlternatorIdleDrainMixin | CCA 交流发电机 BE | D5 | createaddition 在场 |
 | compat.cca.ElectricMotorGoggleMixin | CCA 电动马达 BE | D6 能耗行 | createaddition 在场（client 数组） |
 | compat.create.ElectricMotorGeneratorStatsMixin | Create GeneratingKineticBlockEntity | D6 应力量行 | createaddition 在场（client 数组；handler instanceof 限定马达） |
+| compat.create.SteamEngineOverloadMixin | Create 蒸汽引擎 BE（tick RETURN） | H | create 在场 |
 | compat.simurail.PhysicsBogeyBrakeSoundMixin | Simurail 物理转向架 BE | E3/E4 | simurail 在场（simurail 硬性依赖 sable，蕴含 sable 在场） |
 | compat.simurail.PhysicsBogeyLateralForceMixin | Simurail 物理转向架 BE（`tick` + `sable$physicsTick`） | E8 | simurail 在场 |
 | compat.simurail.PhysicsBogeyTrackSoundMixin | Simurail 物理转向架 BE | E2 | simurail 在场（client 数组） |

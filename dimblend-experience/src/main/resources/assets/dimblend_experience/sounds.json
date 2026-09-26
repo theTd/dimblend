@@ -60,5 +60,23 @@
         "attenuation_distance": 32
       }
     ]
+  },
+  "steam_overstress": {
+    "category": "blocks",
+    "sounds": [
+      {
+        "name": "dimblend_experience:steam_overstress",
+        "attenuation_distance": 32
+      }
+    ]
+  },
+  "steam_exhaust": {
+    "category": "blocks",
+    "sounds": [
+      {
+        "name": "dimblend_experience:steam_exhaust",
+        "attenuation_distance": 32
+      }
+    ]
   }
 }

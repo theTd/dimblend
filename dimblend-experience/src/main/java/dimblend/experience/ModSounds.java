@@ -39,6 +39,12 @@ public final class ModSounds {
     /** B6：柴油机过载引信警告（过载当 tick 服务端单次播放，6 秒后自毁）。 */
     public static final DeferredHolder<SoundEvent, SoundEvent> DIESEL_OVERSTRESS =
             register("diesel_overstress");
+    /** H：蒸汽引擎过载警告（过载 16 秒窗口内服务端每秒 1 次，解除即停）。 */
+    public static final DeferredHolder<SoundEvent, SoundEvent> STEAM_OVERSTRESS =
+            register("steam_overstress");
+    /** H：蒸汽引擎断轴排气（满 16 秒过载断轴时服务端 1 次）。 */
+    public static final DeferredHolder<SoundEvent, SoundEvent> STEAM_EXHAUST =
+            register("steam_exhaust");
 
     private static DeferredHolder<SoundEvent, SoundEvent> register(String name) {
         return SOUNDS.register(name, () ->

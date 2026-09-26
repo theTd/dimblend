@@ -43,6 +43,11 @@ public final class Config {
             .comment("B 板块：CDG 柴油机转速行为（点火爬梯 16rpm→每4秒+2→额定；额定后 80%~100% 随机波动；运转中过载爆机掉落）")
             .define("dieselEngineBehavior", true);
 
+    public static final ModConfigSpec.BooleanValue STEAM_ENGINE_OVERLOAD = BUILDER
+            .comment("H 板块：Create 蒸汽引擎过载两阶段（过载持续 16 秒内每秒警告音 + 云粒子，解除即停；"
+                    + "满 16 秒断开传动杆掉落 + 排气音 1 次 + 8 秒云粒子，过载解除不中断）")
+            .define("steamEngineOverload", true);
+
     public static final ModConfigSpec.BooleanValue ELECTRIC_MOTOR_BEHAVIOR = BUILDER
             .comment("D 板块：CCA 电动马达（反转红石语义：信号在场=运转、无信号=停转；"
                     + "信号 1-15 映射 4rpm~面板额定；耗电改纯线性无待机下限；"

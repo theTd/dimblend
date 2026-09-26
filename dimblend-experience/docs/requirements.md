@@ -75,6 +75,8 @@
 - [ ] 待实测｜交流发电机储存的电能FE 只在无有效转速输入（本 tick 不产电）时自行减少 约每秒减5000FE（2026-09-23 新条目已实施，2026-09-25 用户回标收敛：此前 |rpm|<16 口径有输入也净减少；现 `AlternatorIdleDrainMixin` 判据取产能门精确取反、有输入产电时不扣，每 tick 扣 250 FE、扣到 0 止，2026-09-25 用户改量 1000→5000/s，新开关 alternatorIdleDrain，见 spec D5；待实测）
 - [ ] 待实测｜电动马达显示中的 应力量 和 已使用能量 改为实际转速下的响应数值（2026-09-23 新条目已实施：能耗行入参改 |speed|（D3 钳定同步生效、无信号显示 0）；应力量行原版因客户端 getGeneratedSpeed 恒 0 恒显示 0 su，现折算读数改 speed → MAX_STRESS/256×|实际映射转速|；两处挂 electricMotorBehavior，见 spec D6；待实测）
 - [ ] 待实测｜电动马达过载锁存（2026-09-26 新条目已实施，见 spec D7）：kinetic 过载且|面板|>64且运转中→记录红石强度并冻结输出（信号/面板/CC 全丢弃、撤信号不停转）、耗电×2、服务端每 tick 中心 enchanted_hit×5 + 每秒 motor_overstress（音量 0.5，与 D4 叠加）；过载恢复或 FE 耗尽（active=false）任一重置；护目镜能耗行锁存期×2；待实测
+- [ ] 待实测｜蒸汽引擎过载 16 秒内每秒播放 steam_overstress.ogg、在砖块（引擎本体）位置每 2 tick 播 minecraft:cloud（delta=0,0,0 speed=0.05 count=1），解除过载即停（2026-09-26 新条目已实施：见 spec H1，新开关 steamEngineOverload；待实测）
+- [ ] 待实测｜蒸汽引擎过载满 16 秒破坏其传动杆（仍是 powered_shaft 才破、掉落 create:shaft，引擎保留）、播 steam_exhaust.ogg 1 次、在砖块位置每 2 tick 播 minecraft:cloud（delta=0,0,0 speed=0.1 count=5）持续 8 秒，过载解除不中断（2026-09-26 新条目已实施：见 spec H2；待实测）
 
 
 ## create:simrail
