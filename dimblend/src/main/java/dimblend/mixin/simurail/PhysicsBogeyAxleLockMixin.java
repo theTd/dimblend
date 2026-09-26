@@ -3,97 +3,80 @@ package dimblend.mixin.simurail;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
+import com.crystaelix.simurail.api.math.Frame3d;
+import com.crystaelix.simurail.api.math.SimurailMath;
 import com.crystaelix.simurail.content.bogey.PhysicsBogeyAxle;
 import com.crystaelix.simurail.content.bogey.PhysicsBogeyBlockEntity;
-import com.crystaelix.simurail.config.SimurailConfig;
 
 import dev.ryanhcode.sable.api.physics.constraint.ConstraintJointAxis;
 import dev.ryanhcode.sable.api.physics.constraint.GenericConstraintHandle;
 import dimblend.DimBlendRegistries;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
+import dimblend.compat.SimurailBogeyLockRules;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
 /**
- * Two-state Simurail bogie track lock for the rotating dimension: redstone level =
- * lock state, copied from the Create: Linear Bearing pattern, but implemented as a
- * compliant spring instead of a hard limit.
+ * Captive Simurail bogie track lock, always on in the rotating dimension, modelled on
+ * Linear Bearing's rail hold: each axle is pinned to its rail like a slider in a lipped
+ * channel — rigid laterally and vertically in both directions, free along the rail.
  *
- * <p>Why a spring, not a hard limit: Linear Bearing's rail "bite" is a magnetic
- * spring-damper force field ({@code MagnetPair#applyForces}: stiffness × displacement
- * plus 2ζ√(mk) damping, acceleration-capped, applied through a queued force group) —
- * never a position-level hard constraint — which is exactly why staff-dragging it
- * feels heavy yet smooth: spring fights spring. Simurail's axle rail joint instead
- * squeezes {@code LINEAR_Y/Z} limits toward absolute 0 every tick, so a staff drag
- * (itself a PD spring) fights a rigid wall: jitter, snagging, and the bogie visibly
- * crushed into the rail head. This redirect replaces the hard squeeze with a stiff
- * PD spring toward the track frame whenever the lock is engaged: strong grip at
- * rest, compliant stretch under a staff drag, smooth return on release.
+ * <p>Reference behavior (Linear Bearing 1.2.6, the version shipped in the pack, verified by
+ * CFR decompilation): the bearing turns into a world-side {@code linear_casing} channel
+ * (base, side walls, inward lips) and assembles the block in front into a Sable sub-level
+ * carrying a T-profile {@code linear_moving} slider in the same cell. Slider body, neck and
+ * plate fit the channel with zero clearance, so Rapier contacts hold it permanently: no
+ * trigger, no springs, no overspeed release, no lift-off; only the end of the casing lets
+ * it out. (1.3.5 adds a redstone docking weld on top, which is not in the pack and freezes
+ * sliding too — not what a track lock wants.)
  *
- * <p>Two-state semantics (Linear Bearing parity): the lock engages only while the
- * bogie block senses a redstone signal — any neighbor with {@code POWERED=true}, an
- * adjacent redstone block, or {@code Level#hasNeighborSignal}, checked exactly like
- * {@code LinearMovingBlockEntity#tick}. A redstone block placed next to the bogie
- * rides along with the consist and acts as a permanent lock pin; cut the signal and
- * the bogie is back to vanilla behavior, free to staff-drag. Unlike Linear Bearing's
- * weld ({@code FixedConstraint} + reflective {@code unDock}), engaging here never
- * creates or destroys a constraint — motors and limits are re-applied every physics
- * tick anyway — so lock/unlock is transient per-tick state with nothing to persist,
- * and re-railing via {@code findTrack} keeps working.
+ * <p>Axle equivalent: Simurail's rail joint already limits {@code LINEAR_Y}/{@code LINEAR_Z}
+ * and squeezes them to zero once the axle settles. What makes it derail are its three
+ * exits — the lateral overspeed release, the vertical (crest) overspeed release, and the
+ * one-sided free lift of {@code allowVerticalMovement}. In the rotating dimension this
+ * redirect replaces every {@code setLimit} in {@code updateLimits} with the symmetric
+ * captive limit from {@link SimurailBogeyLockRules#captiveHalfWidth}: zero once settled,
+ * vanilla's own squeeze while still settling (so a freshly railed axle never snaps), and
+ * "hold where it is" if vanilla tried to release this step. Joint motors are never
+ * touched. Other dimensions keep vanilla Simurail unchanged.
  *
- * <p>Guarantee structure (two layers): the spring is the feel, the residual hard
- * capture net is the guarantee. {@code LOCK_CAPTURE_LIMIT} (0.3) sits far inside
- * {@code TrackSegment#inLineRange}'s derail thresholds (lateral ±0.5, vertical
- * -1.5…+0.375), so the bogie cannot leave the rail even if the spring saturates.
- * When engaged, the {@code !checkVertical} free-lift branch ({@code allowVerticalMovement})
- * is capped too — an engaged lock bites downward travel as well as upward, by design.
- * Track ends, gaps, and missing segments still derail via {@code trackSegment == null}
- * (joints removed before this code runs) — this lock covers overspeed/curvature
- * derails only, by design. Note the signal space is shared with Simurail's own
- * brake/steer wiring: redstone placed for those near a rotating bogie also engages
- * the lock while active.
- *
- * <p>Constant rationale: stiffness/damping mirror Simurail's own suspension spring
- * formula (stiffness = f², damping = 2ζf with ζ = 1.0) at f = 20Hz — double the stock
- * 10Hz suspension frequency for a "bite" feel, same damping regime as the well-tested
- * pivot springs. The backend normalizes by mass the same way it does for those, so
- * this stays in a known-good regime; {@code LOCK_SPRING_MAX_FORCE} is 10× the stock
- * pivot spring cap. Joint motors are persistent state that vanilla writes only once
- * at joint creation (damper-only), so the disengaged path re-applies the
- * creation-equivalent motor — otherwise the lock spring would linger after the signal
- * is cut. All four lock constants are first-guess playtest knobs, not derived optima.
- *
- * <p>Ordering note: {@code updateAxles} runs {@code updateJoint} (damper-only motors,
- * set once at joint creation) before {@code updateLimits}, so motors applied here win
- * for the tick and are refreshed every tick — no fight with joint creation. This
- * redirect covers all three {@code setLimit} sites in {@code updateLimits} (two
- * {@code LINEAR_Y}, one {@code LINEAR_Z}; angular limits live in
- * {@code updateJoint} and are untouched).
+ * <p>Scope: covers overspeed and lift-off derails only. Track ends, gaps and missing
+ * segments still derail via {@code trackSegment == null} (vanilla removes the joint before
+ * any limit is set) — the same as a Linear Bearing slider running off the end of its
+ * casing. The lock is rigid, as Linear Bearing is: a physics-staff drag on a railed bogie
+ * fights hard limits rather than a spring.
  *
  * <p>Drift note: call sites were verified against the vendored jar
  * ({@code libs/simurail-1.21.1-0.0.0-a+ecd2dd3.jar}, commit ecd2dd3) via CFR
- * decompilation. Simurail upgrades that add/remove {@code setLimit} calls in
- * {@code updateLimits} make this redirect fail loudly at apply time (require = 3)
- * instead of silently unlocking — re-verify the count against the new jar when that
- * happens, then refresh {@code libs/}.
+ * decompilation: {@code updateLimits} has exactly three {@code setLimit} calls (two
+ * {@code LINEAR_Y}, one {@code LINEAR_Z}) and runs after {@code updateTrack} has refreshed
+ * {@code trackFrame}/{@code trackAxleFrame} and after it has updated
+ * {@code yFixed}/{@code zFixed}. A Simurail upgrade that changes the count makes this
+ * redirect fail loudly at apply time (require = 3) instead of silently unlocking —
+ * re-verify against the new jar, then refresh {@code libs/}.
  */
 @Mixin(value = PhysicsBogeyAxle.class, remap = false)
 public abstract class PhysicsBogeyAxleLockMixin {
 
-    private static final double LOCK_SPRING_STIFFNESS = 400.0;
-    private static final double LOCK_SPRING_DAMPING = 40.0;
-    private static final double LOCK_SPRING_MAX_FORCE = 100000.0;
-    private static final double LOCK_CAPTURE_LIMIT = 0.3;
-
     @Shadow
     @Final
     protected PhysicsBogeyBlockEntity bogey;
+
+    @Shadow
+    @Final
+    protected Frame3d trackFrame;
+
+    @Shadow
+    @Final
+    protected Frame3d trackAxleFrame;
+
+    @Shadow
+    protected boolean yFixed;
+
+    @Shadow
+    protected boolean zFixed;
 
     @Redirect(
             method = "updateLimits",
@@ -105,43 +88,24 @@ public abstract class PhysicsBogeyAxleLockMixin {
             remap = false,
             require = 3
     )
-    private void dimblend$springLockLimits(GenericConstraintHandle joint, ConstraintJointAxis axis, double min, double max) {
-        if (dimblend$lockEngaged()
-                && (axis == ConstraintJointAxis.LINEAR_Y || axis == ConstraintJointAxis.LINEAR_Z)) {
-            joint.setMotor(axis, 0.0, LOCK_SPRING_STIFFNESS, LOCK_SPRING_DAMPING, true, LOCK_SPRING_MAX_FORCE);
-            joint.setLimit(axis, -LOCK_CAPTURE_LIMIT, LOCK_CAPTURE_LIMIT);
+    private void dimblend$captiveLimits(GenericConstraintHandle joint, ConstraintJointAxis axis, double min, double max) {
+        boolean vertical = axis == ConstraintJointAxis.LINEAR_Y;
+        if (!(vertical || axis == ConstraintJointAxis.LINEAR_Z) || !dimblend$inRotatingDimension()) {
+            joint.setLimit(axis, min, max);
             return;
         }
-        if (axis == ConstraintJointAxis.LINEAR_Y || axis == ConstraintJointAxis.LINEAR_Z) {
-            // Joint motors are persistent state and vanilla only writes them once at joint
-            // creation (damper-only). Restore the creation-equivalent motor so disengaging
-            // the lock truly returns to vanilla behavior instead of leaving the lock spring
-            // behind. The value is read live so config reloads are respected.
-            joint.setMotor(axis, 0.0, 0.0, dimblend$passiveLinearDamping(), false, 0.0);
-        }
-        joint.setLimit(axis, min, max);
+        double offset = SimurailMath.projectTLinePoint(
+                this.trackFrame.position,
+                vertical ? this.trackFrame.vertical : this.trackFrame.lateral,
+                this.trackAxleFrame.position);
+        double halfWidth = SimurailBogeyLockRules.captiveHalfWidth(
+                vertical ? this.yFixed : this.zFixed, min, offset);
+        joint.setLimit(axis, -halfWidth, halfWidth);
     }
 
-    private static double dimblend$passiveLinearDamping() {
-        return (Double) SimurailConfig.SERVER.physics.axlePassiveLinearDamping.get();
-    }
-
-    private boolean dimblend$lockEngaged() {
+    @Unique
+    private boolean dimblend$inRotatingDimension() {
         Level level = this.bogey.getLevel();
-        if (level == null || !DimBlendRegistries.ROTATING_LEVEL.equals(level.dimension())) {
-            return false;
-        }
-        BlockPos pos = this.bogey.getBlockPos();
-        for (Direction dir : Direction.values()) {
-            BlockState neighbor = level.getBlockState(pos.relative(dir));
-            if (neighbor.hasProperty(BlockStateProperties.POWERED)
-                    && neighbor.getValue(BlockStateProperties.POWERED)) {
-                return true;
-            }
-            if (neighbor.is(Blocks.REDSTONE_BLOCK)) {
-                return true;
-            }
-        }
-        return level.hasNeighborSignal(pos);
+        return level != null && DimBlendRegistries.ROTATING_LEVEL.equals(level.dimension());
     }
 }
