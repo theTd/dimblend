@@ -23,7 +23,7 @@ import java.util.List;
  * D4 自定义马达音效（客户端三态：启动 → 运转脉冲 → 停转）。
  *
  * <p>挂在 {@code tickAudio()V} HEAD（Create KineticBlockEntity 客户端分支每 tick
- * 调用，纯客户端方法，既有复核结论）。运转判据：{@code |实际转速| > 0 且 |面板| > 64rpm}，
+ * 调用，纯客户端方法，既有复核结论）。运转判据：{@code |实际转速| > 0 且 |面板| > 128rpm}，
  * 挂 {@link Config#ELECTRIC_MOTOR_BEHAVIOR}。
  * 进入运转态：单次 {@code electric_motor_startup} 立即播放，
  * 延迟 60 tick（3 秒）后起运转音，此后<b>每 5 tick（{@code PULSE_INTERVAL_TICKS}）
@@ -71,7 +71,7 @@ import java.util.List;
 @Mixin(ElectricMotorBlockEntity.class)
 public abstract class ElectricMotorSoundClientMixin {
 
-    private static final float MIN_PANEL_RPM = 64.0F;
+    private static final float MIN_PANEL_RPM = 128.0F;
     /** 启动音后延迟起运转音的时长：3 秒 = 60 tick（tickAudio 每客户端 tick 调用）。 */
     private static final int STARTUP_LOOP_DELAY_TICKS = 60;
     /** 运转音起播间隔：5 tick（0.25 秒），与素材时长无关。 */
