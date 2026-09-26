@@ -194,6 +194,19 @@
   （mixin 继承字段 @Shadow 不受支持——findAliasedField 只解析目标类自
   声明字段，父类字段 shadow apply 期抛 InvalidMixinException，运行库
   sponge-mixin 0.15.4+mixin.0.8.7 fork 字节码核实）
+- D7 马达过载锁存（2026-09-26 新条目）：进入判据 kinetic 网络过载（`isOverStressed()`）
+  且 |面板|>64rpm 且运转中（active 且理论转速非零）；进入瞬间记录红石强度并冻结输出转速，
+  期间一切外部更改（信号增减/撤除、面板扳手、CC setRPM）经 recompute 统一旁路直接丢弃，
+  D1 维持判据旁路（撤信号也不停转）；耗电按实时 rate×2（调用点翻倍，冻结值故数值恒定）；
+  服务端每 tick 方块中心 `enchanted_hit`（count=5、delta=0、speed=0.5）+
+  每 20 tick `motor_overstress`（音量 0.5，单声道 ogg、attenuation 16 格，与 D4 三态音叠加共存）。
+  退出：过载恢复（tick HEAD 判）或 active=false（FE 耗尽断电，TAIL 补判——CCA 主体后半才写 active）
+  任一即清锁存；纯内存不写 NBT，区块卸载/重进按新进入重判；开关关闭清锁存透传原版。
+  护目镜“已使用的能量”锁存期×2（客户端三项已同步状态派生等价判据：过载 + |面板|>64 +
+  理论转速非零；Network/Speed/behaviour 三标签全同步）。实现：`compat.cca.MotorOverstressLatch`
+ （无状态 helper）+ `ElectricMotorMixin`（HEAD 驱动/TAIL 补判/重算旁路/D1 旁路/耗电 MEV×2）
+  + `ElectricMotorGoggleMixin`（显示×2），全挂 `electricMotorBehavior`。待实测。
+
 
 ## 5. 板块 E：Simurail
 

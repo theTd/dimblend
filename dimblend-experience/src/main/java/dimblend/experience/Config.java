@@ -45,7 +45,8 @@ public final class Config {
 
     public static final ModConfigSpec.BooleanValue ELECTRIC_MOTOR_BEHAVIOR = BUILDER
             .comment("D 板块：CCA 电动马达（反转红石语义：信号在场=运转、无信号=停转；"
-                    + "信号 1-15 映射 4rpm~面板额定；耗电改纯线性无待机下限）。"
+                    + "信号 1-15 映射 4rpm~面板额定；耗电改纯线性无待机下限；"
+                    + "D7 过载锁存：kinetic 过载且|面板|>64且运转中锁信号冻输出、耗电×2、播过载音/粒子，过载恢复或FE耗尽重置）。"
                     + "开启将改变 CCA 原版'红石=停转'语义，既有红石装置请注意")
             .define("electricMotorBehavior", true);
 

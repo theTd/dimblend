@@ -2,10 +2,11 @@ package dimblend.experience.mixin.compat.cca;
 
 import com.mrh0.createaddition.blocks.electric_motor.ElectricMotorBlockEntity;
 import dimblend.experience.Config;
+import dimblend.experience.compat.cca.MotorOverstressLatch;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
-
 /**
  * D6 马达护目镜"已使用的能量"改为实际转速响应值（2026-09-23 新条目）。
  *
@@ -20,9 +21,14 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
  * 自驱动场景下与服务端 tick 实扣（同函数、同入参口径）完全一致；
  * 无信号实际转速 0 → 显示 0。</p>
  *
- * <p>接受边界（反拖场景）：马达被更强动力源反拖时实际转速≠motorSpeed，
- * 服务端实扣按 motorSpeed、本显示按轴速 |实际转速|——与 D4 音效的
- * 反拖边界同族，按"显示跟轴"取舍（见 spec D6）。</p>
+ * <p>D7 锁存期护目镜“已使用的能量”×2：同一 handler 内对换算后的 |实际转速| 翻倍——
+ * 与服务端 tick 实扣（冻结 rate×2，见
+ * {@code ElectricMotorMixin#dimblend$doubleConsumptionWhenLatched}）同口径。
+ * 锁存标志纯服务端内存不进同步包，客户端用三项已同步状态派生等价判据
+ * （{@link MotorOverstressLatch#clientDerived}：过载 + |面板|&gt;64 +
+ * 理论转速非零；Network/Speed/behaviour 三标签全同步，见 D4 考证）。
+ * 面板读数走 @Shadow generatedSpeed（同文件 D6 已有先例的目标类自声明字段）。
+ * 未锁存按原值显示。</p>
  *
  * <p>开关关闭透传面板值（原版行为：不随信号变化、停转也显示面板值）。
  * 客户端读 SERVER config 经 NeoForge 内置 ConfigSync 登录同步（tickAudio 先例）。
@@ -32,6 +38,9 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
  */
 @Mixin(ElectricMotorBlockEntity.class)
 public abstract class ElectricMotorGoggleMixin {
+
+    @Shadow(remap = false)
+    protected com.simibubi.create.foundation.blockEntity.behaviour.scrollValue.ScrollValueBehaviour generatedSpeed;
 
     @ModifyArg(
             method = "addToGoggleTooltip(Ljava/util/List;Z)Z",
@@ -44,6 +53,12 @@ public abstract class ElectricMotorGoggleMixin {
         if (!Config.ELECTRIC_MOTOR_BEHAVIOR.get()) {
             return panelRpm;
         }
-        return Math.abs(((ElectricMotorBlockEntity) (Object) this).getTheoreticalSpeed());
+        ElectricMotorBlockEntity self = (ElectricMotorBlockEntity) (Object) this;
+        float actual = Math.abs(self.getTheoreticalSpeed());
+        if (MotorOverstressLatch.clientDerived(self.isOverStressed(),
+                this.generatedSpeed.getValue(), self.getTheoreticalSpeed())) {
+            return actual * 2.0F;
+        }
+        return actual;
     }
 }

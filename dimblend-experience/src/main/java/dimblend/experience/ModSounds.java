@@ -7,7 +7,7 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 /**
- * 全部自定义音效事件（E2-E4 列车音效 + D4 马达音效）。
+ * 全部自定义音效事件（E2-E4 列车音效 + D4/D7 马达音效）。
  * 注册无条件：SoundEvent 本身对缺失的模组无副作用，
  * 播放侧由 mixin 插件的条件加载与 Config 开关双重门控。
  */
@@ -33,6 +33,9 @@ public final class ModSounds {
     /** D4：电动马达停转（离开运转态单次播放）。 */
     public static final DeferredHolder<SoundEvent, SoundEvent> ELECTRIC_MOTOR_STOPPING =
             register("electric_motor_stopping");
+    /** D7：电动马达过载锁存警报（|面板|>64rpm 且 kinetic 过载锁存期间，服务端每秒一次）。 */
+    public static final DeferredHolder<SoundEvent, SoundEvent> ELECTRIC_MOTOR_OVERSTRESS =
+            register("motor_overstress");
 
     private static DeferredHolder<SoundEvent, SoundEvent> register(String name) {
         return SOUNDS.register(name, () ->

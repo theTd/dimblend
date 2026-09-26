@@ -42,5 +42,14 @@
         "attenuation_distance": 16
       }
     ]
+  },
+  "motor_overstress": {
+    "category": "blocks",
+    "sounds": [
+      {
+        "name": "dimblend_experience:motor_overstress",
+        "attenuation_distance": 16
+      }
+    ]
   }
 }
