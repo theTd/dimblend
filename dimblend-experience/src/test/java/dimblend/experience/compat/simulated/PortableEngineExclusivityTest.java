@@ -2,6 +2,9 @@ package dimblend.experience.compat.simulated;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.stream.IntStream;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,13 +41,19 @@ class PortableEngineExclusivityTest {
 
     @Test
     void wholeNetworkConvergesToOne() {
-        // 整网唯一：N≥2 一次收敛只剩 1 台（Fisher-Yates 洗牌后尾部 N-1 全毁）；
-        // 0/1 台不触发
-        assertEquals(1, PortableEngineExclusivity.survivorCount(2));
-        assertEquals(1, PortableEngineExclusivity.survivorCount(3));
-        assertEquals(1, PortableEngineExclusivity.survivorCount(16));
-        assertEquals(1, PortableEngineExclusivity.survivorCount(1));
-        assertEquals(0, PortableEngineExclusivity.survivorCount(0));
+        // 整网唯一：N≥2 一次收敛只剩 1 台——幸存者之外全拆，幸存者本身不在拆除表里
+        assertEquals(List.of("a", "c"), PortableEngineExclusivity.victimsKeepingOne(List.of("a", "b", "c"), 1));
+        assertEquals(List.of("b"), PortableEngineExclusivity.victimsKeepingOne(List.of("a", "b"), 0));
+        List<Integer> sixteen = IntStream.range(0, 16).boxed().toList();
+        List<Integer> victims = PortableEngineExclusivity.victimsKeepingOne(sixteen, 15);
+        assertEquals(15, victims.size());
+        assertFalse(victims.contains(15));
+    }
+
+    @Test
+    void singleOrNoEngineIsNeverDestroyed() {
+        assertTrue(PortableEngineExclusivity.victimsKeepingOne(List.of("a"), 0).isEmpty());
+        assertTrue(PortableEngineExclusivity.victimsKeepingOne(List.<String>of(), 0).isEmpty());
     }
 
     @Test

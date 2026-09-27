@@ -344,6 +344,32 @@
   物品；服务端物品净变化为零不再下发槽位纠正——实测表现为组装器消失
   不返还。放行后两端终态一致，无鬼影无丢失
 - 注册表名比对，无编译依赖；新开关 `assemblerGuard`（默认开）
+- F2 simulated 便携引擎（16 色 `simulated:<color>_portable_engine`，全算同类；注册表名
+  比对，无编译依赖）同一 Create 动力网络最多一台
+- “同网”按连通判、与转速无关（2026-09-27 用户新口径：网络不必转起来，零转速静置也照毁）。
+  Create 的 `KineticNetwork` 只在转起来后才存在，故不用 network id，改由
+  `KineticComponentScan` 按 Create 连接规则逐块广搜：候选位置复用
+  `RotationPropagator#getPotentialNeighbourLocations`（invoker），连接判定
+  `RotationPropagator.isConnected`；只扫已加载区块、不强制加载
+- 分轴静置语义：Create 离合器/顺序齿轮箱无动力源时一律判连通（倍率 1），照搬会误拆
+  用通电离合器隔开的引擎。改按运转语义：原版变速箱恒连通、原版离合器通电即隔断、
+  其余（顺序齿轮箱/第三方离合类）静置保守视为隔断——转起来有源后按 Create 实际倍率判
+  （起转经接入钩子复扫，不会漏成永久绕过）
+- 结算（服务端 tick 末，`destroyBlock(true)` 按 loot 掉落、燃料由引擎自身 `onRemove` 掉出、
+  无豁免）：① 实体放置（`EntityPlaceEvent`，玩家/机械手）的新引擎所在分量已有他台 →
+  新放的自毁（后来者让位；按方块查连通，机械手在 BE tick 内放置也当拍判定）；
+  ② 任何动力块（重新）接入（`RotationPropagator.handleAdded` HEAD 只登记维度）→
+  tick 末从该维度已加载引擎出发扫分量，N≥2 随机留 1 台其余全毁。②覆盖传动杆/齿轮/
+  皮带接通、离合器/变速箱红石切换、蓝图炮/装置解体/指令写入、区块加载（存量违规读档
+  即收敛）、引擎起转
+- 不轮询（已砍）：只在有接入的 tick 结算，维度内已加载引擎不足 2 台连扫描都跳过；
+  开关关闭期间放置登记丢弃、维度变动标记保留，重开后补结算
+- 已知接受风险：跨未加载区块的那一截等其区块加载后再判；第三方分轴静置视为隔断；
+  维度内 ≥2 台引擎已加载时，每次接入对含引擎的分量整体广搜一次（超大工厂有开销）
+- 实现 `PortableEngineExclusivity`（事件+结算）+ `KineticComponentScan`（Create 连通扫描）
+  + `PortableEngineAttachMixin` / `RotationPropagatorInvoker`；开关 `portableEngineExclusivity`
+  （默认开）；运行时验证 `KineticComponentScanGameTests`（静置传动杆连通、空隙隔断、
+  离合器静置/运转两态通断）
 
 ## 10. 板块 G：新条目系统（v1.5 起，一律仅 rotating 维度）
 
@@ -431,6 +457,7 @@
 | simurailProtect | E1 | true |
 | couplerRedstone | E5（true=红石信号不再断开车钩） | true |
 | assemblerGuard | F1 | true |
+| portableEngineExclusivity | F2（便携引擎整网唯一，零转速也算同网） | true |
 | trainSounds | E2/E3/E4 | true |
 | wideGaugeParticles | E6（纯客户端视觉） | true |
 | offStructureTeleport | E7（离结构传送，仅 rotating） | true |
@@ -455,6 +482,8 @@
 | compat.cca.ElectricMotorGoggleMixin | CCA 电动马达 BE | D6 能耗行 | createaddition 在场（client 数组） |
 | compat.create.ElectricMotorGeneratorStatsMixin | Create GeneratingKineticBlockEntity | D6 应力量行 | createaddition 在场（client 数组；handler instanceof 限定马达） |
 | compat.create.SteamEngineOverloadMixin | Create 蒸汽引擎 BE（tick RETURN） | H | create 在场 |
+| compat.create.PortableEngineAttachMixin | Create RotationPropagator（`handleAdded` HEAD，只登记维度/引擎） | F2 | create 在场 |
+| compat.create.RotationPropagatorInvoker | Create RotationPropagator（`getPotentialNeighbourLocations` 静态 invoker） | F2 | create 在场 |
 | compat.simurail.PhysicsBogeyBrakeSoundMixin | Simurail 物理转向架 BE | E3/E4 | simurail 在场（simurail 硬性依赖 sable，蕴含 sable 在场） |
 | compat.simurail.PhysicsBogeyLateralForceMixin | Simurail 物理转向架 BE（`tick` + `sable$physicsTick`） | E8 | simurail 在场 |
 | compat.simurail.PhysicsBogeyTrackSoundMixin | Simurail 物理转向架 BE | E2 | simurail 在场（client 数组） |

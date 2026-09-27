@@ -16,6 +16,7 @@ import dimblend.experience.compat.simurail.TrainForceGroups;
 import dimblend.experience.datagen.DataGenerators;
 import dimblend.experience.gametest.CopycatObsidianHardnessGameTests;
 import dimblend.experience.gametest.ItemDrainPipeRefillGameTests;
+import dimblend.experience.gametest.KineticComponentScanGameTests;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.event.RegisterGameTestsEvent;
 
@@ -70,6 +71,7 @@ public class DimBlend {
         if (ModList.get().isLoaded("create")) {
             event.register(CopycatObsidianHardnessGameTests.class);
             event.register(ItemDrainPipeRefillGameTests.class);
+            event.register(KineticComponentScanGameTests.class);
         }
     }
 }

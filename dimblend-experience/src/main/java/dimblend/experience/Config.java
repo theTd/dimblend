@@ -76,8 +76,10 @@ public final class Config {
             .define("assemblerGuard", true);
 
     public static final ModConfigSpec.BooleanValue PORTABLE_ENGINE_EXCLUSIVITY = BUILDER
-            .comment("F 板块 F2：simulated 便携引擎同 Create 动力网络互斥（16 色全算同类；"
-                    + "放置瞬间已连同类网络则本 tick 末自毁；自身起转登记、本 tick 末枚举合网后随机毁 N-1 台只剩一台；"
+            .comment("F 板块 F2：simulated 便携引擎同 Create 动力网络互斥（16 色全算同类；按连通判、与转速无关，"
+                    + "零转速静置网络同样生效，通电离合器隔开的两侧不算同网）；"
+                    + "实体放置的新引擎若已连着其他引擎则本 tick 末自毁；其余任何接通（传动杆/齿轮/皮带接起来、离合器切换、"
+                    + "蓝图炮/装置解体、区块加载、起转）本 tick 末随机留一台、其余全毁；"
                     + "一律按 loot 掉落、无豁免；需要 simulated+create 在场）")
             .define("portableEngineExclusivity", true);
 
