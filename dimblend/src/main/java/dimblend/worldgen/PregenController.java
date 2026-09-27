@@ -352,6 +352,21 @@ public final class PregenController {
         }
     }
 
+    /**
+     * Forgets FULL progress of a region whose files were just deleted, so a revisit drives the
+     * regenerated chunks again instead of trusting the stale {@code done} entry. Also bounds
+     * {@code done}, which otherwise grows with every chunk pregen ever finished.
+     */
+    public void forgetRegion(int regionX, int regionZ) {
+        int minX = regionX << 5;
+        int minZ = regionZ << 5;
+        for (int dx = 0; dx < 32; dx++) {
+            for (int dz = 0; dz < 32; dz++) {
+                this.done.remove(ChunkPos.asLong(minX + dx, minZ + dz));
+            }
+        }
+    }
+
     public Snapshot snapshot(MinecraftServer server) {
         int xBehind = PregenConfig.X_BEHIND.get();
         int xAhead = PregenConfig.PREGEN_ONLY_BEHIND.get() ? 0 : PregenConfig.X_AHEAD.get();

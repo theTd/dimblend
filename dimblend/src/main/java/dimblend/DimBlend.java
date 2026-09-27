@@ -7,6 +7,8 @@ import dimblend.band.BandLaneSync;
 import dimblend.client.DimBlendClient;
 import dimblend.command.DimBlendCommands;
 import dimblend.diagnostics.HangWatchdog;
+import dimblend.purge.RegionPurgeConfig;
+import dimblend.purge.RegionPurgeController;
 import dimblend.compat.CorridorTrackProtector;
 import dimblend.compat.CreateTrackGraphCompat;
 import dimblend.compat.TerraBlenderRotatingCompat;
@@ -37,6 +39,7 @@ public final class DimBlend {
     private static final PregenController PREGEN = new PregenController();
     private static final ChunkGenMonitor MONITOR = new ChunkGenMonitor();
     private static final HangWatchdog WATCHDOG = new HangWatchdog();
+    private static final RegionPurgeController PURGE = new RegionPurgeController();
     private static final TimeLockSync TIME_LOCK = new TimeLockSync();
     private static final BandInfoSync BAND_INFO = new BandInfoSync();
     private static final BandLaneSync BAND_LANE = new BandLaneSync();
@@ -44,6 +47,7 @@ public final class DimBlend {
     public DimBlend(IEventBus modBus, ModContainer container) {
         DimBlendRegistries.register(modBus);
         container.registerConfig(ModConfig.Type.SERVER, PregenConfig.SPEC);
+        container.registerConfig(ModConfig.Type.SERVER, RegionPurgeConfig.SPEC, RegionPurgeConfig.FILE_NAME);
         NeoForge.EVENT_BUS.register(PREGEN);
         NeoForge.EVENT_BUS.addListener(DimBlend::onRegisterCommands);
         modBus.addListener(DimBlend::onRegisterPayloads);
@@ -76,6 +80,7 @@ public final class DimBlend {
         NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, VoidscapeBand::onFinalizeSpawnExit);
         NeoForge.EVENT_BUS.register(MONITOR);
         NeoForge.EVENT_BUS.register(WATCHDOG);
+        NeoForge.EVENT_BUS.register(PURGE);
     }
 
     public static HangWatchdog watchdog() {
@@ -88,6 +93,10 @@ public final class DimBlend {
 
     public static ChunkGenMonitor monitor() {
         return MONITOR;
+    }
+
+    public static RegionPurgeController purge() {
+        return PURGE;
     }
 
     private static void onRegisterCommands(RegisterCommandsEvent event) {

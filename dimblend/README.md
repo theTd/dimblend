@@ -103,6 +103,8 @@ All subcommands require permission level 2.
 | `/dimblend pregen [on\|off\|auto]` | Force strip pregeneration on/off, or restore automatic control |
 | `/dimblend watch [on\|off]` | Show/hide the chunkgen bossbar for yourself (default off) |
 | `/dimblend watchdog [on\|off]` | Toggle the hang watchdog (JFR capture + thread dumps on stalls) |
+| `/dimblend purge` | Show region purge status (keep window, regions on disk, deleted/freed totals) |
+| `/dimblend purge now [keepChunkX]` | Purge eligible regions immediately, skipping the idle timer; `keepChunkX` adds an extra keep center for this scan |
 
 ## Server config
 
@@ -113,6 +115,24 @@ corridor strip around players:
 - `zMin` / `zMax` — fixed strip bounds in Z (default −16…15)
 - `minInFlight` / `maxInFlight` — adaptive budget of chunks driven to FULL at once (4…16)
 - `brakeTickMs` / `okTickMs` / `raiseStreakTicks` — tick-time thresholds that halve/raise the budget
+
+`serverconfig/dimblend-purge-server.toml` controls **region purge**: since players
+travel steadily along X, region files far from everyone are deleted online, one
+`r.X.Z.mca` at a time across `region/`, `entities/` and `poi/`, and regenerate from
+the seed if anyone comes back (player builds there are not preserved). Deletion
+runs on each store's IO worker so cached region handles and queued writes cannot
+resurrect the file, and the matching in-memory memos are dropped with it. A region
+goes only after staying idle (no holder, ticket or entity state) for `idleSeconds`
+outside the keep window of every keep center: the last known X of each player who
+has been in the dimension, persisted with the world (live while inside, the
+departure point while logged out or in another dimension). Purge pauses under
+`/save-off` and logs a warning at startup while enabled.
+Spec: [docs/region-purge.md](docs/region-purge.md).
+
+- `enabled` — master switch (default on)
+- `keepChunks` — keep window along X around each player / logout anchor (default 96;
+  raised to at least pregen `max(xBehind, xAhead) + 8` and view distance + 8)
+- `idleSeconds` / `scanIntervalSeconds` / `maxRegionsPerScan` — 120 / 10 / 2
 
 ## Dependencies
 

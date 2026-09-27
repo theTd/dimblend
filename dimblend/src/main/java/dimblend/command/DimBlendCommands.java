@@ -10,12 +10,14 @@ import dimblend.worldgen.PregenController;
 import dimblend.worldgen.RotatingChunkGenerator;
 import dimblend.worldgen.SlicedOverworldChunkGenerator;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.Set;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -68,6 +70,15 @@ public final class DimBlendCommands {
                                 .then(Commands.literal("auto")
                                         .requires(source -> source.hasPermission(2))
                                         .executes(context -> setPregenOverride(context.getSource(), null, "auto"))))
+                        .then(Commands.literal("purge")
+                                .executes(context -> dumpPurge(context.getSource()))
+                                .then(Commands.literal("now")
+                                        .executes(context -> purgeNow(context.getSource(), OptionalInt.empty()))
+                                        .then(Commands.argument("keepChunkX", IntegerArgumentType.integer())
+                                                .executes(context -> purgeNow(
+                                                        context.getSource(),
+                                                        OptionalInt.of(IntegerArgumentType.getInteger(context, "keepChunkX"))
+                                                )))))
                         .then(Commands.literal("watch")
                                 .executes(context -> dumpWatch(context.getSource()))
                                 .then(Commands.literal("on")
@@ -356,6 +367,24 @@ public final class DimBlendCommands {
             source.sendSuccess(() -> Component.literal(line), false);
         }
         return 1;
+    }
+
+    private static int dumpPurge(CommandSourceStack source) {
+        for (String line : DimBlend.purge().snapshot(source.getServer()).lines()) {
+            source.sendSuccess(() -> Component.literal(line), false);
+        }
+        return 1;
+    }
+
+    private static int purgeNow(CommandSourceStack source, OptionalInt keepChunkX) {
+        int submitted = DimBlend.purge().scanNow(source.getServer(), keepChunkX);
+        if (submitted < 0) {
+            source.sendFailure(Component.literal("purge is disabled (enabled=false in dimblend-purge-server.toml)"));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal("purge submitted " + submitted
+                + " region(s), idle timer skipped; see /dimblend purge"), true);
+        return submitted;
     }
 
 }
