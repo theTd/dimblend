@@ -117,6 +117,12 @@ public final class Config {
             .comment("G 板块 G3：旋转维度内新写入的纯水源（桶/管道/冰融化/流体成池等）若水平四邻源水<2 格则降级为流动 water7；≥2 格才保留源水")
             .define("isolatedWaterDowngrade", true);
 
+    public static final ModConfigSpec.BooleanValue ENDER_STORAGE_STRUCTURE_ONLY = BUILDER
+            .comment("G 板块 G5：旋转维度内末影箱/末影罐（enderstorage:ender_chest / ender_tank）只能放在 sable 结构上；"
+                    + "放在结构外则放行放置后本 tick 末破坏返还（真人回背包、机器放置掉落，频率保留）；"
+                    + "创造模式豁免；需要 enderstorage 在场，sable 缺席时放行")
+            .define("enderStorageStructureOnly", true);
+
     public static final ModConfigSpec.BooleanValue COPYCAT_OBSIDIAN_HARDNESS = BUILDER
             .comment("伪装硬度（全局功能，不限维度）：Create / Copycats+ / Create Connected"
                     + " 的全体伪装方块统一黑曜石硬度（挖掘/爆抗/末影龙凋灵免疫，含钻石镐采集校验）。"

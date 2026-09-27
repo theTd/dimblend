@@ -26,6 +26,8 @@
 > v1.9（E8 车架随机横向力）：车架 &gt;4 m/s 时每固定 2 秒以 速度/20 概率施加 1200 pN
 > 横向力（左右随机、持续 10 tick）；新开关 `trainLateralForce`。
 > 间隔原为随机 2-8 秒，后改为固定 2 秒。
+> v1.10（G5 末影存储仅限结构放置，2026-09-27）：rotating 内 `enderstorage:ender_chest` /
+> `enderstorage:ender_tank` 只能放在 sable 结构上；新开关 `enderStorageStructureOnly`。
 > 本文件是开发依据；原始清单仅作需求索引，两者冲突时以本文件为准。
 
 ## 0. 环境基线
@@ -343,7 +345,7 @@
   不返还。放行后两端终态一致，无鬼影无丢失
 - 注册表名比对，无编译依赖；新开关 `assemblerGuard`（默认开）
 
-## 10. 板块 G：新条目四系统（v1.5，一律仅 rotating 维度）
+## 10. 板块 G：新条目系统（v1.5 起，一律仅 rotating 维度）
 
 ### G1 村民大师单次交易
 - 村民生成时已有职业、或初次获得职业时：转职瞬间打新鲜戳（`setVillagerData`
@@ -392,6 +394,25 @@
   若未来走 `changeDimension` 路径，rotating 出发的由旅行禁令兜底；
   指令/死亡等非门手段不动；新开关 `portalBan`（默认开）
 
+### G5 末影存储只能放在 sable 结构上（v1.10）
+- rotating 内：`enderstorage:ender_chest` / `enderstorage:ender_tank`（EnderStorage
+  2.13.0.191）放置坐标位于 sable 子层级内（贴列车/舰船结构放置）→ 正常留块；
+  否则不留块。原版 `minecraft:ender_chest` 不在此列；其他维度不管
+- 创造模式豁免；机器/非玩家实体放置同样拦截
+- 拦截方式沿用 F1「放行放置 + 本服务端 tick 末破坏返还」（不取消 `EntityPlaceEvent`，
+  理由同 F1）：真人玩家（精确 `ServerPlayer` 类判据）`destroyBlock` 不掉落、掉落物
+  直回背包（无提示；同 tick 内已下线则改原地掉落）；机器/非玩家放置 `destroyBlock`
+  掉落。返还走方块自身掉落规则 `Block#getDrops`（拆除前按 BE 计算）而非
+  `new ItemStack(block)`：`BlockEnderStorage#getDrops` 读 BE 频率写回物品，
+  私有频率另返还钥匙物品，与玩家挖掉该方块所得一致；箱/罐内容存于频率全局存储，
+  拆除不丢内容
+- 结构判定与 G2 同口径（`Sable.HELPER.getContaining` 查放置坐标）；识别用快照目标
+  状态 + 注册表名比对，无编译依赖；enderstorage 缺席无目标、sable 缺席 fail-open 放行
+- 已知接受风险：只拦 `EntityPlaceEvent` 路径，Create 装置解体、蓝图炮等直接
+  `setBlock` 写入不触发事件、不拦
+- 实现 `EnderStorageStructureGuard` + 纯函数 `EnderStorageBlockIds`；
+  新开关 `enderStorageStructureOnly`（默认开）
+
 ## 8. 实现覆盖对账（实现完毕时点）
 
 ### Config 开关清单（server 端 `dimblend_experience-server.toml`）
@@ -418,6 +439,7 @@
 | structureBed | G2 | true |
 | isolatedWaterDowngrade | G3 | true |
 | portalBan | G4 | true |
+| enderStorageStructureOnly | G5（末影存储仅限 sable 结构放置） | true |
 | steamEngineOverload | H（蒸汽引擎过载两阶段） | true |
 | rotatingDimensionId | A1–A6 作用域维度 id | "dimblend:rotating" |
 
@@ -448,7 +470,7 @@
 | compat.dimblend.WarpGateBlockMixin | dimblend 折跃门（字符串目标） | G4 | dimblend 在场 |
 | client.ItemStackNicknameMixin | 原版 ItemStack | A8 | 无条件（原版目标，客户端侧） |
 
-事件处理器（非 mixin）：DeathRules（A1/A2，含 PlayerRespawnPositionEvent）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainOffStructureRules（E7）、PhysicsAssemblerGuard（F1）、CreativeCopycatCreativeTab（C）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）。
+事件处理器（非 mixin）：DeathRules（A1/A2，含 PlayerRespawnPositionEvent）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainOffStructureRules（E7）、PhysicsAssemblerGuard（F1）、CreativeCopycatCreativeTab（C）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、EnderStorageStructureGuard（G5）。
 
 ### 依赖接线（C 板块例外为版本级对齐）
 
