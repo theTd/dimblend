@@ -8,6 +8,7 @@ import dimblend.experience.Config;
 import dimblend.experience.compat.cdg.CdgAttachments;
 import dimblend.experience.compat.cdg.CdgEngineState;
 import dimblend.experience.compat.cdg.CdgOverloadFuse;
+import dimblend.experience.compat.cdg.CdgOverloadMath;
 import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -23,10 +24,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * <li>B2 燃尽走原版停机（不干预）</li>
  * <li>B3 到额定后在 80%~100% 间随机跳变，每 1~3 秒取一次新值（计时在 tick
  * 状态机内推进，getter 纯读）</li>
- * <li>B6 过载引信（用户拍板，不可中断）：运转中过载当 tick 播
+ * <li>B6 过载引信（用户拍板，不可中断）：运转中过载连续 40 tick（2 秒）确认后播
  * {@code diesel_overstress.ogg} 1 次、出力归零；6 秒（120 tick）后播
  * {@code entity.generic.explode} 1 次 + 爆炸粒子（delta 1,1,1 / speed 0 /
- * count 100），再破坏自毁掉落（余油不返还、无真实爆炸伤害）。红石关停/燃尽/
+ * count 100），再破坏自毁掉落（余油不返还、无真实爆炸伤害）。确认窗口滤掉存档/
+ * 区块加载期 kinetic 网络重建的短暂误报；确认前爬梯/波动计时冻结。红石关停/燃尽/
  * 负载恢复都不取消引信。自毁破坏失败（极端情况）才回退闩锁逻辑</li>
  * </ul>
  * 目标：普通与组合式柴油机。巨型柴油机由 B5（HugeDieselEngineMixin）独立覆盖，
@@ -152,21 +154,29 @@ public abstract class DieselEngineRampMixin {
         state.fuelPresent = fuel;
         state.lastFuelAmount = fuelAmount;
         if (!fuel) {
+            state.overloadTicks = 0;
             return;
         }
 
         boolean enabled = engine.enabled();
         boolean overloaded = self.isOverStressed();
         if (enabled && overloaded) {
-            // B6：运转中过载 → 点引信：警告音 1 次、出力立即归零（闩锁口径），
-            // 6 秒后爆音+粒子+自毁掉落（余油不返还）。成功后 BE 即将卸载，
-            // 后续附件写操作无害。
+            // B6：运转中过载连续 40 tick（2 秒，见 CdgOverloadMath）才点引信——
+            // 存档/区块加载期网络重建的短暂误报在此窗口内被滤掉；确认前爬梯/波动
+            // 计时冻结（本 tick 直接 return，不断也不复位），燃油照常扣除
+            // （门控仅闩锁/引信后生效）。确认后警告音 1 次、出力立即归零
+            // （闩锁口径），6 秒后爆音+粒子+自毁掉落（余油不返还）。
+            state.overloadTicks = CdgOverloadMath.countOverloadTick(state.overloadTicks);
+            if (!CdgOverloadMath.isOverloadConfirmed(state.overloadTicks)) {
+                return;
+            }
             CdgOverloadFuse.startFuse(level, self.getBlockPos(), state);
             if (wasLatched != state.overloadLatched) {
                 self.setChanged();
             }
             return;
         }
+        state.overloadTicks = 0;
         if (!state.overloadLatched) {
             // throttle 口径（1.3.15）：getter 额定 = upgrade.getSpeed * throttle，
             // 饱和判定必须同源；throttle == 0（模拟调速关闭）视为停转复位

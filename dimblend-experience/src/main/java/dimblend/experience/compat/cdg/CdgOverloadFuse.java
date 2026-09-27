@@ -10,9 +10,10 @@ import net.minecraft.sounds.SoundSource;
 import java.util.function.BooleanSupplier;
 
 /**
- * B6 过载引信（不可中断，三类柴油机共用）：
- * 过载当 tick {@link #startFuse} 播放 {@code diesel_overstress} 警告一次、出力归零；
- * 此后每服务端 tick {@link #tickFuse} 递减，红石关停/燃尽/负载恢复都不取消；
+ * B6 过载引信（不可中断，三类柴油机共用，确认窗口见 {@link CdgOverloadMath}）：
+ * 运转中过载连续 2 秒确认后 {@link #startFuse} 点引信——存档/区块加载期
+ * kinetic 网络重建的短暂误报在此窗口内被滤掉，与蒸汽机 H 板块 16 秒持续确认同设计语言；
+ * 确认后每服务端 tick {@link #tickFuse} 递减，红石关停/燃尽/负载恢复都不取消；
  * 120 tick（6 秒）到时播放 {@code entity.generic.explode} 一次 + 爆炸粒子
  * （{@code minecraft:explosion}，delta 1,1,1 / speed 0 / count 100），再破坏自毁掉落。
  * 仅自毁掉落，无地形/实体伤害（不调 {@code level.explode}）。
@@ -27,11 +28,12 @@ public final class CdgOverloadFuse {
     private CdgOverloadFuse() {
     }
 
-    /** 点引信：警告音一次 + 出力闩锁归零（燃油门控走闩锁口径），倒计时 120 tick。 */
+    /** 点引信：警告音一次 + 出力闩锁归零（燃油门控走闩锁口径），倒计时 120 tick；确认计数清零。 */
     public static void startFuse(ServerLevel level, BlockPos pos, CdgEngineState state) {
         state.fuseActive = true;
         state.overloadLatched = true;
         state.fuseTicksLeft = FUSE_TICKS;
+        state.overloadTicks = 0;
         state.rampTicks = 0;
         state.fluctTicksLeft = 0;
         level.playSound(null, pos, ModSounds.DIESEL_OVERSTRESS.get(), SoundSource.BLOCKS, 1.0F, 1.0F);

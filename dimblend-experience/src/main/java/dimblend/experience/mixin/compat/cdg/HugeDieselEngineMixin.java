@@ -6,6 +6,7 @@ import dimblend.experience.Config;
 import dimblend.experience.compat.cdg.CdgAttachments;
 import dimblend.experience.compat.cdg.CdgEngineState;
 import dimblend.experience.compat.cdg.CdgOverloadFuse;
+import dimblend.experience.compat.cdg.CdgOverloadMath;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
@@ -27,8 +28,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * 饱和判定与该调用实参同源（{@code |getFuelSpeed * getThrottle|}，注意 1.3.15
  * 此处未乘 upgrade 倍率——与上游保持一致，不另做修正）。</p>
  *
- * <p>B6 过载引信（用户拍板，不可中断）：轴过载当 tick 先摘轴侧登记（否则轴残留
- * 末速空转），再点引信——警告音 1 次、出力归零；6 秒后爆音 1 次 + 爆炸粒子
+ * <p>B6 过载引信（用户拍板，不可中断）：轴持续过载满 40 tick（2 秒）确认后先摘轴侧登记
+ * （否则轴残留末速空转），再点引信——警告音 1 次、出力归零；确认窗口滤掉存档/区块加载期
+ * kinetic 网络重建的短暂误报，确认前爬梯/波动计时冻结；6 秒后爆音 1 次 + 爆炸粒子
  * （delta 1,1,1 / speed 0 / count 100），再 {@code destroyBlock(pos, true)}
  * 破坏本体掉落（余油不返还、无真实爆炸伤害）。红石关停/燃尽/负载恢复都不取消引信。
  * 自毁破坏失败（极端情况）才回退闩锁等重新加油。燃尽走原版停机（不干预）。</p>
@@ -127,6 +129,7 @@ public abstract class HugeDieselEngineMixin {
         }
         PoweredEngineShaftBlockEntity shaft = self.getShaft();
         if (shaft == null) {
+            state.overloadTicks = 0;
             return;
         }
         int fuelAmount = self.getTank().getFluidAmount();
@@ -142,12 +145,19 @@ public abstract class HugeDieselEngineMixin {
         if (!self.enabled() || self.getThrottle() == 0.0F) {
             // 未运行（无油/红石关停/燃尽/模拟调速归零）：复位计时，与普通机"停转复位"一致；
             // 且轴过载此时与其他引擎有关，不得炸本机
+            state.overloadTicks = 0;
             state.rampTicks = 0;
             state.fluctTicksLeft = 0;
             return;
         }
         if (shaft.isOverStressed()) {
-            // B6 过载损坏（只炸本体）：先摘轴侧登记防残留末速空转，再点引信
+            // B6 过载损坏（只炸本体）：持续 40 tick（2 秒，见 CdgOverloadMath）确认才点引信——
+            // 存档/区块加载期网络重建的短暂误报在此窗口内被滤掉；确认前爬梯/波动计时冻结
+            // （直接 return，不断也不复位），燃油照常扣除；确认后先摘轴侧登记防残留末速空转，再点引信
+            state.overloadTicks = CdgOverloadMath.countOverloadTick(state.overloadTicks);
+            if (!CdgOverloadMath.isOverloadConfirmed(state.overloadTicks)) {
+                return;
+            }
             BlockPos pos = self.getBlockPos();
             shaft.removeGenerator(pos);
             CdgOverloadFuse.startFuse(level, pos, state);
@@ -156,6 +166,7 @@ public abstract class HugeDieselEngineMixin {
             }
             return;
         }
+        state.overloadTicks = 0;
         // 饱和判定与传轴实参同源（见类 javadoc）：|getFuelSpeed * getThrottle|
         float rated = Math.abs(self.getFuelSpeed() * self.getThrottle());
         float rampTarget = dimblend$IGNITION_RPM
