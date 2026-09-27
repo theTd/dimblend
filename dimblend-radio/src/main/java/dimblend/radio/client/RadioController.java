@@ -1,7 +1,6 @@
 package dimblend.radio.client;
 
 import dimblend.radio.RadioSignals;
-import dimblend.radio.SubLevelProjection;
 import dimblend.radio.net.ClientRadioState;
 import dimblend.radio.net.RadioHelloPayload;
 import dimblend.radio.net.RadioStatePayload;
@@ -9,7 +8,6 @@ import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.sounds.WeighedSoundEvents;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -25,7 +23,8 @@ import dimblend.radio.DimBlendRadio;
 /**
  * 客户端播放控制器：S2C 状态 → 本地实例。单 tick 全量对账（电台数极少）。
  *
- * <p>流程：状态表每项 → 玩家距离 >真零点(64) 不建实例；零点内按 (nonce,trackHash) 建/换实例：
+ * <p>流程：状态表每项按 (nonce,trackHash) 建/换实例，不限距离：远端由引擎 LINEAR 衰减（64 格归零）
+ * 自然静音，实例不断流、不重建，走回即时恢复、无重解码缺口：
  * 起播 offset 见 {@link RadioStartOffset}（在场开播从头播、允许落后服务钟 ≤4s；中途走近对齐服务钟；
  * 同曲重建沿用首次落后量）。服务钟进度 = max(本端同步的 level gameTime, 包内 serverNow) − startTick。
  * 实例播完（SoundEngine 通道 stopped + deleteTime 到期 → isActive false）→ 删本地记录，
@@ -35,8 +34,6 @@ import dimblend.radio.DimBlendRadio;
  */
 @EventBusSubscriber(modid = DimBlendRadio.MODID, value = Dist.CLIENT)
 public final class RadioController {
-    /** 建实例/保活半径 = 真零点（RANGE_BLOCKS=64）：衰减到零之前实例一直在，音乐压制同源。 */
-    private static final double BUILD_RANGE = dimblend.radio.client.RadioInjector.RANGE_BLOCKS;
     /** 同一曲 PCM 常驻内存上限：5 首 × ~50MB = 250MB 封顶，LRU 淘汰。 */
     private static final int PCM_CACHE_MAX = 5;
 
@@ -122,7 +119,6 @@ public final class RadioController {
             return;
         }
         String dim = mc.level.dimension().location().toString();
-        Vec3 listener = mc.player.position();
 
         // 落后量只对同一 (nonce, track) 有效：状态消失或换曲即丢
         START_LAG.entrySet().removeIf(e -> {
@@ -132,7 +128,7 @@ public final class RadioController {
                     || !state.trackHash().equals(e.getValue().trackHash());
         });
 
-        // 清理：维度不符 / 状态消失 / 超距 / nonce 变化 / 播完 → 停实例。
+        // 清理：维度不符 / 状态消失 / nonce 变化 / 播完 → 停实例。
         // 同 nonce 下 side 变化只跟通道增益，不重建、不重播。
         var it = LIVE.entrySet().iterator();
         while (it.hasNext()) {
@@ -143,7 +139,6 @@ public final class RadioController {
             boolean stale = state == null || !state.playing() || !key.dimension().equals(dim)
                     || state.nonce() != live.nonce()
                     || !state.trackHash().equals(live.trackHash())
-                    || listener.distanceTo(SubLevelProjection.worldCenter(mc.level, key.pos())) > BUILD_RANGE + 4
                     || live.instance().isStopped()
                     || !mc.getSoundManager().isActive(live.instance());
             if (stale) {
@@ -157,11 +152,6 @@ public final class RadioController {
             var key = stateEntry.getKey();
             RadioStatePayload state = stateEntry.getValue();
             if (!key.dimension().equals(dim) || !state.playing()) {
-                continue;
-            }
-            // Sable 结构上的唱片机 pos 是 plot 坐标（~2048 万格外）：按结构位姿投影后再比距离
-            double dist = listener.distanceTo(SubLevelProjection.worldCenter(mc.level, key.pos()));
-            if (dist > BUILD_RANGE) {
                 continue;
             }
             LiveKey liveKey = new LiveKey(key.dimension(), key.pos());

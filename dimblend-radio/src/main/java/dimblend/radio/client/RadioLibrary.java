@@ -260,13 +260,29 @@ public final class RadioLibrary {
 
     /**
      * 下混单声道（OpenAL 定位要求：立体声源无空间化，听感就是“立体声、没有距离渐隐”。
-     * 单声道源才有距离方向感。多声道→能量平均，保证响度不塌）。
+     * 单声道源才有距离方向感。立体声→能量平均（逐位旧行为）；3 声道以上按声道角色加权平均，
+     * LFE（6 声道以上布局的 index 3）不参与——静音低音炮不能把整曲音量除小。
      * 返回新数组 + 新 format（帧长减半，无尾部旧字节问题）。
      */
-    private record MonoPcm(AudioFormat format, byte[] data) {
+    record MonoPcm(AudioFormat format, byte[] data) {
     }
 
-    private static MonoPcm toMono(AudioFormat format, byte[] data) {
+    /** 声道权重：L/R=1，中置=0.7071，环绕/其他=0.5；6 声道以上布局的 index 3 是 LFE，权重 0。包可见仅供单测。 */
+    static float downmixWeight(int channel, int channels) {
+        if (channel < 2) {
+            return 1.0f; // L/R
+        }
+        if (channel == 2) {
+            return 0.7071f; // C
+        }
+        // 5.0 的 index 3 是环绕（无 LFE），只有 6 声道以上才按 SMPTE 把 index 3 当 LFE 排除
+        if (channel == 3 && channels >= 6) {
+            return 0.0f; // LFE
+        }
+        return 0.5f; // 环绕/其他
+    }
+
+    static MonoPcm toMono(AudioFormat format, byte[] data) {
         int channels = format.getChannels();
         if (channels == 1) {
             return new MonoPcm(format, data);
@@ -274,15 +290,32 @@ public final class RadioLibrary {
         int frames = data.length / format.getFrameSize();
         byte[] mixed = new byte[frames * 2];
         int oldFrame = format.getFrameSize();
-        for (int f = 0; f < frames; f++) {
-            int acc = 0;
-            for (int c = 0; c < channels; c++) {
-                int off = f * oldFrame + c * 2;
-                acc += (short) ((data[off] & 0xFF) | (data[off + 1] << 8));
+        if (channels == 2) {
+            for (int f = 0; f < frames; f++) {
+                int acc = 0;
+                for (int c = 0; c < 2; c++) {
+                    int off = f * oldFrame + c * 2;
+                    acc += (short) ((data[off] & 0xFF) | (data[off + 1] << 8));
+                }
+                int v = acc / 2;
+                mixed[f * 2] = (byte) v;
+                mixed[f * 2 + 1] = (byte) (v >> 8);
             }
-            int v = acc / channels;
-            mixed[f * 2] = (byte) v;
-            mixed[f * 2 + 1] = (byte) (v >> 8);
+        } else {
+            double total = 0;
+            for (int c = 0; c < channels; c++) {
+                total += downmixWeight(c, channels);
+            }
+            for (int f = 0; f < frames; f++) {
+                double acc = 0;
+                for (int c = 0; c < channels; c++) {
+                    int off = f * oldFrame + c * 2;
+                    acc += (short) ((data[off] & 0xFF) | (data[off + 1] << 8)) * downmixWeight(c, channels);
+                }
+                int v = (int) Math.round(acc / total);
+                mixed[f * 2] = (byte) v;
+                mixed[f * 2 + 1] = (byte) (v >> 8);
+            }
         }
         return new MonoPcm(new AudioFormat(format.getSampleRate(), 16, 1, true, false), mixed);
     }
