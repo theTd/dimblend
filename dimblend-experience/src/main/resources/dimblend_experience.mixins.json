@@ -20,6 +20,7 @@
 		"compat.create.ItemDrainIrrigationMixin",
 		"compat.create.ItemDrainGrowthBoostMixin",
 		"compat.create.ItemDrainPipeRefillMixin",
+		"compat.create.PortableEngineStartMixin",
 		"compat.fluid.GutterOutletPrecipitationMixin",
 		"compat.create.SteamEngineOverloadMixin",
 		"compat.simurail.PhysicsBogeyBrakeSoundMixin",

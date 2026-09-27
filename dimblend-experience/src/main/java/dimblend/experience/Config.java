@@ -75,6 +75,12 @@ public final class Config {
                     + "放行放置后本 tick 末破坏自身返还：真人回背包、机器放置掉落；需要 simulated 在场）")
             .define("assemblerGuard", true);
 
+    public static final ModConfigSpec.BooleanValue PORTABLE_ENGINE_EXCLUSIVITY = BUILDER
+            .comment("F 板块 F2：simulated 便携引擎同 Create 动力网络互斥（16 色全算同类；"
+                    + "放置瞬间已连同类网络则本 tick 末自毁；自身起转登记、本 tick 末枚举合网后随机毁 N-1 台只剩一台；"
+                    + "一律按 loot 掉落、无豁免；需要 simulated+create 在场）")
+            .define("portableEngineExclusivity", true);
+
     public static final ModConfigSpec.BooleanValue TRAIN_SOUNDS = BUILDER
             .comment("E 板块 E2-E4：转向架行驶轨道节奏循环（音量/音调随速度）+ 刹车/松闸气阀触发音。"
                     + "需要 Simurail 在场；客户端经 ConfigSync 同步后生效")

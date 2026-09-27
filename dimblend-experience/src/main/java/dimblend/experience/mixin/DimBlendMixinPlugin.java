@@ -43,6 +43,7 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.endsWith(".compat.create.ItemDrainIrrigationMixin")
                 || mixinClassName.endsWith(".compat.create.ItemDrainGrowthBoostMixin")
                 || mixinClassName.endsWith(".compat.create.ItemDrainPipeRefillMixin")
+                || mixinClassName.endsWith(".compat.create.PortableEngineStartMixin")
                 || mixinClassName.endsWith(".compat.create.SteamEngineOverloadMixin")) {
             return isLoaded("create");
         }
