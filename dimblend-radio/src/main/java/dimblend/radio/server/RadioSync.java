@@ -9,6 +9,7 @@ import dimblend.radio.RadioCatalog;
 import dimblend.radio.RadioControl;
 import dimblend.radio.RadioSignals;
 import dimblend.radio.RadioState;
+import dimblend.radio.SubLevelProjection;
 import dimblend.radio.net.RadioHelloPayload;
 import dimblend.radio.net.RadioStatePayload;
 import net.minecraft.core.BlockPos;
@@ -121,6 +122,24 @@ public final class RadioSync {
 
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        pushToPlayerLevel(event);
+    }
+
+    /**
+     * 换维度/跨维度重生：客户端只保留当前维度的状态（别的维度收不到删除广播，留着会重播已拆的电台），
+     * 进入新维度时立刻补推该维度全量，不等 100 tick 补推。
+     */
+    @SubscribeEvent
+    public static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
+        pushToPlayerLevel(event);
+    }
+
+    @SubscribeEvent
+    public static void onPlayerRespawn(PlayerEvent.PlayerRespawnEvent event) {
+        pushToPlayerLevel(event);
+    }
+
+    private static void pushToPlayerLevel(PlayerEvent event) {
         if (event.getEntity() instanceof ServerPlayer player
                 && player.serverLevel() instanceof ServerLevel level) {
             pushAll(level);
@@ -157,21 +176,30 @@ public final class RadioSync {
         final int R = 72;
         java.util.Set<Long> seen = new java.util.HashSet<>();
         for (ServerPlayer player : level.players()) {
-            net.minecraft.world.level.ChunkPos center =
-                    new net.minecraft.world.level.ChunkPos(player.blockPosition());
-            int cr = (R >> 4) + 1;
-            for (int cx = center.x - cr; cx <= center.x + cr; cx++) {
-                for (int cz = center.z - cr; cz <= center.z + cr; cz++) {
-                    if (!seen.add(net.minecraft.world.level.ChunkPos.asLong(cx, cz))) {
-                        continue;
-                    }
-                    net.minecraft.world.level.chunk.LevelChunk chunk =
-                            level.getChunkSource().getChunkNow(cx, cz);
-                    if (chunk == null) {
-                        continue;
-                    }
-                    scanChunkForJukeboxes(level, dim, chunk);
+            scanChunksAround(level, dim, player.blockPosition(), R, seen);
+            // 玩家身边的 Sable 结构：其方块在 plot 坐标（~2048 万格外），按玩家世界坐标扫不到。
+            // 把玩家位置反投影进各结构的 plot 再扫同半径（Sable 的 getChunkNow 对 plot 区块同样生效）。
+            for (net.minecraft.world.phys.Vec3 plotCenter
+                    : SubLevelProjection.plotCentersNear(level, player.position(), R)) {
+                scanChunksAround(level, dim, BlockPos.containing(plotCenter), R, seen);
+            }
+        }
+    }
+
+    private static void scanChunksAround(ServerLevel level, String dim, BlockPos centerPos, int radius,
+            java.util.Set<Long> seen) {
+        net.minecraft.world.level.ChunkPos center = new net.minecraft.world.level.ChunkPos(centerPos);
+        int cr = (radius >> 4) + 1;
+        for (int cx = center.x - cr; cx <= center.x + cr; cx++) {
+            for (int cz = center.z - cr; cz <= center.z + cr; cz++) {
+                if (!seen.add(net.minecraft.world.level.ChunkPos.asLong(cx, cz))) {
+                    continue;
                 }
+                net.minecraft.world.level.chunk.LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
+                if (chunk == null) {
+                    continue;
+                }
+                scanChunkForJukeboxes(level, dim, chunk);
             }
         }
     }

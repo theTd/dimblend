@@ -1,5 +1,7 @@
 package dimblend.radio.client;
 
+import dimblend.radio.SubLevelProjection;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.AbstractTickableSoundInstance;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.client.sounds.SoundManager;
@@ -8,6 +10,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -33,24 +36,19 @@ public class RadioInstance extends AbstractTickableSoundInstance {
     private final WeighedSoundEvents event;
     private volatile float gain = 1.0f;
 
-    public RadioInstance(BlockPos pos, String trackHash) {
-        this(pos, trackHash, 1.0f);
-    }
-
     /**
+     * 须在主线程构造（要读客户端 level 的 Sable 结构位姿）。
+     *
      * @param gain 通道增益（0~1，= {@link PcmHeadroom#channelGain}，对按余量预放大的 PCM 实时跟量）。
      *             半径 f1 = max(volume,1.0) * attDist 与 gain 无关：volume 恒 1.0，
      *             f1 = 64 真零点不受 side 影响。
      */
-    public RadioInstance(BlockPos pos, String trackHash, float gain) {
+    public RadioInstance(Level level, BlockPos pos, String trackHash, float gain) {
         super(SoundEvent.createVariableRangeEvent(ResourceLocation.fromNamespaceAndPath(
                 dimblend.radio.DimBlendRadio.MODID, "radio/" + trackHash)),
                 SOURCE, SoundInstance.createUnseededRandom());
         this.radioPos = pos.immutable();
-        Vec3 center = Vec3.atCenterOf(pos);
-        this.x = center.x;
-        this.y = center.y;
-        this.z = center.z;
+        followWorldPosition(level);
         this.attenuation = SoundInstance.Attenuation.LINEAR;
         this.relative = false;
         this.event = RadioInjector.makeEvent(trackHash);
@@ -91,6 +89,25 @@ public class RadioInstance extends AbstractTickableSoundInstance {
     @Override
     public void tick() {
         // gain 由 RadioController.followSideGain 实时写，不在这里动；
-        // 距离衰减由引擎每 tick 用 x/y/z 重算
+        // 距离衰减由引擎每 tick 用 x/y/z 重算（tickable 实例的通道位置每 tick 跟 getX/Y/Z）
+        followWorldPosition(Minecraft.getInstance().level);
+    }
+
+    /**
+     * 声源 = 唱片机中心的世界坐标：Sable 结构上的唱片机 pos 是 plot 坐标，按结构位姿投影并逐 tick 跟随。
+     *
+     * <p>起播前就必须是世界坐标：Sable 的 SoundEngine mixin 见到 plot 坐标的实例会把它包成
+     * MovingSoundInstanceDelegate 再入引擎，此后 {@code SoundManager.isActive(本实例)} 查不到
+     * （引擎表里是包装），{@link RadioController} 对账会判 stale、每 tick 停掉重建。
+     * 自己跟位姿就不触发包装，stop/isActive 都按原版语义工作。</p>
+     */
+    private void followWorldPosition(Level level) {
+        if (level == null) {
+            return;
+        }
+        Vec3 world = SubLevelProjection.worldCenter(level, this.radioPos);
+        this.x = world.x;
+        this.y = world.y;
+        this.z = world.z;
     }
 }

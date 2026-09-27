@@ -116,6 +116,14 @@ dependencies {
             prefer('1.5.2')
         }
     }
+    // Sable 结构（子层级）坐标投影：唱片机放在结构上时 BlockPos 是 plot 坐标（~2048 万），
+    // 距离判定/声源定位须投影到世界坐标。与 dimblend 本体同款软依赖 shim：JiJ 进 jar，
+    // 未装 Sable 时是原样返回的 no-op 实现，运行时不强制依赖 Sable。
+    jarJar(api("dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:${project.sable_companion_version}")) {
+        version {
+            prefer(project.sable_companion_version)
+        }
+    }
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

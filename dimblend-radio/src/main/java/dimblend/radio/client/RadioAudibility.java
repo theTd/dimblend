@@ -2,6 +2,7 @@ package dimblend.radio.client;
 
 import java.util.Map;
 
+import dimblend.radio.SubLevelProjection;
 import dimblend.radio.net.ClientRadioState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.sounds.SoundSource;
@@ -42,7 +43,9 @@ public final class RadioAudibility {
             if (!key.dimension().equals(dim) || !entry.getValue().playing()) {
                 continue;
             }
-            if (listener.distanceTo(Vec3.atCenterOf(key.pos())) <= RadioInjector.RANGE_BLOCKS) {
+            // Sable 结构上的唱片机 pos 是 plot 坐标：投影到世界坐标再比距离
+            if (listener.distanceTo(SubLevelProjection.worldCenter(mc.level, key.pos()))
+                    <= RadioInjector.RANGE_BLOCKS) {
                 return true;
             }
         }

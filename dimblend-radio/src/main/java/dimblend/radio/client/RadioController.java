@@ -1,6 +1,7 @@
 package dimblend.radio.client;
 
 import dimblend.radio.RadioSignals;
+import dimblend.radio.SubLevelProjection;
 import dimblend.radio.net.ClientRadioState;
 import dimblend.radio.net.RadioHelloPayload;
 import dimblend.radio.net.RadioStatePayload;
@@ -84,12 +85,19 @@ public final class RadioController {
         if (mc.level == null || mc.player == null) {
             stopAll();
             START_LAG.clear();
+            // 退到标题/换服：离线期间的删除收不到，旧状态留着会在重进后重播已拆的电台；
+            // 进服时服务端补推全量（PlayerLoggedIn），这里清空不丢真实状态
+            ClientRadioState.clear();
+            // 退到标题/换服后重发 hello：否则服务端曲库时长永为 -1 兜底（180s），切歌时钟错乱
+            helloSent = false;
             return;
         }
         if (!helloSent) {
             helloSent = true;
             sendHello();
         }
+        // 只留当前维度：别的维度的删除广播收不到（见 ClientRadioState.retainDimension）
+        ClientRadioState.retainDimension(mc.level.dimension().location().toString());
         reconcile(mc);
     }
 
@@ -97,7 +105,10 @@ public final class RadioController {
         Util.ioPool().execute(() -> {
             try {
                 RadioLibrary.scanNow();
-                PacketDistributor.sendToServer(new RadioHelloPayload(RadioLibrary.catalogView()));
+                var catalog = RadioLibrary.catalogView();
+                PacketDistributor.sendToServer(new RadioHelloPayload(catalog));
+                int tracks = catalog.values().stream().mapToInt(java.util.Map::size).sum();
+                DimBlendRadio.LOGGER.info("[radio] hello sent: {} stations, {} tracks", catalog.size(), tracks);
             } catch (Exception e) {
                 DimBlendRadio.LOGGER.warn("[radio] hello failed", e);
             }
@@ -132,7 +143,7 @@ public final class RadioController {
             boolean stale = state == null || !state.playing() || !key.dimension().equals(dim)
                     || state.nonce() != live.nonce()
                     || !state.trackHash().equals(live.trackHash())
-                    || listener.distanceTo(Vec3.atCenterOf(key.pos())) > BUILD_RANGE + 4
+                    || listener.distanceTo(SubLevelProjection.worldCenter(mc.level, key.pos())) > BUILD_RANGE + 4
                     || live.instance().isStopped()
                     || !mc.getSoundManager().isActive(live.instance());
             if (stale) {
@@ -148,7 +159,8 @@ public final class RadioController {
             if (!key.dimension().equals(dim) || !state.playing()) {
                 continue;
             }
-            double dist = listener.distanceTo(Vec3.atCenterOf(key.pos()));
+            // Sable 结构上的唱片机 pos 是 plot 坐标（~2048 万格外）：按结构位姿投影后再比距离
+            double dist = listener.distanceTo(SubLevelProjection.worldCenter(mc.level, key.pos()));
             if (dist > BUILD_RANGE) {
                 continue;
             }
@@ -232,13 +244,11 @@ public final class RadioController {
                 if (play != cached.pcm()) {
                     fadeIn(cached.format(), play);
                 }
-                // 音量只走通道增益（PCM 已按本曲余量预放大）；起播前按最新 side 再取一次
+                // 音量只走通道增益（PCM 已按本曲余量预放大）；起播前按最新 side 取（见主线程块）
                 float boost = cached.boost();
-                float gain = PcmHeadroom.channelGain(RadioSignals.volumePercent(state.side()), boost);
                 // 实际落后量含截取耗时（同曲重建据此续播）
                 double lagSec = prepSec + secondsSince(prepNanos) - offsetSec;
                 RadioPcmFeed.put(state.trackHash(), cached.format(), play);
-                RadioInstance instance = new RadioInstance(key.pos(), state.trackHash(), gain);
                 mc.execute(() -> {
                     // 双重检查：对账期间状态可能已变
                     var current = ClientRadioState.view()
@@ -246,14 +256,17 @@ public final class RadioController {
                     if (current == null || !current.playing() || current.nonce() != state.nonce()) {
                         return;
                     }
-                    if (LIVE.containsKey(key) || RadioAudibility.categoryMuted(mc)) {
+                    if (mc.level == null || LIVE.containsKey(key) || RadioAudibility.categoryMuted(mc)) {
                         return;
                     }
                     float liveGain = PcmHeadroom.channelGain(RadioSignals.volumePercent(current.side()), boost);
-                    instance.setVolume(liveGain);
+                    // 主线程构造：声源要按客户端 level 里的 Sable 结构位姿投影到世界坐标
+                    RadioInstance instance = new RadioInstance(mc.level, key.pos(), state.trackHash(), liveGain);
                     mc.getSoundManager().play(instance);
                     LIVE.put(key, new Live(instance, state.trackHash(), state.nonce(), seconds, liveGain, boost));
                     START_LAG.put(key, new StartLag(state.nonce(), state.trackHash(), lagSec));
+                    DimBlendRadio.LOGGER.info("[radio] playing station={} gain={} pos={} hash={}", current.station(),
+                            liveGain, key.pos(), shortHash(state.trackHash()));
                 });
             } catch (Exception e) {
                 DimBlendRadio.LOGGER.warn("[radio] decode failed {}", file, e);
@@ -320,6 +333,10 @@ public final class RadioController {
                         false);
             }
         }
+    }
+
+    private static String shortHash(String hash) {
+        return hash.length() <= 12 ? hash : hash.substring(0, 12);
     }
 
     private static void stopAll() {
