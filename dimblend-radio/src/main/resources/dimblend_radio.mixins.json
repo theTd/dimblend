@@ -6,6 +6,7 @@
 	"mixins": [
 		"SoundCacheAccessor",
 		"JukeboxControlMixin",
+		"JukeboxRedstoneInputMixin",
 		"SoundBufferMixin"
 	],
 	"client": [

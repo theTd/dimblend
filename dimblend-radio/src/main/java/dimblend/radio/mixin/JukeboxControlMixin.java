@@ -20,11 +20,10 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 
 /**
- * 唱片机控制：原版 {@code JukeboxBlock} 不声明 neighborChanged/onPlace（继承自
- * {@code Block}，mixin 无法按目标类自身方法 apply），红石/放置改走
- * {@code RadioSync} 的 {@code BlockEvent.NeighborNotifyEvent/EntityPlaceEvent}
- * 订阅；空盘 getTicker 返回 null（BE 永不 tick），曲终推进由服务端 tick 兜底。
- * 本 mixin 仅保留：
+ * 唱片机控制：红石输入（neighborChanged 即时重算、空盘不中继强充能）见
+ * {@link JukeboxRedstoneInputMixin}；放置与唱片机自身状态变化走 {@code RadioSync} 的
+ * {@code BlockEvent.EntityPlaceEvent/NeighborNotifyEvent} 订阅；空盘 getTicker 返回 null
+ * （BE 永不 tick），曲终推进由服务端 tick 兜底。本 mixin 仅保留：
  *
  * <ul>
  *   <li>useItemOn（HEAD）：radio 播中被塞盘 → 先停播（删服务端状态+广播），再让原版继续。</li>

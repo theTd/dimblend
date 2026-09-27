@@ -12,9 +12,9 @@ import net.minecraft.resources.ResourceLocation;
  * S2C 电台状态：服务端权威（曲 hash + 起始钟 + 站台 + 音量 + 位置 + 维度 + 发包时服务端钟）。
  * 音频字节不走网络，客户端按 hash 在本地 {@code dimblend_radio/} 找文件。
  *
- * <p>serverNow：发包瞬间服务端的 gameTime。客户端 offset =
- * (serverNow - startTick)/20 + 本地解码耗时，玩家 A/B/C 无论何时加入、走近，
- * 都对齐到同一服务钟，进度一致。9 字段手写 codec（composite 上限 6 元）。</p>
+ * <p>serverNow：发包瞬间服务端的 gameTime，客户端估服务钟进度时作下界（与本端同步的
+ * level gameTime 取大）。起播 offset 策略见 {@code RadioStartOffset}：中途走近/迟加入对齐服务钟，
+ * 在场开播从头播（落后 ≤4s）。9 字段手写 codec（composite 上限 6 元）。</p>
  */
 public record RadioStatePayload(
         ResourceLocation dimension,

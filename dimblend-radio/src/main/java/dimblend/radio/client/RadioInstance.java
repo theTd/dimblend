@@ -22,9 +22,13 @@ import net.minecraft.world.phys.Vec3;
  *
  * <p>volume 固定 1.0：f1 = max(1.0,1.0) * 64 = 64（真零点），
  * LINEAR_DISTANCE 下 gain = 1 - d/64：贴脸满音、32 格半音、64 格归零。
- * side 音量语义由 PCM 预放大承担（10%~150%），实例音量恒定不跟 tick。</p>
+ * side 音量（10%~150%）：PCM 解码时按本曲余量线性预放大（{@link PcmHeadroom}），实例通道增益
+ * 实时跟量，变音量（含跨 100%）不换 PCM、不重建。</p>
  */
 public class RadioInstance extends AbstractTickableSoundInstance {
+    /** 声音分类：唱片机/音符盒（RECORDS），跟随该音量滑块。 */
+    public static final SoundSource SOURCE = SoundSource.RECORDS;
+
     private final BlockPos radioPos;
     private final WeighedSoundEvents event;
     private volatile float gain = 1.0f;
@@ -34,14 +38,14 @@ public class RadioInstance extends AbstractTickableSoundInstance {
     }
 
     /**
-     * @param gain 通道增益（0~1，side≤10 段实时跟量用；>100% 段恒 1.0，响度由 PCM 预放大给）。
+     * @param gain 通道增益（0~1，= {@link PcmHeadroom#channelGain}，对按余量预放大的 PCM 实时跟量）。
      *             半径 f1 = max(volume,1.0) * attDist 与 gain 无关：volume 恒 1.0，
      *             f1 = 64 真零点不受 side 影响。
      */
     public RadioInstance(BlockPos pos, String trackHash, float gain) {
         super(SoundEvent.createVariableRangeEvent(ResourceLocation.fromNamespaceAndPath(
                 dimblend.radio.DimBlendRadio.MODID, "radio/" + trackHash)),
-                SoundSource.RECORDS, SoundInstance.createUnseededRandom());
+                SOURCE, SoundInstance.createUnseededRandom());
         this.radioPos = pos.immutable();
         Vec3 center = Vec3.atCenterOf(pos);
         this.x = center.x;
@@ -74,7 +78,7 @@ public class RadioInstance extends AbstractTickableSoundInstance {
         return true;
     }
 
-    /** 同段实时跟量：只改 gain（volume 恒 1.0 不动半径），引擎下 tick 即生效。 */
+    /** 实时跟量：只改 gain（volume 恒 1.0 不动半径），引擎下 tick 即生效。 */
     public void setVolume(float gain) {
         this.gain = gain;
     }

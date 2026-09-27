@@ -4,11 +4,16 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 
 /**
- * MP3 头解析：只读帧头算时长，不解码 PCM。
+ * MP3 时长：逐帧读帧头累加每帧时长，不解码 PCM。
  *
- * <p>VBR 带 Xing/Info 头时直接读总帧数；否则按首帧推码率估算（误差 &lt;5%，切歌时钟够用）。</p>
+ * <p>旧做法“文件字节 × 8 / 首 64 帧均码率”把 ID3 标签（内嵌封面动辄几 MB）也算成音频，
+ * 时长虚高几秒到一百多秒，服务端按它排曲终，曲间静音远超 5 秒。逐帧累加只数音频帧，
+ * 与完整解码的 PCM 时长一致（实测 14 首误差 &lt;0.05s），读头不解码，单曲几十毫秒。</p>
  */
 final class Mp3Util {
+    /** 兜底时长：读不到任何帧时（文件损坏）用。 */
+    private static final double FALLBACK_SECONDS = 180.0;
+
     static double durationSeconds(byte[] bytes) throws Exception {
         Class<?> bitstreamClass = Class.forName("javazoom.jl.decoder.Bitstream");
         Class<?> headerClass = Class.forName("javazoom.jl.decoder.Header");
@@ -17,49 +22,27 @@ final class Mp3Util {
         try {
             var readFrame = bitstreamClass.getMethod("readFrame");
             var closeFrame = bitstreamClass.getMethod("closeFrame");
-            // Xing/VBR 信息：Header.parseVBR 已在 read_header 内触发（JLayer 行为），
-            // total_ms 需要总帧数——JLayer Header.total_ms(frames) 逐帧累计太贵，
-            // 此处用首帧码率 + 文件长度估算，VBR 误差可接受（切歌时钟±几秒无妨）。
-            Object header = null;
+            var msPerFrame = headerClass.getMethod("ms_per_frame");
+            double totalMs = 0;
             int frames = 0;
-            int bitrateSum = 0;
-            float msPerFrame = 0;
-            // 最多读 64 帧取平均码率，避免全文件扫描
-            while (frames < 64) {
-                Object h;
+            while (true) {
+                Object header;
                 try {
-                    h = readFrame.invoke(bitstream);
+                    header = readFrame.invoke(bitstream);
                 } catch (java.lang.reflect.InvocationTargetException e) {
+                    break; // 流尾杂数据（ID3v1/APE 标签等）
+                }
+                if (header == null) {
                     break;
                 }
-                if (h == null) {
-                    break;
-                }
-                header = h;
-                int bitrate = (Integer) headerClass.getMethod("bitrate").invoke(h);
-                msPerFrame = (Float) headerClass.getMethod("ms_per_frame").invoke(h);
-                // VBR 头：vbr()==true 说明是 VBR 流，用 total_ms(估帧数) 修正
-                bitrateSum += bitrate;
+                totalMs += (Float) msPerFrame.invoke(header);
                 frames++;
                 closeFrame.invoke(bitstream);
             }
-            if (header == null || frames == 0 || msPerFrame <= 0) {
-                return 180.0;
+            if (frames == 0 || totalMs <= 0) {
+                return FALLBACK_SECONDS;
             }
-            boolean vbr = (Boolean) headerClass.getMethod("vbr").invoke(header);
-            if (vbr) {
-                // VBR：平均码率反推总时长
-                int avgBitrate = bitrateSum / frames;
-                if (avgBitrate <= 0) {
-                    return 180.0;
-                }
-                return (bytes.length * 8.0) / avgBitrate;
-            }
-            int bitrate = bitrateSum / frames;
-            if (bitrate <= 0) {
-                return 180.0;
-            }
-            return (bytes.length * 8.0) / bitrate;
+            return totalMs / 1000.0;
         } finally {
             bitstreamClass.getMethod("close").invoke(bitstream);
         }

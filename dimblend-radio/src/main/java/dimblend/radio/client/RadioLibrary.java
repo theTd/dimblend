@@ -30,8 +30,8 @@ import dimblend.radio.DimBlendRadio;
  * <p>解码链：ogg → 原版 JOrbis（运行时反射，不编译依赖）；mp3 → JLayer
  * （{@code Decoder.decodeFrame} 逐帧 → short[]，javap 已核对签名）；
  * flac → jFLAC {@code FlacAudioFileReader.getAudioInputStream}（javax.sound SPI）；
- * wav → {@code AudioSystem}。全部归一成 16bit 小端 PCM（多声道下混立体声），
- * 再按当前 side 做 PCM 预放大（>100% 部分，引擎增益封顶 1.0 做不到）。</p>
+ * wav → {@code AudioSystem}。全部归一成 16bit 小端单声道 PCM（多声道下混，OpenAL 定位要求）。
+ * &gt;100% 的余量预放大由调用方按曲做（见 {@link PcmHeadroom}），这里只出原始响度。</p>
  *
  * <p>hash = 文件字节 SHA-256 hex（服务端选曲/同步只传它）。时长 = PCM 帧数/采样率。</p>
  */
@@ -116,8 +116,8 @@ public final class RadioLibrary {
         return HASH_TO_FILE.get(hash);
     }
 
-    /** 解码 + 下混 + 预放大（boost ≥1，150%→1.5），返回可直接送通道的 PCM。 */
-    public static Pcm decode(Path file, float boost) throws Exception {
+    /** 解码 + 下混单声道，原始响度（不放大）。 */
+    public static Pcm decode(Path file) throws Exception {
         String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
         Pcm pcm;
         if (name.endsWith(".mp3")) {
@@ -128,9 +128,6 @@ public final class RadioLibrary {
             pcm = decodeSpi(file);
         } else {
             pcm = decodeOgg(Files.readAllBytes(file));
-        }
-        if (boost != 1.0f) {
-            applyBoostInPlace(pcm.data(), boost);
         }
         return pcm;
     }
@@ -286,17 +283,6 @@ public final class RadioLibrary {
             mixed[f * 2 + 1] = (byte) (v >> 8);
         }
         return new MonoPcm(new AudioFormat(format.getSampleRate(), 16, 1, true, false), mixed);
-    }
-
-    /** 线性预放大（150% 响度来源），clamp 防削波。 */
-    static void applyBoostInPlace(byte[] data, float boost) {
-        for (int i = 0; i + 1 < data.length; i += 2) {
-            short s = (short) ((data[i] & 0xFF) | (data[i + 1] << 8));
-            int v = Math.round(s * boost);
-            v = Math.max(-32768, Math.min(32767, v));
-            data[i] = (byte) v;
-            data[i + 1] = (byte) (v >> 8);
-        }
     }
 
     private static String sha256(byte[] bytes) throws Exception {

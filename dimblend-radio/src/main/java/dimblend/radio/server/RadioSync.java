@@ -34,7 +34,17 @@ import dimblend.radio.DimBlendRadio;
  */
 @EventBusSubscriber(modid = DimBlendRadio.MODID)
 public final class RadioSync {
-    /** 红石/邻居更新：只处理唱片机位置（原 mixin neighborChanged 的事件版）。 */
+    private record SignalReading(String dimension, BlockPos pos, int top, int side, boolean empty) {
+    }
+
+    /** 上一条已记日志的信号读数（仅服务端线程读写）。 */
+    private static SignalReading lastLoggedReading;
+
+    /**
+     * 唱片机作为通知方：自身状态变化（插/取唱片翻 HAS_RECORD）、贴附元件与红石线通知其邻居时触发。
+     * 相邻输入变化（贴侧红石块、落地拉杆等不以唱片机为通知方的）由
+     * {@code JukeboxRedstoneInputMixin.neighborChanged} 即时覆盖；两路重叠时 recompute 幂等。
+     */
     @SubscribeEvent
     public static void onNeighborNotify(BlockEvent.NeighborNotifyEvent event) {
         if (event.getLevel() instanceof ServerLevel level
@@ -53,7 +63,7 @@ public final class RadioSync {
     }
 
 
-    /** 唱片机邻居变化/放置后重算入口（事件订阅与内部调用，服务端线程）。 */
+    /** 唱片机邻居变化/放置后重算入口（neighborChanged mixin、事件订阅与内部调用，服务端线程）。 */
     public static void onNeighborChanged(ServerLevel level, BlockPos pos) {
         if (!level.getBlockState(pos).is(Blocks.JUKEBOX)) {
             RadioState.remove(level, pos);
@@ -63,8 +73,14 @@ public final class RadioSync {
         int top = dimblend.radio.RadioSignals.readTop(level, pos);
         int side = dimblend.radio.RadioSignals.readSide(level, pos);
         boolean empty = dimblend.radio.RadioControl.isEmpty(level, pos);
-        DimBlendRadio.LOGGER.info("[radio] signal pos={} dim={} top={} side={} empty={}", pos,
-                level.dimension().location(), top, side, empty);
+        SignalReading reading = new SignalReading(level.dimension().location().toString(), pos.immutable(),
+                top, side, empty);
+        if (!reading.equals(lastLoggedReading)) {
+            // 一次输入变化会经 neighborChanged 与 NeighborNotify 多次进来：连续同读数只记一行
+            lastLoggedReading = reading;
+            DimBlendRadio.LOGGER.info("[radio] signal pos={} dim={} top={} side={} empty={}", pos,
+                    level.dimension().location(), top, side, empty);
+        }
         RadioState.recompute(level, pos, (station, avoid) -> RadioCatalog.pickNext(station, avoid, level.random));
     }
 
