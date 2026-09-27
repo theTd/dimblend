@@ -38,3 +38,6 @@ run/
 **/src/generated/**/.cache/
 repo/
 !**/src/**/repo/
+
+### Local compat runtime/compile jars (sable cui-modded：与 dimblend-experience/libs 同一份，不入库) ###
+libs/

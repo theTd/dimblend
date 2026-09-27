@@ -124,6 +124,12 @@ dependencies {
             prefer(project.sable_companion_version)
         }
     }
+    // Sable 本体（cui-modded 构建，与 TrainTripWorld 实例一致）：无公开 Maven 对应物，
+    // vendor 到 libs/（不入库，随 experience 同一份恢复）。compileOnly 给组装 gametest
+    // 提供 SubLevelAssemblyHelper/ServerSubLevel 符号；localRuntime 让 gameTestServer/client
+    // dev 运行真正装上 sable（测试要起真实结构）。模组本体运行时仍只依赖 companion shim。
+    compileOnly files("libs/sable-neoforge-1.21.1-2.0.5_cui-modded.jar")
+    localRuntime files("libs/sable-neoforge-1.21.1-2.0.5_cui-modded.jar")
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
