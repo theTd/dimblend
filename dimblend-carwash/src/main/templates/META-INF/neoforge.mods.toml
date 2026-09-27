@@ -1,0 +1,73 @@
+modLoader="javafml" #mandatory
+
+loaderVersion="${loader_version_range}" #mandatory
+
+license="${mod_license}"
+
+[[mods]] #mandatory
+
+modId="${mod_id}" #mandatory
+
+version="${mod_version}" #mandatory
+
+displayName="${mod_name}" #mandatory
+
+description='''
+DimBlend Carwash: train chassis blocks (dimblend_blocks creative copycat panel facing down, creative copycat
+slab top/double) collect dirt while their Sable car runs faster than 4 m/s, and get cleaned by water buckets,
+wet sponges, rain and Create: FireFighting Additions water spray. Purely visual.
+'''
+
+[[dependencies.${mod_id}]]
+    modId="neoforge"
+    type="required"
+    versionRange="[${neo_version},)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+# 车架脏值挂在 Create 的 SmartBlockEntity 行为上
+[[dependencies.${mod_id}]]
+    modId="create"
+    type="required"
+    versionRange="[6.0.10,)"
+    ordering="NONE"
+    side="BOTH"
+
+# 伪装半砖的 SLAB_TYPE/AXIS 属性类
+[[dependencies.${mod_id}]]
+    modId="copycats"
+    type="required"
+    versionRange="[3.0,)"
+    ordering="NONE"
+    side="BOTH"
+
+# 车架方块本体；AFTER：客户端模型包装必须晚于 dimblend_blocks 换上伪装模型
+[[dependencies.${mod_id}]]
+    modId="dimblend_blocks"
+    type="required"
+    versionRange="[0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+# 车厢 = Sable 子关卡：速度与车架遍历
+[[dependencies.${mod_id}]]
+    modId="sable"
+    type="required"
+    versionRange="[2.0,)"
+    ordering="NONE"
+    side="BOTH"
+
+# 喷淋洗车（可选：缺席时只是少一种清洗方式）
+[[dependencies.${mod_id}]]
+    modId="createfirefightingadd"
+    type="optional"
+    versionRange="[0.2.1-beta,)"
+    ordering="NONE"
+    side="BOTH"

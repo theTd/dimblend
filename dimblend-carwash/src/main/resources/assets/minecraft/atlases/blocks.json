@@ -1,0 +1,36 @@
+{
+  "sources": [
+    {
+      "type": "dimblend_carwash:grime",
+      "texture": "minecraft:block/dirt",
+      "prefix": "dimblend_carwash:block/grime/dirt_full_",
+      "variants": 16,
+      "remove": 0.8,
+      "clear": "none"
+    },
+    {
+      "type": "dimblend_carwash:grime",
+      "texture": "minecraft:block/dirt",
+      "prefix": "dimblend_carwash:block/grime/dirt_upper_",
+      "variants": 16,
+      "remove": 0.8,
+      "clear": "lower_half"
+    },
+    {
+      "type": "dimblend_carwash:grime",
+      "texture": "minecraft:block/gravel",
+      "prefix": "dimblend_carwash:block/grime/gravel_full_",
+      "variants": 16,
+      "remove": 0.8,
+      "clear": "none"
+    },
+    {
+      "type": "dimblend_carwash:grime",
+      "texture": "minecraft:block/gravel",
+      "prefix": "dimblend_carwash:block/grime/gravel_lower_",
+      "variants": 16,
+      "remove": 0.8,
+      "clear": "upper_half"
+    }
+  ]
+}

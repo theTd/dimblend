@@ -9,11 +9,12 @@
 | `dimblend-craft/` | `dimblend_craft` | TrainTripWorld 配方调整 |
 | `dimblend-blocks/` | `dimblend_blocks` | 方块（创造伪装/易碎石） |
 | `dimblend-radio/` | `dimblend_radio` | 红石点播电台（空唱片机+顶部选台+侧面音量） |
+| `dimblend-carwash/` | `dimblend_carwash` | 车架脏污与清洗（行驶积灰，水桶/湿海绵/雨/消防喷淋洗净，纯视觉） |
 
 ## 常用命令（根目录执行）
 
 ```sh
-./gradlew build                  # 构建全部五个 jar
+./gradlew build                  # 构建全部六个 jar
 ./gradlew :dimblend:build        # 只构建某一个
 ./gradlew projects               # 查看子工程列表
 ./gradlew build -x test          # 跳过单测的构建
