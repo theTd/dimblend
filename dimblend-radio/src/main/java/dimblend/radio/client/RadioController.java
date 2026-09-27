@@ -27,8 +27,11 @@ import dimblend.radio.DimBlendRadio;
  * 自然静音，实例不断流、不重建，走回即时恢复、无重解码缺口：
  * 起播 offset 见 {@link RadioStartOffset}（在场开播从头播、允许落后服务钟 ≤4s；中途走近对齐服务钟；
  * 同曲重建沿用首次落后量）。服务钟进度 = max(本端同步的 level gameTime, 包内 serverNow) − startTick。
- * 实例播完（SoundEngine 通道 stopped + deleteTime 到期 → isActive false）→ 删本地记录，
- * 等服务端 advance 广播下一曲。5s 间隔由服务端 startTick 体现，客户端不另计时。</p>
+ * 实例播完（SoundEngine 通道 stopped + deleteTime 到期 → isActive false）→ 按墙钟时长判自然 EOF、
+ * 给 (nonce,trackHash) 打播完标记（{@link #FINISHED}：服务钟会落后真实时间，钟面 offset 判播完
+ * 不可靠，会把曲尾重播甚至级联重播），同 nonce 不再起播，等服务端 advance 广播下一曲。
+ * 静音等整体停播（{@link #stopAll}）把各实例预定 EOF 转存 {@link #PENDING_EOF}，恢复时到点转正，
+ * 跨过曲终的停播恢复也不会重播曲尾。5s 间隔由服务端 startTick 体现，客户端不另计时。</p>
  *
  * <p>缺文件 hash → 静默跳过 + 首次 warn（各客户端独立，用户自己补文件）。</p>
  */
@@ -41,7 +44,15 @@ public final class RadioController {
     }
 
     private record Live(RadioInstance instance, String trackHash, int nonce, double seconds, float gain,
-            float boost) {
+            float boost, long endAtNanos) {
+    }
+
+    /** 本端自然播完标记：同 (nonce, track) 到 EOF 后不再起播，等服务端 advance 换 nonce。 */
+    private record FinishedEof(int nonce, String trackHash) {
+    }
+
+    /** 中途被停实例的预定 EOF 暂存：stopAll 转出，恢复对账时到点转正 FINISHED、未到点丢弃。 */
+    private record PendingEof(int nonce, String trackHash, long endAtNanos) {
     }
 
     /**
@@ -57,6 +68,24 @@ public final class RadioController {
     private static final Map<LiveKey, Live> LIVE = new HashMap<>();
     /** 仅主线程读写：startInstance 提交任务前读，起播时写，reconcile 清理。 */
     private static final Map<LiveKey, StartLag> START_LAG = new HashMap<>();
+    /**
+     * 仅主线程读写：reconcile 判自然 EOF 时写，startInstance 读，状态消失/换曲清。
+     *
+     * <p>为什么需要它：「本端已播完」不能靠服务钟（gameTime）判定——服务端低 TPS 或维度
+     * 时间效应会让 gameTime 落后真实时间，而 PCM 按真实时间播放，曲终时钟面进度
+     * （{@code playSec - knownLag}）会比实际曲长小几秒到几十秒，{@code offset >= seconds}
+     * 守卫失效就会把曲尾重播一遍（播完再触发，级联到 advance 到达）。墙钟时长不受
+     * 游戏钟漂移影响。</p>
+     */
+    private static final Map<LiveKey, FinishedEof> FINISHED = new HashMap<>();
+    /**
+     * 仅主线程读写：{@link #stopAll} 时从 LIVE 转出（静音/停播跨过曲终的场景），
+     * 恢复后的首个 reconcile 一次性裁决——墙钟已到预定 EOF → 转正 FINISHED
+     * （否则 gameTime 守卫失效会把曲尾重播一次）；未到点 → 丢弃，按 knownLag 续播。
+     */
+    private static final Map<LiveKey, PendingEof> PENDING_EOF = new HashMap<>();
+    /** 自然 EOF 判定余量：实际起播比 LIVE 落表晚一个装配延迟，结束只会更晚，不会更早。 */
+    private static final long EOF_TOLERANCE_NANOS = 1_000_000_000L;
     private static final java.util.LinkedHashMap<String, CachedPcm> PCM_CACHE =
             new java.util.LinkedHashMap<>(16, 0.75f, true) {
                 @Override
@@ -82,6 +111,8 @@ public final class RadioController {
         if (mc.level == null || mc.player == null) {
             stopAll();
             START_LAG.clear();
+            FINISHED.clear();
+            PENDING_EOF.clear();
             // 退到标题/换服：离线期间的删除收不到，旧状态留着会在重进后重播已拆的电台；
             // 进服时服务端补推全量（PlayerLoggedIn），这里清空不丢真实状态
             ClientRadioState.clear();
@@ -120,12 +151,19 @@ public final class RadioController {
         }
         String dim = mc.level.dimension().location().toString();
 
-        // 落后量只对同一 (nonce, track) 有效：状态消失或换曲即丢
-        START_LAG.entrySet().removeIf(e -> {
-            var state = ClientRadioState.view()
-                    .get(new ClientRadioState.Key(e.getKey().dimension(), e.getKey().pos()));
-            return state == null || state.nonce() != e.getValue().nonce()
-                    || !state.trackHash().equals(e.getValue().trackHash());
+        // 落后量与播完标记只对同一 (nonce, track) 有效：状态消失或换曲即丢
+        START_LAG.entrySet().removeIf(e -> markStale(e.getKey(), e.getValue().nonce(), e.getValue().trackHash()));
+        FINISHED.entrySet().removeIf(e -> markStale(e.getKey(), e.getValue().nonce(), e.getValue().trackHash()));
+        PENDING_EOF.entrySet().removeIf(e -> markStale(e.getKey(), e.getValue().nonce(), e.getValue().trackHash()));
+
+        // 中途被停（静音等）实例的预定 EOF 一次性裁决：停播期间墙钟已过点 = 曲已终，
+        // 转正播完标记（gameTime 守卫失效时会重播曲尾，见 FINISHED 注）；未到点丢弃、按 knownLag 续播。
+        PENDING_EOF.entrySet().removeIf(e -> {
+            PendingEof pending = e.getValue();
+            if (System.nanoTime() >= pending.endAtNanos() - EOF_TOLERANCE_NANOS) {
+                markFinished(e.getKey(), pending.nonce(), pending.trackHash());
+            }
+            return true;
         });
 
         // 清理：维度不符 / 状态消失 / nonce 变化 / 播完 → 停实例。
@@ -136,12 +174,20 @@ public final class RadioController {
             LiveKey key = entry.getKey();
             Live live = entry.getValue();
             var state = ClientRadioState.view().get(new ClientRadioState.Key(key.dimension(), key.pos()));
+            boolean active = mc.getSoundManager().isActive(live.instance());
             boolean stale = state == null || !state.playing() || !key.dimension().equals(dim)
                     || state.nonce() != live.nonce()
                     || !state.trackHash().equals(live.trackHash())
                     || live.instance().isStopped()
-                    || !mc.getSoundManager().isActive(live.instance());
+                    || !active;
             if (stale) {
+                // 实例自然走到 EOF（引擎通道播完回收）：同 nonce 不再起播，等服务端 advance。
+                // 不能靠服务钟 offset 判播完（gameTime 会落后真实时间，见 FINISHED 注）；
+                // 中途被停（静音/拆台/引擎重载）此刻不是 EOF，不打标记——静音类 stopAll
+                // 的预定 EOF 由 PENDING_EOF 裁决，其余按 knownLag 续播不变。
+                if (!active && System.nanoTime() >= live.endAtNanos() - EOF_TOLERANCE_NANOS) {
+                    markFinished(key, live.nonce(), live.trackHash());
+                }
                 mc.getSoundManager().stop(live.instance());
                 it.remove();
                 continue;
@@ -162,6 +208,19 @@ public final class RadioController {
         }
     }
 
+    /** START_LAG / FINISHED / PENDING_EOF 共用的失效判据：状态消失或 (nonce, track) 变了即丢。 */
+    private static boolean markStale(LiveKey key, int nonce, String trackHash) {
+        var state = ClientRadioState.view().get(new ClientRadioState.Key(key.dimension(), key.pos()));
+        return state == null || state.nonce() != nonce || !state.trackHash().equals(trackHash);
+    }
+
+    /** 置播完标记 + 一次性日志（同 (key,nonce) 只置位一次）：日后排查“电台为何不响”有线索。 */
+    private static void markFinished(LiveKey key, int nonce, String trackHash) {
+        FINISHED.put(key, new FinishedEof(nonce, trackHash));
+        DimBlendRadio.LOGGER.info("[radio] track finished locally, wait advance: pos={} hash={}",
+                key.pos(), shortHash(trackHash));
+    }
+
     /**
      * side 跟量：PCM 解码时已按本曲余量预放大，各档（含跨 100%）只改实例通道增益，
      * 引擎下 tick 平滑生效——不换 PCM、不重建实例、不断音。
@@ -171,12 +230,17 @@ public final class RadioController {
         if (gain != live.gain()) {
             live.instance().setVolume(gain);
             LIVE.put(key, new Live(live.instance(), live.trackHash(), live.nonce(), live.seconds(), gain,
-                    live.boost()));
+                    live.boost(), live.endAtNanos()));
         }
     }
 
     private static void startInstance(Minecraft mc, LiveKey key,
             dimblend.radio.net.RadioStatePayload state) {
+        FinishedEof finished = FINISHED.get(key);
+        if (finished != null && finished.nonce() == state.nonce()
+                && finished.trackHash().equals(state.trackHash())) {
+            return; // 本端已自然播完此曲：同 nonce 不再起播，等服务端 advance（曲尾重播修复）
+        }
         Path file = RadioLibrary.fileOf(state.trackHash());
         if (file == null) {
             warnMissing(state);
@@ -238,7 +302,9 @@ public final class RadioController {
                 float boost = cached.boost();
                 // 实际落后量含截取耗时（同曲重建据此续播）
                 double lagSec = prepSec + secondsSince(prepNanos) - offsetSec;
-                RadioPcmFeed.put(state.trackHash(), cached.format(), play);
+                // cached 在解码分支有重赋值，lambda 只能吃 effectively-final 副本
+                var playFormat = cached.format();
+                RadioPcmFeed.put(state.trackHash(), playFormat, play);
                 mc.execute(() -> {
                     // 双重检查：对账期间状态可能已变
                     var current = ClientRadioState.view()
@@ -253,7 +319,12 @@ public final class RadioController {
                     // 主线程构造：声源要按客户端 level 里的 Sable 结构位姿投影到世界坐标
                     RadioInstance instance = new RadioInstance(mc.level, key.pos(), state.trackHash(), liveGain);
                     mc.getSoundManager().play(instance);
-                    LIVE.put(key, new Live(instance, state.trackHash(), state.nonce(), seconds, liveGain, boost));
+                    // 自然 EOF 的墙钟时刻：play 数组就是实际入流的音频，时长按真实时间计
+                    long endAtNanos = System.nanoTime() + Math.round(
+                            (double) play.length / playFormat.getFrameSize()
+                                    / playFormat.getSampleRate() * 1e9);
+                    LIVE.put(key, new Live(instance, state.trackHash(), state.nonce(), seconds, liveGain, boost,
+                            endAtNanos));
                     START_LAG.put(key, new StartLag(state.nonce(), state.trackHash(), lagSec));
                     DimBlendRadio.LOGGER.info("[radio] playing station={} gain={} pos={} hash={}", current.station(),
                             liveGain, key.pos(), shortHash(state.trackHash()));
@@ -349,7 +420,11 @@ public final class RadioController {
 
     private static void stopAll() {
         Minecraft mc = Minecraft.getInstance();
-        for (Live live : LIVE.values()) {
+        for (var entry : LIVE.entrySet()) {
+            Live live = entry.getValue();
+            // 预定 EOF 转存：停播期间曲终的，恢复对账时转正播完标记（见 PENDING_EOF 注）
+            PENDING_EOF.put(entry.getKey(),
+                    new PendingEof(live.nonce(), live.trackHash(), live.endAtNanos()));
             try {
                 mc.getSoundManager().stop(live.instance());
             } catch (Exception ignored) {
