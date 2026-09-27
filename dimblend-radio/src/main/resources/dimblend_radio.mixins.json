@@ -3,6 +3,7 @@
 	"package": "dimblend.radio.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"minVersion": "0.8",
+	"plugin": "dimblend.radio.mixin.DimBlendRadioMixinPlugin",
 	"mixins": [
 		"SoundCacheAccessor",
 		"JukeboxControlMixin",
@@ -10,7 +11,8 @@
 		"SoundBufferMixin"
 	],
 	"client": [
-		"client.MusicDuckingMixin"
+		"client.MusicDuckingMixin",
+		"client.JukeboxGoggleMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

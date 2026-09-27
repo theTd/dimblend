@@ -102,6 +102,19 @@ configurations {
 }
 
 dependencies {
+    // 护目镜弹窗：只用 Create 的 IHaveGoggleInformation 接口（client mixin），compileOnly +
+    // MixinPlugin 按 create 在场过滤（见 DimBlendRadioMixinPlugin），缺 Create 照常跑。
+    // 坐标与 experience 对齐（TrainTripWorld 实例 6.0.10-281），excludes 同 experience。
+    compileOnly("com.simibubi.create:create-1.21.1:6.0.10-281") {
+        exclude group: "dev.ftb.mods"
+        exclude group: "mezz.jei"
+        exclude group: "maven.modrinth"
+        exclude group: "info.journeymap"
+        exclude group: "cc.tweaked"
+        exclude group: "top.theillusivec4.curios"
+        exclude group: "dev.architectury"
+        exclude group: "dev.engine-room.vanillin"
+    }
     // 音频解码：纯 Java，无 native。JiJ 进 jar，玩家端零额外安装。
     // JLayer（MP3，javazoom 系 soundlibs 构建）+ jFLAC（FLAC）均为 Maven Central。
     // Ogg Vorbis 由原版 JOrbis 解码，不引新依赖。

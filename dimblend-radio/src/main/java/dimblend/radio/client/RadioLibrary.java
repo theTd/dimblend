@@ -38,7 +38,9 @@ import dimblend.radio.DimBlendRadio;
 public final class RadioLibrary {
     public static final String DIR_NAME = "dimblend_radio";
 
-    public record Track(String hash, String fileName, int station, double seconds) {
+    /** title/artist 可空：元数据，无标签时 null（显示层回退）。 */
+    public record Track(String hash, String fileName, int station, double seconds, String title,
+            String artist) {
     }
 
     public record Pcm(AudioFormat format, byte[] data, double seconds) {
@@ -46,6 +48,8 @@ public final class RadioLibrary {
 
     private static final Map<Integer, List<Track>> TRACKS = new HashMap<>();
     private static final Map<String, Path> HASH_TO_FILE = new HashMap<>();
+    private static final Map<String, String> HASH_TO_TITLE = new HashMap<>();
+    private static final Map<String, String> HASH_TO_ARTIST = new HashMap<>();
     private static volatile boolean scanned;
 
     public static Path radioDir() {
@@ -72,6 +76,8 @@ public final class RadioLibrary {
         Files.createDirectories(root);
         TRACKS.clear();
         HASH_TO_FILE.clear();
+        HASH_TO_TITLE.clear();
+        HASH_TO_ARTIST.clear();
         for (int station = 1; station <= 14; station++) {
             Path dir = root.resolve(String.valueOf(station));
             Files.createDirectories(dir);
@@ -87,8 +93,18 @@ public final class RadioLibrary {
                         byte[] bytes = Files.readAllBytes(file);
                         String hash = sha256(bytes);
                         double seconds = probeSeconds(file, bytes);
-                        list.add(new Track(hash, file.getFileName().toString(), station, seconds));
+                        String[] tag = TrackTitles.readTag(file.getFileName().toString(), bytes);
+                        String title = tag == null ? null : tag[0];
+                        String artist = tag == null ? null : tag[1];
+                        list.add(new Track(hash, file.getFileName().toString(), station, seconds, title,
+                                artist));
                         HASH_TO_FILE.putIfAbsent(hash, file);
+                        if (title != null) {
+                            HASH_TO_TITLE.putIfAbsent(hash, title);
+                        }
+                        if (artist != null) {
+                            HASH_TO_ARTIST.putIfAbsent(hash, artist);
+                        }
                     } catch (Exception e) {
                         DimBlendRadio.LOGGER.warn("[radio] skip unreadable file {}", file, e);
                     }
@@ -114,6 +130,43 @@ public final class RadioLibrary {
 
     public synchronized static Path fileOf(String hash) {
         return HASH_TO_FILE.get(hash);
+    }
+
+    /** 元数据标题（可空）：无标签返回 null，调用方回退文件名。 */
+    public synchronized static String titleOf(String hash) {
+        return HASH_TO_TITLE.get(hash);
+    }
+
+    /**
+     * 显示名：元数据标题优先，否则文件名去扩展名；hash 未知（本端缺文件）返回 null。
+     */
+    public synchronized static String displayName(String hash) {
+        Path file = HASH_TO_FILE.get(hash);
+        if (file == null) {
+            return null;
+        }
+        return TrackTitles.displayName(file.getFileName().toString(), HASH_TO_TITLE.get(hash));
+    }
+
+    /** 元数据作者（可空）：无标签返回 null，调用方直接省掉该行。 */
+    public synchronized static String artistOf(String hash) {
+        return HASH_TO_ARTIST.get(hash);
+    }
+
+    /**
+     * 本端曲长（秒）：供护目镜进度条；hash 未知返回 -1（调用方省掉进度行）。
+     */
+    public synchronized static double durationSeconds(int station, String hash) {
+        List<Track> tracks = TRACKS.get(station);
+        if (tracks == null) {
+            return -1;
+        }
+        for (Track track : tracks) {
+            if (track.hash().equals(hash)) {
+                return track.seconds();
+            }
+        }
+        return -1;
     }
 
     /** 解码 + 下混单声道，原始响度（不放大）。 */

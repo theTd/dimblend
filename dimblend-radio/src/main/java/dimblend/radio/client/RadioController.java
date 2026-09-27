@@ -257,6 +257,10 @@ public final class RadioController {
                     START_LAG.put(key, new StartLag(state.nonce(), state.trackHash(), lagSec));
                     DimBlendRadio.LOGGER.info("[radio] playing station={} gain={} pos={} hash={}", current.station(),
                             liveGain, key.pos(), shortHash(state.trackHash()));
+                    // 切曲 actionbar：只有新 nonce 才弹（同曲重建——静音恢复/走出走回——沿用落后量，不扰民）
+                    if (knownLag == null) {
+                        announceTrack(mc, current.station(), state.trackHash());
+                    }
                 });
             } catch (Exception e) {
                 DimBlendRadio.LOGGER.warn("[radio] decode failed {}", file, e);
@@ -311,18 +315,32 @@ public final class RadioController {
         return cut;
     }
 
+    /**
+     * 缺文件只记日志（同 hash 只记一次）：提示位在护目镜弹窗（看唱片机即 RED 警示），
+     * 不再刷聊天栏。
+     */
     private static void warnMissing(RadioStatePayload state) {
         if (MISSING_WARNED.putIfAbsent(state.trackHash(), Boolean.TRUE) == null) {
             DimBlendRadio.LOGGER.warn(
                     "[radio] missing track {} for station {} — put the file in dimblend_radio/{}/",
                     state.trackHash(), state.station(), state.station());
-            if (Minecraft.getInstance().player != null) {
-                Minecraft.getInstance().player.displayClientMessage(
-                        net.minecraft.network.chat.Component.literal(
-                                "§e[电台] 缺少曲目，请在 dimblend_radio/" + state.station() + "/ 下补文件"),
-                        false);
-            }
         }
+    }
+
+    /**
+     * 切曲 actionbar：曲名取元数据标题（无则文件名去扩展名），与护目镜弹窗同口径。
+     * 缺文件时 displayName 为 null，不弹 actionbar（看唱片机时护目镜会 RED 提示）。
+     */
+    private static void announceTrack(Minecraft mc, int station, String trackHash) {
+        if (mc.player == null) {
+            return;
+        }
+        String name = RadioLibrary.displayName(trackHash);
+        if (name == null) {
+            return;
+        }
+        mc.player.displayClientMessage(
+                net.minecraft.network.chat.Component.literal("[电台 " + station + "台] " + name), true);
     }
 
     private static String shortHash(String hash) {
