@@ -23,8 +23,8 @@ import java.util.List;
  * D4 自定义马达音效（客户端三态：启动 → 运转脉冲 → 停转）。
  *
  * <p>挂在 {@code tickAudio()V} HEAD（Create KineticBlockEntity 客户端分支每 tick
- * 调用，纯客户端方法，既有复核结论）。运转判据：{@code |实际转速| > 0 且 |面板| > 128rpm}，
- * 挂 {@link Config#ELECTRIC_MOTOR_BEHAVIOR}。
+ * 调用，纯客户端方法，既有复核结论）。运转判据：{@code |实际转速| > 0 且 |面板| > 128rpm
+ * 且无外部源}，挂 {@link Config#ELECTRIC_MOTOR_BEHAVIOR}。
  * 进入运转态：单次 {@code electric_motor_startup} 立即播放，
  * 延迟 60 tick（3 秒）后起运转音，此后<b>每 5 tick（{@code PULSE_INTERVAL_TICKS}）
  * 起一条单次 {@link MotorLoopSound}</b>，间隔与素材时长无关（2026-09-24 用户要求
@@ -60,10 +60,10 @@ import java.util.List;
  * 会在 apply 期抛 InvalidMixinException（运行库 sponge-mixin
  * 0.15.4+mixin.0.8.7 fork 及上游 0.8.x 字节码核实）。</p>
  *
- * <p><b>接受的边界</b>：① 马达被更强动力源反拖（hasSource 且非本机出力）时
- * 实际转速非零而 active=false——轴确在转，运转音照播，不视为缺陷；
+ * <p><b>接受的边界</b>：① 马达被更强动力源反拖（hasSource，Source 标签进同步包，
+ * 与 D6 同判据）时<b>不播</b>——轴在转、active=false，本机无出力（2026-09-27 改为禁音，
+ * 此前照播）；通电同时被更强源反拖（active 但 hasSource）同样不播。
  * ② 过载/冻结网络 {@code getSpeed()=0} 但理论转速非零——服务端
- * active 仍 true（照常耗电），运转音继续，与服务端状态一致。</p>
  *
  * <p>清理顺序：BE 移除优先于开关早退——config 运行中热关闭时须先停自定义运转音
  * 并复位状态（否则 MEV 恢复原版声会与遗留运转音双声叠加）。</p>
@@ -119,9 +119,11 @@ public abstract class ElectricMotorSoundClientMixin {
             dimblend$running = false;
             return;
         }
-        // getTheoreticalSpeed() = 同步的 "Speed" 字段原值（无过载/冻结归零）
+        // getTheoreticalSpeed() = 同步的 "Speed" 字段原值（无过载/冻结归零）；
+        // hasSource = 被外部源带着（Source 标签进同步包），反拖不播（2026-09-27）
         boolean want = self.getTheoreticalSpeed() != 0.0F
-                && Math.abs(this.generatedSpeed.getValue()) > MIN_PANEL_RPM;
+                && Math.abs(this.generatedSpeed.getValue()) > MIN_PANEL_RPM
+                && !self.hasSource();
         if (want != dimblend$running) {
             dimblend$running = want;
             BlockPos pos = self.getBlockPos();

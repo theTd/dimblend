@@ -147,7 +147,7 @@
 - D3 耗电下限：**面板 <4rpm 按 4 计**（v1.2 改回：纯线性保留，但 `|rpm|∈(0,4)→4` 钳定；
   无信号 0 转仍 0 耗）；`Math.max` 下限钳定向保留 bypass（4 的线性项仍低于原 8 下限）。
   映射侧不变：面板设定 ≤4rpm 仍按面板直通（如 2rpm→实际 2rpm，只耗电按 4 计）
-- D4 设定转速 >64rpm 时，收到信号启动后循环播放运转声音（v1.1 口径：16→64）；
+- D4 设定转速 >128rpm 时，收到信号启动后循环播放运转声音（v1.1 口径：16→64；2026-09-27：64→128，严格大于）；
   v1.4：启动音立即播放，运转循环延迟 3 秒（60 tick，由客户端状态机每 tick 推进）
   后起；延迟内信号消失则取消起循环并播停机音。
   **可听范围须单声道素材（2026-09-24 复查）**：16 格线性衰减只对单声道源生效——
@@ -164,7 +164,8 @@
   `write`，客户端同步包（sendData → writeClient → write(tag,true)）内永无
   "active" → 客户端 active 恒 false，三态机永不触发。现判据改读
   KineticBlockEntity 的 `speed`（"Speed" 标签按实际值同步，D2 映射后输出转速）：
-  `|speed|>0 且 |面板|>64`。接受边界：被更强动力源反拖时轴在转、循环照播；
+  `|speed|>0 且 |面板|>128 且无外部源`（`!hasSource()`，Source 标签进同步包，与 D6 同判据；
+  2026-09-27：被更强动力源反拖时轴在转但不播，此前为照播）。接受边界：
   过载/冻结网络下服务端 active 仍 true（照常耗电），循环继续。
   **2026-09-23 用户追加**：三处音效音量减半（one-shot 实例音量 0.5、循环
   `MotorLoopSound.LOOP_VOLUME=0.5`）、可听范围约 16 格（sounds.json 三条目
@@ -181,13 +182,16 @@
 - D6 马达护目镜显示改实际转速响应值（2026-09-23 新条目）：
   ① "已使用的能量"行原按面板设定值取数（`getEnergyConsumptionRate(generatedSpeed.getValue())`），
   现以 ModifyArg 直改该静态调用 float 入参为 |实际转速|（float 直通无截断）——
-  D3 钳定同步生效、无信号显示 0，自驱动下与服务端实扣完全一致（反拖场景
-  显示跟轴速、实扣按 motorSpeed，同 D4 反拖边界）；② "应力量"行（Create
+  D3 钳定同步生效、无信号显示 0，自驱动下与服务端实扣完全一致；② "应力量"行（Create
   `tooltip.capacityProvided`）原版即因客户端 `getGeneratedSpeed()` 恒 0
   （active/motorSpeed 不同步）而折算系数 ×0、恒显示 0 su，现对马达实例把
   折算读数替换为实际转速 → 显示 MAX_STRESS/256 × |实际映射转速|，与
   KineticNetwork 实际入网容量一致。两处均挂 `electricMotorBehavior`
-  （关=透传原值）；client 侧 mixin（`ElectricMotorGoggleMixin` +
+  （关=透传原值）；**2026-09-27 反拖回退**：`hasSource()` 为真（Source 标签进
+  客户端同步包）时两处改写统一跳过、回退原版——反拖无电时"应力量" 0 su
+  （与服务端 0 入网一致）、"已使用能量"按面板原值；接受边界：通电同时被更强源
+  反拖本机确有出力但显示被压，D7 锁存期若恰有外部源 ×2 显示同样丢失。
+  client 侧 mixin（`ElectricMotorGoggleMixin` +
   `ElectricMotorGeneratorStatsMixin`，后者目标为 Create
   `GeneratingKineticBlockEntity.addToGoggleTooltip`，handler instanceof
   限定马达）。实际转速一律经 public `getTheoreticalSpeed()` 读取

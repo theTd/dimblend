@@ -31,6 +31,12 @@ import org.spongepowered.asm.mixin.injection.At;
  * 与 KineticNetwork 实际入网容量（sources.get × |getGeneratedSpeed()|，
  * 服务端口径）一致。其余发电机与开关关闭时透传原读数（保持原版行为，
  * 含上游 0 显示怪癖）。</p>
+ *
+ * <p><b>2026-09-27 反拖回退</b>：{@code hasSource()} 为真（被外部源带着转；
+ * Source 标签进客户端同步包，Create 6.0.10 write 已核实）时跳过改写、透传原值——
+ * 反拖无电时服务端 {@code getGeneratedSpeed()=0}（active=false）、0 入网，
+ * 客户端原值恒 0 即显示 0 su，与真实一致。接受边界：通电同时被更强源反拖时
+ * 本机确有出力，此处显示会被压成 0。</p>
  */
 @Mixin(GeneratingKineticBlockEntity.class)
 public abstract class ElectricMotorGeneratorStatsMixin {
@@ -48,6 +54,10 @@ public abstract class ElectricMotorGeneratorStatsMixin {
         if (!((Object) this instanceof ElectricMotorBlockEntity)) {
             return original;
         }
-        return ((GeneratingKineticBlockEntity) (Object) this).getTheoreticalSpeed();
+        GeneratingKineticBlockEntity self = (GeneratingKineticBlockEntity) (Object) this;
+        if (self.hasSource()) {
+            return original;
+        }
+        return self.getTheoreticalSpeed();
     }
 }

@@ -35,6 +35,11 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
  * 不用 @Shadow 读父类字段：mixin 的 findAliasedField 只解析目标类自声明字段
  * （运行库 sponge-mixin 0.15.4+mixin.0.8.7 fork 及上游 0.8.x 字节码核实，
  * 父类字段 shadow 在 apply 期抛 InvalidMixinException），故走公有 getter。</p>
+ *
+ * <p><b>2026-09-27 反拖回退</b>：{@code hasSource()} 为真时跳过改写、透传面板原值
+ * （与 {@code ElectricMotorGeneratorStatsMixin} 同判据；Source 标签进客户端同步包）。
+ * 反拖无电时服务端实扣为 0（tick 仅 active 才扣费），显示回退原版面板口径。
+ * 接受边界：D7 锁存期若恰有外部源（hasSource）则 ×2 显示丢失，按面板原值显示。</p>
  */
 @Mixin(ElectricMotorBlockEntity.class)
 public abstract class ElectricMotorGoggleMixin {
@@ -54,6 +59,9 @@ public abstract class ElectricMotorGoggleMixin {
             return panelRpm;
         }
         ElectricMotorBlockEntity self = (ElectricMotorBlockEntity) (Object) this;
+        if (self.hasSource()) {
+            return panelRpm;
+        }
         float actual = Math.abs(self.getTheoreticalSpeed());
         if (MotorOverstressLatch.clientDerived(self.isOverStressed(),
                 this.generatedSpeed.getValue(), self.getTheoreticalSpeed())) {
