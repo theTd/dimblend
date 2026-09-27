@@ -29,7 +29,7 @@ import dimblend.radio.DimBlendRadio;
  *
  * <p>解码链：ogg → 原版 JOrbis（运行时反射，不编译依赖）；mp3 → JLayer
  * （{@code Decoder.decodeFrame} 逐帧 → short[]，javap 已核对签名）；
- * flac → jFLAC {@code FlacAudioFileReader.getAudioInputStream}（javax.sound SPI）；
+ * flac → jFLAC {@code FLACDecoder} 逐帧（见 {@link FlacDecoder}）；
  * wav → {@code AudioSystem}。全部归一成 16bit 小端单声道 PCM（多声道下混，OpenAL 定位要求）。
  * &gt;100% 的余量预放大由调用方按曲做（见 {@link PcmHeadroom}），这里只出原始响度。</p>
  *
@@ -123,7 +123,9 @@ public final class RadioLibrary {
         if (name.endsWith(".mp3")) {
             pcm = decodeMp3(Files.readAllBytes(file));
         } else if (name.endsWith(".flac")) {
-            pcm = FlacDecoder.decode(file);
+            Pcm full = FlacDecoder.decode(file);
+            MonoPcm mono = toMono(full.format(), full.data());
+            pcm = new Pcm(mono.format(), mono.data(), full.seconds());
         } else if (name.endsWith(".wav")) {
             pcm = decodeSpi(file);
         } else {
@@ -219,7 +221,7 @@ public final class RadioLibrary {
                 sampleRate <= 0 ? 180.0 : (double) mono.data().length / mono.format().getFrameSize() / sampleRate);
     }
 
-    // ---- flac/wav：javax.sound SPI（jFLAC 注册 FlacAudioFileReader） ----
+    // ---- wav：javax.sound AudioSystem ----
 
     private static Pcm decodeSpi(Path file) throws Exception {
         try (AudioInputStream in = AudioSystem.getAudioInputStream(file.toFile())) {
