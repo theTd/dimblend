@@ -4,24 +4,24 @@ package dimblend.radio.client;
 public final class RadioPlayback {
     private final int nonce;
     private final String hash;
-    private final long startTick;
+    private final long startMillis;
     private final double duration;
     private double position;
     private long sampledAt;
     private boolean paused;
     private boolean finished;
 
-    public RadioPlayback(int nonce, String hash, long startTick, double duration, double offset, long now) {
+    public RadioPlayback(int nonce, String hash, long startMillis, double duration, double offset, long now) {
         this.nonce = nonce;
         this.hash = hash;
-        this.startTick = startTick;
+        this.startMillis = startMillis;
         this.duration = duration;
         this.position = Math.clamp(offset, 0.0, duration);
         this.sampledAt = now;
     }
 
-    public boolean matches(int nonce, String hash, long startTick) {
-        return this.nonce == nonce && this.hash.equals(hash) && this.startTick == startTick;
+    public boolean matches(int nonce, String hash, long startMillis) {
+        return this.nonce == nonce && this.hash.equals(hash) && this.startMillis == startMillis;
     }
 
     public double duration() {

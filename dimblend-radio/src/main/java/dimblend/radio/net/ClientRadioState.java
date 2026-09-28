@@ -13,6 +13,8 @@ import net.minecraft.resources.ResourceLocation;
  */
 public final class ClientRadioState {
     private static final Map<Key, RadioStatePayload> STATES = new ConcurrentHashMap<>();
+    /** 每个 key 最后一次收包的本地 nanoTime：配合 serverNow 外推当前服务钟（毫秒）。 */
+    private static final Map<Key, Long> RECEIVED_NANOS = new ConcurrentHashMap<>();
 
     public record Key(String dimension, BlockPos pos) {
     }
@@ -20,21 +22,35 @@ public final class ClientRadioState {
     public static void apply(RadioStatePayload payload) {
         Key key = new Key(payload.dimension().toString(), payload.pos().immutable());
         if (!payload.playing()) {
-            // 删除也只在真有状态时记一行：100 tick 补推的重复 stop 不刷屏
+            // 删除也只在真有状态时记一行：周期补推的重复 stop 不刷屏
             if (STATES.remove(key) != null) {
+                RECEIVED_NANOS.remove(key);
                 dimblend.radio.DimBlendRadio.LOGGER.info("[radio] stopped {} (server)", key.pos());
             }
         } else {
+            RECEIVED_NANOS.put(key, System.nanoTime());
             RadioStatePayload prev = STATES.put(key, payload);
             // 同 nonce 的重复推送（补推/调音量）不记：只记开播与切歌
             if (prev == null || prev.nonce() != payload.nonce()) {
                 String hash = payload.trackHash();
                 dimblend.radio.DimBlendRadio.LOGGER.info("[radio] state station={} side={} pos={} hash={}",
                         payload.station(), payload.side(), key.pos(),
-                        hash.length() <= 12 ? hash : hash.substring(0, 12));
+                        hash.length() <= 8 ? hash : hash.substring(0, 8));
             }
         }
         dimblend.radio.client.RadioController.onStateChanged();
+    }
+
+    /**
+     * 外推当前服务钟（{@code RadioClock} 毫秒）：serverNow（发包瞬间）+ 收包后本地真实流逝。
+     * 服务钟与本端音频同按真实时间走，暂停两侧同步冻结（暂停期收不到包、本端也不来问）。
+     */
+    public static long estimateServerNow(Key key, RadioStatePayload state) {
+        Long received = RECEIVED_NANOS.get(key);
+        if (received == null) {
+            return state.serverNow();
+        }
+        return state.serverNow() + (System.nanoTime() - received) / 1_000_000L;
     }
 
     public static Map<Key, RadioStatePayload> view() {
@@ -43,6 +59,7 @@ public final class ClientRadioState {
 
     public static void clear() {
         STATES.clear();
+        RECEIVED_NANOS.clear();
     }
 
     /**
@@ -52,6 +69,7 @@ public final class ClientRadioState {
      */
     public static void retainDimension(String dimension) {
         STATES.keySet().removeIf(key -> !key.dimension().equals(dimension));
+        RECEIVED_NANOS.keySet().removeIf(key -> !key.dimension().equals(dimension));
     }
 
     private ClientRadioState() {

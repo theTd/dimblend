@@ -116,7 +116,7 @@ public final class RadioController {
     private static boolean matches(RadioPlayback playback, RadioStatePayload state) {
         return state != null && state.playing()
                 && RadioAudibilityRules.validSignal(state.station(), state.side())
-                && playback.matches(state.nonce(), state.trackHash(), state.startTick());
+                && playback.matches(state.nonce(), state.trackHash(), state.startMillis());
     }
 
     private static RadioStatePayload stateOf(LiveKey key) {
@@ -146,8 +146,8 @@ public final class RadioController {
                             && matches(live.playback(), state)) {
                         // 本地播完且服务端仍指当前曲：进入静默等待，下一首起播见 [radio] playing
                         DimBlendRadio.LOGGER.info(
-                                "[radio] local finished, waiting for server advance: pos={} hash={} nonce={} startTick={}",
-                                key.pos(), shortHash(state.trackHash()), state.nonce(), state.startTick());
+                                "[radio] local finished, waiting for server advance: pos={} hash={} nonce={} start={}",
+                                key.pos(), shortHash(state.trackHash()), state.nonce(), state.startMillis());
                     }
                 }
                 mc.getSoundManager().stop(live.instance());
@@ -268,7 +268,7 @@ public final class RadioController {
                     var current = stateOf(key);
                     if (pcm == null || mc.level != requestedLevel || current == null || !current.playing()
                             || !RadioAudibilityRules.validSignal(current.station(), current.side())
-                            || current.nonce() != state.nonce() || current.startTick() != state.startTick()
+                            || current.nonce() != state.nonce() || current.startMillis() != state.startMillis()
                             || !current.trackHash().equals(state.trackHash())
                             || LIVE.containsKey(key) || mc.isPaused() || RadioAudibility.categoryMuted(mc)) {
                         return;
@@ -281,7 +281,7 @@ public final class RadioController {
                                 / pcm.format().getSampleRate();
                         double offset = RadioStartOffset.offsetSec(prepSec,
                                 prepSec + (now - prepNanos) / 1e9, null);
-                        local = new RadioPlayback(state.nonce(), state.trackHash(), state.startTick(),
+                        local = new RadioPlayback(state.nonce(), state.trackHash(), state.startMillis(),
                                 seconds, offset, now);
                         PLAYBACKS.put(key, local);
                     }
@@ -300,8 +300,8 @@ public final class RadioController {
                         throw e;
                     }
                     LIVE.put(key, new Live(instance, local, feed, gain, pcm.boost()));
-                    DimBlendRadio.LOGGER.info("[radio] playing station={} pos={} hash={} nonce={} startTick={} offset={} duration={}",
-                            current.station(), key.pos(), shortHash(state.trackHash()), state.nonce(), state.startTick(), offset, local.duration());
+                    DimBlendRadio.LOGGER.info("[radio] playing station={} pos={} hash={} nonce={} start={} offset={} duration={}",
+                            current.station(), key.pos(), shortHash(state.trackHash()), state.nonce(), state.startMillis(), offset, local.duration());
                     if (first) {
                         announceTrack(mc, current.station(), state.trackHash());
                     }
@@ -313,13 +313,13 @@ public final class RadioController {
     }
 
     /**
-     * 此刻服务钟的曲内进度（秒）。本端 level gameTime 由服务端每 20 tick 同步、逐 tick 自增，
-     * 与服务端同钟（各维度共用主世界 gameTime）；包内 serverNow 是发包瞬间的下界，最多 100 tick
-     * 补推一次，走近时可能已旧。取两者较大者，进服首包前本端钟未同步也不会算小。
+     * 此刻服务钟（RadioClock 毫秒）的曲内进度（秒）：serverNow（发包瞬间）+ 收包后本地真实流逝
+     * 外推（{@link ClientRadioState#estimateServerNow}），掉刻不走慢、暂停双端同步冻结。
      */
     private static double trackSecondsNow(Minecraft mc, RadioStatePayload state) {
-        long now = Math.max(mc.level.getGameTime(), state.serverNow());
-        return Math.max(0.0, (now - state.startTick()) / 20.0);
+        var key = new ClientRadioState.Key(state.dimension().toString(), state.pos());
+        long now = ClientRadioState.estimateServerNow(key, state);
+        return Math.max(0.0, (now - state.startMillis()) / 1000.0);
     }
 
     /**

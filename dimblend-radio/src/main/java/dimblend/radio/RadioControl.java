@@ -1,7 +1,6 @@
 package dimblend.radio;
 
-import java.util.List;
-
+import dimblend.radio.server.RadioClock;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
@@ -25,15 +24,16 @@ public final class RadioControl {
     }
 
     /**
-     * 是否该切歌：startTick + 时长 + 5s 间隔已过。时长查服务端曲库（秒→tick）；
-     * 查不到时长的 hash 按 3 分钟兜底，避免卡死单曲。
+     * 是否该切歌：服务钟（{@link RadioClock} 毫秒）过 startMillis + 时长 + 5s 间隔。
+     * 时长查服务端曲库（秒→毫秒）；查不到时长的 hash 按 3 分钟兜底，避免卡死单曲。
+     * 不用 gameTime：掉刻时 gameTime 被拉长而音频按真实时间播，切歌会拖慢数倍。
      */
-    public static boolean shouldAdvance(ServerLevel level, BlockPos pos, RadioState.Entry entry) {
+    public static boolean shouldAdvance(RadioState.Entry entry) {
         if (entry.trackHash() == null) {
             return true;
         }
-        long lengthTicks = RadioCatalog.lengthTicks(entry.station(), entry.trackHash());
-        return level.getGameTime() >= entry.startTick() + lengthTicks + RadioState.GAP_TICKS;
+        long lengthMillis = RadioCatalog.lengthTicks(entry.station(), entry.trackHash()) * 50L;
+        return RadioClock.now() >= entry.startMillis() + lengthMillis + RadioState.GAP_TICKS * 50L;
     }
 
     private RadioControl() {

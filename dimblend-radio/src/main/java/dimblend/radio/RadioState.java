@@ -4,12 +4,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
+import dimblend.radio.server.RadioClock;
 import dimblend.radio.server.RadioEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 
 public final class RadioState {
-    /** 曲间间隔：5 秒 = 100 tick。 */
+    /** 曲间间隔：5 秒（tick 口径 = 100 tick = 5000 ms，切歌判定走 {@link RadioClock} 毫秒钟）。 */
     public static final int GAP_TICKS = 100;
 
     private static final Map<StationKey, Entry> STATES = new ConcurrentHashMap<>();
@@ -17,7 +18,8 @@ public final class RadioState {
     public record StationKey(String dimension, BlockPos pos) {
     }
 
-    public record Entry(int station, int side, String trackHash, long startTick, int nonce, boolean playing) {
+    /** @param startMillis 定曲瞬间的 {@link RadioClock} 读数（毫秒）；切歌时钟不用 gameTime（掉刻被拉长） */
+    public record Entry(int station, int side, String trackHash, long startMillis, int nonce, boolean playing) {
         public boolean audible() {
             return playing && station >= RadioSignals.STATION_MIN && station <= RadioSignals.STATION_MAX && side > 0;
         }
@@ -64,9 +66,8 @@ public final class RadioState {
             return;
         }
 
-        long now = level.getGameTime();
         if (prev != null && prev.station() == top && prev.playing()
-                && prev.trackHash() != null && !RadioControl.shouldAdvance(level, pos, prev)) {
+                && prev.trackHash() != null && !RadioControl.shouldAdvance(prev)) {
             // 同站：side 变化只跟量（updateSide 不动 nonce/不动钟），曲终才换
             if (prev.side() != side) {
                 updateSide(level, pos);
@@ -75,17 +76,17 @@ public final class RadioState {
         }
 
         String track = prev != null && prev.station() == top && prev.trackHash() != null
-                && !RadioControl.shouldAdvance(level, pos, prev)
+                && !RadioControl.shouldAdvance(prev)
                         ? prev.trackHash()
                         : trackPicker.pickNext(top, prev == null ? null : prev.trackHash());
         int nonce = prev == null ? 0 : prev.nonce() + 1;
-        Entry next = new Entry(top, side, track, now, nonce, true);
+        Entry next = new Entry(top, side, track, RadioClock.now(), nonce, true);
         STATES.put(key, next);
-        logSchedule("recompute", level, pos, next);
+        logSchedule("recompute", pos, next);
         RadioEvents.changed(level, pos);
     }
 
-    /** 切歌推进：服务端 tick 发现曲终（startTick+时长+GAP 到期）时调用。 */
+    /** 切歌推进：服务端 tick 发现曲终（startMillis+时长+GAP 到期）时调用。 */
     public static void advance(ServerLevel level, BlockPos pos, TrackPicker trackPicker) {
         StationKey key = new StationKey(level.dimension().location().toString(), pos.immutable());
         Entry prev = STATES.get(key);
@@ -93,9 +94,9 @@ public final class RadioState {
             return;
         }
         String next = trackPicker.pickNext(prev.station(), prev.trackHash());
-        Entry entry = new Entry(prev.station(), prev.side(), next, level.getGameTime(), prev.nonce() + 1, true);
+        Entry entry = new Entry(prev.station(), prev.side(), next, RadioClock.now(), prev.nonce() + 1, true);
         STATES.put(key, entry);
-        logSchedule("advance", level, pos, entry);
+        logSchedule("advance", pos, entry);
         RadioEvents.changed(level, pos);
     }
 
@@ -106,9 +107,9 @@ public final class RadioState {
         Entry prev = STATES.get(key);
         String next = trackPicker.pickNext(station, null);
         int nonce = prev == null ? 0 : prev.nonce() + 1;
-        Entry entry = new Entry(station, side, next, level.getGameTime(), nonce, true);
+        Entry entry = new Entry(station, side, next, RadioClock.now(), nonce, true);
         STATES.put(key, entry);
-        logSchedule("advanceNow", level, pos, entry);
+        logSchedule("advanceNow", pos, entry);
         RadioEvents.changed(level, pos);
     }
 
@@ -127,24 +128,25 @@ public final class RadioState {
             STATES.remove(key);
         } else {
             // nonce 保持：客户端 stale 判据含 nonce，不变即不重建实例、不重解码
-            STATES.put(key, new Entry(prev.station(), side, prev.trackHash(), prev.startTick(), prev.nonce(), true));
+            STATES.put(key, new Entry(prev.station(), side, prev.trackHash(), prev.startMillis(), prev.nonce(), true));
         }
         RadioEvents.changed(level, pos);
     }
 
     /**
-     * 诊断日志：每次定曲打一行计划（曲长、预计切歌 tick）。due 与下一条 schedule 的 now
-     * 对比即得“曲终后多久才切”：超出部分 = GAP + 100 tick 轮询 + 时长高估。
+     * 诊断日志：每次定曲打一行计划（曲长毫秒、预计切歌钟点）。due 与下一条 schedule 的 now
+     * 对比即得“曲终后多久才切”：超出部分 = GAP + 轮询周期 + 时长高估。
      */
-    private static void logSchedule(String reason, ServerLevel level, BlockPos pos, Entry entry) {
+    private static void logSchedule(String reason, BlockPos pos, Entry entry) {
         if (entry.trackHash() == null) {
             return;
         }
-        long length = RadioCatalog.lengthTicks(entry.station(), entry.trackHash());
+        long lengthMillis = RadioCatalog.lengthTicks(entry.station(), entry.trackHash()) * 50L;
         DimBlendRadio.LOGGER.info(
-                "[radio] schedule reason={} pos={} station={} hash={} nonce={} startTick={} length={}t due={} now={}",
+                "[radio] schedule reason={} pos={} station={} hash={} nonce={} start={} length={}ms due={} now={}",
                 reason, pos, entry.station(), RadioCatalog.shortHash(entry.trackHash()), entry.nonce(),
-                entry.startTick(), length, entry.startTick() + length + GAP_TICKS, level.getGameTime());
+                entry.startMillis(), lengthMillis, entry.startMillis() + lengthMillis + GAP_TICKS * 50L,
+                RadioClock.now());
     }
 
     public interface TrackPicker {

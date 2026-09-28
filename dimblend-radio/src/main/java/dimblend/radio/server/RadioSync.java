@@ -40,6 +40,8 @@ public final class RadioSync {
 
     /** 上一条已记日志的信号读数（仅服务端线程读写）。 */
     private static SignalReading lastLoggedReading;
+    /** 上次曲终推进/全量补推的服务钟读数（毫秒，仅服务端线程读写）。 */
+    private static long lastFullPollMillis;
 
     /**
      * 唱片机作为通知方：自身状态变化（插/取唱片翻 HAS_RECORD）、贴附元件与红石线通知其邻居时触发。
@@ -97,7 +99,7 @@ public final class RadioSync {
     /** 定向广播某台电台状态（删除也广播 playing=false，客户端清实例）。 */
     public static void broadcast(ServerLevel level, BlockPos pos) {
         ResourceLocation dim = level.dimension().location();
-        long now = level.getGameTime();
+        long now = RadioClock.now();
         var entry = RadioState.get(dim.toString(), pos);
         RadioStatePayload payload;
         if (entry.isEmpty()) {
@@ -105,7 +107,7 @@ public final class RadioSync {
         } else {
             var e = entry.get();
             payload = new RadioStatePayload(dim, pos, e.station(), e.side(),
-                    e.trackHash() == null ? "" : e.trackHash(), e.startTick(), e.nonce(), e.playing(), now);
+                    e.trackHash() == null ? "" : e.trackHash(), e.startMillis(), e.nonce(), e.playing(), now);
         }
         for (ServerPlayer player : level.players()) {
             PacketDistributor.sendToPlayer(player, payload);
@@ -127,7 +129,7 @@ public final class RadioSync {
 
     /**
      * 换维度/跨维度重生：客户端只保留当前维度的状态（别的维度收不到删除广播，留着会重播已拆的电台），
-     * 进入新维度时立刻补推该维度全量，不等 100 tick 补推。
+     * 进入新维度时立刻补推该维度全量，不等服务钟 5s 轮询补推。
      */
     @SubscribeEvent
     public static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
@@ -146,17 +148,25 @@ public final class RadioSync {
         }
     }
 
-    /** 20 tick 看门狗（切台/调音量即时）+ 100 tick 补推与曲终推进。 */
+    /** 20 tick 看门狗（切台/调音量即时）+ 服务钟 5s 轮询的补推与曲终推进。 */
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
+        // 服务钟喂 tick：必须先于一切早退，漏 tick 就丢掉真实流逝时间
+        RadioClock.onServerTick();
         MinecraftServer server = event.getServer();
         if (server.getTickCount() % 20 != 0) {
             return;
         }
+        // 曲终推进/全量补推按服务钟 5s 轮询：tick 计数在掉刻时被拉长，轮询会跟着慢
+        long radioNow = RadioClock.now();
+        boolean fullPoll = radioNow - lastFullPollMillis >= 5000L;
+        if (fullPoll) {
+            lastFullPollMillis = radioNow;
+        }
         for (ServerLevel level : server.getAllLevels()) {
             discoverLoadedJukeboxes(level);
             watchdog(level);
-            if (server.getTickCount() % 100 == 0) {
+            if (fullPoll) {
                 advanceFinished(level);
                 pushAll(level);
             }
@@ -270,16 +280,15 @@ public final class RadioSync {
     }
 
     private static void advanceFinished(ServerLevel level) {
-        // 推进曲终电台：遍历状态表（小表，100 tick 一次可接受）
+        // 推进曲终电台：遍历状态表（小表，5s 一次可接受）
         List<BlockPos> toAdvance = new ArrayList<>();
-        // RadioState 内部遍历接口缺失时，用广播全量覆盖代替推进判断：
-        // 客户端按 startTick+本地时长自行停播并等待服务端 advance 广播。
-        // 此处保留推进点：逐台检查 shouldAdvance。
+        // 客户端按本地时长自行停播并等待服务端 advance 广播；
+        // 此处保留推进点：逐台检查 shouldAdvance（服务钟毫秒）。
         for (var key : snapshotKeys(level)) {
             var entry = RadioState.get(level.dimension().location().toString(), key);
             if (entry.isPresent() && entry.get().playing()
                     && RadioControl.isEmpty(level, key)
-                    && RadioControl.shouldAdvance(level, key, entry.get())) {
+                    && RadioControl.shouldAdvance(entry.get())) {
                 toAdvance.add(key);
             }
         }

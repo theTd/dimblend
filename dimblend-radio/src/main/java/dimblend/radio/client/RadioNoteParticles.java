@@ -17,7 +17,7 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
  *
  * <p>语义对齐原版：粒子源是 {@link ClientRadioState} 的 playing 状态而非实际在播实例
  * （{@link RadioController} 的 LIVE）——原版音符由服务端发出，与客户端音量、缺文件、
- * 是否听得到无关。节拍锚定服务钟 {@code (gameTime - startTick) % 20 == 0}，与原版
+ * 是否听得到无关。节拍锚定外推服务钟 {@code (now - startMillis) % 1000 < 50}，与原版
  * 20 tick 节奏一致、各客户端同相位、中途开播不立即喷一颗。颜色参数同原版
  * （{@code random.nextInt(4)/24.0}）；位置 = 唱片机中心世界坐标 + 0.7 格（即原版的
  * 底部中心 + 1.2），Sable 结构上的 pos 是 plot 坐标，经 {@link SubLevelProjection}
@@ -41,15 +41,16 @@ public final class RadioNoteParticles {
             return;
         }
         String dim = mc.level.dimension().location().toString();
-        long gameTime = mc.level.getGameTime();
         for (var entry : ClientRadioState.view().entrySet()) {
             var key = entry.getKey();
             var state = entry.getValue();
             if (!state.playing() || !key.dimension().equals(dim)) {
                 continue;
             }
-            // 本端钟未同步时 gameTime 可能小于 startTick（刚进服/补推），负差整除会提前喷
-            if (gameTime < state.startTick() || (gameTime - state.startTick()) % 20 != 0) {
+            // 服务钟（RadioClock 毫秒）1s 一拍、拍窗 50ms（约一个客户端 tick），与原版 20 tick 节奏一致；
+            // 外推钟落后 startMillis（刚进服/补推）时不喷
+            long now = ClientRadioState.estimateServerNow(key, state);
+            if (now < state.startMillis() || (now - state.startMillis()) % 1000L >= 50L) {
                 continue;
             }
             // Sable 结构上的唱片机 pos 是 plot 坐标（原点两千万格外），必须投影到世界坐标

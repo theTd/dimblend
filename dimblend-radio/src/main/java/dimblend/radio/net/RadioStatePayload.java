@@ -12,8 +12,9 @@ import net.minecraft.resources.ResourceLocation;
  * S2C 电台状态：服务端权威（曲 hash + 起始钟 + 站台 + 音量 + 位置 + 维度 + 发包时服务端钟）。
  * 音频字节不走网络，客户端按 hash 在本地 {@code dimblend_radio/} 找文件。
  *
- * <p>serverNow：发包瞬间服务端的 gameTime，客户端估服务钟进度时作下界（与本端同步的
- * level gameTime 取大）。起播 offset 策略见 {@code RadioStartOffset}：中途走近/迟加入对齐服务钟，
+ * <p>startMillis/serverNow 都是服务端电台钟（{@code RadioClock} 毫秒，tick 累积真实时间、
+ * 暂停冻结、掉刻不拉长）。客户端用 serverNow + 收包后本地流逝估当前服务钟。
+ * 起播 offset 策略见 {@code RadioStartOffset}：中途走近/迟加入对齐服务钟，
  * 在场开播从头播（落后 ≤4s）。9 字段手写 codec（composite 上限 6 元）。</p>
  */
 public record RadioStatePayload(
@@ -22,7 +23,7 @@ public record RadioStatePayload(
         int station,
         int side,
         String trackHash,
-        long startTick,
+        long startMillis,
         int nonce,
         boolean playing,
         long serverNow) implements CustomPacketPayload {
@@ -54,7 +55,7 @@ public record RadioStatePayload(
             friendly.writeVarInt(value.station());
             friendly.writeVarInt(value.side());
             friendly.writeUtf(value.trackHash());
-            friendly.writeVarLong(value.startTick());
+            friendly.writeVarLong(value.startMillis());
             friendly.writeVarInt(value.nonce());
             friendly.writeBoolean(value.playing());
             friendly.writeVarLong(value.serverNow());
