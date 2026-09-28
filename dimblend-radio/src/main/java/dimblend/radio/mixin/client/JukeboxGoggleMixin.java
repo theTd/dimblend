@@ -31,7 +31,7 @@ import net.minecraft.world.level.block.entity.JukeboxBlockEntity;
  *   <li>首行（GRAY）：{@code 电台 3台 · 音量 80%}</li>
  *   <li>曲名（WHITE，加粗否）：缩进</li>
  *   <li>作者（GRAY）：缩进，无标签时整行省略</li>
- *   <li>进度：缩进 + 12 段条（AQUA 已播 / DARK_GRAY 未播，字符同 Create 进度条）+
+ *   <li>进度：缩进 + 48 段细条（AQUA 已播 / DARK_GRAY 未播）+
  *   DARK_GRAY {@code 01:23 / 03:45}；本端未知时长时整行省略</li>
  *   <li>缺文件：首行后跟 RED {@code 缺少本地文件，请补曲库} + DARK_GRAY 短 hash
  *   （护目镜即提示位，不再刷聊天栏）</li>
@@ -53,10 +53,10 @@ public abstract class JukeboxGoggleMixin implements IHaveGoggleInformation {
 
     /** value 行缩进（Create label/value 惯例）。 */
     private static final String INDENT = "  ";
-    /** 进度条段数。 */
-    private static final int BAR_SEGMENTS = 12;
-    /** 进度条字符：Create 进度条同款，护目镜字体可渲染。 */
-    private static final String BAR_BLOCK = "█";
+    /** 48 段，每段约 2.08%；用窄字符保持弹窗紧凑。 */
+    private static final int BAR_SEGMENTS = 48;
+    /** ASCII 细竖线，无额外字体资源要求。 */
+    private static final String BAR_BLOCK = "|";
 
     @Override
     public boolean addToGoggleTooltip(List<Component> tooltip, boolean isPlayerSneaking) {
@@ -112,7 +112,7 @@ public abstract class JukeboxGoggleMixin implements IHaveGoggleInformation {
 
     /** 进度行：缩进 + 条（AQUA 已播/DARK_GRAY 未播）+ DARK_GRAY 时刻。 */
     private static Component progressLine(double elapsedSec, double totalSec) {
-        int filled = (int) Math.round(BAR_SEGMENTS * elapsedSec / totalSec);
+        int filled = (int) Math.floor(BAR_SEGMENTS * elapsedSec / totalSec);
         filled = Math.max(0, Math.min(BAR_SEGMENTS, filled));
         var line = Component.literal(INDENT)
                 .append(Component.literal(BAR_BLOCK.repeat(filled)).withStyle(ChatFormatting.AQUA))
