@@ -382,9 +382,9 @@ public final class DimBlendCommands {
             source.sendFailure(Component.literal("purge is disabled (enabled=false in dimblend-purge-server.toml)"));
             return 0;
         }
-        source.sendSuccess(() -> Component.literal("purge submitted " + submitted
-                + " region(s), idle timer skipped; see /dimblend purge"), true);
-        return submitted;
+        source.sendSuccess(() -> Component.literal("purge scan scheduled (region listing runs async;"
+                + " submitted count is logged when it lands); see /dimblend purge"), true);
+        return 1;
     }
 
 }

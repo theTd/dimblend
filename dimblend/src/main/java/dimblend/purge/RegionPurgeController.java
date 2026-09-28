@@ -24,6 +24,7 @@ import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.LongPredicate;
 import javax.annotation.Nullable;
+import net.minecraft.Util;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.ServerLevel;
@@ -115,6 +116,8 @@ public final class RegionPurgeController {
     private final Long2LongOpenHashMap retryAfter = new Long2LongOpenHashMap();
     /** Bumped on server stop so completions from a previous server are ignored. */
     private int epoch;
+    /** A scan's region-file listing runs off-thread; set until its finishScan lands. */
+    private boolean scanInFlight;
     private int ticksUntilScan;
     private String lastState = "not scanned";
     private int lastRegionsOnDisk;
@@ -160,6 +163,7 @@ public final class RegionPurgeController {
         this.planner.clear();
         this.inFlight.clear();
         this.retryAfter.clear();
+        this.scanInFlight = false;
         this.ticksUntilScan = 0;
         this.lastState = "not scanned";
         this.lastRegionsOnDisk = 0;
@@ -185,10 +189,12 @@ public final class RegionPurgeController {
 
     /**
      * Operator scan that skips the idle timer; keep window and loaded-state checks still apply.
+     * The scan is asynchronous (region-file listing runs off-thread); the submitted count is
+     * logged when the scan lands (also visible via {@code /dimblend purge}).
      *
      * @param extraKeepChunkX additional keep center for this scan only, so a console can purge
      *                        around the spot players will come back to
-     * @return regions submitted, or -1 when purge is disabled in config
+     * @return 0 when a scan was scheduled, or -1 when purge is disabled in config
      */
     public int scanNow(MinecraftServer server, OptionalInt extraKeepChunkX) {
         if (!RegionPurgeConfig.ENABLED.get()) {
@@ -221,7 +227,14 @@ public final class RegionPurgeController {
         );
     }
 
-    /** Returns the number of regions whose deletion was submitted. */
+    /**
+     * Schedules a scan. Only the region-file listing (directory walk + file sizes — the part that
+     * stalls the server thread for seconds on a big rotating dimension) runs on the IO pool;
+     * everything touching live world state (anchors, busy check, prune, delete submission) stays
+     * on the server thread in {@link #finishScan}, same tick as the busy re-check.
+     *
+     * @return always 0: the submitted count is only known when the scan lands (logged there)
+     */
     private int scan(MinecraftServer server, long idleTicks, int limit, OptionalInt extraKeepChunkX) {
         ServerLevel level = server.getLevel(DimBlendRegistries.ROTATING_LEVEL);
         if (level == null) {
@@ -238,25 +251,65 @@ public final class RegionPurgeController {
             this.lastState = "unsupported chunk storage";
             return 0;
         }
+        if (this.scanInFlight) {
+            this.lastState = "scan in flight";
+            return 0;
+        }
+        this.scanInFlight = true;
+        int submittedEpoch = this.epoch;
+        Util.ioPool().execute(() -> {
+            Long2LongOpenHashMap largestFile = new Long2LongOpenHashMap();
+            Store failedStore = null;
+            IOException failure = null;
+            for (Store store : stores) {
+                try {
+                    RegionFileDeleter.listRegions(RegionFileDeleter.folderOf(store.worker()), largestFile);
+                } catch (IOException e) {
+                    failedStore = store;
+                    failure = e;
+                    break;
+                }
+            }
+            Store errorStore = failedStore;
+            IOException error = failure;
+            server.execute(() -> this.finishScan(server, submittedEpoch, level, stores, largestFile,
+                    errorStore, error, idleTicks, limit, extraKeepChunkX));
+        });
+        return 0;
+    }
+
+    /** Server-thread scan completion: re-reads every live input, then plans and submits deletions. */
+    private void finishScan(MinecraftServer server, int submittedEpoch, ServerLevel level, List<Store> stores,
+            Long2LongOpenHashMap largestFile, @Nullable Store failedStore, @Nullable IOException failure,
+            long idleTicks, int limit, OptionalInt extraKeepChunkX) {
+        this.scanInFlight = false;
+        if (submittedEpoch != this.epoch) {
+            return;
+        }
+        if (failure != null) {
+            LOGGER.warn("dimblend purge: cannot list {} regions", failedStore.name(), failure);
+            this.lastState = "listing failed";
+            return;
+        }
+        if (!RegionPurgeConfig.ENABLED.get()) {
+            this.lastState = "disabled";
+            return;
+        }
+        if (level.noSave()) {
+            this.planner.clear();
+            this.lastState = "paused by save-off";
+            return;
+        }
         int[] centers = keepCenters(level, extraKeepChunkX);
         this.lastKeepCenters = centers.length;
-        Long2LongOpenHashMap largestFile = new Long2LongOpenHashMap();
-        for (Store store : stores) {
-            try {
-                RegionFileDeleter.listRegions(RegionFileDeleter.folderOf(store.worker()), largestFile);
-            } catch (IOException e) {
-                LOGGER.warn("dimblend purge: cannot list {} regions", store.name(), e);
-                this.lastState = "listing failed";
-                return 0;
-            }
-        }
         this.lastRegionsOnDisk = largestFile.size();
+        // Same tick as the delete submissions below: nothing can load the region in between.
         LongSet busy = busyRegions(level);
         this.lastBusyRegions = busy.size();
         if (centers.length == 0) {
             this.planner.clear();
             this.lastState = "no keep center";
-            return 0;
+            return;
         }
         long now = server.getTickCount();
         this.retryAfter.long2LongEntrySet().removeIf(
@@ -295,7 +348,9 @@ public final class RegionPurgeController {
             }
         }
         this.lastState = "active";
-        return ready.length + swept;
+        if (ready.length + swept > 0) {
+            LOGGER.info("dimblend purge: scan submitted {} region(s)", ready.length + swept);
+        }
     }
 
     private void purge(MinecraftServer server, ServerLevel level, List<Store> stores, long key, boolean headerOnly) {
