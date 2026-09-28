@@ -28,6 +28,12 @@ public final class DimBlendClient {
             layer.render(graphics, partialTick);
             ZProgressHud.render(graphics);
         });
+        // 创造下血量/盔甲/食物整组层被原版跳过、上面那个包裹永不触发，
+        // 改包 HOTBAR（创造也渲染）回退绘制；生存/冒险由回退入口自行跳过防重画。
+        event.wrapLayer(VanillaGuiLayers.HOTBAR, layer -> (graphics, partialTick) -> {
+            layer.render(graphics, partialTick);
+            ZProgressHud.renderCreativeFallback(graphics);
+        });
     }
 
     private DimBlendClient() {
