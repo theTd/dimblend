@@ -6,6 +6,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.GameType;
 
 /**
  * Progress bar tracking how far the player has travelled through the current
@@ -15,6 +16,10 @@ import net.minecraft.world.entity.player.Player;
  * bottom strip next to the hotbar with a small hotbar-style edge margin
  * (3px off the screen bottom, 6px off the hotbar), so it never overlaps the
  * armor/health rows. The band number is drawn centered on the bar.
+ *
+ * <p>Visible in survival, adventure and creative; hidden in spectator
+ * (vanilla {@code canHurtPlayer} is survival/adventure-only, so the gate
+ * explicitly excludes spectator instead).
  *
  * <p>Invoked from the wrapper around {@code VanillaGuiLayers.HOTBAR}
  * immediately after the vanilla hotbar renders, so the bar always tracks the
@@ -40,7 +45,11 @@ public final class BandProgressHud {
         if (mc.options.hideGui) {
             return;
         }
-        if (mc.level == null || mc.gameMode == null || !mc.gameMode.canHurtPlayer()) {
+        if (mc.level == null || mc.gameMode == null) {
+            return;
+        }
+        // 创造也显示；旁观隐藏。
+        if (mc.gameMode.getPlayerMode() == GameType.SPECTATOR) {
             return;
         }
         if (!mc.level.dimension().equals(DimBlendRegistries.ROTATING_LEVEL)) {

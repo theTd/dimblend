@@ -65,7 +65,7 @@
 - [x] 有墙边界两侧各 16 chunk 禁结构/建筑类 feature（`RegionBoundaryNoStructureZone`：与走廊同宽；仅 `laneName` 不同的隔墙两侧生效，同名连续带如地表 0/1、地下 5/6 无墙不禁。结构 start 按 origin/AABB 丢弃，`BuildingLikeFeatures` 同步驱散）
 - [x] 轨道洞穴大小的区域填充「折越门」方块，覆盖铁轨和地基（`WarpGateBlock` 填充走廊截面，含轨道与路基格）
 - [x] 折越门对未授权实体是墙、对 Sable（含列车）是空气（`WarpGateBlock.getCollisionShape` 按 CollisionContext 分流；生存玩家需站在 Sable 结构上，创造/旁观/Create 车厢放行；`WarpGatePassageGuard` 只处理卡进门板）
-- [x] 左下角物品栏左侧显示当前区域序号 + 以玩家当前位置为准的行进进度（`BandProgressHud`：护甲行上方的进度条，区域序号居中，`BandInfoSync` 推送 band_size）
+- [x] 左下角物品栏左侧显示当前区域序号 + 以玩家当前位置为准的行进进度（`BandProgressHud`：护甲行上方的进度条，区域序号居中，`BandInfoSync` 推送 band_size；生存/冒险/创造显示，旁观隐藏）
 
 ## 三、分纬度规则
 
