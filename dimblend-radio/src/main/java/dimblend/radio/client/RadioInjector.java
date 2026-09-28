@@ -9,7 +9,7 @@ import net.minecraft.util.valueproviders.ConstantFloat;
 /**
  * 合成事件装配：{@link RadioInstance#resolve} 自带，不进 registry。
  *
- * <p>path 形态 = {@code Sound.getPath()} = {@code sounds/radio/<hash>.ogg}
+ * <p>path 形态 = {@code Sound.getPath()} = {@code sounds/radio/<feedId>.ogg}
  * （命名空间 dimblend_radio），{@code SoundBufferMixin} 按此 path 从
  * {@link RadioPcmFeed} 取 PCM 分流，全程不碰 registry、不 reload。</p>
  */
@@ -21,9 +21,9 @@ public final class RadioInjector {
      */
     public static final int RANGE_BLOCKS = 64;
 
-    public static Sound makeSound(String hash) {
+    public static Sound makeSound(String feedId) {
         return new Sound(
-                ResourceLocation.fromNamespaceAndPath(DimBlendRadio.MODID, "radio/" + hash),
+                ResourceLocation.fromNamespaceAndPath(DimBlendRadio.MODID, "radio/" + feedId),
                 ConstantFloat.of(1.0f),
                 ConstantFloat.of(1.0f),
                 1,
@@ -33,10 +33,10 @@ public final class RadioInjector {
                 RANGE_BLOCKS);
     }
 
-    public static WeighedSoundEvents makeEvent(String hash) {
+    public static WeighedSoundEvents makeEvent(String feedId) {
         WeighedSoundEvents events = new WeighedSoundEvents(
-                ResourceLocation.fromNamespaceAndPath(DimBlendRadio.MODID, "radio/" + hash), null);
-        events.addSound(makeSound(hash));
+                ResourceLocation.fromNamespaceAndPath(DimBlendRadio.MODID, "radio/" + feedId), null);
+        events.addSound(makeSound(feedId));
         return events;
     }
 

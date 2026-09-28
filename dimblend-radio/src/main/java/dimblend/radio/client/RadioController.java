@@ -4,9 +4,10 @@ import dimblend.radio.RadioSignals;
 import dimblend.radio.net.ClientRadioState;
 import dimblend.radio.net.RadioHelloPayload;
 import dimblend.radio.net.RadioStatePayload;
+import dimblend.radio.mixin.client.SoundEngineAccessor;
+import dimblend.radio.mixin.client.SoundManagerAccessor;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.sounds.WeighedSoundEvents;
 import net.minecraft.core.BlockPos;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -21,19 +22,9 @@ import java.util.Map;
 import dimblend.radio.DimBlendRadio;
 
 /**
- * 客户端播放控制器：S2C 状态 → 本地实例。单 tick 全量对账（电台数极少）。
- *
- * <p>流程：状态表每项按 (nonce,trackHash) 建/换实例，不限距离：远端由引擎 LINEAR 衰减（64 格归零）
- * 自然静音，实例不断流、不重建，走回即时恢复、无重解码缺口：
- * 起播 offset 见 {@link RadioStartOffset}（在场开播从头播、允许落后服务钟 ≤4s；中途走近对齐服务钟；
- * 同曲重建沿用首次落后量）。服务钟进度 = max(本端同步的 level gameTime, 包内 serverNow) − startTick。
- * 实例播完（SoundEngine 通道 stopped + deleteTime 到期 → isActive false）→ 按墙钟时长判自然 EOF、
- * 给 (nonce,trackHash) 打播完标记（{@link #FINISHED}：服务钟会落后真实时间，钟面 offset 判播完
- * 不可靠，会把曲尾重播甚至级联重播），同 nonce 不再起播，等服务端 advance 广播下一曲。
- * 静音等整体停播（{@link #stopAll}）把各实例预定 EOF 转存 {@link #PENDING_EOF}，恢复时到点转正，
- * 跨过曲终的停播恢复也不会重播曲尾。5s 间隔由服务端 startTick 体现，客户端不另计时。</p>
- *
- * <p>缺文件 hash → 静默跳过 + 首次 warn（各客户端独立，用户自己补文件）。</p>
+ * Server state selects the track; one local monotonic clock drives resume offsets and goggles.
+ * That clock survives mute/device restarts and is discarded only when the play-through changes.
+ * Every channel gets a unique PCM feed, even when several radios play the same file.
  */
 @EventBusSubscriber(modid = DimBlendRadio.MODID, value = Dist.CLIENT)
 public final class RadioController {
@@ -43,49 +34,17 @@ public final class RadioController {
     private record LiveKey(String dimension, BlockPos pos) {
     }
 
-    private record Live(RadioInstance instance, String trackHash, int nonce, double seconds, float gain,
-            float boost, long endAtNanos) {
+    private record Live(RadioInstance instance, RadioPlayback playback, RadioPcmFeed.Handle feed,
+            float gain, float boost) {
     }
 
-    /** 本端自然播完标记：同 (nonce, track) 到 EOF 后不再起播，等服务端 advance 换 nonce。 */
-    private record FinishedEof(int nonce, String trackHash) {
-    }
-
-    /** 中途被停实例的预定 EOF 暂存：stopAll 转出，恢复对账时到点转正 FINISHED、未到点丢弃。 */
-    private record PendingEof(int nonce, String trackHash, long endAtNanos) {
-    }
-
-    /**
-     * 按本曲余量线性预放大后的整曲 PCM（只读，各实例共用）与实际倍率（见 {@link PcmHeadroom}）。
-     */
     private record CachedPcm(javax.sound.sampled.AudioFormat format, byte[] pcm, float boost) {
     }
 
-    /** 本端某曲起播时落后服务钟的秒数（同曲重建沿用，接着播不重头）。 */
-    private record StartLag(int nonce, String trackHash, double lagSec) {
-    }
-
     private static final Map<LiveKey, Live> LIVE = new HashMap<>();
-    /** 仅主线程读写：startInstance 提交任务前读，起播时写，reconcile 清理。 */
-    private static final Map<LiveKey, StartLag> START_LAG = new HashMap<>();
-    /**
-     * 仅主线程读写：reconcile 判自然 EOF 时写，startInstance 读，状态消失/换曲清。
-     *
-     * <p>为什么需要它：「本端已播完」不能靠服务钟（gameTime）判定——服务端低 TPS 或维度
-     * 时间效应会让 gameTime 落后真实时间，而 PCM 按真实时间播放，曲终时钟面进度
-     * （{@code playSec - knownLag}）会比实际曲长小几秒到几十秒，{@code offset >= seconds}
-     * 守卫失效就会把曲尾重播一遍（播完再触发，级联到 advance 到达）。墙钟时长不受
-     * 游戏钟漂移影响。</p>
-     */
-    private static final Map<LiveKey, FinishedEof> FINISHED = new HashMap<>();
-    /**
-     * 仅主线程读写：{@link #stopAll} 时从 LIVE 转出（静音/停播跨过曲终的场景），
-     * 恢复后的首个 reconcile 一次性裁决——墙钟已到预定 EOF → 转正 FINISHED
-     * （否则 gameTime 守卫失效会把曲尾重播一次）；未到点 → 丢弃，按 knownLag 续播。
-     */
-    private static final Map<LiveKey, PendingEof> PENDING_EOF = new HashMap<>();
-    /** 自然 EOF 判定余量：实际起播比 LIVE 落表晚一个装配延迟，结束只会更晚，不会更早。 */
-    private static final long EOF_TOLERANCE_NANOS = 1_000_000_000L;
+    private static final Map<LiveKey, RadioPlayback> PLAYBACKS = new HashMap<>();
+    // Held until the main-thread completion runs, not merely until IO finishes.
+    private static final Map<LiveKey, Object> REQUESTS = new HashMap<>();
     private static final java.util.LinkedHashMap<String, CachedPcm> PCM_CACHE =
             new java.util.LinkedHashMap<>(16, 0.75f, true) {
                 @Override
@@ -105,14 +64,21 @@ public final class RadioController {
         // 下一个客户端 tick 对账（S2C 在网络线程到达，这里只标记）
     }
 
+    /** A device/resource reload is an interruption, even if OpenAL had buffered the final seconds. */
+    public static void onSoundReload() {
+        LIVE.values().forEach(live -> live.feed().release());
+        LIVE.clear();
+        REQUESTS.clear();
+        // PLAYBACKS survives so the replacement channels resume without consulting gameTime.
+    }
+
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || mc.player == null) {
             stopAll();
-            START_LAG.clear();
-            FINISHED.clear();
-            PENDING_EOF.clear();
+            PLAYBACKS.clear();
+            REQUESTS.clear();
             // 退到标题/换服：离线期间的删除收不到，旧状态留着会在重进后重播已拆的电台；
             // 进服时服务端补推全量（PlayerLoggedIn），这里清空不丢真实状态
             ClientRadioState.clear();
@@ -126,7 +92,11 @@ public final class RadioController {
         }
         // 只留当前维度：别的维度的删除广播收不到（见 ClientRadioState.retainDimension）
         ClientRadioState.retainDimension(mc.level.dimension().location().toString());
-        reconcile(mc);
+        long now = System.nanoTime();
+        PLAYBACKS.values().forEach(playback -> playback.setPaused(mc.isPaused(), now));
+        if (!mc.isPaused()) {
+            reconcile(mc);
+        }
     }
 
     private static void sendHello() {
@@ -143,103 +113,105 @@ public final class RadioController {
         });
     }
 
+    private static boolean matches(RadioPlayback playback, RadioStatePayload state) {
+        return state != null && state.playing()
+                && RadioAudibilityRules.validSignal(state.station(), state.side())
+                && playback.matches(state.nonce(), state.trackHash(), state.startTick());
+    }
+
+    private static RadioStatePayload stateOf(LiveKey key) {
+        return ClientRadioState.view().get(new ClientRadioState.Key(key.dimension(), key.pos()));
+    }
+
     private static void reconcile(Minecraft mc) {
+        PLAYBACKS.entrySet().removeIf(e -> !matches(e.getValue(), stateOf(e.getKey())));
         if (RadioAudibility.categoryMuted(mc)) {
-            // 唱片机/音符盒或主音量为 0：不建实例；恢复音量后下一 tick 按服务钟 offset 续上
-            stopAll();
+            stopAll(); // Keep the local clock: mute must not rewind a lagging server's track.
             return;
         }
         String dim = mc.level.dimension().location().toString();
-
-        // 落后量与播完标记只对同一 (nonce, track) 有效：状态消失或换曲即丢
-        START_LAG.entrySet().removeIf(e -> markStale(e.getKey(), e.getValue().nonce(), e.getValue().trackHash()));
-        FINISHED.entrySet().removeIf(e -> markStale(e.getKey(), e.getValue().nonce(), e.getValue().trackHash()));
-        PENDING_EOF.entrySet().removeIf(e -> markStale(e.getKey(), e.getValue().nonce(), e.getValue().trackHash()));
-
-        // 中途被停（静音等）实例的预定 EOF 一次性裁决：停播期间墙钟已过点 = 曲已终，
-        // 转正播完标记（gameTime 守卫失效时会重播曲尾，见 FINISHED 注）；未到点丢弃、按 knownLag 续播。
-        PENDING_EOF.entrySet().removeIf(e -> {
-            PendingEof pending = e.getValue();
-            if (System.nanoTime() >= pending.endAtNanos() - EOF_TOLERANCE_NANOS) {
-                markFinished(e.getKey(), pending.nonce(), pending.trackHash());
-            }
-            return true;
-        });
-
-        // 清理：维度不符 / 状态消失 / nonce 变化 / 播完 → 停实例。
-        // 同 nonce 下 side 变化只跟通道增益，不重建、不重播。
         var it = LIVE.entrySet().iterator();
         while (it.hasNext()) {
             var entry = it.next();
             LiveKey key = entry.getKey();
             Live live = entry.getValue();
-            var state = ClientRadioState.view().get(new ClientRadioState.Key(key.dimension(), key.pos()));
+            var state = stateOf(key);
             boolean active = mc.getSoundManager().isActive(live.instance());
-            boolean stale = state == null || !state.playing() || !key.dimension().equals(dim)
-                    || state.nonce() != live.nonce()
-                    || !state.trackHash().equals(live.trackHash())
-                    || live.instance().isStopped()
-                    || !active;
-            if (stale) {
-                // 实例自然走到 EOF（引擎通道播完回收）：同 nonce 不再起播，等服务端 advance。
-                // 不能靠服务钟 offset 判播完（gameTime 会落后真实时间，见 FINISHED 注）；
-                // 中途被停（静音/拆台/引擎重载）此刻不是 EOF，不打标记——静音类 stopAll
-                // 的预定 EOF 由 PENDING_EOF 裁决，其余按 knownLag 续播不变。
-                if (!active && System.nanoTime() >= live.endAtNanos() - EOF_TOLERANCE_NANOS) {
-                    markFinished(key, live.nonce(), live.trackHash());
+            if (!matches(live.playback(), state) || !key.dimension().equals(dim)
+                    || live.instance().isStopped() || !active) {
+                // Read-ahead alone is NOT completion. The channel must have ended too.
+                if (!active) {
+                    live.playback().channelEnded(live.feed().exhausted());
                 }
                 mc.getSoundManager().stop(live.instance());
+                live.feed().release();
                 it.remove();
                 continue;
             }
-            followSideGain(key, live, state);
+            float gain = PcmHeadroom.channelGain(RadioSignals.volumePercent(state.side()), live.boost());
+            if (gain != live.gain()) {
+                live.instance().setVolume(gain);
+                entry.setValue(new Live(live.instance(), live.playback(), live.feed(), gain, live.boost()));
+            }
         }
         for (var stateEntry : ClientRadioState.view().entrySet()) {
             var key = stateEntry.getKey();
-            RadioStatePayload state = stateEntry.getValue();
-            if (!key.dimension().equals(dim) || !state.playing()) {
+            var state = stateEntry.getValue();
+            if (!key.dimension().equals(dim) || !state.playing()
+                    || !RadioAudibilityRules.validSignal(state.station(), state.side())) {
                 continue;
             }
             LiveKey liveKey = new LiveKey(key.dimension(), key.pos());
-            if (LIVE.containsKey(liveKey)) {
-                continue; // 上面已对账（nonce/track 变化会先清）
+            if (!LIVE.containsKey(liveKey)) {
+                startInstance(mc, liveKey, state);
             }
-            startInstance(mc, liveKey, state);
         }
     }
 
-    /** START_LAG / FINISHED / PENDING_EOF 共用的失效判据：状态消失或 (nonce, track) 变了即丢。 */
-    private static boolean markStale(LiveKey key, int nonce, String trackHash) {
-        var state = ClientRadioState.view().get(new ClientRadioState.Key(key.dimension(), key.pos()));
-        return state == null || state.nonce() != nonce || !state.trackHash().equals(trackHash);
+    /** Local decoded duration and playhead used by goggles. Null until local playback is prepared. */
+    public record Progress(double elapsedSeconds, double totalSeconds, boolean finished) {
     }
 
-    /** 置播完标记 + 一次性日志（同 (key,nonce) 只置位一次）：日后排查“电台为何不响”有线索。 */
-    private static void markFinished(LiveKey key, int nonce, String trackHash) {
-        FINISHED.put(key, new FinishedEof(nonce, trackHash));
-        DimBlendRadio.LOGGER.info("[radio] track finished locally, wait advance: pos={} hash={}",
-                key.pos(), shortHash(trackHash));
-    }
-
-    /**
-     * side 跟量：PCM 解码时已按本曲余量预放大，各档（含跨 100%）只改实例通道增益，
-     * 引擎下 tick 平滑生效——不换 PCM、不重建实例、不断音。
-     */
-    private static void followSideGain(LiveKey key, Live live, RadioStatePayload state) {
-        float gain = PcmHeadroom.channelGain(RadioSignals.volumePercent(state.side()), live.boost());
-        if (gain != live.gain()) {
-            live.instance().setVolume(gain);
-            LIVE.put(key, new Live(live.instance(), live.trackHash(), live.nonce(), live.seconds(), gain,
-                    live.boost(), live.endAtNanos()));
+    public static Progress progress(RadioStatePayload state) {
+        LiveKey key = new LiveKey(state.dimension().toString(), state.pos());
+        RadioPlayback playback = PLAYBACKS.get(key);
+        if (playback == null || !matches(playback, state)) {
+            return null;
         }
+        long now = System.nanoTime();
+        playback.setPaused(Minecraft.getInstance().isPaused(), now);
+        return new Progress(playback.position(now), playback.duration(), playback.finished(now));
     }
 
-    private static void startInstance(Minecraft mc, LiveKey key,
-            dimblend.radio.net.RadioStatePayload state) {
-        FinishedEof finished = FINISHED.get(key);
-        if (finished != null && finished.nonce() == state.nonce()
-                && finished.trackHash().equals(state.trackHash())) {
-            return; // 本端已自然播完此曲：同 nonce 不再起播，等服务端 advance（曲尾重播修复）
+    /** Zero for missing, pending, finished or stopped playback, even if the server says playing. */
+    public static float playingGain(RadioStatePayload state) {
+        Live live = LIVE.get(new LiveKey(state.dimension().toString(), state.pos()));
+        if (live == null || !matches(live.playback(), state) || live.instance().isStopped()
+                || live.playback().finished(System.nanoTime())) {
+            return 0;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        var engine = (SoundEngineAccessor) ((SoundManagerAccessor) mc.getSoundManager())
+                .dimblend$radioSoundEngine();
+        var channel = engine.dimblend$radioChannels().get(live.instance());
+        if (channel == null || channel.isStopped()) {
+            live.instance().setChannelPlaying(false);
+            return 0;
+        }
+        // AL state must be queried on the sound executor, never directly on the client thread.
+        // Sampling once per music tick adds at most a normal tick of takeover/release latency.
+        channel.execute(source -> live.instance().setChannelPlaying(source.playing()));
+        if (!live.instance().channelPlaying()) {
+            return 0;
+        }
+        return engine.dimblend$radioVolume(live.instance())
+                * mc.options.getSoundSourceVolume(net.minecraft.sounds.SoundSource.MASTER);
+    }
+
+    private static void startInstance(Minecraft mc, LiveKey key, RadioStatePayload state) {
+        RadioPlayback playback = PLAYBACKS.get(key);
+        if (REQUESTS.containsKey(key) || (playback != null && playback.finished(System.nanoTime()))) {
+            return;
         }
         Path file = RadioLibrary.fileOf(state.trackHash());
         if (file == null) {
@@ -247,97 +219,89 @@ public final class RadioController {
             return;
         }
         if (!DECODING.add(state.trackHash())) {
-            return; // 同一曲正在解码，并发信号不叠任务
+            return;
         }
-        // 主线程取准备时刻的服务钟进度与已知落后量；IO 任务里按耗时推算起播时刻进度
+        Object request = new Object();
+        REQUESTS.put(key, request);
+        var requestedLevel = mc.level;
         long prepNanos = System.nanoTime();
         double prepSec = trackSecondsNow(mc, state);
-        StartLag lag = START_LAG.get(key);
-        Double knownLag = lag != null && lag.nonce() == state.nonce() && lag.trackHash().equals(state.trackHash())
-                ? lag.lagSec()
-                : null;
         Util.ioPool().execute(() -> {
+            CachedPcm decodedPcm = null;
             try {
-                CachedPcm cached;
                 synchronized (PCM_CACHE) {
-                    cached = PCM_CACHE.get(state.trackHash());
+                    decodedPcm = PCM_CACHE.get(state.trackHash());
                 }
-                if (cached == null) {
-                    // 单曲内存上限：>256MB 原始 PCM 拒绝解码（按 3 分钟 44.1k 立体声 ~32MB/分钟计）
-                    long fileSize = java.nio.file.Files.size(file);
-                    if (fileSize > 64L << 20) {
-                        DimBlendRadio.LOGGER.warn("[radio] file too large, skip {}", file);
-                        return;
+                if (decodedPcm == null) {
+                    if (java.nio.file.Files.size(file) > 64L << 20) {
+                        throw new IllegalArgumentException("Encoded track exceeds 64 MiB");
                     }
                     RadioLibrary.Pcm decoded = RadioLibrary.decode(file);
                     if (decoded.data().length > 256L << 20) {
-                        DimBlendRadio.LOGGER.warn("[radio] decoded too large, skip {}", file);
-                        return;
+                        throw new IllegalArgumentException("Decoded track exceeds 256 MiB");
                     }
-                    // 解码时一次性按本曲余量线性预放大（最多 150%）入缓存；之后各档音量只调通道增益
                     float boost = PcmHeadroom.applyMaxBoost(decoded.data(),
                             RadioSignals.MAX_VOLUME_PERCENT / 100.0f);
-                    cached = new CachedPcm(decoded.format(), decoded.data(), boost);
+                    decodedPcm = new CachedPcm(decoded.format(), decoded.data(), boost);
                     synchronized (PCM_CACHE) {
-                        PCM_CACHE.put(state.trackHash(), cached);
+                        PCM_CACHE.put(state.trackHash(), decodedPcm);
                     }
                 }
-                double seconds = (double) cached.pcm().length / cached.format().getFrameSize()
-                        / cached.format().getSampleRate();
-                if (RadioStartOffset.offsetSec(prepSec, prepSec + secondsSince(prepNanos), knownLag) >= seconds) {
-                    return; // 本端这曲已播完，服务端 advance 在路上：不做截取拷贝，等下一广播
-                }
-                // 起播进度 = 准备时进度 + 排队/解码耗时；offset 策略见 RadioStartOffset
-                double playSec = prepSec + secondsSince(prepNanos);
-                double offsetSec = RadioStartOffset.offsetSec(prepSec, playSec, knownLag);
-                if (offsetSec >= seconds) {
-                    return; // 服务端 advance 在路上，等下一广播
-                }
-                // 按 offset 截（offset=0 时与缓存共用同一数组、只读；曲中截出的是新数组，可淡入）
-                byte[] play = skipPrefix(cached.format(), cached.pcm(), offsetSec);
-                if (play != cached.pcm()) {
-                    fadeIn(cached.format(), play);
-                }
-                // 音量只走通道增益（PCM 已按本曲余量预放大）；起播前按最新 side 取（见主线程块）
-                float boost = cached.boost();
-                // 实际落后量含截取耗时（同曲重建据此续播）
-                double lagSec = prepSec + secondsSince(prepNanos) - offsetSec;
-                // cached 在解码分支有重赋值，lambda 只能吃 effectively-final 副本
-                var playFormat = cached.format();
-                RadioPcmFeed.put(state.trackHash(), playFormat, play);
-                mc.execute(() -> {
-                    // 双重检查：对账期间状态可能已变
-                    var current = ClientRadioState.view()
-                            .get(new ClientRadioState.Key(key.dimension(), key.pos()));
-                    if (current == null || !current.playing() || current.nonce() != state.nonce()) {
-                        return;
-                    }
-                    if (mc.level == null || LIVE.containsKey(key) || RadioAudibility.categoryMuted(mc)) {
-                        return;
-                    }
-                    float liveGain = PcmHeadroom.channelGain(RadioSignals.volumePercent(current.side()), boost);
-                    // 主线程构造：声源要按客户端 level 里的 Sable 结构位姿投影到世界坐标
-                    RadioInstance instance = new RadioInstance(mc.level, key.pos(), state.trackHash(), liveGain);
-                    mc.getSoundManager().play(instance);
-                    // 自然 EOF 的墙钟时刻：play 数组就是实际入流的音频，时长按真实时间计
-                    long endAtNanos = System.nanoTime() + Math.round(
-                            (double) play.length / playFormat.getFrameSize()
-                                    / playFormat.getSampleRate() * 1e9);
-                    LIVE.put(key, new Live(instance, state.trackHash(), state.nonce(), seconds, liveGain, boost,
-                            endAtNanos));
-                    START_LAG.put(key, new StartLag(state.nonce(), state.trackHash(), lagSec));
-                    DimBlendRadio.LOGGER.info("[radio] playing station={} gain={} pos={} hash={}", current.station(),
-                            liveGain, key.pos(), shortHash(state.trackHash()));
-                    // 切曲 actionbar：只有新 nonce 才弹（同曲重建——静音恢复/走出走回——沿用落后量，不扰民）
-                    if (knownLag == null) {
-                        announceTrack(mc, current.station(), state.trackHash());
-                    }
-                });
             } catch (Exception e) {
                 DimBlendRadio.LOGGER.warn("[radio] decode failed {}", file, e);
             } finally {
                 DECODING.remove(state.trackHash());
             }
+            CachedPcm pcm = decodedPcm;
+            mc.execute(() -> {
+                if (REQUESTS.get(key) != request) {
+                    return; // disconnected/reconnected while decoding
+                }
+                try {
+                    var current = stateOf(key);
+                    if (pcm == null || mc.level != requestedLevel || current == null || !current.playing()
+                            || !RadioAudibilityRules.validSignal(current.station(), current.side())
+                            || current.nonce() != state.nonce() || current.startTick() != state.startTick()
+                            || !current.trackHash().equals(state.trackHash())
+                            || LIVE.containsKey(key) || mc.isPaused() || RadioAudibility.categoryMuted(mc)) {
+                        return;
+                    }
+                    long now = System.nanoTime();
+                    RadioPlayback local = PLAYBACKS.get(key);
+                    boolean first = local == null || !matches(local, current);
+                    if (first) {
+                        double seconds = (double) pcm.pcm().length / pcm.format().getFrameSize()
+                                / pcm.format().getSampleRate();
+                        double offset = RadioStartOffset.offsetSec(prepSec,
+                                prepSec + (now - prepNanos) / 1e9, null);
+                        local = new RadioPlayback(state.nonce(), state.trackHash(), state.startTick(),
+                                seconds, offset, now);
+                        PLAYBACKS.put(key, local);
+                    }
+                    // Re-check on completion: a decode queued before EOF may complete after it.
+                    if (local.finished(now)) {
+                        return;
+                    }
+                    double offset = local.position(now);
+                    RadioPcmFeed.Handle feed = RadioPcmFeed.register(pcm.format(), pcm.pcm(), offset);
+                    float gain = PcmHeadroom.channelGain(RadioSignals.volumePercent(current.side()), pcm.boost());
+                    RadioInstance instance = new RadioInstance(mc.level, key.pos(), feed.id(), gain);
+                    try {
+                        mc.getSoundManager().play(instance);
+                    } catch (RuntimeException e) {
+                        feed.release();
+                        throw e;
+                    }
+                    LIVE.put(key, new Live(instance, local, feed, gain, pcm.boost()));
+                    DimBlendRadio.LOGGER.info("[radio] playing station={} pos={} hash={} offset={} duration={}",
+                            current.station(), key.pos(), shortHash(state.trackHash()), offset, local.duration());
+                    if (first) {
+                        announceTrack(mc, current.station(), state.trackHash());
+                    }
+                } finally {
+                    REQUESTS.remove(key, request);
+                }
+            });
         });
     }
 
@@ -349,41 +313,6 @@ public final class RadioController {
     private static double trackSecondsNow(Minecraft mc, RadioStatePayload state) {
         long now = Math.max(mc.level.getGameTime(), state.serverNow());
         return Math.max(0.0, (now - state.startTick()) / 20.0);
-    }
-
-    private static double secondsSince(long nanos) {
-        return (System.nanoTime() - nanos) / 1_000_000_000.0;
-    }
-
-    /** 曲中起播 10ms 线性淡入：从波形中段硬切起播会“啪”一声（16bit 小端，原地改写）。 */
-    private static void fadeIn(javax.sound.sampled.AudioFormat format, byte[] pcm) {
-        int frameSize = format.getFrameSize();
-        int channels = format.getChannels();
-        int frames = Math.min(pcm.length / frameSize, Math.round(format.getSampleRate() * 0.010f));
-        for (int f = 0; f < frames; f++) {
-            for (int c = 0; c < channels; c++) {
-                int i = f * frameSize + c * 2;
-                int s = (short) ((pcm[i] & 0xFF) | (pcm[i + 1] << 8));
-                int v = s * f / frames;
-                pcm[i] = (byte) v;
-                pcm[i + 1] = (byte) (v >> 8);
-            }
-        }
-    }
-
-    /** offset 起播：按秒换算帧数丢弃前缀（顺序跳过，无真 seek）。 */
-    private static byte[] skipPrefix(javax.sound.sampled.AudioFormat format, byte[] data, double offsetSec) {
-        int frameSize = format.getFrameSize();
-        long skipFrames = (long) (offsetSec * format.getSampleRate());
-        long skipBytes = Math.min((long) data.length, skipFrames * frameSize);
-        skipBytes -= skipBytes % Math.max(1, frameSize);
-        if (skipBytes <= 0) {
-            return data;
-        }
-        // 大 offset 拷贝同样 O(n)：但只做一次（解码缓存命中后），不再每 tick 重复
-        byte[] cut = new byte[(int) (data.length - skipBytes)];
-        System.arraycopy(data, (int) skipBytes, cut, 0, cut.length);
-        return cut;
     }
 
     /**
@@ -420,14 +349,14 @@ public final class RadioController {
 
     private static void stopAll() {
         Minecraft mc = Minecraft.getInstance();
-        for (var entry : LIVE.entrySet()) {
-            Live live = entry.getValue();
-            // 预定 EOF 转存：停播期间曲终的，恢复对账时转正播完标记（见 PENDING_EOF 注）
-            PENDING_EOF.put(entry.getKey(),
-                    new PendingEof(live.nonce(), live.trackHash(), live.endAtNanos()));
+        for (Live live : LIVE.values()) {
             try {
+                if (!mc.getSoundManager().isActive(live.instance())) {
+                    live.playback().channelEnded(live.feed().exhausted());
+                }
                 mc.getSoundManager().stop(live.instance());
-            } catch (Exception ignored) {
+            } finally {
+                live.feed().release();
             }
         }
         LIVE.clear();

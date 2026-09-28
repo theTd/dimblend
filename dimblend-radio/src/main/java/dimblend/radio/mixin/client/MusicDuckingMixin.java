@@ -9,23 +9,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import dimblend.radio.DimBlendRadio;
 import dimblend.radio.client.RadioAudibility;
+import dimblend.radio.client.RadioMusicFade;
+import org.spongepowered.asm.mixin.Unique;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.client.sounds.MusicManager;
 
 /**
- * 电台可闻时压住 vanilla 背景音乐（原版唱片机同款行为），真零点之外放行。
- *
- * <p>实现：可闻期间停掉在播音乐、把 {@code nextSongDelay} 固定重置为 100 tick
- * （vanilla STARTING_DELAY）并整体取消本次 vanilla tick——delay 不倒数，vanilla
- * 不会起播；电台停后从 100 倒数，约 5 秒自然恢复。</p>
- *
- * <p>两个坑缺一不可避：不能用 {@code stopPlaying()}——它每次 {@code +100}，而 vanilla
- * {@code startPlaying} 会把 delay 置为 {@code Integer.MAX_VALUE}，再 +100 溢出成负数，
- * 之后 vanilla tick 的 {@code nextSongDelay-- <= 0} 恒真，每 tick 起播一次又被停一次
- * （SoundEngine 每 tick 开关一条流式音乐通道）；也不能只 pin 不 cancel——CREDITS/END_BOSS
- * 情景音乐的 min/maxDelay 均为 0（Musics.java），vanilla tick 里的 {@code min(100, 0)}
- * 会把 pin 值钳成 0，不取消方法体则该边角仍会每 tick 起播。</p>
+ * Fade the current vanilla music channel to silence over 20 client ticks, then stop it.
+ * Suppress MusicManager.tick while radio is audible to prevent vanilla from restarting music.
+ * A takeover cancelled mid-fade restores the same channel smoothly.
  */
 @Mixin(MusicManager.class)
 public abstract class MusicDuckingMixin {
@@ -39,16 +32,37 @@ public abstract class MusicDuckingMixin {
     @Final
     private Minecraft minecraft;
 
+    @Unique
     private boolean dimblend$wasAudible;
+    @Unique
+    private final RadioMusicFade dimblend$fade = new RadioMusicFade();
+    @Unique
+    private SoundInstance dimblend$fadingMusic;
 
     @Inject(method = "tick()V", at = @At("HEAD"), cancellable = true)
     private void dimblend$duckWhileRadioAudible(CallbackInfo ci) {
         boolean audible = RadioAudibility.anyAudible();
-        if (audible) {
-            if (this.currentMusic != null) {
+        if (this.currentMusic != this.dimblend$fadingMusic) {
+            this.dimblend$fadingMusic = this.currentMusic;
+            this.dimblend$fade.reset();
+        }
+        if (this.currentMusic != null && (audible || this.dimblend$fade.gain() < 1.0f)) {
+            float gain = this.dimblend$fade.tick(audible);
+            if (gain == 0.0f || !this.minecraft.getSoundManager().isActive(this.currentMusic)) {
                 this.minecraft.getSoundManager().stop(this.currentMusic);
                 this.currentMusic = null;
+            } else {
+                // Modify only this channel; never change the user's MUSIC or MASTER settings.
+                var engine = (SoundEngineAccessor) ((SoundManagerAccessor) this.minecraft.getSoundManager())
+                        .dimblend$radioSoundEngine();
+                var channel = engine.dimblend$radioChannels().get(this.currentMusic);
+                if (channel != null) {
+                    float volume = engine.dimblend$radioVolume(this.currentMusic) * gain;
+                    channel.execute(source -> source.setVolume(volume));
+                }
             }
+        }
+        if (audible || (this.currentMusic != null && this.dimblend$fade.gain() < 1.0f)) {
             this.nextSongDelay = 100;
             ci.cancel();
         }

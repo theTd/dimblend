@@ -9,7 +9,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * 电台可听性：任一 S2C 状态在玩家真零点半径内且 playing。
+ * 电台可听性：信号有效、本端通道确实在播、有非零音量，并在声音监听器传播范围内。
  *
  * <p>真零点 = LINEAR_DISTANCE 下 gain 归零的距离（= RANGE_BLOCKS，原版唱片机同为 64）。
  * 32 格是半音参考点（gain ≈ 0.5），不是截止点：32~64 格之间电台仍可闻，
@@ -36,16 +36,22 @@ public final class RadioAudibility {
             return false;
         }
         String dim = mc.level.dimension().location().toString();
-        Vec3 listener = mc.player.position();
+        Vec3 listener = mc.getSoundManager().getListenerTransform().position();
         for (Map.Entry<ClientRadioState.Key, dimblend.radio.net.RadioStatePayload> entry : ClientRadioState.view()
                 .entrySet()) {
             var key = entry.getKey();
-            if (!key.dimension().equals(dim) || !entry.getValue().playing()) {
+            var state = entry.getValue();
+            if (!key.dimension().equals(dim) || !state.playing()
+                    || !RadioAudibilityRules.validSignal(state.station(), state.side())) {
                 continue;
             }
             // Sable 结构上的唱片机 pos 是 plot 坐标：投影到世界坐标再比距离
-            if (listener.distanceTo(SubLevelProjection.worldCenter(mc.level, key.pos()))
-                    <= RadioInjector.RANGE_BLOCKS) {
+            double distance = listener.distanceTo(SubLevelProjection.worldCenter(mc.level, key.pos()));
+            if (distance >= RadioInjector.RANGE_BLOCKS) {
+                continue;
+            }
+            if (RadioAudibilityRules.shouldSuppress(state.station(), state.side(),
+                    RadioController.playingGain(state), distance, RadioInjector.RANGE_BLOCKS)) {
                 return true;
             }
         }

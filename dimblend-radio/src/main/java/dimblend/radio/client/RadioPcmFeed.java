@@ -1,92 +1,101 @@
 package dimblend.radio.client;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-
+import java.util.concurrent.atomic.AtomicLong;
 import javax.sound.sampled.AudioFormat;
 
-import net.minecraft.client.sounds.AudioStream;
-import net.minecraft.client.sounds.FiniteAudioStream;
-import net.minecraft.resources.ResourceLocation;
-
-/**
- * 内存 PCM 供给：hash → 解码好的 PCM（{@link RadioLibrary#decode} 结果）。
- *
- * <p>{@code SoundBufferMixin} 在 {@code getStream/getCompleteBuffer} HEAD 按 path 查这里，
- * 命中则跳过 JOrbis。path 形态 = {@code Sound.getPath()} =
- * {@code sounds/radio/<hash>.ogg}（命名空间 dimblend_radio）。</p>
- */
+/** Immutable cached PCM, with a unique feed and cursor for every playback attempt. */
 public final class RadioPcmFeed {
-    private record PcmEntry(AudioFormat format, byte[] data) {
-    }
+    private static final AtomicLong NEXT_ID = new AtomicLong();
+    private static final Map<String, Handle> PCM = new ConcurrentHashMap<>();
 
-    private static final Map<String, PcmEntry> PCM = new ConcurrentHashMap<>();
-
-    /** path → hash：只认 dimblend_radio:sounds/radio/*.ogg。 */
-    public static String hashOf(ResourceLocation path) {
-        if (!path.getNamespace().equals(dimblend.radio.DimBlendRadio.MODID)) {
-            return null;
-        }
-        String p = path.getPath();
-        if (!p.startsWith("sounds/radio/") || !p.endsWith(".ogg")) {
-            return null;
-        }
-        return p.substring("sounds/radio/".length(), p.length() - ".ogg".length());
-    }
-
-    public static void put(String hash, AudioFormat format, byte[] data) {
-        PCM.put(hash, new PcmEntry(format, data));
-    }
-
-    public static AudioStream open(ResourceLocation path) {
-        String hash = hashOf(path);
-        if (hash == null) {
-            return null;
-        }
-        PcmEntry entry = PCM.get(hash);
-        if (entry == null) {
-            return null;
-        }
-        return new FeedStream(entry.format(), entry.data());
-    }
-
-    private static final class FeedStream implements FiniteAudioStream {
+    public static final class Handle {
+        private final String id;
         private final AudioFormat format;
         private final byte[] data;
-        private int cursor;
+        private final int start;
+        private volatile boolean exhausted;
 
-        FeedStream(AudioFormat format, byte[] data) {
+        private Handle(String id, AudioFormat format, byte[] data, double offsetSec) {
+            this.id = id;
             this.format = format;
             this.data = data;
+            long frame = Math.min(data.length / format.getFrameSize(),
+                    (long) (Math.max(0.0, offsetSec) * format.getSampleRate()));
+            this.start = (int) (frame * format.getFrameSize());
         }
 
-        @Override
+        public String id() {
+            return this.id;
+        }
+
+        public boolean exhausted() {
+            return this.exhausted;
+        }
+
+        public void release() {
+            PCM.remove(this.id, this);
+        }
+    }
+
+    public static Handle register(AudioFormat format, byte[] data, double offsetSec) {
+        String id = Long.toUnsignedString(NEXT_ID.incrementAndGet());
+        Handle handle = new Handle(id, format, data, offsetSec);
+        PCM.put(id, handle);
+        return handle;
+    }
+
+    public static FeedStream open(String id) {
+        Handle handle = PCM.get(id);
+        return handle == null ? null : new FeedStream(handle);
+    }
+
+    public static final class FeedStream implements AutoCloseable {
+        private final Handle handle;
+        private int cursor;
+
+        FeedStream(Handle handle) {
+            this.handle = handle;
+            this.cursor = handle.start;
+        }
+
         public AudioFormat getFormat() {
-            return this.format;
+            return this.handle.format;
         }
 
-        @Override
-        public ByteBuffer read(int bytes) throws IOException {
-            int n = Math.min(bytes, this.data.length - this.cursor);
-            ByteBuffer buf = ByteBuffer.allocateDirect(n);
-            buf.put(this.data, this.cursor, n);
+        public ByteBuffer read(int bytes) {
+            int n = Math.min(bytes, this.handle.data.length - this.cursor);
+            ByteBuffer buf = ByteBuffer.allocateDirect(n).order(ByteOrder.LITTLE_ENDIAN);
+            buf.put(this.handle.data, this.cursor, n);
             buf.flip();
+            // Fade the first 10ms of resumed audio without modifying the shared cache.
+            int frameSize = this.handle.format.getFrameSize();
+            int fadeFrames = Math.min((this.handle.data.length - this.handle.start) / frameSize,
+                    Math.round(this.handle.format.getSampleRate() * 0.010f));
+            if (this.handle.start > 0 && fadeFrames > 0) {
+                int firstFrame = (this.cursor - this.handle.start) / frameSize;
+                for (int f = 0; f < n / frameSize && firstFrame + f < fadeFrames; f++) {
+                    for (int c = 0; c < this.handle.format.getChannels(); c++) {
+                        int i = f * frameSize + c * 2;
+                        buf.putShort(i, (short) (buf.getShort(i) * (firstFrame + f) / fadeFrames));
+                    }
+                }
+            }
             this.cursor += n;
+            this.handle.exhausted = this.cursor >= this.handle.data.length;
             return buf;
         }
 
-        @Override
-        public ByteBuffer readAll() throws IOException {
-            ByteBuffer buf = ByteBuffer.allocateDirect(this.data.length);
-            buf.put(this.data);
-            buf.flip();
-            return buf;
+        public ByteBuffer readAll() {
+            return read(this.handle.data.length - this.cursor);
         }
 
         @Override
-        public void close() throws IOException {
+        public void close() {
+            this.handle.release();
         }
     }
 

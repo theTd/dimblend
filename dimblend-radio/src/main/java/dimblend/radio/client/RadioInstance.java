@@ -16,10 +16,10 @@ import net.minecraft.world.phys.Vec3;
 /**
  * 电台播放实例：自定义 TickableSoundInstance，resolve() 自带事件（registry 旁路）。
  *
- * <p>location 取合成事件 RL（{@code dimblend_radio:radio/<hash>}），
+ * <p>location 取合成事件 RL（{@code dimblend_radio:radio/<feedId>}），
  * {@link #resolve} 直接置 sound 并返回自建 {@link WeighedSoundEvents}，
  * {@code SoundEngine.play} 只用 resolve() 结果，registry 无 key 也能播。
- * event 内 Sound 的 getPath() = {@code sounds/radio/<hash>.ogg}，
+ * event 内 Sound 的 getPath() = {@code sounds/radio/<feedId>.ogg}，
  * {@code SoundBufferMixin} 按此 path 从 {@link RadioPcmFeed} 取 PCM 分流，
  * 全程不碰 registry、不 reload。</p>
  *
@@ -35,6 +35,16 @@ public class RadioInstance extends AbstractTickableSoundInstance {
     private final BlockPos radioPos;
     private final WeighedSoundEvents event;
     private volatile float gain = 1.0f;
+    // Queried on the sound executor; read by the client thread. False until playback is observed.
+    private volatile boolean channelPlaying;
+
+    public void setChannelPlaying(boolean playing) {
+        this.channelPlaying = playing;
+    }
+
+    public boolean channelPlaying() {
+        return this.channelPlaying;
+    }
 
     /**
      * 须在主线程构造（要读客户端 level 的 Sable 结构位姿）。
@@ -43,15 +53,15 @@ public class RadioInstance extends AbstractTickableSoundInstance {
      *             半径 f1 = max(volume,1.0) * attDist 与 gain 无关：volume 恒 1.0，
      *             f1 = 64 真零点不受 side 影响。
      */
-    public RadioInstance(Level level, BlockPos pos, String trackHash, float gain) {
+    public RadioInstance(Level level, BlockPos pos, String feedId, float gain) {
         super(SoundEvent.createVariableRangeEvent(ResourceLocation.fromNamespaceAndPath(
-                dimblend.radio.DimBlendRadio.MODID, "radio/" + trackHash)),
+                dimblend.radio.DimBlendRadio.MODID, "radio/" + feedId)),
                 SOURCE, SoundInstance.createUnseededRandom());
         this.radioPos = pos.immutable();
         followWorldPosition(level);
         this.attenuation = SoundInstance.Attenuation.LINEAR;
         this.relative = false;
-        this.event = RadioInjector.makeEvent(trackHash);
+        this.event = RadioInjector.makeEvent(feedId);
         // volume 恒 1.0 保住 f1=64 真零点；可闻响度走 gain（引擎 clamp 到 1.0 内线性）。
         this.volume = 1.0f;
         this.gain = gain;

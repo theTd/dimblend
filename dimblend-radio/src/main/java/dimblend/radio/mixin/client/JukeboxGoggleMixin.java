@@ -8,6 +8,7 @@ import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
 
 import dimblend.radio.RadioSignals;
 import dimblend.radio.client.RadioLibrary;
+import dimblend.radio.client.RadioController;
 import dimblend.radio.client.TrackTitles;
 import dimblend.radio.net.ClientRadioState;
 import dimblend.radio.net.RadioStatePayload;
@@ -87,11 +88,12 @@ public abstract class JukeboxGoggleMixin implements IHaveGoggleInformation {
         if (artist != null) {
             tooltip.add(indent(Component.literal(artist), ChatFormatting.GRAY));
         }
-        double totalSec = RadioLibrary.durationSeconds(state.station(), state.trackHash());
-        if (totalSec > 0) {
-            double elapsedSec = Math.max(0.0,
-                    (Math.max(level.getGameTime(), state.serverNow()) - state.startTick()) / 20.0);
-            tooltip.add(progressLine(Math.min(elapsedSec, totalSec), totalSec));
+        RadioController.Progress progress = RadioController.progress(state);
+        if (progress != null && progress.totalSeconds() > 0) {
+            tooltip.add(progressLine(progress.elapsedSeconds(), progress.totalSeconds()));
+            if (progress.finished()) {
+                tooltip.add(indent(Component.literal("播放完毕，等待下一曲"), ChatFormatting.GRAY));
+            }
         }
         if (isPlayerSneaking) {
             tooltip.add(indent(Component.literal("hash " + shortHash(state.trackHash())),

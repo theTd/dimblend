@@ -11,6 +11,9 @@
 		"SoundBufferMixin"
 	],
 	"client": [
+		"client.SoundManagerAccessor",
+		"client.SoundEngineAccessor",
+		"client.SoundEngineReloadMixin",
 		"client.MusicDuckingMixin",
 		"client.JukeboxGoggleMixin"
 	],

@@ -10,13 +10,13 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import dimblend.radio.client.RadioPcmFeed;
+import dimblend.radio.client.RadioAudioStream;
 import net.minecraft.client.sounds.AudioStream;
 import net.minecraft.resources.ResourceLocation;
 
 /**
  * 解码分流：radio 合成路径（{@code dimblend_radio:sounds/radio/*.ogg}）不走 JOrbis，
- * 改由 {@link RadioPcmFeed} 供给内存 PCM 流；其余原版路径零改动。
+ * 改由 {@link RadioAudioStream} 供给内存 PCM 流；其余原版路径零改动。
  *
  * <p>为什么必须分流：{@code SoundBufferLibrary.getStream/getCompleteBuffer}
  * 写死 {@code new JOrbisAudioStream}（源码事实），内存 PCM 冒充 .ogg 字节必抛
@@ -34,7 +34,7 @@ public abstract class SoundBufferMixin {
             at = @At("HEAD"), cancellable = true)
     private void dimblend$radioStream(ResourceLocation path, boolean looping,
             CallbackInfoReturnable<CompletableFuture<AudioStream>> cir) {
-        AudioStream feed = RadioPcmFeed.open(path);
+        AudioStream feed = RadioAudioStream.open(path);
         if (feed != null) {
             cir.setReturnValue(CompletableFuture.completedFuture(feed));
         }
@@ -46,7 +46,7 @@ public abstract class SoundBufferMixin {
     private void dimblend$radioStaticBuffer(ResourceLocation path,
             CallbackInfoReturnable<CompletableFuture<com.mojang.blaze3d.audio.SoundBuffer>> cir) {
         // 短曲 static 路径：radio 一律 stream:true，理论上走不到；保险起见仍分流
-        AudioStream feed = RadioPcmFeed.open(path);
+        AudioStream feed = RadioAudioStream.open(path);
         if (feed != null) {
             CompletableFuture<com.mojang.blaze3d.audio.SoundBuffer> future = CompletableFuture.supplyAsync(() -> {
                 try {
