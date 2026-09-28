@@ -29,7 +29,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * 此处未乘 upgrade 倍率——与上游保持一致，不另做修正）。</p>
  *
  * <p>B6 过载引信（用户拍板，不可中断）：轴持续过载满 40 tick（2 秒）确认后先摘轴侧登记
- * （否则轴残留末速空转），再点引信——警告音 1 次、出力归零；确认窗口滤掉存档/区块加载期
+ * （否则轴残留末速空转），再点引信——警告音 1 次、出力归零，引信期间每 tick 播
+ * large_smoke（delta 0.2,0.2,0.2 / speed 0 / count 10）；确认窗口滤掉存档/区块加载期
  * kinetic 网络重建的短暂误报，确认前爬梯/波动计时冻结；6 秒后爆音 1 次 + 爆炸粒子
  * （delta 1,1,1 / speed 0 / count 100），再 {@code destroyBlock(pos, true)}
  * 破坏本体掉落（余油不返还、无真实爆炸伤害）。红石关停/燃尽/负载恢复都不取消引信。

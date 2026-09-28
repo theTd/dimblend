@@ -25,7 +25,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * <li>B3 到额定后在 80%~100% 间随机跳变，每 1~3 秒取一次新值（计时在 tick
  * 状态机内推进，getter 纯读）</li>
  * <li>B6 过载引信（用户拍板，不可中断）：运转中过载连续 40 tick（2 秒）确认后播
- * {@code diesel_overstress.ogg} 1 次、出力归零；6 秒（120 tick）后播
+ * {@code diesel_overstress.ogg} 1 次、出力归零，引信期间每 tick 播 large_smoke
+ * （delta 0.2,0.2,0.2 / speed 0 / count 10）；6 秒（120 tick）后播
  * {@code entity.generic.explode} 1 次 + 爆炸粒子（delta 1,1,1 / speed 0 /
  * count 100），再破坏自毁掉落（余油不返还、无真实爆炸伤害）。确认窗口滤掉存档/
  * 区块加载期 kinetic 网络重建的短暂误报；确认前爬梯/波动计时冻结。红石关停/燃尽/
