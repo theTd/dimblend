@@ -30,8 +30,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  *
  * <p>B6 过载引信（用户拍板，不可中断）：轴持续过载满 40 tick（2 秒）确认后先摘轴侧登记
  * （否则轴残留末速空转），再点引信——警告音 1 次、出力归零，引信期间每 tick 播
- * large_smoke（delta 0.2,0.2,0.2 / speed 0 / count 10）；确认窗口滤掉存档/区块加载期
- * kinetic 网络重建的短暂误报，确认前爬梯/波动计时冻结；6 秒后爆音 1 次 + 爆炸粒子
+ * large_smoke（delta 0.2,0.2,0.2 / speed 0 / count 10）；加载宽限期（BE 重实例化后
+ * 5 秒）内的过载读数视为存档/区块加载期网络重建残留，不参与确认（确认进度不跨存档
+ * 携带），确认前爬梯/波动计时冻结；6 秒后爆音 1 次 + 爆炸粒子
  * （delta 1,1,1 / speed 0 / count 100），再 {@code destroyBlock(pos, true)}
  * 破坏本体掉落（余油不返还、无真实爆炸伤害）。红石关停/燃尽/负载恢复都不取消引信。
  * 自毁破坏失败（极端情况）才回退闩锁等重新加油。燃尽走原版停机（不干预）。</p>
@@ -102,6 +103,7 @@ public abstract class HugeDieselEngineMixin {
             return;
         }
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
+        state.ticksSinceLoad++;
         boolean wasLatched = state.overloadLatched;
         if (state.fuseActive) {
             // B6 引信优先且不可中断：只推进倒计时；到时爆音+粒子+自毁
@@ -153,8 +155,12 @@ public abstract class HugeDieselEngineMixin {
         }
         if (shaft.isOverStressed()) {
             // B6 过载损坏（只炸本体）：持续 40 tick（2 秒，见 CdgOverloadMath）确认才点引信——
-            // 存档/区块加载期网络重建的短暂误报在此窗口内被滤掉；确认前爬梯/波动计时冻结
+            // 加载宽限期（BE 重实例化后 5 秒，见 CdgOverloadMath.LOAD_GRACE_TICKS）内的
+            // overstressed 读数视为网络重建残留，不累计确认；确认前爬梯/波动计时冻结
             // （直接 return，不断也不复位），燃油照常扣除；确认后先摘轴侧登记防残留末速空转，再点引信
+            if (CdgOverloadMath.isWithinLoadGrace(state.ticksSinceLoad)) {
+                return;
+            }
             state.overloadTicks = CdgOverloadMath.countOverloadTick(state.overloadTicks);
             if (!CdgOverloadMath.isOverloadConfirmed(state.overloadTicks)) {
                 return;

@@ -47,4 +47,20 @@ class CdgOverloadFuseTest {
         }
         assertEquals(CdgOverloadMath.OVERLOAD_CONFIRM_TICKS, ticks);
     }
+
+    @Test
+    void loadGraceBlocksConfirmationRightAfterLoad() {
+        // 读档即过载（网络重建残留）：宽限期内计数不动、不成引信
+        for (int ticksSinceLoad = 0; ticksSinceLoad < CdgOverloadMath.LOAD_GRACE_TICKS; ticksSinceLoad++) {
+            assertTrue(CdgOverloadMath.isWithinLoadGrace(ticksSinceLoad));
+        }
+        // 宽限期一过，确认窗口照常计时
+        assertFalse(CdgOverloadMath.isWithinLoadGrace(CdgOverloadMath.LOAD_GRACE_TICKS));
+    }
+
+    @Test
+    void loadGraceMustExceedConfirmWindow() {
+        // 宽限期短于确认窗口则重建误报仍可能单独击穿窗口
+        assertTrue(CdgOverloadMath.LOAD_GRACE_TICKS > CdgOverloadMath.OVERLOAD_CONFIRM_TICKS);
+    }
 }

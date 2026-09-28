@@ -28,9 +28,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * {@code diesel_overstress.ogg} 1 次、出力归零，引信期间每 tick 播 large_smoke
  * （delta 0.2,0.2,0.2 / speed 0 / count 10）；6 秒（120 tick）后播
  * {@code entity.generic.explode} 1 次 + 爆炸粒子（delta 1,1,1 / speed 0 /
- * count 100），再破坏自毁掉落（余油不返还、无真实爆炸伤害）。确认窗口滤掉存档/
- * 区块加载期 kinetic 网络重建的短暂误报；确认前爬梯/波动计时冻结。红石关停/燃尽/
- * 负载恢复都不取消引信。自毁破坏失败（极端情况）才回退闩锁逻辑</li>
+ * count 100），再破坏自毁掉落（余油不返还、无真实爆炸伤害）。加载宽限期
+ * （{@code CdgOverloadMath.LOAD_GRACE_TICKS}，BE 重实例化后 5 秒）内的过载读数
+ * 视为存档/区块加载期 kinetic 网络重建残留，不参与确认；确认进度不跨存档携带。
+ * 确认前爬梯/波动计时冻结。红石关停/燃尽/负载恢复都不取消引信。
+ * 自毁破坏失败（极端情况）才回退闩锁逻辑</li>
  * </ul>
  * 目标：普通与组合式柴油机。巨型柴油机由 B5（HugeDieselEngineMixin）独立覆盖，
  * 本 mixin 不处理（cast 结构只接受 KineticBlockEntity）。
@@ -44,7 +46,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * 与运转判定同步乘 throttle——与 getter 同源，模拟调速 0 即视为停转复位。</p>
  * <p>配置读取时机：所有 handler 先行 ServerLevel 守卫（双端方法），仅服务端
  * 读取 SERVER 配置——避免专用服务器客户端未加载该配置即抛异常。</p>
- * <p>状态持久化：附件带 codec 序列化，闩锁/引信与点火计时跨区块卸载/存档重启保持。</p>
+ * <p>状态持久化：附件带 codec 序列化，闩锁/引信与点火计时跨区块卸载/存档重启保持；
+ * 过载确认计数不序列化（读档从 0 重计，配合加载宽限期）。</p>
  */
 @Mixin({DieselEngineBlockEntity.class, ModularDieselEngineBlockEntity.class})
 public abstract class DieselEngineRampMixin {
@@ -120,6 +123,7 @@ public abstract class DieselEngineRampMixin {
         }
         IEngine engine = (IEngine) (Object) this;
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
+        state.ticksSinceLoad++;
         boolean wasLatched = state.overloadLatched;
 
         boolean fuel = engine.validFS();
@@ -162,10 +166,15 @@ public abstract class DieselEngineRampMixin {
         boolean enabled = engine.enabled();
         boolean overloaded = self.isOverStressed();
         if (enabled && overloaded) {
+            // 加载宽限期（CdgOverloadMath.LOAD_GRACE_TICKS）：BE（重）实例化后
+            // 该时长内的 overstressed 读数视为网络重建残留，不累计确认也不点引信
+            // （爬梯照冻结，读数恢复正常的 tick 自行清零后计数从头开始）
+            if (CdgOverloadMath.isWithinLoadGrace(state.ticksSinceLoad)) {
+                return;
+            }
             // B6：运转中过载连续 40 tick（2 秒，见 CdgOverloadMath）才点引信——
-            // 存档/区块加载期网络重建的短暂误报在此窗口内被滤掉；确认前爬梯/波动
-            // 计时冻结（本 tick 直接 return，不断也不复位），燃油照常扣除
-            // （门控仅闩锁/引信后生效）。确认后警告音 1 次、出力立即归零
+            // 确认前爬梯/波动计时冻结（本 tick 直接 return，不断也不复位），燃油
+            // 照常扣除（门控仅闩锁/引信后生效）。确认后警告音 1 次、出力立即归零
             // （闩锁口径），6 秒后爆音+粒子+自毁掉落（余油不返还）。
             state.overloadTicks = CdgOverloadMath.countOverloadTick(state.overloadTicks);
             if (!CdgOverloadMath.isOverloadConfirmed(state.overloadTicks)) {

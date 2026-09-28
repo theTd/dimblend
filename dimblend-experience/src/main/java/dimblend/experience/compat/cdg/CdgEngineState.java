@@ -15,8 +15,11 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
  * <li>fuseActive/fuseTicksLeft B6 过载引信（不可中断）：置位后每服务端 tick 递减，
  * 到 0 自毁；红石关停/燃尽/负载恢复都不取消；持久化保证跨区块卸载/存档重启不中断</li>
  * <li>overloadTicks B6 持续过载确认计数（连续"运转中过载" tick 数，满
- * {@link CdgOverloadMath#OVERLOAD_CONFIRM_TICKS} 才点引信；任一正常 tick 清零——
- * 存档/区块加载期 kinetic 网络重建的短暂误报在此窗口内被滤掉）</li>
+ * {@link CdgOverloadMath#OVERLOAD_CONFIRM_TICKS} 才点引信；任一正常 tick 清零）。
+ * 不序列化：确认进度不跨存档/区块重载携带，存档前半程确认与读档后网络重建
+ * 误报相加点引信的路径由此切断（2026-09-28 口径）</li>
+ * <li>ticksSinceLoad BE（重）实例化起累计的服务端 tick——加载宽限期判据
+ * （{@link CdgOverloadMath#LOAD_GRACE_TICKS}），不在 codec 内，读档自动归零</li>
  * </ul>
  */
 public class CdgEngineState {
@@ -37,8 +40,13 @@ public class CdgEngineState {
     public boolean fuseActive;
     /** B6 引信剩余 tick（120 起，到 0 自毁）。 */
     public int fuseTicksLeft;
-    /** B6 疑似过载连续计数（运转中过载每 tick +1，任一正常 tick 清零；持久化保证存档/卸载不断确认进度）。 */
+    /**
+     * B6 疑似过载连续计数（运转中过载每 tick +1，任一正常 tick 清零）。
+     * 不序列化：确认进度不跨存档/区块重载携带。
+     */
     public int overloadTicks;
+    /** BE（重）实例化起累计的服务端 tick；不在 codec 内，重载自动归零。 */
+    public int ticksSinceLoad;
 
     public static final Codec<CdgEngineState> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Codec.INT.fieldOf("rampTicks").forGetter(s -> s.rampTicks),
@@ -48,12 +56,11 @@ public class CdgEngineState {
             Codec.FLOAT.fieldOf("fluctFactor").forGetter(s -> s.fluctFactor),
             Codec.INT.fieldOf("fluctTicksLeft").forGetter(s -> s.fluctTicksLeft),
             Codec.BOOL.optionalFieldOf("fuseActive", false).forGetter(s -> s.fuseActive),
-            Codec.INT.optionalFieldOf("fuseTicksLeft", 0).forGetter(s -> s.fuseTicksLeft),
-            Codec.INT.optionalFieldOf("overloadTicks", 0).forGetter(s -> s.overloadTicks))
+            Codec.INT.optionalFieldOf("fuseTicksLeft", 0).forGetter(s -> s.fuseTicksLeft))
             .apply(instance, CdgEngineState::new));
 
     public CdgEngineState(int rampTicks, boolean overloadLatched, boolean fuelPresent, int lastFuelAmount,
-            float fluctFactor, int fluctTicksLeft, boolean fuseActive, int fuseTicksLeft, int overloadTicks) {
+            float fluctFactor, int fluctTicksLeft, boolean fuseActive, int fuseTicksLeft) {
         this.rampTicks = rampTicks;
         this.overloadLatched = overloadLatched;
         this.fuelPresent = fuelPresent;
@@ -62,7 +69,6 @@ public class CdgEngineState {
         this.fluctTicksLeft = fluctTicksLeft;
         this.fuseActive = fuseActive;
         this.fuseTicksLeft = fuseTicksLeft;
-        this.overloadTicks = overloadTicks;
     }
 
     public CdgEngineState() {
