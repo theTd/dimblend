@@ -142,9 +142,8 @@ public final class RadioState {
         }
         long length = RadioCatalog.lengthTicks(entry.station(), entry.trackHash());
         DimBlendRadio.LOGGER.info(
-                "[radio] schedule reason={} pos={} station={} hash={} startTick={} length={}t due={} now={}",
-                reason, pos, entry.station(),
-                entry.trackHash().substring(0, Math.min(8, entry.trackHash().length())),
+                "[radio] schedule reason={} pos={} station={} hash={} nonce={} startTick={} length={}t due={} now={}",
+                reason, pos, entry.station(), RadioCatalog.shortHash(entry.trackHash()), entry.nonce(),
                 entry.startTick(), length, entry.startTick() + length + GAP_TICKS, level.getGameTime());
     }
 

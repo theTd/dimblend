@@ -64,7 +64,7 @@ public final class RadioCatalog {
         return stationMap != null && !stationMap.isEmpty();
     }
 
-    /** C2S hello 并集：只增不减，时长取 max。 */
+    /** C2S hello 并集：只增不减，时长取 max（已有 hash 时长被抬高时记一行，高估毒化可追溯）。 */
     public synchronized static void mergeHello(Map<Integer, Map<String, Double>> stations) {
         int added = 0;
         for (var stationEntry : stations.entrySet()) {
@@ -73,8 +73,13 @@ public final class RadioCatalog {
                 Double prev = map.get(track.getKey());
                 if (prev == null) {
                     added++;
+                    map.put(track.getKey(), track.getValue());
+                } else if (track.getValue() > prev) {
+                    DimBlendRadio.LOGGER.info(
+                            "[radio] catalog length raised by hello: station={} hash={} {}s -> {}s",
+                            stationEntry.getKey(), shortHash(track.getKey()), prev, track.getValue());
+                    map.put(track.getKey(), track.getValue());
                 }
-                map.merge(track.getKey(), track.getValue(), Math::max);
             }
         }
         if (added > 0) {
@@ -153,7 +158,8 @@ public final class RadioCatalog {
         return pick;
     }
 
-    private static String shortHash(String hash) {
+    /** 包可见：RadioState.logSchedule 复用，跨端日志统一 8 位前缀。 */
+    static String shortHash(String hash) {
         if (hash == null) {
             return "null";
         }

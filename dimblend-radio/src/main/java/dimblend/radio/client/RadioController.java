@@ -146,8 +146,8 @@ public final class RadioController {
                             && matches(live.playback(), state)) {
                         // 本地播完且服务端仍指当前曲：进入静默等待，下一首起播见 [radio] playing
                         DimBlendRadio.LOGGER.info(
-                                "[radio] local finished, waiting for server advance: pos={} hash={}",
-                                key.pos(), shortHash(state.trackHash()));
+                                "[radio] local finished, waiting for server advance: pos={} hash={} nonce={} startTick={}",
+                                key.pos(), shortHash(state.trackHash()), state.nonce(), state.startTick());
                     }
                 }
                 mc.getSoundManager().stop(live.instance());
@@ -300,8 +300,8 @@ public final class RadioController {
                         throw e;
                     }
                     LIVE.put(key, new Live(instance, local, feed, gain, pcm.boost()));
-                    DimBlendRadio.LOGGER.info("[radio] playing station={} pos={} hash={} offset={} duration={}",
-                            current.station(), key.pos(), shortHash(state.trackHash()), offset, local.duration());
+                    DimBlendRadio.LOGGER.info("[radio] playing station={} pos={} hash={} nonce={} startTick={} offset={} duration={}",
+                            current.station(), key.pos(), shortHash(state.trackHash()), state.nonce(), state.startTick(), offset, local.duration());
                     if (first) {
                         announceTrack(mc, current.station(), state.trackHash());
                     }
@@ -351,7 +351,7 @@ public final class RadioController {
     }
 
     private static String shortHash(String hash) {
-        return hash.length() <= 12 ? hash : hash.substring(0, 12);
+        return hash.length() <= 8 ? hash : hash.substring(0, 8);
     }
 
     private static void stopAll() {
