@@ -14,7 +14,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
  * 手持物品右键车架（GAME 总线，两端都触发）：
  * <ul>
  * <li>水桶 / 湿海绵：清洗一次</li>
- * <li>泥土：脏值 +16</li>
+ * <li>泥土：脏值 +32</li>
  * </ul>
  * 两端都取消事件，挡住倒水、放方块与伪装方块贴材质；实际改值只在服务端。
  */

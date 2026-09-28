@@ -74,26 +74,30 @@ public class ChassisGrimeBehaviour extends BlockEntityBehaviour {
     }
 
     /**
-     * 服务端：改变脏值（夹在 0–511）。外观档位变化时重掷贴图变体（新的随机镂空替换旧图）并同步客户端；
-     * 档位不变只标记存盘。
+     * 服务端：改变脏值（夹在 0–511）。外观档位变化时重掷整个贴图变体字节（泥图+碎石图一起换）；
+     * 档位不变但碎石激活期间弄脏时只重掷高 4 位（换碎石图，泥图保持档位内的那张）。
+     * 可见快照变化时经 Create 的 {@code sendData} 同步客户端，客户端收到后重建网格；其余情况只标记存盘。
      */
     public void changeDirt(int delta, RandomSource random) {
         int next = ChassisGrimeRules.clampDirt(dirt + delta);
         if (next == dirt) {
             return;
         }
-        boolean levelChanged = ChassisGrimeRules.dirtLevel(next) != ChassisGrimeRules.dirtLevel(dirt);
-        dirt = next;
-        if (levelChanged) {
+        if (ChassisGrimeRules.dirtLevel(next) != ChassisGrimeRules.dirtLevel(dirt)) {
             variant = random.nextInt(256);
-            visual = ChassisGrimeVisual.of(dirt, variant);
+        } else if (delta > 0 && ChassisGrimeRules.hasGravel(next)) {
+            // 只换碎石图：泥图随档位走，不随每次弄脏闪变
+            variant = (variant & 0x0F) | (random.nextInt(16) << 4);
         }
+        dirt = next;
+        ChassisGrimeVisual previous = visual;
+        visual = ChassisGrimeVisual.of(dirt, variant);
         // 只标区块待存盘：脏值不影响比较器输出，不走 setChanged 的邻居通知
         Level level = blockEntity.getLevel();
         if (level != null) {
             level.blockEntityChanged(blockEntity.getBlockPos());
         }
-        if (levelChanged) {
+        if (!previous.equals(visual)) {
             blockEntity.sendData();
         }
     }

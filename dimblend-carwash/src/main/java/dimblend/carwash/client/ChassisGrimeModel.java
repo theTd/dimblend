@@ -48,8 +48,11 @@ public class ChassisGrimeModel extends BakedModelWrapper<BakedModel> {
             return data;
         }
         BlockPos above = pos.above();
-        boolean aboveSolid = level.getBlockState(above).isSolidRender(level, above);
-        return data.derive().with(GRIME, new ChassisGrimeRenderData(visual, aboveSolid)).build();
+        BlockState aboveState = level.getBlockState(above);
+        ChassisGrimeRenderData.Above aboveKind = aboveState.isAir() ? ChassisGrimeRenderData.Above.AIR
+                : aboveState.isSolidRender(level, above) ? ChassisGrimeRenderData.Above.OPAQUE
+                : ChassisGrimeRenderData.Above.OTHER;
+        return data.derive().with(GRIME, new ChassisGrimeRenderData(visual, aboveKind)).build();
     }
 
     @Override
@@ -79,7 +82,7 @@ public class ChassisGrimeModel extends BakedModelWrapper<BakedModel> {
         // 按同一个 side 取，剔除行为与底层一致
         ChassisGrimeQuads.addDirt(quads, originalModel.getQuads(state, side, rand, extraData, null), grime.visual(), sprites);
         if (side == null) {
-            ChassisGrimeQuads.addGravel(quads, grime.visual(), grime.aboveSolid(), sprites);
+            ChassisGrimeQuads.addGravel(quads, grime.visual(), grime.above(), sprites);
         }
         return quads;
     }

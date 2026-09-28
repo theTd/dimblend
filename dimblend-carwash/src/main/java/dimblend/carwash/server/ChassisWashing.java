@@ -7,6 +7,8 @@ import dimblend.carwash.chassis.ChassisGrimeRules;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import org.jetbrains.annotations.Nullable;
 
@@ -15,6 +17,7 @@ import java.util.List;
 
 /**
  * 服务端清洗/弄脏操作，右键与喷淋批次共用。
+ * 清洗（脏值 -32）生效时以被洗砖块为中心播放 {@code minecraft:entity.slime.jump}（pitch 0.5）。
  */
 public final class ChassisWashing {
 
@@ -25,21 +28,27 @@ public final class ChassisWashing {
         ChassisGrimeBehaviour self = chassisAt(level, pos, false);
         if (self != null && self.dirt() > 0) {
             self.changeDirt(-ChassisGrimeRules.WASH_AMOUNT, level.getRandom());
+            playWashSound(level, pos);
             return;
         }
         if (!ChassisBlocks.isChassis(level.getBlockState(pos))) {
             return;
         }
-        List<ChassisGrimeBehaviour> dirtyNeighbours = new ArrayList<>(6);
+        List<BlockPos> dirtyNeighbours = new ArrayList<>(6);
         for (Direction direction : Direction.values()) {
-            ChassisGrimeBehaviour neighbour = chassisAt(level, pos.relative(direction), false);
+            BlockPos neighbourPos = pos.relative(direction);
+            ChassisGrimeBehaviour neighbour = chassisAt(level, neighbourPos, false);
             if (neighbour != null && neighbour.dirt() > 0) {
-                dirtyNeighbours.add(neighbour);
+                dirtyNeighbours.add(neighbourPos);
             }
         }
         if (!dirtyNeighbours.isEmpty()) {
-            dirtyNeighbours.get(level.getRandom().nextInt(dirtyNeighbours.size()))
-                    .changeDirt(-ChassisGrimeRules.WASH_AMOUNT, level.getRandom());
+            BlockPos picked = dirtyNeighbours.get(level.getRandom().nextInt(dirtyNeighbours.size()));
+            ChassisGrimeBehaviour neighbour = chassisAt(level, picked, false);
+            if (neighbour != null) {
+                neighbour.changeDirt(-ChassisGrimeRules.WASH_AMOUNT, level.getRandom());
+                playWashSound(level, picked);
+            }
         }
     }
 
@@ -49,6 +58,11 @@ public final class ChassisWashing {
         if (self != null) {
             self.changeDirt(ChassisGrimeRules.SOIL_AMOUNT, level.getRandom());
         }
+    }
+
+    /** 清洗生效音效：史莱姆跳跃，音高 0.5，方块中心，广播给附近玩家。 */
+    private static void playWashSound(ServerLevel level, BlockPos pos) {
+        level.playSound(null, pos, SoundEvents.SLIME_JUMP, SoundSource.BLOCKS, 1.0F, 0.5F);
     }
 
     /**

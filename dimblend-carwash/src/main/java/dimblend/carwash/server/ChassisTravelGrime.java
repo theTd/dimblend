@@ -21,8 +21,8 @@ import java.util.ArrayList;
  * 行驶积灰与雨水清洗（GAME 总线，服务端关卡 tick 后，每秒结算一次）。
  * 车厢 = Sable 子关卡，车架 BE 都在其 plot 区块里。每块车架每秒只改一次值：
  * <ul>
- * <li>车厢速度 &gt; 4 m/s：以 速度/12 的概率 +1</li>
- * <li>下雨（不看遮挡）：-5（511 约 102 秒降到 0）</li>
+ * <li>车厢速度 &gt; 4 m/s：以 (速度/12)×0.5（封顶 100%，24 m/s 满概率）的概率 +1</li>
+ * <li>下雨（不看遮挡）：50% 概率 −1，脏值降至 64 后雨不再洗</li>
  * </ul>
  * 同一刻集中结算，换图同步在客户端合并为每区段每秒至多一次网格重建。
  */
@@ -62,17 +62,19 @@ public final class ChassisTravelGrime {
                 if (!(be instanceof SmartBlockEntity smart) || !ChassisBlocks.isChassis(be.getBlockState())) {
                     continue;
                 }
-                int delta = raining ? -ChassisGrimeRules.RAIN_WASH_PER_SECOND : 0;
+                int delta = 0;
+                ChassisGrimeBehaviour grime = smart.getBehaviour(ChassisGrimeBehaviour.TYPE);
+                if (raining && grime != null && grime.dirt() > ChassisGrimeRules.RAIN_WASH_FLOOR
+                        && random.nextDouble() < ChassisGrimeRules.RAIN_WASH_CHANCE) {
+                    delta -= ChassisGrimeRules.RAIN_WASH_AMOUNT;
+                }
                 if (soilingChance > 0.0 && random.nextDouble() < soilingChance) {
                     delta += 1;
                 }
                 if (delta > 0) {
                     ChassisGrimeBehaviour.obtain(smart).changeDirt(delta, random);
-                } else if (delta < 0) {
-                    ChassisGrimeBehaviour grime = smart.getBehaviour(ChassisGrimeBehaviour.TYPE);
-                    if (grime != null) {
-                        grime.changeDirt(delta, random);
-                    }
+                } else if (delta < 0 && grime != null) {
+                    grime.changeDirt(delta, random);
                 }
             }
         }

@@ -50,8 +50,8 @@ class GrimeMaskTest {
         // 256 × 0.9 = 230.4 → 去 230 留 26；256 × 0.2 = 51.2 → 去 51 留 205
         assertEquals(26, kept(GrimeMask.apply(opaque(16), 16, 16, 5L, 0.9, GrimeMask.Clear.NONE), 0, 16, 16));
         assertEquals(205, kept(GrimeMask.apply(opaque(16), 16, 16, 5L, 0.2, GrimeMask.Clear.NONE), 0, 16, 16));
-        // 碎石 50%
-        assertEquals(128, kept(GrimeMask.apply(opaque(16), 16, 16, 5L, 0.5, GrimeMask.Clear.NONE), 0, 16, 16));
+        // 碎石 80%
+        assertEquals(51, kept(GrimeMask.apply(opaque(16), 16, 16, 5L, 0.8, GrimeMask.Clear.NONE), 0, 16, 16));
     }
 
     @Test

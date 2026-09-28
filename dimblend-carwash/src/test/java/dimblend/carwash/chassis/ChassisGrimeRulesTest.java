@@ -26,27 +26,31 @@ class ChassisGrimeRulesTest {
     }
 
     @Test
-    void gravelOnlyForMultiplesAbove256() {
-        // 256 本身不大于 256：不贴碎石；320/384/448 贴
-        assertFalse(ChassisGrimeRules.hasGravel(ChassisGrimeRules.dirtLevel(256)));
-        assertFalse(ChassisGrimeRules.hasGravel(ChassisGrimeRules.dirtLevel(319)));
-        assertTrue(ChassisGrimeRules.hasGravel(ChassisGrimeRules.dirtLevel(320)));
-        assertTrue(ChassisGrimeRules.hasGravel(ChassisGrimeRules.dirtLevel(511)));
+    void gravelOnlyWhenDirtAbove256() {
+        // 256 本身不大于 256：不贴碎石；257 起贴
+        assertFalse(ChassisGrimeRules.hasGravel(256));
+        assertTrue(ChassisGrimeRules.hasGravel(257));
+        assertTrue(ChassisGrimeRules.hasGravel(511));
     }
 
     @Test
     void soilingChanceNeedsMoreThan4MetresPerSecond() {
         assertEquals(0.0, ChassisGrimeRules.soilingChance(4.0));
         assertEquals(0.0, ChassisGrimeRules.soilingChance(Double.NaN));
-        assertEquals(0.5, ChassisGrimeRules.soilingChance(6.0), 1e-9);
-        assertEquals(1.0, ChassisGrimeRules.soilingChance(12.0), 1e-9);
+        // 概率 = (速度/12) × 0.5，24 m/s 封顶 100%
+        assertEquals(0.25, ChassisGrimeRules.soilingChance(6.0), 1e-9);
+        assertEquals(0.5, ChassisGrimeRules.soilingChance(12.0), 1e-9);
+        assertEquals(1.0, ChassisGrimeRules.soilingChance(24.0), 1e-9);
         assertEquals(1.0, ChassisGrimeRules.soilingChance(30.0), 1e-9);
     }
 
     @Test
-    void rainCleansFullDirtWithinTwoMinutes() {
-        int seconds = (int) Math.ceil((double) ChassisGrimeRules.MAX_DIRT / ChassisGrimeRules.RAIN_WASH_PER_SECOND);
-        assertTrue(seconds <= 120, "rain needs " + seconds + " s");
+    void rainWashesDownToFloor64() {
+        // 每秒 50% 概率 −1，降到 64 停止；期望耗时 (511−64)/0.5 = 894 秒
+        assertEquals(1, ChassisGrimeRules.RAIN_WASH_AMOUNT);
+        assertEquals(0.5, ChassisGrimeRules.RAIN_WASH_CHANCE, 1e-9);
+        assertEquals(64, ChassisGrimeRules.RAIN_WASH_FLOOR);
+        assertTrue(ChassisGrimeRules.RAIN_WASH_FLOOR < ChassisGrimeRules.MAX_DIRT);
     }
 
     @Test
@@ -56,6 +60,9 @@ class ChassisGrimeRulesTest {
         assertEquals(0x0B, visual.dirtVariant());
         assertEquals(0x0A, visual.gravelVariant());
         assertTrue(visual.hasGravel());
+        // 碎石边界：脏值 256 不贴，257 起贴（同在第 4 档内翻转）
+        assertFalse(ChassisGrimeVisual.of(256, 0xAB).hasGravel());
+        assertTrue(ChassisGrimeVisual.of(257, 0xAB).hasGravel());
     }
 
     @Test

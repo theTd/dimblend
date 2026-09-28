@@ -25,8 +25,8 @@
       "texture": "minecraft:block/gravel",
       "prefix": "dimblend_carwash:block/grime/gravel_full_",
       "levels": 1,
-      "remove_from": 0.5,
-      "remove_to": 0.5,
+      "remove_from": 0.8,
+      "remove_to": 0.8,
       "variants": 16,
       "clear": "none"
     },
@@ -35,8 +35,8 @@
       "texture": "minecraft:block/gravel",
       "prefix": "dimblend_carwash:block/grime/gravel_lower_",
       "levels": 1,
-      "remove_from": 0.5,
-      "remove_to": 0.5,
+      "remove_from": 0.8,
+      "remove_to": 0.8,
       "variants": 16,
       "clear": "upper_half"
     }

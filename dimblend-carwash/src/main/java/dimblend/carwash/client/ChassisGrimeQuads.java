@@ -19,6 +19,9 @@ final class ChassisGrimeQuads {
 
     private static final Direction[] SIDES = {Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST};
 
+    /** y+1 碎石贴面沿法线的外移量：与上方方块自身的面错开深度，避免 z-fighting。 */
+    private static final float SURFACE_OFFSET = 0.002F;
+
     /**
      * 车架本体的泥：原模型每个面复制一份（位置与顶点顺序不变，避免与底层材质 z-fighting），
      * 只换贴图与 UV。顶/底面用整张，四个侧面用去下半的贴图。
@@ -35,21 +38,23 @@ final class ChassisGrimeQuads {
     }
 
     /**
-     * 上方一格（y+1）的碎石：上方为实心不透明方块时贴其四个侧面与顶面（整张），
-     * 否则贴该格的四个侧面（去上半）。
+     * 上方一格（y+1）的碎石：上方为空气时不贴；为非透明实心方块时贴其四个侧面与顶面（整张），
+     * 其余情况贴该格的四个侧面（去上半）。贴面沿法线微微外移（{@link #SURFACE_OFFSET}），
+     * 不与该格方块自身的面叠在同一平面，避免 z-fighting。
      */
-    static void addGravel(List<BakedQuad> out, ChassisGrimeVisual visual, boolean aboveSolid,
+    static void addGravel(List<BakedQuad> out, ChassisGrimeVisual visual, ChassisGrimeRenderData.Above above,
             ChassisGrimeSprites.Resolved sprites) {
-        if (!visual.hasGravel()) {
+        if (!visual.hasGravel() || above == ChassisGrimeRenderData.Above.AIR) {
             return;
         }
+        boolean opaque = above == ChassisGrimeRenderData.Above.OPAQUE;
         int variant = visual.gravelVariant();
-        TextureAtlasSprite[] sideSet = aboveSolid ? sprites.gravelFull() : sprites.gravelLower();
+        TextureAtlasSprite[] sideSet = opaque ? sprites.gravelFull() : sprites.gravelLower();
         QuadBakingVertexConsumer baker = new QuadBakingVertexConsumer();
         for (Direction side : SIDES) {
             out.add(bakeAboveFace(baker, side, sideSet[spriteIndex(variant, side)]));
         }
-        if (aboveSolid) {
+        if (opaque) {
             out.add(bakeAboveFace(baker, Direction.UP, sprites.gravelFull()[spriteIndex(variant, Direction.UP)]));
         }
     }
@@ -75,7 +80,10 @@ final class ChassisGrimeQuads {
         return new BakedQuad(vertices, -1, face, sprite, quad.isShade(), quad.hasAmbientOcclusion());
     }
 
-    /** 上方一格的整面，顶点顺序同原版 FaceBakery（与该格方块自身的面重合时不打架）。 */
+    /**
+     * 上方一格的整面，顶点顺序同原版 FaceBakery；UV 由未偏移的方块内坐标投影，
+     * 顶点再沿面法线外移 {@link #SURFACE_OFFSET}，与该格方块自身的面错开避免 z-fighting。
+     */
     private static BakedQuad bakeAboveFace(QuadBakingVertexConsumer baker, Direction face, TextureAtlasSprite sprite) {
         float[] bounds = new float[6];
         bounds[FaceInfo.Constants.MIN_X] = 0.0F;
@@ -95,7 +103,9 @@ final class ChassisGrimeQuads {
             float x = bounds[info.xFace];
             float y = bounds[info.yFace];
             float z = bounds[info.zFace];
-            baker.addVertex(x, y, z)
+            baker.addVertex(x + face.getStepX() * SURFACE_OFFSET,
+                            y + face.getStepY() * SURFACE_OFFSET,
+                            z + face.getStepZ() * SURFACE_OFFSET)
                     .setColor(-1)
                     .setUv(sprite.getU(projectU(face, x, z)), sprite.getV(projectV(face, y - 1.0F, z)))
                     .setUv2(0, 0)
