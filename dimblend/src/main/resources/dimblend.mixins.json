@@ -22,7 +22,7 @@
     "DecorationClearanceMixin",
     "DistanceManagerAccessor",
     "ChunkGeneratorAccessor",
-    "ChunkMapAccessor",
+    "ChunkGeneratorDecorationMixin",
     "EntityStorageAccessor",
     "IOWorkerAccessor",
     "PersistentEntitySectionManagerAccessor",
