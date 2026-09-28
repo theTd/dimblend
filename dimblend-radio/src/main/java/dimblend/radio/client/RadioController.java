@@ -142,6 +142,13 @@ public final class RadioController {
                 // Read-ahead alone is NOT completion. The channel must have ended too.
                 if (!active) {
                     live.playback().channelEnded(live.feed().exhausted());
+                    if (live.feed().exhausted() && live.playback().finished(System.nanoTime())
+                            && matches(live.playback(), state)) {
+                        // 本地播完且服务端仍指当前曲：进入静默等待，下一首起播见 [radio] playing
+                        DimBlendRadio.LOGGER.info(
+                                "[radio] local finished, waiting for server advance: pos={} hash={}",
+                                key.pos(), shortHash(state.trackHash()));
+                    }
                 }
                 mc.getSoundManager().stop(live.instance());
                 live.feed().release();

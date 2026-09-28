@@ -6,6 +6,7 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
@@ -24,6 +25,8 @@ import net.neoforged.fml.loading.FMLPaths;
  */
 public final class RadioCatalog {
     private static final Map<Integer, Map<String, Double>> LENGTHS = new HashMap<>();
+    /** 已记过 180s 兜底日志的 station:hash（只记一次，防轮询刷屏）。 */
+    private static final java.util.Set<String> FALLBACK_LOGGED = new HashSet<>();
     private static volatile boolean serverScanned;
 
     public synchronized static void put(int station, Map<String, Double> hashToSeconds) {
@@ -37,6 +40,12 @@ public final class RadioCatalog {
             seconds = stationMap.get(hash);
         }
         if (seconds == null || seconds <= 0) {
+            // 兜底 180s 是“曲终后很久不切歌”的头号嫌疑：每个 station:hash 记一次
+            if (FALLBACK_LOGGED.add(station + ":" + hash)) {
+                DimBlendRadio.LOGGER.warn(
+                        "[radio] track length unknown, fallback 180s: station={} hash={} scanned={}",
+                        station, shortHash(hash), seconds != null);
+            }
             seconds = 180.0;
         }
         return (long) Math.ceil(seconds * 20.0);
@@ -142,6 +151,13 @@ public final class RadioCatalog {
             pick = hashes.get((hashes.indexOf(pick) + 1) % hashes.size());
         }
         return pick;
+    }
+
+    private static String shortHash(String hash) {
+        if (hash == null) {
+            return "null";
+        }
+        return hash.substring(0, Math.min(8, hash.length()));
     }
 
     private static String sha256(byte[] bytes) throws Exception {

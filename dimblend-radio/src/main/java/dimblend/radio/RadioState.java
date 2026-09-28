@@ -79,7 +79,9 @@ public final class RadioState {
                         ? prev.trackHash()
                         : trackPicker.pickNext(top, prev == null ? null : prev.trackHash());
         int nonce = prev == null ? 0 : prev.nonce() + 1;
-        STATES.put(key, new Entry(top, side, track, now, nonce, true));
+        Entry next = new Entry(top, side, track, now, nonce, true);
+        STATES.put(key, next);
+        logSchedule("recompute", level, pos, next);
         RadioEvents.changed(level, pos);
     }
 
@@ -91,7 +93,9 @@ public final class RadioState {
             return;
         }
         String next = trackPicker.pickNext(prev.station(), prev.trackHash());
-        STATES.put(key, new Entry(prev.station(), prev.side(), next, level.getGameTime(), prev.nonce() + 1, true));
+        Entry entry = new Entry(prev.station(), prev.side(), next, level.getGameTime(), prev.nonce() + 1, true);
+        STATES.put(key, entry);
+        logSchedule("advance", level, pos, entry);
         RadioEvents.changed(level, pos);
     }
 
@@ -102,7 +106,9 @@ public final class RadioState {
         Entry prev = STATES.get(key);
         String next = trackPicker.pickNext(station, null);
         int nonce = prev == null ? 0 : prev.nonce() + 1;
-        STATES.put(key, new Entry(station, side, next, level.getGameTime(), nonce, true));
+        Entry entry = new Entry(station, side, next, level.getGameTime(), nonce, true);
+        STATES.put(key, entry);
+        logSchedule("advanceNow", level, pos, entry);
         RadioEvents.changed(level, pos);
     }
 
@@ -124,6 +130,22 @@ public final class RadioState {
             STATES.put(key, new Entry(prev.station(), side, prev.trackHash(), prev.startTick(), prev.nonce(), true));
         }
         RadioEvents.changed(level, pos);
+    }
+
+    /**
+     * 诊断日志：每次定曲打一行计划（曲长、预计切歌 tick）。due 与下一条 schedule 的 now
+     * 对比即得“曲终后多久才切”：超出部分 = GAP + 100 tick 轮询 + 时长高估。
+     */
+    private static void logSchedule(String reason, ServerLevel level, BlockPos pos, Entry entry) {
+        if (entry.trackHash() == null) {
+            return;
+        }
+        long length = RadioCatalog.lengthTicks(entry.station(), entry.trackHash());
+        DimBlendRadio.LOGGER.info(
+                "[radio] schedule reason={} pos={} station={} hash={} startTick={} length={}t due={} now={}",
+                reason, pos, entry.station(),
+                entry.trackHash().substring(0, Math.min(8, entry.trackHash().length())),
+                entry.startTick(), length, entry.startTick() + length + GAP_TICKS, level.getGameTime());
     }
 
     public interface TrackPicker {
