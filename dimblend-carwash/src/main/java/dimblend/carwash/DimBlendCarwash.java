@@ -7,6 +7,7 @@ import com.mojang.logging.LogUtils;
 import dimblend.carwash.chassis.ChassisBehaviourBinding;
 import dimblend.carwash.compat.firefighting.NozzleSprayWashing;
 import dimblend.carwash.server.ChassisHandInteractions;
+import dimblend.carwash.server.ChassisSprayWashQueue;
 import dimblend.carwash.server.ChassisTravelGrime;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.IEventBus;
@@ -30,9 +31,10 @@ public class DimBlendCarwash {
         NeoForge.EVENT_BUS.register(ChassisBehaviourBinding.class);
         NeoForge.EVENT_BUS.register(ChassisTravelGrime.class);
         NeoForge.EVENT_BUS.register(ChassisHandInteractions.class);
-        // NozzleSprayWashing 实现喷淋 mod 的接口，只能在其在场时触达
+        // NozzleSprayWashing 实现喷淋 mod 的接口，只能在其在场时触达；批处理队列随之启用
         if (ModList.get().isLoaded(FIREFIGHTING_MODID)) {
             NozzleSprayWashing.register();
+            NeoForge.EVENT_BUS.register(ChassisSprayWashQueue.class);
         }
     }
 

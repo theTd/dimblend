@@ -14,7 +14,7 @@ import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * 车架脏值，挂在伪装方块 BE（Create {@link SmartBlockEntity}）上的行为：
- * 随 BE 存盘，经 Create 的 {@code sendData} 同步客户端，客户端收到后重建网格。
+ * 随 BE 存盘，外观档位变化时经 Create 的 {@code sendData} 同步客户端，客户端收到后重建网格。
  *
  * <p>伪装方块的 BE 不 tick（Create {@code CopycatBlock#getTicker} 返回 null），行为只在
  * 首次读 NBT 时由 {@link ChassisBehaviourBinding} 挂上；从未读过 NBT 的新 BE 由
@@ -25,14 +25,11 @@ public class ChassisGrimeBehaviour extends BlockEntityBehaviour {
     public static final BehaviourType<ChassisGrimeBehaviour> TYPE = new BehaviourType<>("dimblend_carwash_grime");
 
     private static final String DIRT_KEY = "DimBlendCarwashDirt";
-    private static final String VARIANTS_KEY = "DimBlendCarwashLayerVariants";
+    private static final String VARIANT_KEY = "DimBlendCarwashVariant";
 
     private int dirt;
-    private long layerVariants;
-    /** 服务端瞬态：上次喷淋清洗生效的游戏刻（不存盘）。 */
-    private long lastSprayWashTick;
-    private boolean sprayWashed;
-    /** 渲染线程读取的不可变快照。 */
+    private int variant;
+    /** 网格构建线程读取的不可变快照。 */
     private volatile ChassisGrimeVisual visual = ChassisGrimeVisual.CLEAN;
 
     public ChassisGrimeBehaviour(SmartBlockEntity be) {
@@ -77,50 +74,44 @@ public class ChassisGrimeBehaviour extends BlockEntityBehaviour {
     }
 
     /**
-     * 服务端：改变脏值（夹在 0–255）。新达到的 32 倍数层重掷随机图案；贴图层数变化时同步客户端。
+     * 服务端：改变脏值（夹在 0–511）。外观档位变化时重掷贴图变体（新的随机镂空替换旧图）并同步客户端；
+     * 档位不变只标记存盘。
      */
     public void changeDirt(int delta, RandomSource random) {
         int next = ChassisGrimeRules.clampDirt(dirt + delta);
         if (next == dirt) {
             return;
         }
-        int oldLayers = ChassisGrimeRules.dirtLayers(dirt);
-        int newLayers = ChassisGrimeRules.dirtLayers(next);
-        for (int layer = oldLayers + 1; layer <= newLayers; layer++) {
-            layerVariants = ChassisGrimeRules.withLayerVariant(layerVariants, layer, random.nextInt(256));
-        }
+        boolean levelChanged = ChassisGrimeRules.dirtLevel(next) != ChassisGrimeRules.dirtLevel(dirt);
         dirt = next;
-        blockEntity.setChanged();
-        if (newLayers != oldLayers) {
-            visual = ChassisGrimeVisual.of(dirt, layerVariants);
+        if (levelChanged) {
+            variant = random.nextInt(256);
+            visual = ChassisGrimeVisual.of(dirt, variant);
+        }
+        // 只标区块待存盘：脏值不影响比较器输出，不走 setChanged 的邻居通知
+        Level level = blockEntity.getLevel();
+        if (level != null) {
+            level.blockEntityChanged(blockEntity.getBlockPos());
+        }
+        if (levelChanged) {
             blockEntity.sendData();
         }
-    }
-
-    /** 服务端：喷淋冷却判定，通过则记下本刻。 */
-    public boolean tryStartSprayWash(long gameTime) {
-        if (sprayWashed && gameTime - lastSprayWashTick < ChassisGrimeRules.SPRAY_WASH_COOLDOWN_TICKS) {
-            return false;
-        }
-        sprayWashed = true;
-        lastSprayWashTick = gameTime;
-        return true;
     }
 
     @Override
     public void write(CompoundTag nbt, HolderLookup.Provider registries, boolean clientPacket) {
         if (dirt > 0) {
             nbt.putInt(DIRT_KEY, dirt);
-            nbt.putLong(VARIANTS_KEY, layerVariants);
+            nbt.putInt(VARIANT_KEY, variant);
         }
     }
 
     @Override
     public void read(CompoundTag nbt, HolderLookup.Provider registries, boolean clientPacket) {
         dirt = ChassisGrimeRules.clampDirt(nbt.getInt(DIRT_KEY));
-        layerVariants = nbt.getLong(VARIANTS_KEY);
+        variant = nbt.getInt(VARIANT_KEY) & 0xFF;
         ChassisGrimeVisual previous = visual;
-        visual = ChassisGrimeVisual.of(dirt, layerVariants);
+        visual = ChassisGrimeVisual.of(dirt, variant);
         if (clientPacket && !previous.equals(visual)) {
             redraw();
         }

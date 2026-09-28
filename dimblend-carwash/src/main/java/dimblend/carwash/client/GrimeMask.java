@@ -51,6 +51,18 @@ public final class GrimeMask {
         return out;
     }
 
+    /**
+     * 分档镂空比例：第 1 档为 {@code from}，第 {@code levels} 档为 {@code to}，中间线性。
+     *
+     * @param level 1..levels
+     */
+    public static double ladderFraction(double from, double to, int level, int levels) {
+        if (levels <= 1) {
+            return from;
+        }
+        return from + (to - from) * (level - 1) / (levels - 1);
+    }
+
     private static void clearRows(int[] pixels, int width, int fromRow, int toRow) {
         for (int y = fromRow; y < toRow; y++) {
             for (int x = 0; x < width; x++) {

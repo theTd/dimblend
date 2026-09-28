@@ -14,20 +14,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 服务端清洗/弄脏操作，右键与喷淋共用。
+ * 服务端清洗/弄脏操作，右键与喷淋批次共用。
  */
 public final class ChassisWashing {
 
     /**
-     * 清洗一次：本块脏值非 0 则减 16；为 0 则任选一个脏值非 0 的相邻车架减 16。
+     * 清洗一次：本块脏值非 0 则减 32；为 0 则任选一个脏值非 0 的相邻车架减 32。
      */
     public static void washOnce(ServerLevel level, BlockPos pos) {
-        ChassisGrimeBehaviour self = chassisAt(level, pos, true);
-        if (self == null) {
+        ChassisGrimeBehaviour self = chassisAt(level, pos, false);
+        if (self != null && self.dirt() > 0) {
+            self.changeDirt(-ChassisGrimeRules.WASH_AMOUNT, level.getRandom());
             return;
         }
-        if (self.dirt() > 0) {
-            self.changeDirt(-ChassisGrimeRules.WASH_AMOUNT, level.getRandom());
+        if (!ChassisBlocks.isChassis(level.getBlockState(pos))) {
             return;
         }
         List<ChassisGrimeBehaviour> dirtyNeighbours = new ArrayList<>(6);
@@ -43,15 +43,7 @@ public final class ChassisWashing {
         }
     }
 
-    /** 喷淋命中：按被命中方块计 0.25 秒冷却，冷却外视同一次清洗。 */
-    public static void sprayWash(ServerLevel level, BlockPos pos) {
-        ChassisGrimeBehaviour self = chassisAt(level, pos, true);
-        if (self != null && self.tryStartSprayWash(level.getGameTime())) {
-            washOnce(level, pos);
-        }
-    }
-
-    /** 手持泥土右键：本块脏值加 16。 */
+    /** 手持泥土右键：本块脏值加 32。 */
     public static void soil(ServerLevel level, BlockPos pos) {
         ChassisGrimeBehaviour self = chassisAt(level, pos, true);
         if (self != null) {

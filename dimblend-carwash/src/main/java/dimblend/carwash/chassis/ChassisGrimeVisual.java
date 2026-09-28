@@ -1,33 +1,30 @@
 package dimblend.carwash.chassis;
 
 /**
- * 车架脏污的可见快照：泥层数、碎石层数与已贴各层的变体。不可变，客户端渲染线程可直接读。
+ * 车架脏污的可见快照：外观档位与本档掷出的贴图变体。不可变，客户端网格构建线程可直接读。
  */
-public record ChassisGrimeVisual(int dirtLayers, int gravelLayers, long layerVariants) {
+public record ChassisGrimeVisual(int level, int variant) {
 
-    public static final ChassisGrimeVisual CLEAN = new ChassisGrimeVisual(0, 0, 0L);
+    public static final ChassisGrimeVisual CLEAN = new ChassisGrimeVisual(0, 0);
 
-    public static ChassisGrimeVisual of(int dirt, long layerVariants) {
-        int dirtLayers = ChassisGrimeRules.dirtLayers(dirt);
-        if (dirtLayers == 0) {
-            return CLEAN;
-        }
-        return new ChassisGrimeVisual(dirtLayers, ChassisGrimeRules.gravelLayers(dirt),
-                ChassisGrimeRules.keepLayers(layerVariants, dirtLayers));
+    public static ChassisGrimeVisual of(int dirt, int variant) {
+        int level = ChassisGrimeRules.dirtLevel(dirt);
+        return level == 0 ? CLEAN : new ChassisGrimeVisual(level, variant & 0xFF);
     }
 
     public boolean isClean() {
-        return dirtLayers == 0;
+        return level == 0;
     }
 
-    /** 第 {@code layer} 层泥（1..dirtLayers）的贴图变体号。 */
-    public int dirtVariant(int layer) {
-        return ChassisGrimeRules.dirtVariant(ChassisGrimeRules.layerVariant(layerVariants, layer));
+    public boolean hasGravel() {
+        return ChassisGrimeRules.hasGravel(level);
     }
 
-    /** 第 {@code gravelLayer} 层碎石（1..gravelLayers）的贴图变体号。 */
-    public int gravelVariant(int gravelLayer) {
-        int layer = ChassisGrimeRules.FIRST_GRAVEL_LAYER - 1 + gravelLayer;
-        return ChassisGrimeRules.gravelVariant(ChassisGrimeRules.layerVariant(layerVariants, layer));
+    public int dirtVariant() {
+        return ChassisGrimeRules.dirtVariant(variant);
+    }
+
+    public int gravelVariant() {
+        return ChassisGrimeRules.gravelVariant(variant);
     }
 }

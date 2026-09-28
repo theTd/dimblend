@@ -38,6 +38,23 @@ class GrimeMaskTest {
     }
 
     @Test
+    void ladderRunsFromNinetyToTwentyPercentOverSevenLevels() {
+        assertEquals(0.9, GrimeMask.ladderFraction(0.9, 0.2, 1, 7), 1e-9);
+        assertEquals(0.55, GrimeMask.ladderFraction(0.9, 0.2, 4, 7), 1e-9);
+        assertEquals(0.2, GrimeMask.ladderFraction(0.9, 0.2, 7, 7), 1e-9);
+        assertEquals(0.5, GrimeMask.ladderFraction(0.5, 0.5, 1, 1), 1e-9);
+    }
+
+    @Test
+    void firstAndLastDirtLevelsKeepTenAndEightyPercent() {
+        // 256 × 0.9 = 230.4 → 去 230 留 26；256 × 0.2 = 51.2 → 去 51 留 205
+        assertEquals(26, kept(GrimeMask.apply(opaque(16), 16, 16, 5L, 0.9, GrimeMask.Clear.NONE), 0, 16, 16));
+        assertEquals(205, kept(GrimeMask.apply(opaque(16), 16, 16, 5L, 0.2, GrimeMask.Clear.NONE), 0, 16, 16));
+        // 碎石 50%
+        assertEquals(128, kept(GrimeMask.apply(opaque(16), 16, 16, 5L, 0.5, GrimeMask.Clear.NONE), 0, 16, 16));
+    }
+
+    @Test
     void keptPixelsKeepTheirSourceColour() {
         int[] source = new int[256];
         for (int i = 0; i < source.length; i++) {

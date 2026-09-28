@@ -4,32 +4,40 @@
       "type": "dimblend_carwash:grime",
       "texture": "minecraft:block/dirt",
       "prefix": "dimblend_carwash:block/grime/dirt_full_",
+      "levels": 7,
+      "remove_from": 0.9,
+      "remove_to": 0.2,
       "variants": 16,
-      "remove": 0.8,
       "clear": "none"
     },
     {
       "type": "dimblend_carwash:grime",
       "texture": "minecraft:block/dirt",
       "prefix": "dimblend_carwash:block/grime/dirt_upper_",
+      "levels": 7,
+      "remove_from": 0.9,
+      "remove_to": 0.2,
       "variants": 16,
-      "remove": 0.8,
       "clear": "lower_half"
     },
     {
       "type": "dimblend_carwash:grime",
       "texture": "minecraft:block/gravel",
       "prefix": "dimblend_carwash:block/grime/gravel_full_",
+      "levels": 1,
+      "remove_from": 0.5,
+      "remove_to": 0.5,
       "variants": 16,
-      "remove": 0.8,
       "clear": "none"
     },
     {
       "type": "dimblend_carwash:grime",
       "texture": "minecraft:block/gravel",
       "prefix": "dimblend_carwash:block/grime/gravel_lower_",
+      "levels": 1,
+      "remove_from": 0.5,
+      "remove_to": 0.5,
       "variants": 16,
-      "remove": 0.8,
       "clear": "upper_half"
     }
   ]

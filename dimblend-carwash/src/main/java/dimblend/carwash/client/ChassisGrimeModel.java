@@ -21,8 +21,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 包在车架方块（dimblend-blocks 换上的伪装模型）外层：脏污以 cutout 层的镂空贴层叠加，
+ * 包在车架方块（dimblend-blocks 换上的伪装模型）外层：脏污以 cutout 层的镂空贴层覆盖（每面一张当前档位贴图），
  * 不改底层材质。网格构建时从 BE 行为读脏污快照、从关卡读上方方块，存进模型数据。
+ *
+ * <p>贴层几何复制原模型的面而不是按方块形状另造：Create 伪装板的侧面由两段裁切拼成，
+ * 另造的整面与之共面但顶点不同，远处会闪。代价是脏车架重建网格时多取一次原模型的面。</p>
  */
 public class ChassisGrimeModel extends BakedModelWrapper<BakedModel> {
 
@@ -52,7 +55,8 @@ public class ChassisGrimeModel extends BakedModelWrapper<BakedModel> {
     @Override
     public ChunkRenderTypeSet getRenderTypes(BlockState state, RandomSource rand, ModelData data) {
         ChunkRenderTypeSet base = super.getRenderTypes(state, rand, data);
-        if (data.get(GRIME) == null) {
+        // 伪装方块本就登记四层全开，通常已含 cutout，免去每次重建的并集分配
+        if (data.get(GRIME) == null || base.contains(RenderType.cutout())) {
             return base;
         }
         return ChunkRenderTypeSet.union(base, OVERLAY_LAYER);

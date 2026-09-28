@@ -17,16 +17,18 @@ import net.minecraft.server.packs.resources.ResourceMetadata;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 
 /**
- * 图集精灵源：从现有方块贴图（原版泥土/沙砾，随资源包）生成若干张随机镂空变体，
- * 登记为 {@code <prefix><序号>}。在 {@code assets/minecraft/atlases/blocks.json} 中声明。
- * 动画贴图只取第一帧（正方形）。
+ * 图集精灵源：从原版方块贴图（只取 vanilla 包的 16x16，不跟资源包）按档生成随机镂空变体，
+ * 登记为 {@code <prefix><档>_<变体>}。镂空比例从 {@code remove_from}（第 1 档）线性到
+ * {@code remove_to}（最后一档）。在 {@code assets/minecraft/atlases/blocks.json} 中声明。
  */
-public record GrimeSpriteSource(ResourceLocation texture, ResourceLocation prefix, int variants, float remove,
-        GrimeMask.Clear clear) implements SpriteSource {
+public record GrimeSpriteSource(ResourceLocation texture, ResourceLocation prefix, int levels, float removeFrom,
+        float removeTo, int variants, GrimeMask.Clear clear) implements SpriteSource {
+
+    private static final String VANILLA_PACK_ID = "vanilla";
 
     private static final Codec<GrimeMask.Clear> CLEAR_CODEC = Codec.STRING.comapFlatMap(
             name -> {
@@ -42,25 +44,33 @@ public record GrimeSpriteSource(ResourceLocation texture, ResourceLocation prefi
     public static final MapCodec<GrimeSpriteSource> CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
             ResourceLocation.CODEC.fieldOf("texture").forGetter(GrimeSpriteSource::texture),
             ResourceLocation.CODEC.fieldOf("prefix").forGetter(GrimeSpriteSource::prefix),
+            Codec.intRange(1, 16).optionalFieldOf("levels", 1).forGetter(GrimeSpriteSource::levels),
+            Codec.floatRange(0.0F, 1.0F).fieldOf("remove_from").forGetter(GrimeSpriteSource::removeFrom),
+            Codec.floatRange(0.0F, 1.0F).fieldOf("remove_to").forGetter(GrimeSpriteSource::removeTo),
             Codec.intRange(1, 64).fieldOf("variants").forGetter(GrimeSpriteSource::variants),
-            Codec.floatRange(0.0F, 1.0F).fieldOf("remove").forGetter(GrimeSpriteSource::remove),
             CLEAR_CODEC.optionalFieldOf("clear", GrimeMask.Clear.NONE).forGetter(GrimeSpriteSource::clear))
             .apply(instance, GrimeSpriteSource::new));
 
     /** 由 {@link CarwashClientSetup} 在 {@code RegisterSpriteSourceTypesEvent} 中登记。 */
     static final SpriteSourceType TYPE = new SpriteSourceType(CODEC);
 
+    /** 第 {@code level} 档（1 起）第 {@code variant} 张的精灵名。 */
+    static ResourceLocation spriteId(ResourceLocation prefix, int level, int variant) {
+        return prefix.withSuffix(level + "_" + variant);
+    }
+
     @Override
     public void run(ResourceManager resourceManager, SpriteSource.Output output) {
         ResourceLocation file = TEXTURE_ID_CONVERTER.idToFile(texture);
-        Optional<Resource> resource = resourceManager.getResource(file);
-        if (resource.isEmpty()) {
+        Resource resource = vanillaResource(resourceManager.getResourceStack(file));
+        if (resource == null) {
             DimBlendCarwash.LOGGER.warn("Grime sprite source texture {} not found", file);
             return;
         }
         int size;
         int[] frame;
-        try (InputStream in = resource.get().open(); NativeImage image = NativeImage.read(in)) {
+        try (InputStream in = resource.open(); NativeImage image = NativeImage.read(in)) {
+            // 原版为 16x16；动画贴图只取第一帧
             size = Math.min(image.getWidth(), image.getHeight());
             frame = new int[size * size];
             for (int y = 0; y < size; y++) {
@@ -72,13 +82,26 @@ public record GrimeSpriteSource(ResourceLocation texture, ResourceLocation prefi
             DimBlendCarwash.LOGGER.warn("Failed to read grime sprite source texture {}", file, e);
             return;
         }
-        for (int i = 0; i < variants; i++) {
-            ResourceLocation id = prefix.withSuffix(Integer.toString(i));
-            // 种子只由精灵名决定：重载资源图案不变
-            int[] masked = GrimeMask.apply(frame, size, size, id.hashCode() * 31L + i, remove, clear);
-            int frameSize = size;
-            output.add(id, loader -> toContents(id, masked, frameSize));
+        for (int level = 1; level <= levels; level++) {
+            double remove = GrimeMask.ladderFraction(removeFrom, removeTo, level, levels);
+            for (int i = 0; i < variants; i++) {
+                ResourceLocation id = spriteId(prefix, level, i);
+                // 种子只由精灵名决定：重载资源图案不变
+                int[] masked = GrimeMask.apply(frame, size, size, id.hashCode() * 31L, remove, clear);
+                int frameSize = size;
+                output.add(id, loader -> toContents(id, masked, frameSize));
+            }
         }
+    }
+
+    /** 资源栈按优先级从低到高：取 vanilla 包那份，找不到再退回最底层。 */
+    private static Resource vanillaResource(List<Resource> stack) {
+        for (Resource resource : stack) {
+            if (VANILLA_PACK_ID.equals(resource.sourcePackId())) {
+                return resource;
+            }
+        }
+        return stack.isEmpty() ? null : stack.get(0);
     }
 
     private static SpriteContents toContents(ResourceLocation id, int[] pixels, int size) {
