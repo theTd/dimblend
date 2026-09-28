@@ -84,7 +84,7 @@
 - [x] 生成轨道：**深色橡木宽轨**，有路基（`CorridorTrackProfile.UNDERGROUND`）
 - [x] 时间锁定 18000
 - [x] 天空套用下界 Effects（与下界相同：`ClientBandLane.netherSky()` → `NetherEffects`：`SkyType.NONE` / 浓雾 / constantAmbientLight）
-- [x] 天气锁定晴（雨雪雷是维度级共享状态，粗暴方案：rotating 的 level-tick 里扫全维度玩家，有一人在非地表 band 就全维度 `setWeatherParameters` 强制转晴（空 level 也转晴：无人时没人要雨，且坐车进 sublevel 的玩家不算在主 level 里；多玩家互顶不考虑）；判据走 level-data 数据位，同 tick 掐灭；回地表后雨不恢复，等原版循环重起。见 `ServerGlobalWeatherLock`）
+- [x] 天气锁定晴（rotating 使用独立可写的天气数据，保存到主世界 `data/dimblend_rotating_weather.dat`，不修改主世界天气；原版自定义维度的 `DerivedLevelData` 天气 setter 为空，不能直接用来锁天。天气循环开始前与 level-tick 结束后扫全维度玩家，有一人在非地表 band 就全维度转晴，并清零服务端雨雷强度、向本维度客户端同步停雨和零强度。锁定时跳过原版天气循环；空 level 也转晴：无人时没人要雨，且坐车进 sublevel 的玩家不算在主 level 里；多玩家互顶不考虑。回地表后不恢复旧雨，保留 6000 tick 晴天缓冲后由原版循环重起。见 `ServerGlobalWeatherLock` / `RotatingLevelData`）
 - [x] 替换轨道上方 15 格宽内所有流体为玻璃（`OakTrackCorridor.replaceFluidStrip`：地下 lane 在 Z[-7,+7]、Y=64 到切片顶把流体换成玻璃；水/岩浆用蓝/红染色玻璃，其余流体用普通玻璃。八边形 1 格壳 `sealVaultShell` 仍保留，但不替换路基（Y=63）及以下）
 - [x] 将地下全部生物群系显示为「地下」（显示层方案：Biome Notifier 兼容 mixin 给群系名追加「地下」后缀，如 平原 → 平原地下；未装 Biome Notifier 时无此提示，真实 id 不变）
 

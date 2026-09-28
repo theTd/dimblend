@@ -2,6 +2,8 @@ package dimblend.weather;
 
 import dimblend.DimBlendRegistries;
 import dimblend.band.BandLaneSync;
+import dimblend.mixin.LevelWeatherAccessor;
+import net.minecraft.network.protocol.game.ClientboundGameEventPacket;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
@@ -15,7 +17,8 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
  * (one player on surface wanting rain while another underground clears it)
  * are intentionally ignored.
  *
- * <p>Driven by the rotating level's own tick ({@link #onLevelTick}), not by
+ * <p>Enforced before the weather cycle and after the rotating level's tick
+ * ({@link #onLevelTick}), not by
  * player ticks: a rider sitting in a Sable vehicle sublevel has the sublevel
  * as {@code serverLevel}, so no player tick of theirs ever reaches the
  * rotating level, and spectators can skip ticks on unloaded chunks. An empty
@@ -35,13 +38,11 @@ public final class ServerGlobalWeatherLock {
     }
 
     /**
-     * Force the dimension clear when the lane is locked. Guarded by the
-     * authoritative level-data flags rather than the lerped render levels,
-     * so rain is killed the same tick the vanilla cycle starts it and
-     * nothing is written while already clear.
+     * Force the dimension clear when the lane is locked, including any fading
+     * rain/thunder intensity left over after the authoritative flags were cleared.
      */
     public static void enforce(ServerLevel level, String laneName) {
-        if (!shouldClear(laneName)) {
+        if (!level.dimension().equals(DimBlendRegistries.ROTATING_LEVEL) || !shouldClear(laneName)) {
             return;
         }
         forceClear(level);
@@ -63,19 +64,39 @@ public final class ServerGlobalWeatherLock {
         enforceForLevel(level);
     }
 
-    private static void enforceForLevel(ServerLevel level) {
+    /** Returns whether the weather cycle must be skipped for this level. */
+    public static boolean enforceForLevel(ServerLevel level) {
+        if (!level.dimension().equals(DimBlendRegistries.ROTATING_LEVEL)) {
+            return false;
+        }
         if (level.players().isEmpty()) {
             forceClear(level);
-            return;
+            return true;
         }
         for (var player : level.players()) {
-            enforce(level, BandLaneSync.laneAt(level, player.getBlockX()));
+            if (shouldClear(BandLaneSync.laneAt(level, player.getBlockX()))) {
+                forceClear(level);
+                return true;
+            }
         }
+        return false;
     }
 
     private static void forceClear(ServerLevel level) {
-        if (level.getLevelData().isRaining() || level.getLevelData().isThundering()) {
-            level.setWeatherParameters(6000, 0, false, false);
+        // getThunderLevel() multiplies by rain intensity, hiding leftover thunder when rain is zero.
+        var intensity = (LevelWeatherAccessor) level;
+        boolean changed = level.getLevelData().isRaining() || level.getLevelData().isThundering()
+                || level.getRainLevel(0.0F) > 0.0F || level.getRainLevel(1.0F) > 0.0F
+                || intensity.dimblend$oldThunderLevel() > 0.0F || intensity.dimblend$thunderLevel() > 0.0F;
+        level.setWeatherParameters(6000, 0, false, false);
+        level.setRainLevel(0.0F);
+        level.setThunderLevel(0.0F);
+        if (changed) {
+            var players = level.getServer().getPlayerList();
+            // STOP_RAINING sets client intensity to 1, so the zero levels must follow it.
+            players.broadcastAll(new ClientboundGameEventPacket(ClientboundGameEventPacket.STOP_RAINING, 0.0F), level.dimension());
+            players.broadcastAll(new ClientboundGameEventPacket(ClientboundGameEventPacket.RAIN_LEVEL_CHANGE, 0.0F), level.dimension());
+            players.broadcastAll(new ClientboundGameEventPacket(ClientboundGameEventPacket.THUNDER_LEVEL_CHANGE, 0.0F), level.dimension());
         }
     }
 }
