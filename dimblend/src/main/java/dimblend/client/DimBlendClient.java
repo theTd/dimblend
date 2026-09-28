@@ -19,6 +19,7 @@ public final class DimBlendClient {
 
     /** Wires every client-only listener; called behind the Dist.CLIENT check. */
     public static void register(IEventBus modBus) {
+        dimblend.compat.BebPlatformWarmup.warmup();
         modBus.addListener(DimBlendClient::onRegisterGuiLayers);
         modBus.addListener(DimBlendClient::onRegisterDimensionSpecialEffects);
         NeoForge.EVENT_BUS.addListener(TwilightBandFog::onRenderFog);
