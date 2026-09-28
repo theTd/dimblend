@@ -13,7 +13,6 @@
 		"WaterSourceDowngradeMixin",
 		"compat.dimblend.WarpGateBlockMixin",
 		"compat.cdg.DieselEngineRampMixin",
-		"compat.cdg.EngineFuelGateMixin",
 		"compat.cdg.HugeDieselEngineMixin",
 		"compat.cca.ElectricMotorMixin",
 		"compat.cca.AlternatorIdleDrainMixin",
