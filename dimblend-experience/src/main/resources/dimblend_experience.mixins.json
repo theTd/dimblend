@@ -17,7 +17,6 @@
 		"compat.dimblend.WarpGateBlockMixin",
 		"compat.cdg.DieselEngineRampMixin",
 		"compat.cdg.HugeDieselEngineMixin",
-		"compat.cdg.KineticStressViewAccessor",
 		"compat.cca.ElectricMotorMixin",
 		"compat.cca.AlternatorIdleDrainMixin",
 		"compat.create.ItemDrainIrrigationMixin",

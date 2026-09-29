@@ -49,43 +49,19 @@ class CdgOverloadFuseTest {
     }
 
     @Test
-    void unsettledNetworkViewNeverArms() {
-        // 重建 churn：每次视图变化清零，持续 churn 永不武装
-        int settle = 0;
-        float lastStress = 0.0F;
-        int lastSize = 0;
-        for (int i = 1; i <= 100; i++) {
-            float stress = i * 8.0F;
-            if (CdgOverloadMath.sameView(stress, 1, lastStress, lastSize)) {
-                settle++;
-            } else {
-                settle = 0;
-                lastStress = stress;
-                lastSize = 1;
-            }
-            assertFalse(CdgOverloadMath.isArmed(settle));
-        }
+    void stickyCachedFlagDoesNotCountWhenLiveCapacityCoversStress() {
+        assertFalse(CdgOverloadMath.countsAsOverload(true, 100.0F, 40.0F));
+        assertFalse(CdgOverloadMath.countsAsOverload(true, 40.0F, 40.0F));
+        assertTrue(CdgOverloadMath.countsAsOverload(true, 10.0F, 40.0F));
+        assertFalse(CdgOverloadMath.countsAsOverload(false, 10.0F, 40.0F));
     }
 
     @Test
-    void stableNetworkViewArmsAfterSettleWindow() {
-        // 视图连续不变：NETWORK_SETTLE_TICKS-1 内不武装，满窗口武装
-        int settle = 0;
-        for (int i = 0; i < CdgOverloadMath.NETWORK_SETTLE_TICKS - 1; i++) {
-            if (CdgOverloadMath.sameView(64.0F, 5, 64.0F, 5)) {
-                settle++;
-            }
-            assertFalse(CdgOverloadMath.isArmed(settle));
-        }
-        settle++;
-        assertTrue(CdgOverloadMath.isArmed(settle));
-        assertTrue(CdgOverloadMath.isArmed(settle + 1000));
+    void liveOverstressMatchesCreateCapacityComparison() {
+        assertFalse(CdgOverloadMath.liveOverstressed(Float.NaN, 1.0F));
+        assertFalse(CdgOverloadMath.liveOverstressed(1.0F, Float.NaN));
+        assertFalse(CdgOverloadMath.liveOverstressed(1.0F, 1.0F));
+        assertTrue(CdgOverloadMath.liveOverstressed(0.0F, 0.1F));
     }
 
-    @Test
-    void sameViewUsesExactFloatAndSizeEquality() {
-        assertTrue(CdgOverloadMath.sameView(1.5F, 3, 1.5F, 3));
-        assertFalse(CdgOverloadMath.sameView(1.5F, 3, 1.5000001F, 3));
-        assertFalse(CdgOverloadMath.sameView(1.5F, 3, 1.5F, 4));
-    }
 }

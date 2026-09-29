@@ -18,9 +18,8 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
  * {@link CdgOverloadMath#OVERLOAD_CONFIRM_TICKS} 才点引信；任一正常 tick 清零）。
  * 不序列化：确认进度不跨存档/区块重载携带，存档前半程确认与读档后网络重建
  * 误报相加点引信的路径由此切断（2026-09-28 口径）</li>
- * <li>settleTicks/lastNetworkStress/lastNetworkSize 网络视图稳定探测——重建完成
- * 判据（{@link CdgOverloadMath#NETWORK_SETTLE_TICKS}，2026-09-29 起替代固定
- * 5 秒加载宽限期），不在 codec 内，读档归零 = 未武装</li>
+ * <li>过载确认不看缓存 overStressed 是否稳定：加载期该位会粘住，
+ * 实时复核见 {@link CdgKineticOverload}，本类不存探测态</li>
  * </ul>
  */
 public class CdgEngineState {
@@ -46,12 +45,6 @@ public class CdgEngineState {
      * 不序列化：确认进度不跨存档/区块重载携带。
      */
     public int overloadTicks;
-    /** 网络视图稳定计数：视图连续不变的 tick 数（达 NETWORK_SETTLE_TICKS 判重建完成）。 */
-    public int settleTicks;
-    /** 上次采样的网络应力视图（重建 churn 探测用）。 */
-    public float lastNetworkStress;
-    /** 上次采样的网络规模视图（成员并入/合并/拆分探测用）。 */
-    public int lastNetworkSize;
 
     public static final Codec<CdgEngineState> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Codec.INT.fieldOf("rampTicks").forGetter(s -> s.rampTicks),

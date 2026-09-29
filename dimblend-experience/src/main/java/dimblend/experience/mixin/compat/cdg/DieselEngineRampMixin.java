@@ -7,6 +7,7 @@ import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import dimblend.experience.Config;
 import dimblend.experience.compat.cdg.CdgAttachments;
 import dimblend.experience.compat.cdg.CdgEngineState;
+import dimblend.experience.compat.cdg.CdgKineticOverload;
 import dimblend.experience.compat.cdg.CdgOverloadFuse;
 import dimblend.experience.compat.cdg.CdgOverloadMath;
 import net.minecraft.server.level.ServerLevel;
@@ -28,11 +29,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * {@code diesel_overstress.ogg} 1 次、出力归零，引信期间每 tick 播 large_smoke
  * （delta 0.2,0.2,0.2 / speed 0 / count 10）；6 秒（120 tick）后播
  * {@code entity.generic.explode} 1 次 + 爆炸粒子（delta 1,1,1 / speed 0 /
- * count 100），再破坏自毁掉落（余油不返还、无真实爆炸伤害）。重建稳定探测
- * （{@code CdgOverloadMath.NETWORK_SETTLE_TICKS}：引擎所见应力/规模视图连续
- * 1 秒不变判重建完成）之前过载读数不累计、不点引信——会产生误报的加载重建
- * churn 必经 sync 写视图、被探测归零（addSilently 静默并入不变视图但也不产生
- * 误报）；确认进度不跨存档携带。
+ * count 100），再破坏自毁掉落（余油不返还、无真实爆炸伤害）。加载期
+ * {@code overStressed} 会在 {@code addSilently} 改账之后粘住，
+ * {@code (stress, networkSize)} 不变不等于网络已恢复。确认前用实时
+ * {@code calculateCapacity/calculateStress} 复核（见 {@code CdgKineticOverload}），
+ * 实时不过载不累计并把缓存位刷掉；确认进度不跨存档携带。
  * 确认前爬梯/波动计时冻结。红石关停/燃尽/负载恢复都不取消引信。
  * 自毁破坏失败（极端情况）才回退闩锁逻辑</li>
  * </ul>
@@ -48,7 +49,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * <p>配置读取时机：所有 handler 先行 ServerLevel 守卫（双端方法），仅服务端
  * 读取 SERVER 配置——避免专用服务器客户端未加载该配置即抛异常。</p>
  * <p>状态持久化：附件带 codec 序列化，闩锁/引信与点火计时跨区块卸载/存档重启保持；
- * 过载确认计数与稳定探测不序列化（读档归零 = 未武装，重建稳定后重新武装）。</p>
+ * 过载确认计数不序列化（读档从 0 重计）。</p>
  */
 @Mixin({DieselEngineBlockEntity.class, ModularDieselEngineBlockEntity.class})
 public abstract class DieselEngineRampMixin {
@@ -145,18 +146,6 @@ public abstract class DieselEngineRampMixin {
             self.setChanged();
             return;
         }
-        // B6 重建稳定探测：引擎所见 (stress, networkSize) 视图连续不变满
-        // NETWORK_SETTLE_TICKS 判重建完成、炸机逻辑武装（机理见 CdgOverloadMath）。
-        // 放在 !fuel 早退之前——无油/停转期间也在后台武装
-        KineticStressViewAccessor view = (KineticStressViewAccessor) self;
-        if (CdgOverloadMath.sameView(view.dimblend$stress(), view.dimblend$networkSize(),
-                state.lastNetworkStress, state.lastNetworkSize)) {
-            state.settleTicks++;
-        } else {
-            state.settleTicks = 0;
-            state.lastNetworkStress = view.dimblend$stress();
-            state.lastNetworkSize = view.dimblend$networkSize();
-        }
         if (state.overloadLatched) {
             // B4 重新加油触发启动：油量上升（相对上次记录）即解除闩锁全新点火
             if (fuel && fuelAmount > state.lastFuelAmount) {
@@ -176,15 +165,9 @@ public abstract class DieselEngineRampMixin {
         }
 
         boolean enabled = engine.enabled();
-        boolean overloaded = self.isOverStressed();
+        boolean overloaded = CdgKineticOverload.refreshedOverstressed(self);
         if (enabled && overloaded) {
-            // 重建未完成（网络视图未稳定）：过载读数视为重建 churn 残留，
-            // 不累计确认也不点引信（爬梯照冻结——直接 return，不断也不复位）；
-            // 视图稳定（武装）后才进入 40 tick 确认窗口
-            if (!CdgOverloadMath.isArmed(state.settleTicks)) {
-                return;
-            }
-            // B6：运转中过载连续 40 tick（2 秒，见 CdgOverloadMath）才点引信——
+            // B6：实时过载连续 40 tick（2 秒，见 CdgOverloadMath）才点引信——
             // 确认前爬梯/波动计时冻结（本 tick 直接 return，不断也不复位），燃油
             // 照常扣除（门控仅闩锁/引信后生效）。确认后警告音 1 次、出力立即归零
             // （闩锁口径），6 秒后爆音+粒子+自毁掉落（余油不返还）。
