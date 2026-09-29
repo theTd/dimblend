@@ -59,6 +59,12 @@ config="${mod_id}.mixins.json"
 [[mixins]]
 config="${mod_id}.simurail.mixins.json"
 
+# Serene Seasons compat (no winter freeze/snow in the rotating dimension): separate config
+# with required=false so the game still boots when Serene Seasons is not installed; the
+# inject inside fails loudly (require=1) only when Serene Seasons IS present but drifted.
+[[mixins]]
+config="${mod_id}.sereneseasons.mixins.json"
+
 # The [[accessTransformers]] block allows you to declare where your AT file is.
 # If this block is omitted, a fallback attempt will be made to load an AT from META-INF/accesstransformer.cfg
 #[[accessTransformers]]
@@ -159,6 +165,14 @@ config="${mod_id}.simurail.mixins.json"
     modId="simurail"
     type="optional"
     versionRange="[0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+# Optional: rotating-dimension temperature hook (see dimblend.sereneseasons.mixins.json).
+[[dependencies.${mod_id}]]
+    modId="sereneseasons"
+    type="optional"
+    versionRange="[10.1,)"
     ordering="AFTER"
     side="BOTH"
 

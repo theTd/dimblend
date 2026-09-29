@@ -141,6 +141,10 @@ dependencies {
     // required=false so a missing Simurail/Sable install skips it.
     compileOnly files("libs/simurail-1.21.1-0.0.0-a+ecd2dd3.jar")
     compileOnly files("libs/sable-neoforge-1.21.1-2.0.5_cui-modded.jar")
+    // Compile-only: Serene Seasons temperature hook for the rotating dimension. Vendored
+    // (no deterministic public Maven for the NeoForge 1.21.1 build); same optional-runtime
+    // contract as Simurail above — the sereneseasons mixin config is required=false.
+    compileOnly files("libs/SereneSeasons-neoforge-1.21.1-10.1.0.3.jar")
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
