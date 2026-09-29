@@ -20,7 +20,10 @@ public final class RotatingDimension {
     public static ResourceKey<Level> key() {
         String raw = Config.ROTATING_DIMENSION_ID.get();
         ResourceLocation id = ResourceLocation.tryParse(raw);
-        if (id == null || id.getNamespace().equals(ResourceLocation.DEFAULT_NAMESPACE)) {
+        // 拒绝口径：解析失败，或输入缺命名空间（tryParse 会把裸 id 静默塞进 minecraft
+        // 命名空间，raw 无 ':' 即视为缺命名空间 typo）。显式写全的 minecraft:overworld
+        // 等原版维度按字面接受——GameTest 只能跑在主世界，这是维度门唯一的可测通道。
+        if (id == null || raw.indexOf(':') < 0) {
             // 非法字符或缺命名空间：log-once 并回退默认，避免运行期崩溃或静默失效
             if (!warnedInvalid) {
                 DimBlend.LOGGER.error("Config rotatingDimensionId '{}' is not a valid namespaced id, falling back to {}", raw, DEFAULT_ID);

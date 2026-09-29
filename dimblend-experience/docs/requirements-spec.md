@@ -396,14 +396,25 @@
 - 判定走 sable API 查床坐标归属子层级（实施时按 sable jar 核实方法，
   行为以“结构上的床能用、地上不能用”实测为准）；新开关 `structureBed`（默认开）
 
-### G3 孤立源水降级（2026-09-23 新口径，旧人为水 SavedData 方案已移除）
+### G3 孤立源水降级（2026-09-29 口径再调整：创造倒水绕过 + 三种冰规则）
 - rotating 内凡经 `Level#setBlock` 写入的纯水源（water8 = `Blocks.WATER` 且
-  `LEVEL=0`；桶/发射器、Create 管道、冰融化、流体 tick 自然成池均收敛至此），
+  `LEVEL=0`；桶/发射器、Create 管道、冰光照融化、流体 tick 自然成池均收敛至此），
   若其水平四邻中纯水源格数 <2 则改写为流动 water7（`LEVEL=1`，amount 7 非下落）；
   ≥2 才保留源水
 - 含水方块既不降级（布尔含水无法表示 water7）也不计入四邻；世界生成
   （`WorldGenRegion`）不走此路径，天然水体不受影响；已存在源水不回扫
-- 新开关 `isolatedWaterDowngrade`（默认开）
+- 放行通道（写入归因 `WaterWriteContext`：bypass / 桶归因玩家两条 ThreadLocal）：
+  - 创造模式玩家倒水绕过检测，源水保留（2026-09-29 新增）；生存玩家倒水照旧降级；
+    无归因的机器/自然写入（发射器、Create 管道、流体成池、冰光照融化）仍降级
+  - 三种冰破坏产水经 bypass 绕过检测（见下）
+- 三种冰规则（2026-09-29 新增，ice/packed_ice/blue_ice，不含 frosted_ice，仅 rotating）：
+  - 破坏产水：无精准采集挖掘且脚下为固体/液体时原位生成水源（普通冰产水系原版
+    `IceBlock.playerDestroy` 行为，仅补 bypass；浮冰/蓝冰补齐同款逻辑）；创造破坏/
+    精准采集/爆炸活塞不产水（贴原版冰语义），冰光照融化仍走 G3 降级
+  - 放置禁令：生存模式玩家不能放置三种冰（RightClickBlock useItem 闸拦截，创造豁免；
+    Create 部署器等机器放置不拦——拍板接受的残余通道）
+- 开关 `isolatedWaterDowngrade`（默认开）+ `iceBreakWaterSource`（默认开）+
+  `icePlacementBan`（默认开）
 
 ### G4 传送门禁令（回家通道不管）
 - 下界门：rotating 内点火生成一律取消（`BlockEvent.PortalSpawnEvent` 取消，
@@ -465,6 +476,8 @@
 | villagerMaster | G1 | true |
 | structureBed | G2 | true |
 | isolatedWaterDowngrade | G3 | true |
+| iceBreakWaterSource | G3 配套（三种冰破坏产源水并绕过降级） | true |
+| icePlacementBan | G3 配套（生存玩家禁放三种冰） | true |
 | portalBan | G4 | true |
 | enderStorageStructureOnly | G5（末影存储仅限 sable 结构放置） | true |
 | steamEngineOverload | H（蒸汽引擎过载两阶段） | true |
@@ -496,10 +509,13 @@
 | VillagerAccessor | 原版村民（交易补全入口） | G1 | 无条件（原版目标） |
 | MerchantOfferAccessor | 原版交易条目（maxUses 改写） | G1 | 无条件（原版目标） |
 | WaterSourceDowngradeMixin | 原版 Level#setBlock（孤立源水改写位） | G3 | 无条件（原版目标） |
+| IceBlockWaterBypassMixin | 原版 IceBlock#playerDestroy（破坏产水 bypass 置位） | G3 | 无条件（原版目标） |
+| PackedIceBreakWaterMixin | 原版 Block#playerDestroy（浮冰/蓝冰破坏产水补齐） | G3 | 无条件（原版目标） |
+| BucketItemMixin | 原版 BucketItem#emptyContents 5 参（倒水玩家归因） | G3 | 无条件（原版目标） |
 | compat.dimblend.WarpGateBlockMixin | dimblend 折跃门（字符串目标） | G4 | dimblend 在场 |
 | client.ItemStackNicknameMixin | 原版 ItemStack | A8 | 无条件（原版目标，客户端侧） |
 
-事件处理器（非 mixin）：DeathRules（A1/A2，含 PlayerRespawnPositionEvent）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainOffStructureRules（E7）、PhysicsAssemblerGuard（F1）、CreativeCopycatCreativeTab（C）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、EnderStorageStructureGuard（G5）。
+事件处理器（非 mixin）：DeathRules（A1/A2，含 PlayerRespawnPositionEvent）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainOffStructureRules（E7）、PhysicsAssemblerGuard（F1）、CreativeCopycatCreativeTab（C）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、IcePlacementGuard（G3 配套，生存玩家冰放置拦截）、PortalBan（G4）、EnderStorageStructureGuard（G5）。
 
 ### 依赖接线（C 板块例外为版本级对齐）
 

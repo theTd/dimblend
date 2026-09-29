@@ -67,6 +67,8 @@ public class DimBlend {
     }
 
     private static void onRegisterGameTests(RegisterGameTestsEvent event) {
+        // G3/冰规则不依赖第三方模组，无条件注册
+        event.register(dimblend.experience.gametest.IceWaterRulesGameTests.class);
         // GameTest 引用 Create 的 CopycatPanel/BE，仅 Create 在场时注册，避免无 Create 环境类加载失败
         if (ModList.get().isLoaded("create")) {
             event.register(CopycatObsidianHardnessGameTests.class);

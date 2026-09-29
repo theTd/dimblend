@@ -22,8 +22,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  *
  * <p>新态是纯水源且水平四邻源水 <2 时，取消原调用、改以 water7 重入一次
  * {@code setBlock}（重入由 {@code dimblend$replacing} 守卫放行，避免自递归）。
- * 热路径排序：重入守卫→服务端判定→纯水源判定（廉价，非水调用到此即止）→
- * 开关→维度→四邻计数（4 次方块查询，仅源水写入才走到）。</p>
+ * 放行通道（{@link IsolatedWaterRules#downgradeIfIsolated} 内判）：冰破坏产水
+ * bypass（{@code WaterWriteContext}）、创造玩家桶倒水归因；无归因的机器/自然
+ * 写入不豁免。热路径排序：重入守卫→服务端判定→纯水源判定（廉价，非水调用到此
+ * 即止）→开关→维度→bypass/创造归因→四邻计数（4 次方块查询，仅源水写入才走到）。</p>
  */
 @Mixin(Level.class)
 public abstract class WaterSourceDowngradeMixin {
