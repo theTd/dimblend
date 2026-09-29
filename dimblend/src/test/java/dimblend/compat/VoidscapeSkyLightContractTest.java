@@ -3,6 +3,8 @@ package dimblend.compat;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dimblend.TestSourceTree;
+
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,10 +19,10 @@ import org.junit.jupiter.api.Test;
  * in the band instead of failing loudly.
  */
 class VoidscapeSkyLightContractTest {
-    private static final Path MIXINS_JSON = Path.of("src/main/resources/dimblend.mixins.json");
-    private static final Path STORAGE_MIXIN = Path.of("src/main/java/dimblend/mixin/SkyLightSectionStorageMixin.java");
-    private static final Path DATA_MIXIN = Path.of("src/main/java/dimblend/mixin/LayerLightSectionStorageMixin.java");
-    private static final Path POLICY = Path.of("src/main/java/dimblend/compat/VoidscapeSkyLight.java");
+    private static final Path MIXINS_JSON = TestSourceTree.mainFile("resources/dimblend.mixins.json");
+    private static final Path STORAGE_MIXIN = TestSourceTree.mainFile("java/dimblend/mixin/SkyLightSectionStorageMixin.java");
+    private static final Path DATA_MIXIN = TestSourceTree.mainFile("java/dimblend/mixin/LayerLightSectionStorageMixin.java");
+    private static final Path POLICY = TestSourceTree.mainFile("java/dimblend/compat/VoidscapeSkyLight.java");
 
     @Test
     void skyLightMixinsAreRegisteredOnBothSides() throws Exception {

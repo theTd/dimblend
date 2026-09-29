@@ -2,6 +2,8 @@ package dimblend.worldgen;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dimblend.TestSourceTree;
+
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -10,7 +12,7 @@ import org.junit.jupiter.api.Test;
 class VoidscapeYShiftContractTest {
     @Test
     void rotatingJsonWrapsVoidscapeWithDownwardOffset() throws Exception {
-        Path rotating = Path.of("src/main/resources/data/dimblend/dimension/rotating.json");
+        Path rotating = TestSourceTree.mainFile("resources/data/dimblend/dimension/rotating.json");
         String json = Files.readString(rotating, StandardCharsets.UTF_8);
         int wrapper = json.indexOf("\"type\": \"dimblend:y_shifted\"");
         int offset = json.indexOf("\"y_offset\": -64", wrapper);
@@ -34,7 +36,7 @@ class VoidscapeYShiftContractTest {
     @Test
     void voidscapeSpireColumnsMeasureAgainstTheLevelFloor() throws Exception {
         String mixin = Files.readString(
-                Path.of("src/main/java/dimblend/mixin/voidscape/SpireFeatureMixin.java"), StandardCharsets.UTF_8);
+                TestSourceTree.mainFile("java/dimblend/mixin/voidscape/SpireFeatureMixin.java"), StandardCharsets.UTF_8);
         assertTrue(
                 mixin.contains("@Mixin(targets = \"tamaized.voidscape.features.SpireFeature\", remap = false)"),
                 "mixin must target Voidscape's SpireFeature by name (the jar is runtime-only)");
@@ -47,7 +49,7 @@ class VoidscapeYShiftContractTest {
                 "antispire floor must be measured against the level floor, not an absolute Y");
 
         String mixins = Files.readString(
-                Path.of("src/main/resources/dimblend.mixins.json"), StandardCharsets.UTF_8);
+                TestSourceTree.mainFile("resources/dimblend.mixins.json"), StandardCharsets.UTF_8);
         int common = mixins.indexOf("\"mixins\"");
         int client = mixins.indexOf("\"client\"");
         int registration = mixins.indexOf("\"voidscape.SpireFeatureMixin\"");
@@ -66,9 +68,9 @@ class VoidscapeYShiftContractTest {
     @Test
     void voidscapeShiftMatchesTheRotatingDimensionsFloor() throws Exception {
         String dimension = Files.readString(
-                Path.of("src/main/resources/data/dimblend/dimension/rotating.json"), StandardCharsets.UTF_8);
+                TestSourceTree.mainFile("resources/data/dimblend/dimension/rotating.json"), StandardCharsets.UTF_8);
         String type = Files.readString(
-                Path.of("src/main/resources/data/dimblend/dimension_type/rotating.json"), StandardCharsets.UTF_8);
+                TestSourceTree.mainFile("resources/data/dimblend/dimension_type/rotating.json"), StandardCharsets.UTF_8);
         int offset = readInt(dimension, "\"y_offset\": ", dimension.indexOf("\"type\": \"dimblend:y_shifted\""));
         int minY = readInt(type, "\"min_y\": ", 0);
         assertTrue(offset < 0, "voidscape y_shifted offset must stay negative");
@@ -89,7 +91,7 @@ class VoidscapeYShiftContractTest {
     @Test
     void voidscapeShiftMovesTheAquiferSeaLevel() throws Exception {
         String source = Files.readString(
-                Path.of("src/main/java/dimblend/worldgen/YShiftedChunkGenerator.java"), StandardCharsets.UTF_8);
+                TestSourceTree.mainFile("java/dimblend/worldgen/YShiftedChunkGenerator.java"), StandardCharsets.UTF_8);
         assertTrue(
                 source.contains("settings.seaLevel() + yOffset"),
                 "y_shifted must move the source sea level by the offset, or the shifted band is lava flooded");

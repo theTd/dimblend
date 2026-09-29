@@ -2,9 +2,10 @@ package dimblend.worldgen;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dimblend.TestSourceTree;
+
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -24,7 +25,7 @@ class YShiftedNoiseSettingsContractTest {
     @Test
     void shiftIsPushedBelowInterpolationMarkers() throws Exception {
         String source = Files.readString(
-                Path.of("src/main/java/dimblend/worldgen/YShiftedNoiseSettings.java"), StandardCharsets.UTF_8);
+                TestSourceTree.mainFile("java/dimblend/worldgen/YShiftedNoiseSettings.java"), StandardCharsets.UTF_8);
         assertTrue(
                 source.contains("static DensityFunction shifted(DensityFunction function, int offset)"),
                 "the leaf-shifting rewrite must be the only way wrap() shifts densities");
@@ -57,7 +58,7 @@ class YShiftedNoiseSettingsContractTest {
     @Test
     void idempotencyGuardsScanTheWholeTree() throws Exception {
         String settings = Files.readString(
-                Path.of("src/main/java/dimblend/worldgen/YShiftedNoiseSettings.java"), StandardCharsets.UTF_8);
+                TestSourceTree.mainFile("java/dimblend/worldgen/YShiftedNoiseSettings.java"), StandardCharsets.UTF_8);
         assertTrue(
                 settings.contains("static OptionalInt existingShiftOffset(DensityFunction function)"),
                 "a tree-scan helper must locate the shift offset");
@@ -65,7 +66,7 @@ class YShiftedNoiseSettingsContractTest {
                 settings.contains("existingShiftOffset(settings.noiseRouter().finalDensity())"),
                 "alreadyShifted must consult the tree scan, not a root instanceof");
         String generator = Files.readString(
-                Path.of("src/main/java/dimblend/worldgen/YShiftedChunkGenerator.java"), StandardCharsets.UTF_8);
+                TestSourceTree.mainFile("java/dimblend/worldgen/YShiftedChunkGenerator.java"), StandardCharsets.UTF_8);
         assertTrue(
                 generator.contains("YShiftedNoiseSettings.existingShiftOffset("),
                 "applyShift must reject conflicting offsets via the tree scan");

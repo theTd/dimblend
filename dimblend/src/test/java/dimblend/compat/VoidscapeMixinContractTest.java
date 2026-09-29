@@ -2,6 +2,8 @@ package dimblend.compat;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dimblend.TestSourceTree;
+
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,7 +23,7 @@ class VoidscapeMixinContractTest {
 
     @Test
     void mixinsJsonRegistersVoidscapeLaneMixins() throws Exception {
-        Path json = Path.of("src/main/resources/dimblend.mixins.json");
+        Path json = TestSourceTree.mainFile("resources/dimblend.mixins.json");
         String text = Files.readString(json, StandardCharsets.UTF_8);
         for (String mixin : COMMON) {
             assertTrue(text.contains("\"" + mixin + "\""), mixin);
@@ -55,7 +57,7 @@ class VoidscapeMixinContractTest {
     @Test
     void rotatingBansVoidscapeTeleports() throws Exception {
         String levelUtil = Files.readString(
-                Path.of("src/main/java/dimblend/mixin/voidscape/LevelUtilMixin.java"), StandardCharsets.UTF_8);
+                TestSourceTree.mainFile("java/dimblend/mixin/voidscape/LevelUtilMixin.java"), StandardCharsets.UTF_8);
         int portal = levelUtil.indexOf("method = \"getDimensionForTeleport\"");
         assertTrue(portal > 0, "the portal funnel must be patched at LevelUtil.getDimensionForTeleport");
         // Assert against the injector's own declaration line: the file holds a second
@@ -74,7 +76,7 @@ class VoidscapeMixinContractTest {
                 "the portal gate must be the rotating dimension itself");
 
         String insanity = Files.readString(
-                Path.of("src/main/java/dimblend/mixin/voidscape/InsanityMixin.java"), StandardCharsets.UTF_8);
+                TestSourceTree.mainFile("java/dimblend/mixin/voidscape/InsanityMixin.java"), StandardCharsets.UTF_8);
         int bedrock = insanity.indexOf("method = \"canTeleport\"");
         assertTrue(bedrock > 0, "the bedrock entry must be patched at Insanity.canTeleport");
         assertTrue(
