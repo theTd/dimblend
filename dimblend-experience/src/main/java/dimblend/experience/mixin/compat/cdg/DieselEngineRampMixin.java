@@ -28,26 +28,27 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * {@code diesel_overstress.ogg} 1 次、出力归零，引信期间每 tick 播 large_smoke
  * （delta 0.2,0.2,0.2 / speed 0 / count 10）；6 秒（120 tick）后播
  * {@code entity.generic.explode} 1 次 + 爆炸粒子（delta 1,1,1 / speed 0 /
- * count 100），再破坏自毁掉落（余油不返还、无真实爆炸伤害）。加载宽限期
- * （{@code CdgOverloadMath.LOAD_GRACE_TICKS}，BE 重实例化后 5 秒）内的过载读数
- * 视为存档/区块加载期 kinetic 网络重建残留，不参与确认；确认进度不跨存档携带。
+ * count 100），再破坏自毁掉落（余油不返还、无真实爆炸伤害）。重建稳定探测
+ * （{@code CdgOverloadMath.NETWORK_SETTLE_TICKS}：引擎所见应力/规模视图连续
+ * 1 秒不变判重建完成）之前过载读数不累计、不点引信——会产生误报的加载重建
+ * churn 必经 sync 写视图、被探测归零（addSilently 静默并入不变视图但也不产生
+ * 误报）；确认进度不跨存档携带。
  * 确认前爬梯/波动计时冻结。红石关停/燃尽/负载恢复都不取消引信。
  * 自毁破坏失败（极端情况）才回退闩锁逻辑</li>
  * </ul>
  * 目标：普通与组合式柴油机。巨型柴油机由 B5（HugeDieselEngineMixin）独立覆盖，
  * 本 mixin 不处理（cast 结构只接受 KineticBlockEntity）。
- * <p>燃油门控不在这里：1.3.15 起燃油扣除统一走
- * {@code fuelDebt += burn * getFuelThrottle()}，且组合式 tick 内已无
- * {@code enabled()} 直调点——门控收敛到 {@link EngineFuelGateMixin}
- *（{@code IEngine#getFuelThrottle} RETURN 注入，一处覆盖三类机型；引信进行中
- * 隐含闩锁，门控同口径生效）。</p>
+ * <p>燃油门控不在本 mixin：原收敛点是 {@code EngineFuelGateMixin}
+ * （{@code IEngine#getFuelThrottle} RETURN 注入），2026-09-28 起停用
+ * （commit a80c155，从 mixins.json/plugin 摘除，源文件保留）——闩锁/引信期间
+ * 燃油当前照常消耗，属拍板停用状态，勿按本段旧描述理解。</p>
  * <p>1.3.15 口径对齐：两目标类的 {@code getGeneratedSpeed()} 均含
  * {@code * getThrottle()}（模拟信号调速，未开启时恒 1）。本 mixin 的额定饱和判定
  * 与运转判定同步乘 throttle——与 getter 同源，模拟调速 0 即视为停转复位。</p>
  * <p>配置读取时机：所有 handler 先行 ServerLevel 守卫（双端方法），仅服务端
  * 读取 SERVER 配置——避免专用服务器客户端未加载该配置即抛异常。</p>
  * <p>状态持久化：附件带 codec 序列化，闩锁/引信与点火计时跨区块卸载/存档重启保持；
- * 过载确认计数不序列化（读档从 0 重计，配合加载宽限期）。</p>
+ * 过载确认计数与稳定探测不序列化（读档归零 = 未武装，重建稳定后重新武装）。</p>
  */
 @Mixin({DieselEngineBlockEntity.class, ModularDieselEngineBlockEntity.class})
 public abstract class DieselEngineRampMixin {
@@ -123,7 +124,6 @@ public abstract class DieselEngineRampMixin {
         }
         IEngine engine = (IEngine) (Object) this;
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
-        state.ticksSinceLoad++;
         boolean wasLatched = state.overloadLatched;
 
         boolean fuel = engine.validFS();
@@ -144,6 +144,18 @@ public abstract class DieselEngineRampMixin {
             // 取前者（需求：卸载/重启不中断引信）
             self.setChanged();
             return;
+        }
+        // B6 重建稳定探测：引擎所见 (stress, networkSize) 视图连续不变满
+        // NETWORK_SETTLE_TICKS 判重建完成、炸机逻辑武装（机理见 CdgOverloadMath）。
+        // 放在 !fuel 早退之前——无油/停转期间也在后台武装
+        KineticStressViewAccessor view = (KineticStressViewAccessor) self;
+        if (CdgOverloadMath.sameView(view.dimblend$stress(), view.dimblend$networkSize(),
+                state.lastNetworkStress, state.lastNetworkSize)) {
+            state.settleTicks++;
+        } else {
+            state.settleTicks = 0;
+            state.lastNetworkStress = view.dimblend$stress();
+            state.lastNetworkSize = view.dimblend$networkSize();
         }
         if (state.overloadLatched) {
             // B4 重新加油触发启动：油量上升（相对上次记录）即解除闩锁全新点火
@@ -166,10 +178,10 @@ public abstract class DieselEngineRampMixin {
         boolean enabled = engine.enabled();
         boolean overloaded = self.isOverStressed();
         if (enabled && overloaded) {
-            // 加载宽限期（CdgOverloadMath.LOAD_GRACE_TICKS）：BE（重）实例化后
-            // 该时长内的 overstressed 读数视为网络重建残留，不累计确认也不点引信
-            // （爬梯照冻结，读数恢复正常的 tick 自行清零后计数从头开始）
-            if (CdgOverloadMath.isWithinLoadGrace(state.ticksSinceLoad)) {
+            // 重建未完成（网络视图未稳定）：过载读数视为重建 churn 残留，
+            // 不累计确认也不点引信（爬梯照冻结——直接 return，不断也不复位）；
+            // 视图稳定（武装）后才进入 40 tick 确认窗口
+            if (!CdgOverloadMath.isArmed(state.settleTicks)) {
                 return;
             }
             // B6：运转中过载连续 40 tick（2 秒，见 CdgOverloadMath）才点引信——

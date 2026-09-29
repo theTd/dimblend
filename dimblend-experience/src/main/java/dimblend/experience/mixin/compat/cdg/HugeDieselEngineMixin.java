@@ -28,10 +28,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * 饱和判定与该调用实参同源（{@code |getFuelSpeed * getThrottle|}，注意 1.3.15
  * 此处未乘 upgrade 倍率——与上游保持一致，不另做修正）。</p>
  *
- * <p>B6 过载引信（用户拍板，不可中断）：轴持续过载满 40 tick（2 秒）确认后先摘轴侧登记
- * （否则轴残留末速空转），再点引信——警告音 1 次、出力归零，引信期间每 tick 播
- * large_smoke（delta 0.2,0.2,0.2 / speed 0 / count 10）；加载宽限期（BE 重实例化后
- * 5 秒）内的过载读数视为存档/区块加载期网络重建残留，不参与确认（确认进度不跨存档
+ * <p>B6 过载引信（用户拍板，不可中断）：轴网络视图稳定（连续 1 秒不变判重建完成，
+ * 见 {@code CdgOverloadMath.NETWORK_SETTLE_TICKS}）后持续过载满 40 tick（2 秒）
+ * 确认，先摘轴侧登记（否则轴残留末速空转），再点引信——警告音 1 次、出力归零，
+ * 引信期间每 tick 播 large_smoke（delta 0.2,0.2,0.2 / speed 0 / count 10）；
+ * 未武装（存档/区块加载重建 churn 期）内的过载读数不参与确认（确认进度不跨存档
  * 携带），确认前爬梯/波动计时冻结；6 秒后爆音 1 次 + 爆炸粒子
  * （delta 1,1,1 / speed 0 / count 100），再 {@code destroyBlock(pos, true)}
  * 破坏本体掉落（余油不返还、无真实爆炸伤害）。红石关停/燃尽/负载恢复都不取消引信。
@@ -103,7 +104,6 @@ public abstract class HugeDieselEngineMixin {
             return;
         }
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
-        state.ticksSinceLoad++;
         boolean wasLatched = state.overloadLatched;
         if (state.fuseActive) {
             // B6 引信优先且不可中断：只推进倒计时；到时爆音+粒子+自毁
@@ -135,6 +135,18 @@ public abstract class HugeDieselEngineMixin {
             state.overloadTicks = 0;
             return;
         }
+        // B6 重建稳定探测（观测轴的网络视图，与过载读数同源）：连续不变满
+        // NETWORK_SETTLE_TICKS 判重建完成、炸机逻辑武装（机理见 CdgOverloadMath）。
+        // 放在 !enabled 早退之前——停机期间也在后台武装
+        KineticStressViewAccessor view = (KineticStressViewAccessor) shaft;
+        if (CdgOverloadMath.sameView(view.dimblend$stress(), view.dimblend$networkSize(),
+                state.lastNetworkStress, state.lastNetworkSize)) {
+            state.settleTicks++;
+        } else {
+            state.settleTicks = 0;
+            state.lastNetworkStress = view.dimblend$stress();
+            state.lastNetworkSize = view.dimblend$networkSize();
+        }
         int fuelAmount = self.getTank().getFluidAmount();
         if (state.overloadLatched) {
             // 自毁失败回退：闩锁语义与普通机一致，重新加油（有效燃油且油量上升）解除、全新点火
@@ -154,11 +166,11 @@ public abstract class HugeDieselEngineMixin {
             return;
         }
         if (shaft.isOverStressed()) {
-            // B6 过载损坏（只炸本体）：持续 40 tick（2 秒，见 CdgOverloadMath）确认才点引信——
-            // 加载宽限期（BE 重实例化后 5 秒，见 CdgOverloadMath.LOAD_GRACE_TICKS）内的
-            // overstressed 读数视为网络重建残留，不累计确认；确认前爬梯/波动计时冻结
-            // （直接 return，不断也不复位），燃油照常扣除；确认后先摘轴侧登记防残留末速空转，再点引信
-            if (CdgOverloadMath.isWithinLoadGrace(state.ticksSinceLoad)) {
+            // B6 过载损坏（只炸本体）：网络视图稳定（武装）后持续 40 tick（2 秒，见
+            // CdgOverloadMath）确认才点引信——重建 churn 期的 overstressed 读数在
+            // 未武装阶段被拦（不累计、不点引信，爬梯照冻结：直接 return 不断也不复位），
+            // 燃油照常扣除；确认后先摘轴侧登记防残留末速空转，再点引信
+            if (!CdgOverloadMath.isArmed(state.settleTicks)) {
                 return;
             }
             state.overloadTicks = CdgOverloadMath.countOverloadTick(state.overloadTicks);

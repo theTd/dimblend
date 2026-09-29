@@ -49,18 +49,43 @@ class CdgOverloadFuseTest {
     }
 
     @Test
-    void loadGraceBlocksConfirmationRightAfterLoad() {
-        // 读档即过载（网络重建残留）：宽限期内计数不动、不成引信
-        for (int ticksSinceLoad = 0; ticksSinceLoad < CdgOverloadMath.LOAD_GRACE_TICKS; ticksSinceLoad++) {
-            assertTrue(CdgOverloadMath.isWithinLoadGrace(ticksSinceLoad));
+    void unsettledNetworkViewNeverArms() {
+        // 重建 churn：每次视图变化清零，持续 churn 永不武装
+        int settle = 0;
+        float lastStress = 0.0F;
+        int lastSize = 0;
+        for (int i = 1; i <= 100; i++) {
+            float stress = i * 8.0F;
+            if (CdgOverloadMath.sameView(stress, 1, lastStress, lastSize)) {
+                settle++;
+            } else {
+                settle = 0;
+                lastStress = stress;
+                lastSize = 1;
+            }
+            assertFalse(CdgOverloadMath.isArmed(settle));
         }
-        // 宽限期一过，确认窗口照常计时
-        assertFalse(CdgOverloadMath.isWithinLoadGrace(CdgOverloadMath.LOAD_GRACE_TICKS));
     }
 
     @Test
-    void loadGraceMustExceedConfirmWindow() {
-        // 宽限期短于确认窗口则重建误报仍可能单独击穿窗口
-        assertTrue(CdgOverloadMath.LOAD_GRACE_TICKS > CdgOverloadMath.OVERLOAD_CONFIRM_TICKS);
+    void stableNetworkViewArmsAfterSettleWindow() {
+        // 视图连续不变：NETWORK_SETTLE_TICKS-1 内不武装，满窗口武装
+        int settle = 0;
+        for (int i = 0; i < CdgOverloadMath.NETWORK_SETTLE_TICKS - 1; i++) {
+            if (CdgOverloadMath.sameView(64.0F, 5, 64.0F, 5)) {
+                settle++;
+            }
+            assertFalse(CdgOverloadMath.isArmed(settle));
+        }
+        settle++;
+        assertTrue(CdgOverloadMath.isArmed(settle));
+        assertTrue(CdgOverloadMath.isArmed(settle + 1000));
+    }
+
+    @Test
+    void sameViewUsesExactFloatAndSizeEquality() {
+        assertTrue(CdgOverloadMath.sameView(1.5F, 3, 1.5F, 3));
+        assertFalse(CdgOverloadMath.sameView(1.5F, 3, 1.5000001F, 3));
+        assertFalse(CdgOverloadMath.sameView(1.5F, 3, 1.5F, 4));
     }
 }

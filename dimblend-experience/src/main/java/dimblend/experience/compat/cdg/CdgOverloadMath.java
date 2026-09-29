@@ -1,49 +1,62 @@
 package dimblend.experience.compat.cdg;
 
 /**
- * 柴油机过载持续确认窗口（纯函数，零 Minecraft/NeoForge 依赖，可单元测试）。
+ * 柴油机过载确认与重建稳定判据（纯函数，零 Minecraft/NeoForge 依赖，可单元测试）。
  * 调用方见 {@code CdgOverloadFuse}（引信）与两处 mixin（普通/组合式、巨型机）。
  *
- * <p>存档/区块加载期 kinetic 网络逐 tick 重建（Create 从 NBT 恢复 stale 应力，
- * 见 {@code KineticBlockEntity.read/updateFromNetwork}），单 tick 的过载读数不可信；
- * 运转中过载连续满 {@link #OVERLOAD_CONFIRM_TICKS} tick（2 秒）才确认——短暂误报
- * 在此窗口内被滤掉，与蒸汽机 H 板块 16 秒持续确认同设计语言。</p>
+ * <p>加载误报机理（Create 6.0.10 字节码核实）：存档/区块加载期 kinetic 网络逐 tick
+ * 重建，{@code KineticNetwork} 以 unloadedMembers/unloadedCapacity/unloadedStress 记账
+ * 未加载成员；networkDirty 成员次 tick 触发 {@code updateNetwork → 值变才 sync()}，
+ * 对全网成员调 {@code KineticBlockEntity.updateFromNetwork(capacity, stress, size)}
+ * 刷新视图并写 {@code overStressed}（capacity<stress 时置真；此外 {@code read()}/
+ * {@code clearKineticInformation()} 也写该字段）。成员经 {@code addSilently} 静默并入时
+ * 不 sync（members↑ 与 unloadedMembers↓ 对冲，getSize 恒定）——但该路径不产生误报
+ * （不写 overStressed）。承重蕴含方向是"会产生误报的 churn ⇒ 必先有一次 sync 视图
+ * 写入"，故其逆否成立：视图稳定 ⇒ 无误报源，稳定判据可用。</p>
  *
- * <p>重建误报的读数可能连续超过确认窗口（成员随区块逐个并入，重建跨越多 tick），
- * 且确认进度本身不跨存档携带后，窗口仍可能被长重建读数单独击穿——另设
- * {@link #LOAD_GRACE_TICKS} 加载宽限期：BE（重）实例化后该时长内的过载读数
- * 直接不参与确认（2026-09-28 口径）。</p>
+ * <p>"重建完成"判据 = 引擎所见 {@code (stress, networkSize)} 视图连续
+ * {@link #NETWORK_SETTLE_TICKS} tick 不变。不跟踪 capacity 是有意的（其变化更频繁）；
+ * 但注意 B1 爬梯/B3 波动并非只影响 capacity——应力计算含 live 转速乘子
+ * （{@code KineticNetwork.getActualStressOf} = base stress × |getTheoreticalSpeed()|），
+ * 本机转速步进在<b>带载</b>网络上也会 churn stress 视图：单机过载确认期间波动计时
+ * 冻结、自导 churn 停止，影响轻微；<b>多动力源共网</b>（多柴油机/多巨型机共轴）时
+ * 其他源的爬梯/波动持续 churn，本机武装占空下降、40 tick 确认的墙钟时长被拉长
+ * （保守方向：更晚炸，非误炸/不炸）——已知并接受，spec B4 有记录。也不用纯
+ * {@code unloadedMembers==0} 判据：网络延伸到长期不加载的远处区块时它永远 >0，
+ * 会导致正常运转永不炸机（超出加载防护的行为改变）。</p>
  */
 public final class CdgOverloadMath {
 
     /**
-     * 持续过载确认窗口：2 秒 × 20 tps。调用方仅在"运转中过载"为真时调
-     * {@link #countOverloadTick} 累计，任一正常 tick 自行清零计数；确认前爬梯/波动计时冻结
-     * （不断也不复位），燃油照常扣除（门控仅闩锁后生效）。
+     * 持续过载确认窗口：2 秒 × 20 tps。调用方仅在"运转中过载"且网络视图已稳定
+     * （{@link #isArmed}）时调 {@link #countOverloadTick} 累计，任一正常 tick 自行
+     * 清零计数；确认前爬梯/波动计时冻结（不断也不复位），燃油照常扣除（门控仅闩锁后生效）。
      */
     public static final int OVERLOAD_CONFIRM_TICKS = 40;
 
     /**
-     * 加载宽限期：BE（重）实例化后该 tick 数（5 秒）内的过载读数不参与确认。
-     * 动机：存档/区块加载期 kinetic 网络重建期间 overstressed 读数不可信，且
-     * 可能连续超过 {@link #OVERLOAD_CONFIRM_TICKS}；宽限期内不累计，重建结束
-     * （出现正常读数 tick）后计数从 0 重新开始。宽限期取 5 秒——覆盖典型
-     * 分块读档的重建时长，代价是加载后 5 秒内的真过载不惩罚（引擎刚加载，
-     * 可接受）。判据入参为 {@link CdgEngineState#ticksSinceLoad}（读档归零）。
+     * 网络视图稳定窗口：1 秒 × 20 tps。{@code (stress, networkSize)} 连续该时长不变
+     * 判重建完成、炸机逻辑武装。重建跨多久就守多久+1 秒——比固定宽限期精确，
+     * 长重建（>5 秒）也不再漏防。代价：游玩中负载增减会触发 1 秒静默期（保守方向，
+     * 随后仍走 {@link #OVERLOAD_CONFIRM_TICKS} 确认）。
      */
-    public static final int LOAD_GRACE_TICKS = 100;
+    public static final int NETWORK_SETTLE_TICKS = 20;
 
     /**
-     * 是否仍在加载宽限期内（true = 过载读数不参与确认）。
-     *
-     * @param ticksSinceLoad BE 实例化起累计的服务端 tick
+     * 两次网络视图采样是否相同（float 走 {@link Float#compare} 精确等值——
+     * 视图值来自同一计算链的拷贝传递，不涉及误差累积）。
      */
-    public static boolean isWithinLoadGrace(int ticksSinceLoad) {
-        return ticksSinceLoad < LOAD_GRACE_TICKS;
+    public static boolean sameView(float stressA, int sizeA, float stressB, int sizeB) {
+        return Float.compare(stressA, stressB) == 0 && sizeA == sizeB;
+    }
+
+    /** 稳定计数达标即武装（炸机逻辑开始运作）。 */
+    public static boolean isArmed(int settleTicks) {
+        return settleTicks >= NETWORK_SETTLE_TICKS;
     }
 
     /**
-     * 疑似过载累计 1 tick（调用方保证：运转中过载为真）。
+     * 疑似过载累计 1 tick（调用方保证：运转中过载且已武装为真）。
      *
      * @return 累计后的计数值（封顶 {@link #OVERLOAD_CONFIRM_TICKS} 不再涨）
      */

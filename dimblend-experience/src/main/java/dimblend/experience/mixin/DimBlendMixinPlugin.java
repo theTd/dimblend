@@ -16,7 +16,10 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         if (mixinClassName.endsWith(".compat.cdg.DieselEngineRampMixin")
-                || mixinClassName.endsWith(".compat.cdg.HugeDieselEngineMixin")) {
+                || mixinClassName.endsWith(".compat.cdg.HugeDieselEngineMixin")
+                // 目标是 Create 的 KineticBlockEntity，但只服务 CDG 柴油机重建探测，
+                // 故按 createdieselgenerators 在场性过滤
+                || mixinClassName.endsWith(".compat.cdg.KineticStressViewAccessor")) {
             return isLoaded("createdieselgenerators");
         }
         if (mixinClassName.endsWith(".compat.cca.ElectricMotorMixin")

@@ -110,7 +110,7 @@
 - B1 加燃油启动：转速立即到 16rpm → 每 4 秒 +2rpm 阶梯爬升，直至额定转速
 - B2 燃油烧尽 → 正常停机流程
 - B3 达到额定后：在 80%~100% 额定区间随机跳变（实现拟每 1~3 秒取一次随机值，可调）
-- B4 应力过载 → 爆机掉落（用户拍板变更，原"闩锁停机+重新加油重启"作废）：运转中过载连续 40 tick（2 秒）确认后破坏方块、按战利品表掉成物品，油箱余油不返还；加载期误报双层过滤——①确认窗口（40 tick）+ ②加载宽限期（`LOAD_GRACE_TICKS`=100，BE 重实例化后 5 秒内过载读数不参与确认，2026-09-28 实测反馈：确认进度跨存档携带 + 长重建读数可单独击穿 2 秒窗口，故确认计数改为不序列化、读档从 0 重计）；确认前爬梯/波动计时冻结；确认后 6 秒引信倒计时期间每 tick 在引擎中心播 minecraft:large_smoke（delta=0.2,0.2,0.2 / speed=0 / count=10）；破坏失败（极端）回退闩锁逻辑
+- B4 应力过载 → 爆机掉落（用户拍板变更，原"闩锁停机+重新加油重启"作废）：运转中过载连续 40 tick（2 秒）确认后破坏方块、按战利品表掉成物品，油箱余油不返还；加载期误报过滤（2026-09-29 起为精确口径）——**网络视图稳定探测**替代固定宽限期：会产生误报的重建 churn 必然经 sync 刷新引擎所见 `(stress, networkSize)` 视图（Create `KineticNetwork updateNetwork → sync()` 链，字节码核实；addSilently 静默并入不变视图但也不产生误报），视图连续 20 tick（1 秒）不变判重建完成、炸机逻辑武装，未武装期过载读数不累计不点引信（确认计数与探测态均不序列化，读档归零；已知副作用：应力计算含 live 转速乘子，带载网络上本机波动/共网动力源的爬梯波动会 churn 视图，武装占空下降、确认墙钟拉长——保守方向，更晚炸而非误炸）；确认前爬梯/波动计时冻结；确认后 6 秒引信倒计时期间每 tick 在引擎中心播 minecraft:large_smoke（delta=0.2,0.2,0.2 / speed=0 / count=10）；破坏失败（极端）回退闩锁逻辑
 - B5 大型柴油引擎（v1.2 第二版新条目，用户标"未实现"）：热机爬梯 + 额定波动 + 过载损坏，
   与普通/组合式同口径（16/+2/4s，80%~100%/1~3s，爆机掉落余油不返还）。
   调速点 = 传给 `shaft.update(pos, dir, capacity, speed)` 的 speed 参数（ModifyArg）；
@@ -489,6 +489,8 @@
 |---|---|---|---|
 | BeaconBlockEntityMixin | 原版信标 BE | A7 | 无条件（原版目标） |
 | compat.cdg.DieselEngineRampMixin | CDG 普通/组合柴油机 BE | B | createdieselgenerators 在场 |
+| compat.cdg.HugeDieselEngineMixin | CDG 巨型柴油机 BE | B5 | createdieselgenerators 在场 |
+| compat.cdg.KineticStressViewAccessor | Create KineticBlockEntity（B6 重建探测只读视图） | B6 | createdieselgenerators 在场 |
 | compat.cca.ElectricMotorMixin | CCA 电动马达 BE | D | createaddition 在场 |
 | compat.cca.ElectricMotorSoundClientMixin | CCA 电动马达 BE | D4 | createaddition 在场（client 数组） |
 | compat.cca.AlternatorIdleDrainMixin | CCA 交流发电机 BE | D5 | createaddition 在场 |
