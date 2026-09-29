@@ -94,7 +94,8 @@ config="${mod_id}.mixins.json"
     ordering="NONE"
     side="BOTH"
 
-# Create 提供伪装方块的模型装饰器与蓝图取材接口（C 板块，随 copycats 一并需要）
+# Create 提供伪装方块的模型装饰器与蓝图取材接口（C 板块，随 copycats 一并需要），
+# 以及 K 板块创造传动件继承的行为基类（独立需要，不依赖 copycats）
 [[dependencies.${mod_id}]]
     modId="create"
     type="optional"

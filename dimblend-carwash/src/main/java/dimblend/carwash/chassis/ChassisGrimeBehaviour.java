@@ -3,6 +3,7 @@ package dimblend.carwash.chassis;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BehaviourType;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
+import dimblend.blocks.api.CreativeCopycatHiding;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -47,6 +48,10 @@ public class ChassisGrimeBehaviour extends BlockEntityBehaviour {
      */
     public static ChassisGrimeVisual visualAt(BlockGetter level, BlockPos pos) {
         try {
+            // 隐藏车架不渲染脏污（泥与上方碎石一并消失）；隐藏期脏值冻结见 changeDirt
+            if (CreativeCopycatHiding.isHidden(level, pos)) {
+                return ChassisGrimeVisual.CLEAN;
+            }
             ChassisGrimeBehaviour grime = BlockEntityBehaviour.get(level, pos, TYPE);
             return grime == null ? ChassisGrimeVisual.CLEAN : grime.visual;
         } catch (RuntimeException e) {
@@ -79,6 +84,13 @@ public class ChassisGrimeBehaviour extends BlockEntityBehaviour {
      * 可见快照变化时经 Create 的 {@code sendData} 同步客户端，客户端收到后重建网格；其余情况只标记存盘。
      */
     public void changeDirt(int delta, RandomSource random) {
+        Level level = blockEntity.getLevel();
+        // 隐藏车架脏值冻结：隐藏期间 dirty 值不增长（清洗/雨洗不受影响）。
+        // 判定走 dimblend-blocks 的 BE 隐藏标记（不动方块状态，Sable 子关卡无物理扰动）。
+        if (delta > 0 && level != null
+                && CreativeCopycatHiding.isHidden(level, blockEntity.getBlockPos())) {
+            return;
+        }
         int next = ChassisGrimeRules.clampDirt(dirt + delta);
         if (next == dirt) {
             return;
@@ -93,7 +105,6 @@ public class ChassisGrimeBehaviour extends BlockEntityBehaviour {
         ChassisGrimeVisual previous = visual;
         visual = ChassisGrimeVisual.of(dirt, variant);
         // 只标区块待存盘：脏值不影响比较器输出，不走 setChanged 的邻居通知
-        Level level = blockEntity.getLevel();
         if (level != null) {
             level.blockEntityChanged(blockEntity.getBlockPos());
         }

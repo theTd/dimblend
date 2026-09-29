@@ -11,6 +11,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import dimblend.blocks.compat.copycats.CreativeCopycats;
+import dimblend.blocks.compat.create.CreativeKinetics;
 import dimblend.blocks.fragile.FragileStones;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
@@ -43,6 +44,13 @@ public class DimBlendBlocks {
         // （CreativeCopycats 类内硬引用其类型，必须经 isLoaded 守卫触达）
         if (ModList.get().isLoaded("copycats")) {
             CreativeCopycats.register(modEventBus);
+        }
+
+        // K 板块：Create 动力传动件的创造模式变体，仅 Create 在场时注册
+        // （CreativeKinetics 类内硬引用其类型，必须经 isLoaded 守卫触达；
+        // 与 C 板块守卫独立——copycats 缺席时传动件仍应可用）
+        if (ModList.get().isLoaded("create")) {
+            CreativeKinetics.register(modEventBus);
         }
     }
 

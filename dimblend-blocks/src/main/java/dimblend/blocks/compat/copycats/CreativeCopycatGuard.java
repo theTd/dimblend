@@ -33,7 +33,9 @@ public final class CreativeCopycatGuard {
     private static boolean isCreativeCopycat(Block block) {
         return block == CreativeCopycats.CREATIVE_COPYCAT_SLAB.get()
                 || block == CreativeCopycats.CREATIVE_COPYCAT_BEAM.get()
-                || block == CreativeCopycats.CREATIVE_COPYCAT_PANEL.get();
+                || block == CreativeCopycats.CREATIVE_COPYCAT_PANEL.get()
+                || block == CreativeCopycats.CREATIVE_CLEAN_COPYCAT_SLAB.get()
+                || block == CreativeCopycats.CREATIVE_CLEAN_COPYCAT_PANEL.get();
     }
 
     private CreativeCopycatGuard() {

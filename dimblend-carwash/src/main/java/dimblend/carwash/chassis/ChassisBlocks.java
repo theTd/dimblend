@@ -24,6 +24,10 @@ import java.util.List;
  * </ul>
  * 跨模组只按注册名引用（{@link DeferredHolder}），不 import dimblend-blocks 的实现类；
  * 属性常量取自其上游基类（Create 伪装板 / Copycats+ 伪装半砖）。
+ *
+ * <p>洁净变体（creative_clean_copycat_panel/slab）按注册名判定<b>不是</b>车架：
+ * 永不积脏，供洗车够不到的死角使用——属有意设计，勿「顺手」并入判定。
+ * 隐藏车架的脏值冻结在 {@link ChassisGrimeBehaviour#changeDirt} 总闸。</p>
  */
 public final class ChassisBlocks {
 

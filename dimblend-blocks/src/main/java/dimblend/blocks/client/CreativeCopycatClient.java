@@ -23,6 +23,7 @@ import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.ChunkRenderTypeSet;
+import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.event.RegisterColorHandlersEvent;
 import net.neoforged.neoforge.client.model.data.ModelData;
@@ -31,7 +32,9 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * C 板块客户端：创造模式伪装方块的模型、渲染层和染色。
+ * C 板块客户端：创造模式伪装方块（含 C4 洁净变体）的模型、渲染层、染色与
+ * C5 隐藏渲染（{@link HidingCopycatModel} 空面 + {@link CreativeCopycatGhostRenderer}
+ * 持扳手幽灵显现；选中框抑制在 {@link CreativeCopycatHidingClient}）。
  *
  * <p>方块状态文件指向 {@code minecraft:block/air}，世界内几何完全来自烘焙期换上的
  * 伪装模型。渲染层必须四层全开（与 Copycats {@code multiCopycat}/Create {@code copycat}
@@ -59,6 +62,8 @@ public final class CreativeCopycatClient {
         registerRenderLayers(CreativeCopycats.CREATIVE_COPYCAT_SLAB.get());
         registerRenderLayers(CreativeCopycats.CREATIVE_COPYCAT_BEAM.get());
         registerRenderLayers(CreativeCopycats.CREATIVE_COPYCAT_PANEL.get());
+        registerRenderLayers(CreativeCopycats.CREATIVE_CLEAN_COPYCAT_SLAB.get());
+        registerRenderLayers(CreativeCopycats.CREATIVE_CLEAN_COPYCAT_PANEL.get());
     }
 
     @SubscribeEvent
@@ -66,15 +71,36 @@ public final class CreativeCopycatClient {
         if (!ModList.get().isLoaded("copycats")) {
             return;
         }
-        event.register(IMultiStateCopycatBlock.wrappedColor(), CreativeCopycats.CREATIVE_COPYCAT_SLAB.get());
+        event.register(IMultiStateCopycatBlock.wrappedColor(), CreativeCopycats.CREATIVE_COPYCAT_SLAB.get(),
+                CreativeCopycats.CREATIVE_CLEAN_COPYCAT_SLAB.get());
         event.register(ICopycatBlock.wrappedColor(), CreativeCopycats.CREATIVE_COPYCAT_BEAM.get());
-        event.register(CopycatBlock.wrappedColor(), CreativeCopycats.CREATIVE_COPYCAT_PANEL.get());
+        event.register(CopycatBlock.wrappedColor(), CreativeCopycats.CREATIVE_COPYCAT_PANEL.get(),
+                CreativeCopycats.CREATIVE_CLEAN_COPYCAT_PANEL.get());
+    }
+
+    @SubscribeEvent
+    public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
+        if (!ModList.get().isLoaded("copycats")) {
+            return;
+        }
+        // C5 幽灵渲染：隐藏且持扳手时画物品形态；平时不画任何内容
+        event.registerBlockEntityRenderer(CreativeCopycats.CREATIVE_MULTI_STATE_COPYCAT.get(),
+                CreativeCopycatGhostRenderer::new);
+        event.registerBlockEntityRenderer(CreativeCopycats.CREATIVE_CREATE_COPYCAT.get(),
+                CreativeCopycatGhostRenderer::new);
+        event.registerBlockEntityRenderer(CreativeCopycats.CREATIVE_CLEAN_MULTI_STATE_COPYCAT.get(),
+                CreativeCopycatGhostRenderer::new);
+        event.registerBlockEntityRenderer(CreativeCopycats.CREATIVE_CLEAN_CREATE_COPYCAT.get(),
+                CreativeCopycatGhostRenderer::new);
     }
 
     /**
      * 在烘焙结果上直接换模型，而不是事先塞进 Create 的 {@code CustomBlockModels}。
      * 后者第一次 {@code forEach} 就冻结登记表，客户端 setup 若晚于首次烘焙，
      * 之后的 register 会被静默丢掉，方块永远停在空气模型。
+     *
+     * <p>板/半砖（含洁净变体）在最外层再包 {@link HidingCopycatModel} 承担 C5 隐藏；
+     * 粱无隐藏需求，维持单层包装。</p>
      */
     @SubscribeEvent
     public static void onModifyBakingResult(ModelEvent.ModifyBakingResult event) {
@@ -82,11 +108,21 @@ public final class CreativeCopycatClient {
             return;
         }
         var models = event.getModels();
-        swap(models, CreativeCopycats.CREATIVE_COPYCAT_SLAB.get(),
-                model -> CopycatModelCore.createModel(model, new CopycatMultiSlabModelCore()));
+        swapSlab(models, CreativeCopycats.CREATIVE_COPYCAT_SLAB.get());
+        swapSlab(models, CreativeCopycats.CREATIVE_CLEAN_COPYCAT_SLAB.get());
         swap(models, CreativeCopycats.CREATIVE_COPYCAT_BEAM.get(),
                 model -> CopycatModelCore.createModel(model, new CopycatBeamModelCore()));
-        swap(models, CreativeCopycats.CREATIVE_COPYCAT_PANEL.get(), CreativeCopycatPanelModel::new);
+        swapPanel(models, CreativeCopycats.CREATIVE_COPYCAT_PANEL.get());
+        swapPanel(models, CreativeCopycats.CREATIVE_CLEAN_COPYCAT_PANEL.get());
+    }
+
+    private static void swapSlab(Map<ModelResourceLocation, BakedModel> models, Block block) {
+        swap(models, block,
+                model -> new HidingCopycatModel(CopycatModelCore.createModel(model, new CopycatMultiSlabModelCore())));
+    }
+
+    private static void swapPanel(Map<ModelResourceLocation, BakedModel> models, Block block) {
+        swap(models, block, model -> new HidingCopycatModel(new CreativeCopycatPanelModel(model)));
     }
 
     private static void registerRenderLayers(Block block) {

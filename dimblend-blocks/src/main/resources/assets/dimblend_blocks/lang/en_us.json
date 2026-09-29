@@ -3,6 +3,14 @@
   "block.dimblend_blocks.creative_copycat_slab": "Creative Copycat Slab",
   "block.dimblend_blocks.creative_copycat_beam": "Creative Copycat Beam",
   "block.dimblend_blocks.creative_copycat_panel": "Creative Copycat Panel",
+  "block.dimblend_blocks.creative_clean_copycat_slab": "Creative Clean Copycat Slab",
+  "block.dimblend_blocks.creative_clean_copycat_panel": "Creative Clean Copycat Panel",
+  "block.dimblend_blocks.creative_shaft": "Creative Shaft",
+  "block.dimblend_blocks.creative_cogwheel": "Creative Cogwheel",
+  "block.dimblend_blocks.creative_andesite_encased_shaft": "Creative Andesite Encased Shaft",
+  "block.dimblend_blocks.creative_brass_encased_shaft": "Creative Brass Encased Shaft",
+  "block.dimblend_blocks.creative_andesite_encased_cogwheel": "Creative Andesite Encased Cogwheel",
+  "block.dimblend_blocks.creative_brass_encased_cogwheel": "Creative Brass Encased Cogwheel",
   "block.dimblend_blocks.fragile_cobblestone": "Fragile Cobblestone",
   "block.dimblend_blocks.fragile_stone": "Fragile Stone"
 }

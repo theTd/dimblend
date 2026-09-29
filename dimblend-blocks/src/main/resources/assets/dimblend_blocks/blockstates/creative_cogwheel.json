@@ -1,0 +1,17 @@
+{
+  "variants": {
+    "axis=x": {
+      "model": "dimblend_blocks:block/creative_cogwheel",
+      "x": 90,
+      "y": 90
+    },
+    "axis=y": {
+      "model": "dimblend_blocks:block/creative_cogwheel"
+    },
+    "axis=z": {
+      "model": "dimblend_blocks:block/creative_cogwheel",
+      "x": 90,
+      "y": 180
+    }
+  }
+}

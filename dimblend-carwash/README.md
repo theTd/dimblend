@@ -8,6 +8,12 @@
 - 创造模式伪装板，倒置（贴在格子顶部，`FACING=DOWN`）
 - 创造模式伪装半砖，倒置（竖轴上半砖）或双层
 
+反例（有意设计，勿并入判定）：
+- 洁净伪装板/半砖（`creative_clean_copycat_panel/slab`）按注册名判定不是车架：永不积脏，
+  供洗车正常洗车够不到的死角使用；
+- 隐藏车架（创造玩家对未贴材质的伪装板/半砖空手右键可隐藏）：隐藏期间脏值冻结不增长，
+  已有脏污不渲染，右键洗/弄脏交互穿透（不取消事件，水桶照常倒水）。
+
 每块车架有脏值 0–511：
 
 | 触发 | 效果 |
@@ -31,6 +37,11 @@
 - 脏值：Create `BlockEntityBehaviour`（`ChassisGrimeBehaviour`）挂在伪装方块 BE 上，随 BE 存盘、
   经 `sendData` 同步客户端。伪装方块 BE 不 tick，行为在首次读 NBT 时经 `BlockEntityBehaviourEvent`
   挂上，从未读过 NBT 的新 BE 在改值时补挂。不用方块状态：Sable 子关卡里每次改状态都会触发物理碰撞体/质量更新。
+- 隐藏对接（dimblend-blocks C5）：隐藏标记挂在对方 BE 上（`CreativeCopycatHidable`），本 mod 只经
+  `dimblend.blocks.api.CreativeCopycatHiding` 查询（`compileOnly project(":dimblend-blocks")`，
+  运行时本为必需依赖）。三个对接点：增长总闸 `ChassisGrimeBehaviour.changeDirt`（`delta>0` 且隐藏 →
+  直接返回，覆盖行驶积灰/泥土弄脏/一切未来来源）、渲染抑制口 `ChassisGrimeBehaviour.visualAt`
+  （隐藏即 CLEAN，泥与上方碎石一并消失）、`ChassisHandInteractions` 对隐藏车架直接放行不取消事件。
 - 行驶/下雨：`ChassisTravelGrime` 每秒在服务端关卡 tick 遍历一次 Sable 子关卡，速度取
   `ServerSubLevel.latestLinearVelocity`（m/s），车架取自其 plot 区块的 BE；每块车架每秒合并成一次改值。
 - 喷淋：`NozzleSprayWashing` 注册到 FireFighting Additions 的 `NozzleSprayInteractionRegistry`

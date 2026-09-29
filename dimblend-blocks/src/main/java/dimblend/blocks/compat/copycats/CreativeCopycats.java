@@ -1,8 +1,6 @@
 package dimblend.blocks.compat.copycats;
 
 import com.copycatsplus.copycats.foundation.copycat.CCCopycatBlockEntity;
-import com.copycatsplus.copycats.foundation.copycat.multistate.MultiStateCopycatBlockEntity;
-import com.simibubi.create.content.decoration.copycat.CopycatBlockEntity;
 import dimblend.blocks.DimBlendBlocks;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.item.BlockItem;
@@ -52,7 +50,7 @@ public final class CreativeCopycats {
 
     public static final DeferredBlock<CreativeCopycatSlabBlock> CREATIVE_COPYCAT_SLAB =
             DimBlendBlocks.BLOCKS.register("creative_copycat_slab",
-                    () -> new CreativeCopycatSlabBlock(creativeProps()));
+                    () -> new CreativeCopycatSlabBlock(creativeProps(), slabBlockEntityType()));
 
     public static final DeferredBlock<CreativeCopycatBeamBlock> CREATIVE_COPYCAT_BEAM =
             DimBlendBlocks.BLOCKS.register("creative_copycat_beam",
@@ -60,7 +58,17 @@ public final class CreativeCopycats {
 
     public static final DeferredBlock<CreativeCopycatPanelBlock> CREATIVE_COPYCAT_PANEL =
             DimBlendBlocks.BLOCKS.register("creative_copycat_panel",
-                    () -> new CreativeCopycatPanelBlock(creativeProps()));
+                    () -> new CreativeCopycatPanelBlock(creativeProps(), panelBlockEntityType()));
+
+    // C4 洁净变体：行为同创造伪装板/半砖，但按注册名判定天然不是洗车车架
+    // （永不积脏），用于洗车够不到的死角；BE 用独立的洁净类型，洗车行为绑定不到。
+    public static final DeferredBlock<CreativeCopycatSlabBlock> CREATIVE_CLEAN_COPYCAT_SLAB =
+            DimBlendBlocks.BLOCKS.register("creative_clean_copycat_slab",
+                    () -> new CreativeCopycatSlabBlock(creativeProps(), cleanSlabBlockEntityType()));
+
+    public static final DeferredBlock<CreativeCopycatPanelBlock> CREATIVE_CLEAN_COPYCAT_PANEL =
+            DimBlendBlocks.BLOCKS.register("creative_clean_copycat_panel",
+                    () -> new CreativeCopycatPanelBlock(creativeProps(), cleanPanelBlockEntityType()));
 
     public static final DeferredItem<BlockItem> CREATIVE_COPYCAT_SLAB_ITEM =
             DimBlendBlocks.ITEMS.register("creative_copycat_slab",
@@ -74,23 +82,37 @@ public final class CreativeCopycats {
             DimBlendBlocks.ITEMS.register("creative_copycat_panel",
                     () -> new CreativeOnlyBlockItem(CREATIVE_COPYCAT_PANEL.get(), new Item.Properties()));
 
-    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<MultiStateCopycatBlockEntity>> CREATIVE_MULTI_STATE_COPYCAT =
+    public static final DeferredItem<BlockItem> CREATIVE_CLEAN_COPYCAT_SLAB_ITEM =
+            DimBlendBlocks.ITEMS.register("creative_clean_copycat_slab",
+                    () -> new CreativeOnlyBlockItem(CREATIVE_CLEAN_COPYCAT_SLAB.get(), new Item.Properties()));
+
+    public static final DeferredItem<BlockItem> CREATIVE_CLEAN_COPYCAT_PANEL_ITEM =
+            DimBlendBlocks.ITEMS.register("creative_clean_copycat_panel",
+                    () -> new CreativeOnlyBlockItem(CREATIVE_CLEAN_COPYCAT_PANEL.get(), new Item.Properties()));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<CreativeCopycatSlabBlockEntity>> CREATIVE_MULTI_STATE_COPYCAT =
             BLOCK_ENTITIES.register("creative_multi_state_copycat", multiStateCopycatType());
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<CCCopycatBlockEntity>> CREATIVE_COPYCAT =
             BLOCK_ENTITIES.register("creative_copycat", copycatType());
 
-    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<CopycatBlockEntity>> CREATIVE_CREATE_COPYCAT =
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<CreativeCopycatPanelBlockEntity>> CREATIVE_CREATE_COPYCAT =
             BLOCK_ENTITIES.register("creative_create_copycat", createCopycatType());
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<CreativeCopycatSlabBlockEntity>> CREATIVE_CLEAN_MULTI_STATE_COPYCAT =
+            BLOCK_ENTITIES.register("creative_clean_multi_state_copycat", cleanMultiStateCopycatType());
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<CreativeCopycatPanelBlockEntity>> CREATIVE_CLEAN_CREATE_COPYCAT =
+            BLOCK_ENTITIES.register("creative_clean_create_copycat", cleanCreateCopycatType());
 
     /**
      * BlockEntitySupplier 两参签名（1.21.1 无 type 参数）：type 在运行期实体创建时
      * 从 holder 自取（注册期未就绪）；supplier 经辅助方法构造，规避静态初始化器
      * 对字段的直接自引用限制。
      */
-    private static java.util.function.Supplier<BlockEntityType<MultiStateCopycatBlockEntity>> multiStateCopycatType() {
+    private static java.util.function.Supplier<BlockEntityType<CreativeCopycatSlabBlockEntity>> multiStateCopycatType() {
         return () -> BlockEntityType.Builder.of(
-                (pos, state) -> new MultiStateCopycatBlockEntity(CREATIVE_MULTI_STATE_COPYCAT.get(), pos, state),
+                (pos, state) -> new CreativeCopycatSlabBlockEntity(CREATIVE_MULTI_STATE_COPYCAT.get(), pos, state),
                 CREATIVE_COPYCAT_SLAB.get()).build(null);
     }
 
@@ -100,10 +122,43 @@ public final class CreativeCopycats {
                 CREATIVE_COPYCAT_BEAM.get()).build(null);
     }
 
-    private static java.util.function.Supplier<BlockEntityType<CopycatBlockEntity>> createCopycatType() {
+    private static java.util.function.Supplier<BlockEntityType<CreativeCopycatPanelBlockEntity>> createCopycatType() {
         return () -> BlockEntityType.Builder.of(
-                (pos, state) -> new CopycatBlockEntity(CREATIVE_CREATE_COPYCAT.get(), pos, state),
+                (pos, state) -> new CreativeCopycatPanelBlockEntity(CREATIVE_CREATE_COPYCAT.get(), pos, state),
                 CREATIVE_COPYCAT_PANEL.get()).build(null);
+    }
+
+    private static java.util.function.Supplier<BlockEntityType<CreativeCopycatSlabBlockEntity>> cleanMultiStateCopycatType() {
+        return () -> BlockEntityType.Builder.of(
+                (pos, state) -> new CreativeCopycatSlabBlockEntity(CREATIVE_CLEAN_MULTI_STATE_COPYCAT.get(), pos, state),
+                CREATIVE_CLEAN_COPYCAT_SLAB.get()).build(null);
+    }
+
+    private static java.util.function.Supplier<BlockEntityType<CreativeCopycatPanelBlockEntity>> cleanCreateCopycatType() {
+        return () -> BlockEntityType.Builder.of(
+                (pos, state) -> new CreativeCopycatPanelBlockEntity(CREATIVE_CLEAN_CREATE_COPYCAT.get(), pos, state),
+                CREATIVE_CLEAN_COPYCAT_PANEL.get()).build(null);
+    }
+
+    /*
+     * 方块构造器取 BE 类型必须经静态方法间接：BLOCKS 的注册 lambda 在 BE holder 字段
+     * 赋值之前就会创建（但执行更晚），直接写 `() -> CREATIVE_X.get()` 会撞上静态
+     * 初始化器的前向引用限制（与下方 BE supplier 辅助方法同源约束）。
+     */
+    static java.util.function.Supplier<BlockEntityType<CreativeCopycatSlabBlockEntity>> slabBlockEntityType() {
+        return CREATIVE_MULTI_STATE_COPYCAT::get;
+    }
+
+    static java.util.function.Supplier<BlockEntityType<CreativeCopycatPanelBlockEntity>> panelBlockEntityType() {
+        return CREATIVE_CREATE_COPYCAT::get;
+    }
+
+    static java.util.function.Supplier<BlockEntityType<CreativeCopycatSlabBlockEntity>> cleanSlabBlockEntityType() {
+        return CREATIVE_CLEAN_MULTI_STATE_COPYCAT::get;
+    }
+
+    static java.util.function.Supplier<BlockEntityType<CreativeCopycatPanelBlockEntity>> cleanPanelBlockEntityType() {
+        return CREATIVE_CLEAN_CREATE_COPYCAT::get;
     }
 
     /** 仅在 Copycats+ 已加载时由主类调用；直接加载本类会因缺失依赖崩溃。 */

@@ -1,5 +1,6 @@
 package dimblend.carwash.server;
 
+import dimblend.blocks.api.CreativeCopycatHiding;
 import dimblend.carwash.chassis.ChassisBlocks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -28,6 +29,11 @@ public final class ChassisHandInteractions {
         Level level = event.getLevel();
         BlockPos pos = event.getPos();
         if (!ChassisBlocks.isChassis(level.getBlockState(pos))) {
+            return;
+        }
+        // 隐藏车架交互穿透：不取消事件（水桶照常倒水、泥土照常放置）；
+        // 隐藏期脏值冻结，洗/弄脏均无意义，且隐形方块不该吃掉玩家的点击
+        if (CreativeCopycatHiding.isHidden(level, pos)) {
             return;
         }
         ItemStack stack = event.getItemStack();

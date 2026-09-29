@@ -3,6 +3,14 @@
 	"block.dimblend_blocks.creative_copycat_slab": "创造模式伪装半砖",
 	"block.dimblend_blocks.creative_copycat_beam": "创造模式伪装粱",
 	"block.dimblend_blocks.creative_copycat_panel": "创造模式伪装板",
+	"block.dimblend_blocks.creative_clean_copycat_slab": "创造模式洁净伪装半砖",
+	"block.dimblend_blocks.creative_clean_copycat_panel": "创造模式洁净伪装板",
+	"block.dimblend_blocks.creative_shaft": "创造模式传动杆",
+	"block.dimblend_blocks.creative_cogwheel": "创造模式齿轮",
+	"block.dimblend_blocks.creative_andesite_encased_shaft": "创造模式安山岩外壳传动杆",
+	"block.dimblend_blocks.creative_brass_encased_shaft": "创造模式黄铜外壳传动杆",
+	"block.dimblend_blocks.creative_andesite_encased_cogwheel": "创造模式安山岩外壳齿轮",
+	"block.dimblend_blocks.creative_brass_encased_cogwheel": "创造模式黄铜外壳齿轮",
 	"block.dimblend_blocks.fragile_cobblestone": "易碎圆石",
 	"block.dimblend_blocks.fragile_stone": "易碎石头"
 }

@@ -124,6 +124,9 @@ dependencies {
     // 以下均为 mod jar，compileOnly：MDG 会把 implementation 的 mod 装进每个 dev run。
     // Copycats+：伪装半砖的 SLAB_TYPE/AXIS 属性与多状态 BE 类型（倒置/双层判定）。
     compileOnly "maven.modrinth:copycats:3.0.4+mc.1.21.1-neoforge"
+    // dimblend-blocks：只许 import 其 api 包（CreativeCopycatHiding 隐藏查询），
+    // 运行时为必需依赖（车架方块本体就在那边）。
+    compileOnly project(":dimblend-blocks")
     // Create: FireFighting Additions 0.2.1-beta（Modrinth 包与实例 jar 字节一致）：喷淋命中接口。
     compileOnly "maven.modrinth:create-firefighting-additions:0.2.1-beta"
     // Sable：遍历子关卡（车厢）取速度与车架 BE。无公开 Maven 的 cui-modded 构建，

@@ -28,6 +28,8 @@
 > 间隔原为随机 2-8 秒，后改为固定 2 秒。
 > v1.10（G5 末影存储仅限结构放置，2026-09-27）：rotating 内 `enderstorage:ender_chest` /
 > `enderstorage:ender_tank` 只能放在 sable 结构上；新开关 `enderStorageStructureOnly`。
+> v1.11（dimblend-blocks 批次，2026-09-29）：板块 C 增补 C4（洁净伪装板/半砖）/C5（伪装板/半砖隐藏）；
+> 新增板块 K（§12，Create 创造模式传动件：creative_shaft/creative_cogwheel，蒸汽引擎绝缘）。
 > 本文件是开发依据；原始清单仅作需求索引，两者冲突时以本文件为准。
 
 ## 0. 环境基线
@@ -110,7 +112,7 @@
 - B1 加燃油启动：转速立即到 16rpm → 每 4 秒 +2rpm 阶梯爬升，直至额定转速
 - B2 燃油烧尽 → 正常停机流程
 - B3 达到额定后：在 80%~100% 额定区间随机跳变（实现拟每 1~3 秒取一次随机值，可调）
-- B4 应力过载 → 爆机掉落（用户拍板变更，原"闩锁停机+重新加油重启"作废）：运转中过载连续 40 tick（2 秒）确认后破坏方块、按战利品表掉成物品，油箱余油不返还；加载期误报过滤（2026-09-29 起为精确口径）——**网络视图稳定探测**替代固定宽限期：会产生误报的重建 churn 必然经 sync 刷新引擎所见 `(stress, networkSize)` 视图（Create `KineticNetwork updateNetwork → sync()` 链，字节码核实；addSilently 静默并入不变视图但也不产生误报），视图连续 20 tick（1 秒）不变判重建完成、炸机逻辑武装，未武装期过载读数不累计不点引信（确认计数与探测态均不序列化，读档归零；已知副作用：应力计算含 live 转速乘子，带载网络上本机波动/共网动力源的爬梯波动会 churn 视图，武装占空下降、确认墙钟拉长——保守方向，更晚炸而非误炸）；确认前爬梯/波动计时冻结；确认后 6 秒引信倒计时期间每 tick 在引擎中心播 minecraft:large_smoke（delta=0.2,0.2,0.2 / speed=0 / count=10）；破坏失败（极端）回退闩锁逻辑
+- B4 应力过载 → 爆机掉落（用户拍板变更，原"闩锁停机+重新加油重启"作废）：运转中过载连续 40 tick（2 秒）确认后破坏方块、按战利品表掉成物品，油箱余油不返还；加载期误报过滤（2026-09-29 修订）——缓存 `overStressed` 在 `addSilently` 改账后不 sync，会停在过载，而 `(stress, networkSize)` 可以一直不变；确认前若缓存位为真，用 `calculateCapacity/calculateStress` 的实时值复核（`capacity < stress` 才算），实时不成立则 `updateNetwork()` 刷掉缓存位且不累计；实时过载仍须连续 40 tick，任一非过载 tick 清零（确认计数不序列化）；确认前爬梯/波动计时冻结；确认后 6 秒引信倒计时期间每 tick 在引擎中心播 minecraft:large_smoke（delta=0.2,0.2,0.2 / speed=0 / count=10）；破坏失败（极端）回退闩锁逻辑
 - B5 大型柴油引擎（v1.2 第二版新条目，用户标"未实现"）：热机爬梯 + 额定波动 + 过载损坏，
   与普通/组合式同口径（16/+2/4s，80%~100%/1~3s，爆机掉落余油不返还）。
   调速点 = 传给 `shaft.update(pos, dir, capacity, speed)` 的 speed 参数（ModifyArg）；
@@ -138,6 +140,25 @@
   - 扳手只能移除贴图材质，不能拆下方块本体
   - 顺带防爆（与列车使用场景一致，核对时未提出异议）
 - 用途：C1 制作车架、C2 制作车勾
+- C4 创造模式洁净伪装板/洁净伪装半砖（v1.11 新增）：行为同 C3/C1（含 C5 隐藏能力、
+  仅创造放置/破坏、扳手只撕材质），供洗车正常洗车够不到的死角使用。实现上按注册名判定
+  天然不是 dimblend-carwash 的车架（`ChassisBlocks.isChassis` 身份判定不含洁净变体），
+  永不积脏；BE 用独立的洁净类型（`creative_clean_create_copycat` /
+  `creative_clean_multi_state_copycat`），洗车脏值行为绑定不到。洁净=无脏值概念，
+  不是「脏值锁定为 0」。
+- C5 伪装板/半砖隐藏（v1.11 新增，粱不适用）：
+  - 手势：未贴材质（板：无自定义材质；半砖：全部件无自定义材质）时，创造玩家主手空手
+    右键 → 隐藏；隐藏时扳手（`c:tools/wrench`）右键 → 恢复正常。隐藏/恢复仅创造玩家
+    （与放置/破坏同权）；有材质时空手行为保持上游语义（半砖 toggleCT 不动）。
+  - 隐藏期间：不渲染（手持扳手时客户端画物品形态幽灵显现、恢复选中框；未持扳手连
+    选中框也抑制）；碰撞箱保留；一切物品交互穿透（贴材质/连放禁用）；洗车脏值冻结
+    （增长总闸在 `ChassisGrimeBehaviour.changeDirt` 的 `delta>0` 分支；已有脏值保留、
+    隐藏期不渲染，渲染抑制口在 `ChassisGrimeBehaviour.visualAt`）。
+  - 不变量「隐藏 ⇒ 无材质」由手势前置条件 + 隐藏期禁贴材质共同维持。
+  - 实现：隐藏状态挂 BE NBT（`CreativeHidden`，`CreativeCopycatHidable` 接口 +
+    `dimblend.blocks.api.CreativeCopycatHiding` 静态查询口），不走方块状态——Sable
+    子关卡里改 BlockState 会触发物理碰撞体/质量更新（carwash 既定约束）；同步走 Create
+    `sendData` + 客户端区段重绘（同脏值纪律）。carwash 只 import `dimblend.blocks.api`。
 
 ## 4. 板块 D：CCA 电动马达
 
@@ -490,7 +511,6 @@
 | BeaconBlockEntityMixin | 原版信标 BE | A7 | 无条件（原版目标） |
 | compat.cdg.DieselEngineRampMixin | CDG 普通/组合柴油机 BE | B | createdieselgenerators 在场 |
 | compat.cdg.HugeDieselEngineMixin | CDG 巨型柴油机 BE | B5 | createdieselgenerators 在场 |
-| compat.cdg.KineticStressViewAccessor | Create KineticBlockEntity（B6 重建探测只读视图） | B6 | createdieselgenerators 在场 |
 | compat.cca.ElectricMotorMixin | CCA 电动马达 BE | D | createaddition 在场 |
 | compat.cca.ElectricMotorSoundClientMixin | CCA 电动马达 BE | D4 | createaddition 在场（client 数组） |
 | compat.cca.AlternatorIdleDrainMixin | CCA 交流发电机 BE | D5 | createaddition 在场 |
@@ -517,7 +537,7 @@
 | compat.dimblend.WarpGateBlockMixin | dimblend 折跃门（字符串目标） | G4 | dimblend 在场 |
 | client.ItemStackNicknameMixin | 原版 ItemStack | A8 | 无条件（原版目标，客户端侧） |
 
-事件处理器（非 mixin）：DeathRules（A1/A2，含 PlayerRespawnPositionEvent）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainOffStructureRules（E7）、PhysicsAssemblerGuard（F1）、CreativeCopycatCreativeTab（C）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、IcePlacementGuard（G3 配套，生存玩家冰放置拦截）、PortalBan（G4）、EnderStorageStructureGuard（G5）。
+事件处理器（非 mixin）：DeathRules（A1/A2，含 PlayerRespawnPositionEvent）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainOffStructureRules（E7）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、IcePlacementGuard（G3 配套，生存玩家冰放置拦截）、PortalBan（G4）、EnderStorageStructureGuard（G5）。
 
 ### 依赖接线（C 板块例外为版本级对齐）
 
@@ -629,3 +649,61 @@ CDG 1.3.15 除外：2026-09-20 起 B 板块对齐最新版，jar 由同级源码
 | 4 | v1.3 z256 HUD | bossbar 方案作废，改常驻护甲列进度条（见 z256-bar-requirement.md）；band 条是否重叠留实机确认 |
 | 4 | 松闸音效 | 保留，维持原参数 |
 | 4 | A4/C1"未实现"标注 | 开发侧已实现，记"已实现待实测"，以实机为准 |
+
+
+## 12. 板块 K：Create 创造模式传动件（dimblend-blocks，v1.11 新增）
+
+> 来源：2026-09-29 用户粘贴的 dimblend-blocks 批次 + 当日拍板澄清（「创造传动杆 =
+> 只有创造能放置的传动杆；生存只能套壳、扳手拆壳、扳手互转，不能调方向不能拆除，
+> 也不能变成蒸汽引擎的一部分」）。
+
+- K1 创造模式传动杆（`creative_shaft`）：行为同 `create:shaft`，差异：
+  - 生存完全不可破坏（硬度 -1 + 阻爆 3600000 + 无战利品表），仅创造可放置/破坏
+    （`CreativeOnlyBlockItem` + `getStateForPlacement` 创造门 + `EntityPlaceEvent`
+    兜底守卫，与板块 C 同套纪律）。
+  - 扳手不可拆（生存）；旋转/互转/拆卸按模式分派（**2026-09-29 两轮拍板**）：
+    **创造**恢复 Create 原版扳手语义——普通右键先拆支架否则绕点击面旋转轴、
+    潜行右键拆卸不掉落（创造可拆可放，无需互转补偿手势）；
+    **生存**不能调方向不能拆——裸轴普通右键 ⇄ 变 `creative_cogwheel`
+    （同轴同含水，`switchToBlockState` 保 BE/转速/支架），潜行右键无操作。
+  - 可套壳（安山/黄铜）：`EncasingRegistry` 注册自有 encased 变体；**encased 状态
+    潜行扳手拆壳**回 `creative_shaft`；encased 普通右键创造=旋转、生存=无效。
+    Create 原生套壳不消耗壳物品、拆壳不返还壳（6.0.10 字节码核实，issue #6309
+    关为既定行为），照搬对称。
+  - **永不与蒸汽引擎连接（零代码成立，勿加拦截代码）**：引擎→轴的判定全是注册身份
+    判定——`SteamEngineBlock.isShaftValid` 用 `AllBlocks.SHAFT.has(state)`、引擎 BE
+    用 `instanceof PoweredShaftBlockEntity` 认领——自定义方块天然不被认领，引擎只是
+    不工作、无任何副作用；`pickCorrectShaftType` 同样不会把本方块换成 powered_shaft。
+  - 金属横梁套壳分支已剔除（原版会把轴换成普通 girder-encased-shaft，丢失创造属性）；
+    PoleHelper 连放谓词扩展认本方块（照 C 板块 helper 模式）。
+- K2 创造模式齿轮（`creative_cogwheel`）：同 `create:cogwheel`（仅小号，不做大齿轮），
+  约束同 K1；生存裸齿轮扳手右键 → 变 `creative_shaft`（K1 的互转另一半）。
+  齿轮物品继承 `CogwheelBlockItem` 保留对角/嵌入放置 helper UX（谓词 instanceof 判定），
+  另加创造门。
+- K3 识别色（2026-09-29 拍板，同日改色）：旋转本体渲染统一改用自有贴图模型
+  （`dimblend_blocks:block/creative_shaft|creative_cogwheel`）——**乌木齿轮**
+  （齿环 texel ×(0.58, 0.46, 0.38) 深暖褐）+**黑铁杆**（轴杆 texel
+  ×(0.50, 0.56, 0.66) 深青灰），创造版与原版一眼区分；blockstate/物品模型/
+  visual partial 同步指向；套壳外壳保持 Create 原色（开口内轴件为识别色）；
+  BER 回退路径沿用 Create 渲染件不染色（目标实例 Flywheel 常开，可接受）。
+- encased 变体 4 个（`creative_andesite_encased_shaft` 等）：无物品形态（与 Create 一致）；
+  encased 齿轮的 `TOP_SHAFT`/`BOTTOM_SHAFT` 翻转与普通右键旋转一并禁用。
+- BE 类型自有（白名单注册期固定，同 C 板块理由）：`creative_bracketed_kinetic`
+  （BracketedKineticBlockEntity，轴+齿轮，支架行为继承即满足）、`creative_encased_shaft`
+  （KineticBlockEntity）、`creative_encased_cogwheel`（SimpleKineticBlockEntity）。
+  渲染：Flywheel visual + BER fallback 双注册复用 Create 渲染件（齿轮不能复用
+  `BracketedKineticBlockEntityVisual::create`——其小齿轮分支是 `AllBlocks.COGWHEEL`
+  身份判定，自定义齿轮会被画成轴，故轴/齿轮用自写小工厂选 partial）。
+- 蓝图取材一律 `ItemRequirement.NONE`（encased 类覆写）；应力影响/容量不注册
+  （`BlockStressValues` 查不到即返回常量 0.0，javap 核实，与 Create 轴的 setNoImpact 同效）。
+- encased 变体外壳无 CT 连贯（Create 的 EncasedCogCTBehaviour 绑定其自有 BE 类型 + CTModel
+  包装 + CasingConnectivity 三条本板块均不接入，相邻套壳件外壳贴图不连通；纯视觉，勿误判为 bug）。
+- 放置守卫按快照旧状态判别「放置 vs 互转/拆壳」（`CreativeKineticGuard`）：NeoForge 服务端
+  `ItemStack.useOn`（`CommonHooks.onPlaceItemIntoWorld`）会对物品 use 期间的全部 setBlock
+  补拍快照并补抛 EntityPlaceEvent——扳手 `switchToBlockState` 同格替换自家方块也会落入。
+  快照旧状态是本板块方块 → 同格转换（放行，生存可用的扳手操作）；旧状态是空气/他物 →
+  新放置（非创造一律取消并回滚）。**v1.11 实测缺陷修复在案**：旧版只看放置物一刀切，
+  把扳手互转/拆壳误判为放置，生存下回滚 + FAIL（GameTest 复现钉死）；
+  服务端 GameTest `CreativeKineticsGameTest`（11 条：生存互转双向、生存潜行不拆、
+  生存潜行拆壳、守卫负向分支、创造旋转×3、创造潜行拆卸、encased 齿轮创造端面翻转、
+  生存 encased 无效）常驻防回归。
