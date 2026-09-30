@@ -112,7 +112,7 @@
 - B1 加燃油启动：转速立即到 16rpm → 每 4 秒 +2rpm 阶梯爬升，直至额定转速
 - B2 燃油烧尽 → 正常停机流程
 - B3 达到额定后：在 80%~100% 额定区间随机跳变（实现拟每 1~3 秒取一次随机值，可调）
-- B4 应力过载 → 爆机掉落（用户拍板变更，原"闩锁停机+重新加油重启"作废）：运转中过载连续 40 tick（2 秒）确认后破坏方块、按战利品表掉成物品，油箱余油不返还；加载期误报过滤（2026-09-29 修订）——缓存 `overStressed` 在 `addSilently` 改账后不 sync，会停在过载，而 `(stress, networkSize)` 可以一直不变；确认前若缓存位为真，用 `calculateCapacity/calculateStress` 的实时值复核（`capacity < stress` 才算），实时不成立则 `updateNetwork()` 刷掉缓存位且不累计；实时过载仍须连续 40 tick，任一非过载 tick 清零（确认计数不序列化）；确认前爬梯/波动计时冻结；确认后 6 秒引信倒计时期间每 tick 在引擎中心播 minecraft:large_smoke（delta=0.2,0.2,0.2 / speed=0 / count=10）；破坏失败（极端）回退闩锁逻辑
+- B4 应力过载 → 爆机掉落（用户拍板变更，原"闩锁停机+重新加油重启"作废）：运转中过载连续 40 tick（2 秒）确认后破坏方块、按战利品表掉成物品，油箱余油不返还；加载期误报过滤（2026-09-29 修订）——缓存 `overStressed` 在 `addSilently` 改账后不 sync，会停在过载，而 `(stress, networkSize)` 可以一直不变；确认前若缓存位为真，用 `calculateCapacity/calculateStress` 的实时值复核（`capacity < stress` 才算），实时不成立则 `updateNetwork()` 刷掉缓存位且不累计；实时过载仍须连续 40 tick，任一非过载 tick 清零（确认计数不序列化）；实时值本身的读档虚高（2026-09-30 修订）——爬梯/波动改转速会触发 Create reapply source（detach + attach）整网重建，已加载未 tick 的成员被 `add()` 收进 members、存档份额却仍留在 unloadedStress，首 tick 的 addSilently 因已在 members 提前 return 永不扣回，整网应力永久多算一份、实时复核照样判过载；由 `KineticUnloadedShareMixin` 在该成员首 tick 前首次换网/被拆时按 addSilently 同口径补扣（对全部 Create 网络生效、无开关），GameTest `KineticUnloadedShareGameTests` 3 条锁定；确认前爬梯/波动计时冻结；确认后 6 秒引信倒计时期间每 tick 在引擎中心播 minecraft:large_smoke（delta=0.2,0.2,0.2 / speed=0 / count=10）；破坏失败（极端）回退闩锁逻辑
 - B5 大型柴油引擎（v1.2 第二版新条目，用户标"未实现"）：热机爬梯 + 额定波动 + 过载损坏，
   与普通/组合式同口径（16/+2/4s，80%~100%/1~3s，爆机掉落余油不返还）。
   调速点 = 传给 `shaft.update(pos, dir, capacity, speed)` 的 speed 参数（ModifyArg）；
@@ -522,6 +522,8 @@
 | compat.create.SteamEngineOverloadMixin | Create 蒸汽引擎 BE（tick RETURN） | H | create 在场 |
 | compat.create.PortableEngineAttachMixin | Create RotationPropagator（`handleAdded` HEAD，只登记维度/引擎） | F2 | create 在场 |
 | compat.create.RotationPropagatorInvoker | Create RotationPropagator（`getPotentialNeighbourLocations` 静态 invoker） | F2 | create 在场 |
+| compat.create.KineticUnloadedShareMixin | Create KineticBlockEntity（`read` RETURN 快照存档份额；`initialize`/`setNetwork`/`remove` HEAD 结算） | B4 读档账本修正 | create 在场 |
+| compat.create.KineticNetworkUnloadedAccessor | Create KineticNetwork（unloadedCapacity/Stress/Members 读写） | B4 读档账本修正 | create 在场 |
 | compat.simurail.PhysicsBogeyBrakeSoundMixin | Simurail 物理转向架 BE | E3/E4 | simurail 在场（simurail 硬性依赖 sable，蕴含 sable 在场） |
 | compat.simurail.PhysicsBogeyLateralForceMixin | Simurail 物理转向架 BE（`tick` + `sable$physicsTick`） | E8 | simurail 在场 |
 | compat.simurail.PhysicsBogeyTrackSoundMixin | Simurail 物理转向架 BE | E2 | simurail 在场（client 数组） |

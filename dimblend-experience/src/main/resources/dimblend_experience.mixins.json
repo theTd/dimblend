@@ -22,6 +22,8 @@
 		"compat.create.ItemDrainPipeRefillMixin",
 		"compat.create.PortableEngineAttachMixin",
 		"compat.create.RotationPropagatorInvoker",
+		"compat.create.KineticNetworkUnloadedAccessor",
+		"compat.create.KineticUnloadedShareMixin",
 		"compat.fluid.GutterOutletPrecipitationMixin",
 		"compat.create.SteamEngineOverloadMixin",
 		"compat.simurail.PhysicsBogeyBrakeSoundMixin",

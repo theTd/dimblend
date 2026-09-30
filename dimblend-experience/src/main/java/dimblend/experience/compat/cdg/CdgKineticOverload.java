@@ -8,6 +8,8 @@ import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
  * 加载期 {@code addSilently} 会改网络账本但不 sync，缓存可以停在 true，同时
  * {@code (stress, networkSize)} 不再变化。缓存位为真时先 {@code updateNetwork()}，
  * 让 {@code calculateCapacity/calculateStress} 写回缓存，再读这个位。
+ * 实时值本身在读档后重建时的重复计数由
+ * {@code dimblend.experience.compat.create.KineticUnloadedShare} 修正，本类不再兜底。
  */
 public final class CdgKineticOverload {
 

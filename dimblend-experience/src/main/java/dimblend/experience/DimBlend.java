@@ -19,6 +19,7 @@ import dimblend.experience.gametest.DeployerIcePlacementGameTests;
 import dimblend.experience.gametest.LimitedWaterGameTests;
 import dimblend.experience.gametest.ItemDrainPipeRefillGameTests;
 import dimblend.experience.gametest.KineticComponentScanGameTests;
+import dimblend.experience.gametest.KineticUnloadedShareGameTests;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.event.RegisterGameTestsEvent;
 
@@ -77,6 +78,7 @@ public class DimBlend {
             event.register(DeployerIcePlacementGameTests.class);
             event.register(ItemDrainPipeRefillGameTests.class);
             event.register(KineticComponentScanGameTests.class);
+            event.register(KineticUnloadedShareGameTests.class);
         }
     }
 }
