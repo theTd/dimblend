@@ -65,6 +65,12 @@ config="${mod_id}.simurail.mixins.json"
 [[mixins]]
 config="${mod_id}.sereneseasons.mixins.json"
 
+# Cold Sweat compat, the other half of the no-winter-freeze fix: with its default custom
+# freezing behavior, Cold Sweat decides water freezing and ice melting itself from its own
+# season modifier and never asks Serene Seasons. Same required=false/require=1 contract.
+[[mixins]]
+config="${mod_id}.coldsweat.mixins.json"
+
 # The [[accessTransformers]] block allows you to declare where your AT file is.
 # If this block is omitted, a fallback attempt will be made to load an AT from META-INF/accesstransformer.cfg
 #[[accessTransformers]]
@@ -173,6 +179,15 @@ config="${mod_id}.sereneseasons.mixins.json"
     modId="sereneseasons"
     type="optional"
     versionRange="[10.1,)"
+    ordering="AFTER"
+    side="BOTH"
+
+# Optional: rotating-dimension season-neutral Cold Sweat temperature (see
+# dimblend.coldsweat.mixins.json). Target signature was verified against 2.4.2.
+[[dependencies.${mod_id}]]
+    modId="cold_sweat"
+    type="optional"
+    versionRange="[2.4,)"
     ordering="AFTER"
     side="BOTH"
 

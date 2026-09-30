@@ -25,11 +25,17 @@ import sereneseasons.season.SeasonHooks;
  *
  * <p>This HEAD inject makes {@link SeasonHooks#getBiomeTemperature(Level, Holder, BlockPos)}
  * return the biome's base temperature for the rotating dimension only. Every snow/ice/melt
- * decision funnels through this overload (the {@code LevelReader} overload delegates here for
- * real levels), so freezing, snow cover and seasonal melting in the rotating dimension fall
- * back to vanilla per-biome behavior. Effects that do not consult temperature — grass/foliage
- * colors, crop fertility, weather frequency — stay seasonal there, and all other whitelisted
- * dimensions are untouched.
+ * decision <em>Serene Seasons makes</em> funnels through this overload (the {@code LevelReader}
+ * overload delegates here for real levels), so freezing, snow cover and seasonal melting in
+ * the rotating dimension fall back to vanilla per-biome behavior. Effects that do not consult
+ * temperature — grass/foliage colors, crop fertility, weather frequency — stay seasonal there,
+ * and all other whitelisted dimensions are untouched.
+ *
+ * <p>This hook alone does not cover water freezing when Cold Sweat is installed with its
+ * default custom freezing behavior. Cold Sweat cancels {@code Biome.shouldFreeze} at HEAD,
+ * before Serene Seasons' redirect runs, and uses its own season modifier for freezing and ice
+ * melting. {@link dimblend.mixin.coldsweat.SereneSeasonsTempModifierMixin} neutralizes that
+ * modifier in the rotating dimension. Keep the two in step.
  *
  * <p>{@link Biome#getBaseTemperature()} is used instead of {@code getTemperature(BlockPos)}
  * (private in vanilla; Serene Seasons opens it with its own accesstransformer, invisible to
