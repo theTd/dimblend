@@ -115,6 +115,18 @@ public final class Config {
             .comment("G 板块 G4：旋转维度内禁一切传送门生成与跨维度旅行；折跃门方块全局禁传送（留块）。回家通道不管")
             .define("portalBan", true);
 
+    public static final ModConfigSpec.BooleanValue LIMITED_WATER = BUILDER
+            .comment("G 板块 G3 有限水：旋转维度内每次写入源水（water8），先看以该格为球心 8 格内最近的非旁观玩家——"
+                    + "该玩家为创造模式则不检测、原样写入；其余情况（生存/冒险，或 8 格内无人）检测水平四邻："
+                    + "源水或冰/浮冰/蓝冰 ≥2 格保留源水，0-1 格改写为流动 water7。流动水、含水方块、霜冰不计；"
+                    + "只拦新写入，已存在的水与世界生成不动；Sable 载具上的玩家与方块按真实世界坐标计距")
+            .define("limitedWater", true);
+
+    public static final ModConfigSpec.BooleanValue ICE_PLACEMENT_BAN = BUILDER
+            .comment("G 板块 G3 配套：旋转维度内生存模式玩家与 Create 机械手不能放置冰/浮冰/蓝冰；"
+                    + "其它模式玩家、其它机器/假玩家不拦")
+            .define("icePlacementBan", true);
+
     public static final ModConfigSpec.BooleanValue ENDER_STORAGE_STRUCTURE_ONLY = BUILDER
             .comment("G 板块 G5：旋转维度内末影箱/末影罐（enderstorage:ender_chest / ender_tank）只能放在 sable 结构上；"
                     + "放在结构外则放行放置后本 tick 末破坏返还（真人回背包、机器放置掉落，频率保留）；"

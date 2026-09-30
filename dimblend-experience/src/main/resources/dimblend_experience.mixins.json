@@ -10,6 +10,8 @@
 		"MerchantOfferAccessor",
 		"VillagerAccessor",
 		"VillagerMasterMixin",
+		"LimitedWaterMixin",
+		"IcePlacementBanMixin",
 		"compat.dimblend.WarpGateBlockMixin",
 		"compat.cdg.DieselEngineRampMixin",
 		"compat.cdg.HugeDieselEngineMixin",

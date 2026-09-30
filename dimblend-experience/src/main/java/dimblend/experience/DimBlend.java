@@ -15,6 +15,8 @@ import dimblend.experience.compat.create.ItemDrainPipeRefill;
 import dimblend.experience.compat.simurail.TrainForceGroups;
 import dimblend.experience.datagen.DataGenerators;
 import dimblend.experience.gametest.CopycatObsidianHardnessGameTests;
+import dimblend.experience.gametest.DeployerIcePlacementGameTests;
+import dimblend.experience.gametest.LimitedWaterGameTests;
 import dimblend.experience.gametest.ItemDrainPipeRefillGameTests;
 import dimblend.experience.gametest.KineticComponentScanGameTests;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
@@ -67,9 +69,12 @@ public class DimBlend {
     }
 
     private static void onRegisterGameTests(RegisterGameTestsEvent event) {
-        // GameTest 引用 Create 的 CopycatPanel/BE，仅 Create 在场时注册，避免无 Create 环境类加载失败
+        // G3 有限水/冰放置禁令（玩家半边）只用原版类型，无条件注册
+        event.register(LimitedWaterGameTests.class);
+        // GameTest 引用 Create 的 CopycatPanel/BE/机械手假玩家，仅 Create 在场时注册，避免无 Create 环境类加载失败
         if (ModList.get().isLoaded("create")) {
             event.register(CopycatObsidianHardnessGameTests.class);
+            event.register(DeployerIcePlacementGameTests.class);
             event.register(ItemDrainPipeRefillGameTests.class);
             event.register(KineticComponentScanGameTests.class);
         }

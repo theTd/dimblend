@@ -417,27 +417,29 @@
 - 判定走 sable API 查床坐标归属子层级（实施时按 sable jar 核实方法，
   行为以“结构上的床能用、地上不能用”实测为准）；新开关 `structureBed`（默认开）
 
-### G3 孤立源水降级（2026-09-29 口径再调整：创造倒水绕过 + 三种冰规则）
-> 2026-09-30：G3 与三种冰规则的实现已整体删除（代码、开关、mixin、GameTest/单测）。
-> 以下为删除前口径，留作记录。
-- rotating 内凡经 `Level#setBlock` 写入的纯水源（water8 = `Blocks.WATER` 且
-  `LEVEL=0`；桶/发射器、Create 管道、冰光照融化、流体 tick 自然成池均收敛至此），
-  若其水平四邻中纯水源格数 <2 则改写为流动 water7（`LEVEL=1`，amount 7 非下落）；
-  ≥2 才保留源水
-- 含水方块既不降级（布尔含水无法表示 water7）也不计入四邻；世界生成
-  （`WorldGenRegion`）不走此路径，天然水体不受影响；已存在源水不回扫
-- 放行通道（写入归因 `WaterWriteContext`：bypass / 桶归因玩家两条 ThreadLocal）：
-  - 创造模式玩家倒水绕过检测，源水保留（2026-09-29 新增）；生存玩家倒水照旧降级；
-    无归因的机器/自然写入（发射器、Create 管道、流体成池、冰光照融化）仍降级
-  - 三种冰破坏产水经 bypass 绕过检测（见下）
-- 三种冰规则（2026-09-29 新增，ice/packed_ice/blue_ice，不含 frosted_ice，仅 rotating）：
-  - 破坏产水：无精准采集挖掘且脚下为固体/液体时原位生成水源（普通冰产水系原版
-    `IceBlock.playerDestroy` 行为，仅补 bypass；浮冰/蓝冰补齐同款逻辑）；创造破坏/
-    精准采集/爆炸活塞不产水（贴原版冰语义），冰光照融化仍走 G3 降级
-  - 放置禁令：生存模式玩家不能放置三种冰（RightClickBlock useItem 闸拦截，创造豁免；
-    Create 部署器等机器放置不拦——拍板接受的残余通道）
-- 开关 `isolatedWaterDowngrade`（默认开）+ `iceBreakWaterSource`（默认开）+
-  `icePlacementBan`（默认开）
+### G3 有限水（2026-09-30 口径，仅 rotating）
+> 2026-09-29 旧口径（孤立源水降级 + 冰破坏产水 bypass + 写入归因）已于 2026-09-30 整体删除，
+> 按下述新口径重做。
+
+放冰：
+- 生存模式玩家不能放置冰/浮冰/蓝冰；其它模式玩家可以
+- Create 机械手（Deployer）不能放置这三种冰，与附近玩家模式无关；其它机器/假玩家不拦
+- 拦截点 `BlockItem#place` 入口（`IcePlacementBanMixin` → `IcePlacementRules`）：
+  机械手点空气时不发 `RightClickBlock`，事件层拦不全，故在放置层判定；双端执行防幽灵方块
+
+源水检测：
+- 每次在 rotating 写入源水（water8 = `Blocks.WATER` 且 `LEVEL=0`，经 `Level#setBlock`），
+  无论来源（玩家倒桶、玩家破冰、管道、发射器、机械手、冰融化、水流成池），
+  由以该格中心为球心 8 格内（三维直线距离）最近的玩家决定；旁观者不计入；
+  Sable 载具上的玩家与方块按真实世界坐标计距
+- 该玩家为创造模式：不检测，源水原样写入
+- 其余情况（生存/冒险，或 8 格内无人）：数水平四邻（x±1、z±1）中源水或冰/浮冰/蓝冰的格数，
+  ≥2 保留源水，0–1 改写为流动 water7（`LEVEL=1`，amount 7 非下落）
+- 流动水、含水方块、霜冰不计入四邻；已存在的水与世界生成（`WorldGenRegion`）不动，只拦新写入
+- 破冰贴原版：普通冰无精准采集破坏留水（该水同样走检测），浮冰/蓝冰不留水
+- 实现：`LimitedWaterMixin`（`@ModifyVariable` 改写 `Level#setBlock` 的 state 参数，不取消不重入）
+  → `LimitedWaterRules` / `LimitedWaterMath`
+- 开关 `limitedWater`（默认开）+ `icePlacementBan`（默认开）
 
 ### G4 传送门禁令（回家通道不管）
 - 下界门：rotating 内点火生成一律取消（`BlockEvent.PortalSpawnEvent` 取消，
@@ -498,6 +500,8 @@
 | trainLateralForce | E8（车架随机横向力，全维度） | true |
 | villagerMaster | G1 | true |
 | structureBed | G2 | true |
+| limitedWater | G3（源水检测） | true |
+| icePlacementBan | G3（生存玩家与机械手禁放冰/浮冰/蓝冰） | true |
 | portalBan | G4 | true |
 | enderStorageStructureOnly | G5（末影存储仅限 sable 结构放置） | true |
 | steamEngineOverload | H（蒸汽引擎过载两阶段） | true |
@@ -529,6 +533,8 @@
 | VillagerMasterMixin | 原版村民（补货/掉职业拦截） | G1 | 无条件（原版目标） |
 | VillagerAccessor | 原版村民（交易补全入口） | G1 | 无条件（原版目标） |
 | MerchantOfferAccessor | 原版交易条目（maxUses 改写） | G1 | 无条件（原版目标） |
+| LimitedWaterMixin | 原版 Level#setBlock 4 参（源水写入改写为 water7） | G3 | 无条件（原版目标） |
+| IcePlacementBanMixin | 原版 BlockItem#place（冰/浮冰/蓝冰放置拦截） | G3 | 无条件（原版目标） |
 | compat.dimblend.WarpGateBlockMixin | dimblend 折跃门（字符串目标） | G4 | dimblend 在场 |
 | client.ItemStackNicknameMixin | 原版 ItemStack | A8 | 无条件（原版目标，客户端侧） |
 
