@@ -8,6 +8,9 @@ import dimblend.experience.compat.cdg.CdgEngineState;
 import dimblend.experience.compat.cdg.CdgKineticOverload;
 import dimblend.experience.compat.cdg.CdgOverloadFuse;
 import dimblend.experience.compat.cdg.CdgOverloadMath;
+import dimblend.experience.compat.cdg.CdgRatedCapacityMath;
+import net.createmod.catnip.data.Couple;
+import net.createmod.catnip.data.Pair;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
@@ -38,6 +41,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * （delta 1,1,1 / speed 0 / count 100），再 {@code destroyBlock(pos, true)}
  * 破坏本体掉落（余油不返还、无真实爆炸伤害）。红石关停/燃尽/负载恢复都不取消引信。
  * 自毁破坏失败（极端情况）才回退闩锁等重新加油。燃尽走原版停机（不干预）。</p>
+ *
+ * <p>B7 应力容量恒按额定（用户拍板 2026-09-30）：同一 {@code shaft.update} 调用的
+ * 每转容量实参（index 2，{@link #dimblend$ratedCapacity} 替换）按 额定/轴转速 放大，
+ * 爬梯/波动只改转速，本机对轴的贡献不低于额定总 SU。</p>
  *
  * <p>状态复用 {@link CdgEngineState} 附件（rampTicks/fluct 系 + 引信，持久化）；
  * 全部 handler 先行 ServerLevel 守卫，仅服务端读 SERVER 配置。</p>
@@ -80,6 +87,52 @@ public abstract class HugeDieselEngineMixin {
         if (state.overloadLatched) {
             return 0.0F;
         }
+        return dimblend$steppedSpeed(state, rated);
+    }
+
+    /**
+     * B7 应力容量恒按额定：替换传给轴的每转容量（index 2）。轴总容量 = Σ 每转容量 × 轴转速
+     * （引擎表最快一台），本机按 额定/轴转速 放大，使本机贡献 = 每转容量 × max(额定, 轴转速)
+     * （见 CdgRatedCapacityMath）。轴转速 = 本机本 tick 的爬梯/波动值与表内其他引擎已登记转速
+     * 的最大值；别台转速变化后，本机下一 tick 重算重登记（轴 update 对值未变直接 return）。
+     * 额定取与 speed 实参原值同源的 {@code cachedFuelSpeed * throttle}，不依赖两个 ModifyArg 的
+     * 施加顺序。闩锁（引信中/爆机失败回退）原样透传。
+     */
+    @ModifyArg(
+            method = "tick()V",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lcom/jesz/createdieselgenerators/content/diesel_engine/huge/PoweredEngineShaftBlockEntity;update(Lnet/minecraft/core/BlockPos;IFF)V"),
+            index = 2)
+    private float dimblend$ratedCapacity(float capacityPerRpm) {
+        HugeDieselEngineBlockEntity self = (HugeDieselEngineBlockEntity) (Object) this;
+        if (!(self.getLevel() instanceof ServerLevel)) {
+            return capacityPerRpm;
+        }
+        if (!Config.DIESEL_ENGINE_BEHAVIOR.get()) {
+            return capacityPerRpm;
+        }
+        CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
+        if (state.overloadLatched) {
+            return capacityPerRpm;
+        }
+        float rated = self.getCachedFuelSpeed() * self.getThrottle();
+        float shaftSpeed = Math.abs(dimblend$steppedSpeed(state, rated));
+        PoweredEngineShaftBlockEntity shaft = self.getShaft();
+        if (shaft != null) {
+            BlockPos pos = self.getBlockPos();
+            for (Pair<BlockPos, Couple<Float>> engine : shaft.engines) {
+                if (!engine.getFirst().equals(pos)) {
+                    shaftSpeed = Math.max(shaftSpeed, Math.abs(engine.getSecond().getSecond()));
+                }
+            }
+        }
+        return CdgRatedCapacityMath.shaftCapacityPerRpm(capacityPerRpm, rated, shaftSpeed);
+    }
+
+    /** B5 爬梯/波动转速（调速点与容量放大共用同一公式；闩锁由调用方先判）。 */
+    @Unique
+    private static float dimblend$steppedSpeed(CdgEngineState state, float rated) {
         float stepped = Math.min(
                 dimblend$IGNITION_RPM + dimblend$RAMP_STEP_RPM * (state.rampTicks / dimblend$RAMP_STEP_TICKS),
                 rated);

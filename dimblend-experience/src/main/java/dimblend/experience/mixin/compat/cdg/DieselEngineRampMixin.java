@@ -1,6 +1,7 @@
 package dimblend.experience.mixin.compat.cdg;
 
 import com.jesz.createdieselgenerators.content.diesel_engine.IEngine;
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.jesz.createdieselgenerators.content.diesel_engine.modular.ModularDieselEngineBlockEntity;
 import com.jesz.createdieselgenerators.content.diesel_engine.normal.DieselEngineBlockEntity;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
@@ -10,6 +11,7 @@ import dimblend.experience.compat.cdg.CdgEngineState;
 import dimblend.experience.compat.cdg.CdgKineticOverload;
 import dimblend.experience.compat.cdg.CdgOverloadFuse;
 import dimblend.experience.compat.cdg.CdgOverloadMath;
+import dimblend.experience.compat.cdg.CdgRatedCapacityMath;
 import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -36,6 +38,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * 实时不过载不累计并把缓存位刷掉；确认进度不跨存档携带。
  * 确认前爬梯/波动计时冻结。红石关停/燃尽/负载恢复都不取消引信。
  * 自毁破坏失败（极端情况）才回退闩锁逻辑</li>
+ * <li>B7 应力容量恒按额定（用户拍板 2026-09-30）：爬梯/波动只改转速，Create 记账的
+ * 总 SU 不随转速缩水（{@code calculateAddedStressCapacity} 分母换成实际产出转速）——
+ * 多台同网、下游转速控制器不再因波动/爬梯真过载</li>
  * </ul>
  * 目标：普通与组合式柴油机。巨型柴油机由 B5（HugeDieselEngineMixin）独立覆盖，
  * 本 mixin 不处理（cast 结构只接受 KineticBlockEntity）。
@@ -99,6 +104,27 @@ public abstract class DieselEngineRampMixin {
             stepped = rated * state.fluctFactor;
         }
         cir.setReturnValue(sign * stepped);
+    }
+
+    /**
+     * B7：应力容量恒按额定。CDG 每转容量 = 额定总 SU / {@code Math.max(0.01F, 额定转速)}，
+     * 这里把该分母换成实际产出转速（已含爬梯/波动/闩锁），Create 记账的
+     * 每转容量 × |产出转速| 恒为额定总 SU；产出为 0 时保留原分母（见 CdgRatedCapacityMath）。
+     * 方法内唯一一处 {@code Math.max(FF)F}（普通/组合式 1.3.15 字节码同形）；结果同时写入
+     * {@code lastCapacityProvided}（存档 AddedCapacity），与读档 addSilently 同口径。
+     */
+    @ModifyExpressionValue(
+            method = "calculateAddedStressCapacity",
+            at = @At(value = "INVOKE", target = "Ljava/lang/Math;max(FF)F"))
+    private float dimblend$divideByActualSpeed(float ratedDivisor) {
+        KineticBlockEntity self = (KineticBlockEntity) (Object) this;
+        if (!(self.getLevel() instanceof ServerLevel)) {
+            return ratedDivisor; // 客户端无 SERVER 配置；护目镜按理论转速换算，已显示额定总 SU
+        }
+        if (!Config.DIESEL_ENGINE_BEHAVIOR.get()) {
+            return ratedDivisor;
+        }
+        return CdgRatedCapacityMath.capacityDivisor(ratedDivisor, self.getGeneratedSpeed());
     }
 
     /**

@@ -15,6 +15,7 @@ import dimblend.experience.compat.create.ItemDrainPipeRefill;
 import dimblend.experience.compat.simurail.TrainForceGroups;
 import dimblend.experience.datagen.DataGenerators;
 import dimblend.experience.gametest.CdgKineticOverloadGameTests;
+import dimblend.experience.gametest.CdgRatedCapacityGameTests;
 import dimblend.experience.gametest.CopycatObsidianHardnessGameTests;
 import dimblend.experience.gametest.DeployerIcePlacementGameTests;
 import dimblend.experience.gametest.LimitedWaterGameTests;
@@ -81,6 +82,10 @@ public class DimBlend {
             event.register(KineticComponentScanGameTests.class);
             event.register(KineticUnloadedShareGameTests.class);
             event.register(CdgKineticOverloadGameTests.class);
+        }
+        // B7 引用 CDG 类：仅 CDG 在场（dev 下 -PwithCdg）时注册
+        if (ModList.get().isLoaded("createdieselgenerators")) {
+            event.register(CdgRatedCapacityGameTests.class);
         }
     }
 }

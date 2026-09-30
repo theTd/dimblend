@@ -119,6 +119,18 @@
   过载信号源 = `shaft.isOverStressed()`（轴为 GeneratingKineticBlockEntity）；
   爆机范围 = **只炸引擎本体**（用户拍板），轴残留停转玩家自拆；状态复用 CdgEngineState 附件。
   原"巨型机不在覆盖内"的已知限制自本条起解除，进入实施。
+- B7 爬梯/波动只改转速、应力容量恒按额定（2026-09-30 用户拍板）：Create 按"每转容量 × |产出转速|"
+  记源容量，CDG 每转容量按额定转速折算，爬梯/波动把总 SU 同比压低——单机应力同比缩、无影响；
+  多台同网（网速取最快一台，其余按自身较低转速计容量；两台 100%/80% 实测只剩额定 90%）或下游
+  转速控制器（应力不随柴油机转速变）会真过载，确认期冻结波动再把这组系数锁死，同网柴油机一起爆。
+  改为：普通/组合式把 `calculateAddedStressCapacity` 的分母 `Math.max(0.01F, 额定转速)` 换成实际
+  产出转速（`DieselEngineRampMixin` ModifyExpressionValue），总 SU 恒为额定；巨型机把
+  `shaft.update` 的每转容量实参（index 2）按 额定/轴转速 放大，本机贡献 = 每转容量 × max(额定, 轴转速)
+  （轴转速高于本机额定的混烧情形保留原版口径）。与 CDG 模拟调速下总 SU 不随转速变的原版口径一致。
+  行为差：单机超额负载不再在点火 2 秒后爆，而在爬梯越过 额定 SU/负载 对应转速时爆；随开关
+  `dieselEngineBehavior` 关闭即回原版。纯函数 `CdgRatedCapacityMath`（单测 6 条）；GameTest
+  `CdgRatedCapacityGameTests` 3 条（爬梯普通机、100%/80% 双机、爬梯巨型机；修前分别 1024/11059.2/1170.3
+  对额定 6144/12288/16384），需 `-PwithCdg` 把 CDG 提升进 dev 运行，仅 CDG 在场时注册。
 
 ## 3. 板块 C：创造模式伪装方块（Create + Copycats+ 扩展）
 
@@ -625,7 +637,9 @@ CDG 1.3.15 除外：2026-09-20 起 B 板块对齐最新版，jar 由同级源码
 | `fluid-2.0.1.jar` | Create: Fluid | 2.0.1（CurseForge 包，无公开 Maven；从运行实例 mods 目录原样复制，与实例一致） |
 
 依赖形态：`compileOnly files(...)`（编译可见、不进 runtimeClasspath、不进 POM）；
-需要运行测试时按需把相关 jar 临时提升为 `localRuntime`。
+需要运行测试时按需把相关 jar 临时提升为 `localRuntime`。CDG 已固化为开关：
+`./gradlew :dimblend-experience:runGameTestServer -PwithCdg`（build.gradle 按 `withCdg` 属性加
+localRuntime，默认不加，dev 运行仍与实例对齐）。
 
 | 轮次 | 决策点 | 结论 |
 |---|---|---|
