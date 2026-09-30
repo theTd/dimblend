@@ -10,8 +10,8 @@ package dimblend.experience.compat.cdg;
  * 但不 sync，也不改这个缓存位。缓存位停在 true 时，方块上的
  * {@code (stress, networkSize)} 可以一直不变——那只说明没有新的 sync，不是网络已经恢复。
  * 确认前必须用 {@link #liveOverstressed} 对比 {@code calculateCapacity()}/
- * {@code calculateStress()} 的实时值；实时不成立不得累计，调用方还要
- * {@code updateNetwork()} 把粘住的缓存位刷掉。</p>
+ * {@code calculateStress()} 的实时值；实时不成立不得累计，调用方还要把粘住的缓存位
+ * 刷掉（{@code updateNetwork()} 总量未变时不 sync，需以实时值直接刷本 BE）。</p>
  *
  * <p>实时过载连续满 {@link #OVERLOAD_CONFIRM_TICKS} 才点引信。任一非过载 tick
  * 调用方把计数清零。确认进度不序列化。</p>

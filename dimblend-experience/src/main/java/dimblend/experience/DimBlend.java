@@ -14,6 +14,7 @@ import dimblend.experience.compat.cdg.CdgAttachments;
 import dimblend.experience.compat.create.ItemDrainPipeRefill;
 import dimblend.experience.compat.simurail.TrainForceGroups;
 import dimblend.experience.datagen.DataGenerators;
+import dimblend.experience.gametest.CdgKineticOverloadGameTests;
 import dimblend.experience.gametest.CopycatObsidianHardnessGameTests;
 import dimblend.experience.gametest.DeployerIcePlacementGameTests;
 import dimblend.experience.gametest.LimitedWaterGameTests;
@@ -79,6 +80,7 @@ public class DimBlend {
             event.register(ItemDrainPipeRefillGameTests.class);
             event.register(KineticComponentScanGameTests.class);
             event.register(KineticUnloadedShareGameTests.class);
+            event.register(CdgKineticOverloadGameTests.class);
         }
     }
 }

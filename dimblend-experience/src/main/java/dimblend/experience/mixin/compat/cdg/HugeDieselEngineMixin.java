@@ -156,7 +156,7 @@ public abstract class HugeDieselEngineMixin {
         }
         if (CdgKineticOverload.refreshedOverstressed(shaft)) {
             // B6 过载损坏（只炸本体）：实时容量盖不住应力时连续 40 tick（2 秒，见
-            // CdgOverloadMath）确认才点引信。粘住的缓存位在复核时被 updateNetwork 刷掉，
+            // CdgOverloadMath）确认才点引信。粘住的缓存位在复核时按实时值刷掉，
             // 不累计。确认前爬梯/波动计时冻结（直接 return，不断也不复位），
             // 燃油照常扣除；确认后先摘轴侧登记防残留末速空转，再点引信
             state.overloadTicks = CdgOverloadMath.countOverloadTick(state.overloadTicks);
