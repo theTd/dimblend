@@ -418,6 +418,8 @@
   行为以“结构上的床能用、地上不能用”实测为准）；新开关 `structureBed`（默认开）
 
 ### G3 孤立源水降级（2026-09-29 口径再调整：创造倒水绕过 + 三种冰规则）
+> 2026-09-30：G3 与三种冰规则的实现已整体删除（代码、开关、mixin、GameTest/单测）。
+> 以下为删除前口径，留作记录。
 - rotating 内凡经 `Level#setBlock` 写入的纯水源（water8 = `Blocks.WATER` 且
   `LEVEL=0`；桶/发射器、Create 管道、冰光照融化、流体 tick 自然成池均收敛至此），
   若其水平四邻中纯水源格数 <2 则改写为流动 water7（`LEVEL=1`，amount 7 非下落）；
@@ -496,9 +498,6 @@
 | trainLateralForce | E8（车架随机横向力，全维度） | true |
 | villagerMaster | G1 | true |
 | structureBed | G2 | true |
-| isolatedWaterDowngrade | G3 | true |
-| iceBreakWaterSource | G3 配套（三种冰破坏产源水并绕过降级） | true |
-| icePlacementBan | G3 配套（生存玩家禁放三种冰） | true |
 | portalBan | G4 | true |
 | enderStorageStructureOnly | G5（末影存储仅限 sable 结构放置） | true |
 | steamEngineOverload | H（蒸汽引擎过载两阶段） | true |
@@ -530,14 +529,10 @@
 | VillagerMasterMixin | 原版村民（补货/掉职业拦截） | G1 | 无条件（原版目标） |
 | VillagerAccessor | 原版村民（交易补全入口） | G1 | 无条件（原版目标） |
 | MerchantOfferAccessor | 原版交易条目（maxUses 改写） | G1 | 无条件（原版目标） |
-| WaterSourceDowngradeMixin | 原版 Level#setBlock（孤立源水改写位） | G3 | 无条件（原版目标） |
-| IceBlockWaterBypassMixin | 原版 IceBlock#playerDestroy（破坏产水 bypass 置位） | G3 | 无条件（原版目标） |
-| PackedIceBreakWaterMixin | 原版 Block#playerDestroy（浮冰/蓝冰破坏产水补齐） | G3 | 无条件（原版目标） |
-| BucketItemMixin | 原版 BucketItem#emptyContents 5 参（倒水玩家归因） | G3 | 无条件（原版目标） |
 | compat.dimblend.WarpGateBlockMixin | dimblend 折跃门（字符串目标） | G4 | dimblend 在场 |
 | client.ItemStackNicknameMixin | 原版 ItemStack | A8 | 无条件（原版目标，客户端侧） |
 
-事件处理器（非 mixin）：DeathRules（A1/A2，含 PlayerRespawnPositionEvent）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainOffStructureRules（E7）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、IcePlacementGuard（G3 配套，生存玩家冰放置拦截）、PortalBan（G4）、EnderStorageStructureGuard（G5）。
+事件处理器（非 mixin）：DeathRules（A1/A2，含 PlayerRespawnPositionEvent）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainOffStructureRules（E7）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、EnderStorageStructureGuard（G5）。
 
 ### 依赖接线（C 板块例外为版本级对齐）
 

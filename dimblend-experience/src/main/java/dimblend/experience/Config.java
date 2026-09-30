@@ -115,20 +115,6 @@ public final class Config {
             .comment("G 板块 G4：旋转维度内禁一切传送门生成与跨维度旅行；折跃门方块全局禁传送（留块）。回家通道不管")
             .define("portalBan", true);
 
-    public static final ModConfigSpec.BooleanValue ISOLATED_WATER_DOWNGRADE = BUILDER
-            .comment("G 板块 G3：旋转维度内新写入的纯水源（桶/管道/冰光照融化/流体成池等）若水平四邻源水<2 格则降级为流动 water7；≥2 格才保留源水；"
-                    + "创造模式玩家倒水绕过；三种冰破坏产水绕过（见 iceBreakWaterSource）")
-            .define("isolatedWaterDowngrade", true);
-
-    public static final ModConfigSpec.BooleanValue ICE_BREAK_WATER_SOURCE = BUILDER
-            .comment("G 板块 G3 配套：旋转维度内三种冰（ice/packed_ice/blue_ice，不含 frosted_ice）被无精准采集挖掘且脚下为固体/液体时，"
-                    + "原位生成水源并绕过 G3 降级；创造破坏/精准采集/爆炸活塞不产水（贴原版冰语义），冰光照融化仍走 G3 降级")
-            .define("iceBreakWaterSource", true);
-
-    public static final ModConfigSpec.BooleanValue ICE_PLACEMENT_BAN = BUILDER
-            .comment("G 板块 G3 配套：旋转维度内生存模式玩家禁止放置三种冰（创造模式豁免；Create 部署器等机器放置不拦）")
-            .define("icePlacementBan", true);
-
     public static final ModConfigSpec.BooleanValue ENDER_STORAGE_STRUCTURE_ONLY = BUILDER
             .comment("G 板块 G5：旋转维度内末影箱/末影罐（enderstorage:ender_chest / ender_tank）只能放在 sable 结构上；"
                     + "放在结构外则放行放置后本 tick 末破坏返还（真人回背包、机器放置掉落，频率保留）；"
