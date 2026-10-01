@@ -27,13 +27,16 @@ public final class CdgKineticOverload {
      */
     public static boolean refreshedOverstressed(KineticBlockEntity be) {
         if (!be.hasNetwork() || !IRotate.StressImpact.isEnabled() || !be.isOverStressed()) {
+            CdgOverloadProbe.observeClear(be);
             return false;
         }
         KineticNetwork network = be.getOrCreateNetwork();
         network.updateNetwork();
         float capacity = network.calculateCapacity();
         float stress = network.calculateStress();
-        if (CdgOverloadMath.countsAsOverload(be.isOverStressed(), capacity, stress)) {
+        boolean counted = CdgOverloadMath.countsAsOverload(be.isOverStressed(), capacity, stress);
+        CdgOverloadProbe.observeSuspect(be, network, capacity, stress, counted);
+        if (counted) {
             return true;
         }
         if (be.isOverStressed()) {

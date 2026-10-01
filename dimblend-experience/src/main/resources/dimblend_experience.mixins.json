@@ -24,6 +24,7 @@
 		"compat.create.RotationPropagatorInvoker",
 		"compat.create.KineticNetworkUnloadedAccessor",
 		"compat.create.KineticUnloadedShareMixin",
+		"compat.create.KineticNetworkLedgerTraceMixin",
 		"compat.fluid.GutterOutletPrecipitationMixin",
 		"compat.fluid.GutterOutletBiomeProjectionMixin",
 		"compat.fluid.SmartGutterOutletBiomeProjectionMixin",

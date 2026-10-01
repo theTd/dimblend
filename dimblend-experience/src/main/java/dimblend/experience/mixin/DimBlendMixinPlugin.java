@@ -46,6 +46,7 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".compat.create.RotationPropagatorInvoker")
                 || mixinClassName.endsWith(".compat.create.KineticNetworkUnloadedAccessor")
                 || mixinClassName.endsWith(".compat.create.KineticUnloadedShareMixin")
+                || mixinClassName.endsWith(".compat.create.KineticNetworkLedgerTraceMixin")
                 || mixinClassName.endsWith(".compat.create.SteamEngineOverloadMixin")) {
             return isLoaded("create");
         }

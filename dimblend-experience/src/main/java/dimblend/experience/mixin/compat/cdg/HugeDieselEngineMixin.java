@@ -8,6 +8,7 @@ import dimblend.experience.compat.cdg.CdgEngineState;
 import dimblend.experience.compat.cdg.CdgKineticOverload;
 import dimblend.experience.compat.cdg.CdgOverloadFuse;
 import dimblend.experience.compat.cdg.CdgOverloadMath;
+import dimblend.experience.compat.cdg.CdgOverloadProbe;
 import dimblend.experience.compat.cdg.CdgRatedCapacityMath;
 import net.createmod.catnip.data.Couple;
 import net.createmod.catnip.data.Pair;
@@ -159,6 +160,7 @@ public abstract class HugeDieselEngineMixin {
         }
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
         boolean wasLatched = state.overloadLatched;
+        CdgOverloadProbe.touch(self);
         if (state.fuseActive) {
             // B6 引信优先且不可中断：只推进倒计时；到时爆音+粒子+自毁
             // （自毁前重摘一次登记——倒计时内轴登记可能被别的引擎 tick 覆盖写回；
@@ -217,6 +219,13 @@ public abstract class HugeDieselEngineMixin {
                 return;
             }
             BlockPos pos = self.getBlockPos();
+            // 探针先于摘登记：摘轴侧登记会改轴的账本，先转储才能看到误判当时的读数
+            CdgOverloadProbe.fuseStart(self, shaft, "fuel=" + self.validFS() + " fuelAmount=" + fuelAmount
+                    + " enabled=" + self.enabled() + " throttle=" + self.getThrottle()
+                    + " fuelSpeed=" + self.getFuelSpeed() + " cachedFuelSpeed=" + self.getCachedFuelSpeed()
+                    + " ramp=" + state.rampTicks + " fluct=" + state.fluctFactor
+                    + " overloadTicks=" + state.overloadTicks + " wasLatched=" + wasLatched
+                    + " shaftEngines=" + shaft.engines.size());
             shaft.removeGenerator(pos);
             CdgOverloadFuse.startFuse(level, pos, state);
             if (wasLatched != state.overloadLatched) {

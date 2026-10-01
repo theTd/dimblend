@@ -43,6 +43,12 @@ public final class Config {
             .comment("B 板块：CDG 柴油机转速行为（点火爬梯 16rpm→每4秒+2→额定；额定后 80%~100% 随机波动，爬梯/波动期间应力容量恒按额定；运转中过载持续2秒确认后爆机掉落）")
             .define("dieselEngineBehavior", true);
 
+    public static final ModConfigSpec.BooleanValue DIESEL_OVERLOAD_PROBE = BUILDER
+            .comment("B 板块诊断探针：柴油机疑似过载（缓存 overStressed 为真）时在日志输出 [CDG-PROBE] 行——"
+                    + "疑似开始/结束、网络账本快照、成员逐项明细、网络最近账本事件回放；点引信时 WARN 完整转储。"
+                    + "只读不改行为，定位完毕后可关")
+            .define("dieselOverloadProbe", true);
+
     public static final ModConfigSpec.BooleanValue STEAM_ENGINE_OVERLOAD = BUILDER
             .comment("H 板块：Create 蒸汽引擎过载两阶段（过载持续 16 秒内每秒警告音 + 云粒子，解除即停；"
                     + "满 16 秒断开传动杆掉落 + 排气音 1 次 + 8 秒云粒子，过载解除不中断）")

@@ -11,6 +11,7 @@ import dimblend.experience.compat.cdg.CdgEngineState;
 import dimblend.experience.compat.cdg.CdgKineticOverload;
 import dimblend.experience.compat.cdg.CdgOverloadFuse;
 import dimblend.experience.compat.cdg.CdgOverloadMath;
+import dimblend.experience.compat.cdg.CdgOverloadProbe;
 import dimblend.experience.compat.cdg.CdgRatedCapacityMath;
 import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
@@ -152,6 +153,7 @@ public abstract class DieselEngineRampMixin {
         IEngine engine = (IEngine) (Object) this;
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
         boolean wasLatched = state.overloadLatched;
+        CdgOverloadProbe.touch(self);
 
         boolean fuel = engine.validFS();
         int fuelAmount = engine.getTank().getFluidAmount();
@@ -201,6 +203,11 @@ public abstract class DieselEngineRampMixin {
             if (!CdgOverloadMath.isOverloadConfirmed(state.overloadTicks)) {
                 return;
             }
+            CdgOverloadProbe.fuseStart(self, self, "fuel=" + fuel + " fuelAmount=" + fuelAmount
+                    + " enabled=" + enabled + " throttle=" + engine.getThrottle()
+                    + " generatedSpeed=" + self.getGeneratedSpeed()
+                    + " ramp=" + state.rampTicks + " fluct=" + state.fluctFactor
+                    + " overloadTicks=" + state.overloadTicks + " wasLatched=" + wasLatched);
             CdgOverloadFuse.startFuse(level, self.getBlockPos(), state);
             if (wasLatched != state.overloadLatched) {
                 self.setChanged();

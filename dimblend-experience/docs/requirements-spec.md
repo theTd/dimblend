@@ -506,6 +506,7 @@
 | globalBeacon | A7（全局功能） | true |
 | nickname / nicknamePermission | A8（全局功能）/ 命令权限等级 | true / 0 |
 | dieselEngineBehavior | B | true |
+| dieselOverloadProbe | B 诊断探针（只读，输出 `[CDG-PROBE]` 日志，定位完毕可关） | true |
 | electricMotorBehavior | D（含 D4 自定义音效替代 + D6 护目镜实际转速显示） | true |
 | alternatorIdleDrain | D5（交流发电机无输入自放电） | true |
 | simurailProtect | E1 | true |
@@ -542,6 +543,7 @@
 | compat.create.RotationPropagatorInvoker | Create RotationPropagator（`getPotentialNeighbourLocations` 静态 invoker） | F2 | create 在场 |
 | compat.create.KineticUnloadedShareMixin | Create KineticBlockEntity（`read` RETURN 快照存档份额；`initialize`/`setNetwork`/`remove` HEAD 结算） | B4 读档账本修正 | create 在场 |
 | compat.create.KineticNetworkUnloadedAccessor | Create KineticNetwork（unloadedCapacity/Stress/Members 读写） | B4 读档账本修正 | create 在场 |
+| compat.create.KineticNetworkLedgerTraceMixin | Create KineticNetwork（initFromTE/addSilently/add/remove/sync/updateCapacityFor/updateStressFor HEAD，只读记账本事件环） | B4 误判过载诊断探针（`CdgOverloadProbe`） | create 在场 |
 | compat.simurail.PhysicsBogeyBrakeSoundMixin | Simurail 物理转向架 BE | E3/E4 | simurail 在场（simurail 硬性依赖 sable，蕴含 sable 在场） |
 | compat.simurail.PhysicsBogeyLateralForceMixin | Simurail 物理转向架 BE（`tick` + `sable$physicsTick`） | E8 | simurail 在场 |
 | compat.simurail.PhysicsBogeyTrackSoundMixin | Simurail 物理转向架 BE | E2 | simurail 在场（client 数组） |
