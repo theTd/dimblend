@@ -51,6 +51,7 @@
     "StructureStartMixin",
     "TrackPropagatorMixin",
     "VerticalAnchorAbsoluteMixin",
+    "WeatherCommandMixin",
     "WorldGenerationContextMixin",
     "aether.DungeonBlacklistFilterMixin",
     "twilight.CapabilityEventsMixin",
