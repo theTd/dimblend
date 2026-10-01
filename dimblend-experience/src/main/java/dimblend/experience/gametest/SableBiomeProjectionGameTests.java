@@ -1,5 +1,7 @@
 package dimblend.experience.gametest;
 
+import java.util.List;
+
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
@@ -35,6 +37,8 @@ public final class SableBiomeProjectionGameTests {
     private static final BlockPos BLOCK_REL = new BlockPos(1, 1, 1);
     /** 结构 tick 过（位姿/包围盒就位）再核验。 */
     private static final int SETTLE_TICKS = 5;
+    /** 长结构两端的间距（格）。 */
+    private static final int LONG_SPAN = 64;
 
     private SableBiomeProjectionGameTests() {
     }
@@ -78,6 +82,60 @@ public final class SableBiomeProjectionGameTests {
                     .getNoiseBiome(plot.getX() >> 2, plot.getY() >> 2, plot.getZ() >> 2));
             helper.assertTrue(created.equals(stored),
                     "plot chunk stored biome must stay " + created + " but was " + stored);
+            helper.succeed();
+        });
+    }
+
+    /**
+     * 长结构：同一结构的两端落在不同群系时，各端方块读到各自世界位置的群系
+     *（投影按方块逐个换算，不是整结构共用一个群系）。两端相距 64 格，改写的 3×3 区块互不重叠。
+     */
+    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_biome_projection_long", timeoutTicks = 100)
+    public static void longSubLevelBlocksReadTheirOwnWorldBiome(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos west = helper.absolutePos(BLOCK_REL);
+        BlockPos east = west.east(LONG_SPAN);
+
+        // 沿线强加载：世界区块没加载 Sable 会把结构卸载（PhysicsChunkTicketManager）
+        ChunkPos westChunk = new ChunkPos(west);
+        ChunkPos eastChunk = new ChunkPos(east);
+        for (int cx = westChunk.x - 1; cx <= eastChunk.x + 1; cx++) {
+            for (int cz = westChunk.z - 1; cz <= westChunk.z + 1; cz++) {
+                level.setChunkForced(cx, cz, true);
+            }
+        }
+
+        GameTestBiomes.overwrite(level, west, Biomes.SNOWY_PLAINS);
+        GameTestBiomes.overwrite(level, east, Biomes.DESERT);
+        // betweenClosed 复用同一个可变坐标对象，组装会留存坐标，须先拷成不可变
+        List<BlockPos> line = BlockPos.betweenClosedStream(west, east).map(BlockPos::immutable).toList();
+        for (BlockPos pos : line) {
+            level.setBlockAndUpdate(pos, Blocks.STONE.defaultBlockState());
+        }
+
+        ServerSubLevel subLevel = SubLevelAssemblyHelper.assembleBlocks(level, west,
+                line, new BoundingBox3i(west, east));
+        helper.assertTrue(subLevel != null, "assembly must succeed");
+
+        helper.runAfterDelay(SETTLE_TICKS, () -> {
+            BlockPos westPlot = BlockPos.containing(
+                    subLevel.logicalPose().transformPositionInverse(Vec3.atCenterOf(west)));
+            BlockPos eastPlot = BlockPos.containing(
+                    subLevel.logicalPose().transformPositionInverse(Vec3.atCenterOf(east)));
+            helper.assertTrue(level.getBlockState(westPlot).is(Blocks.STONE) && level.getBlockState(eastPlot).is(Blocks.STONE),
+                    "both ends must have moved to the plot: " + westPlot + ", " + eastPlot);
+
+            ResourceKey<Biome> westSeen = GameTestBiomes.keyOf(level.getBiome(westPlot));
+            ResourceKey<Biome> eastSeen = GameTestBiomes.keyOf(level.getBiome(eastPlot));
+            helper.assertTrue(Biomes.SNOWY_PLAINS.equals(westSeen),
+                    "west end must read snowy_plains but read " + westSeen);
+            helper.assertTrue(Biomes.DESERT.equals(eastSeen),
+                    "east end must read desert but read " + eastSeen);
+            for (int cx = westChunk.x - 1; cx <= eastChunk.x + 1; cx++) {
+                for (int cz = westChunk.z - 1; cz <= westChunk.z + 1; cz++) {
+                    level.setChunkForced(cx, cz, false);
+                }
+            }
             helper.succeed();
         });
     }
