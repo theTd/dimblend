@@ -550,6 +550,8 @@
 | LimitedWaterMixin | 原版 Level#setBlock 4 参（源水写入改写为 water7） | G3 | 无条件（原版目标） |
 | IcePlacementBanMixin | 原版 BlockItem#place（冰/浮冰/蓝冰放置拦截） | G3 | 无条件（原版目标） |
 | compat.dimblend.WarpGateBlockMixin | dimblend 折跃门（字符串目标） | G4 | dimblend 在场 |
+| compat.fluid.GutterOutletBiomeProjectionMixin | Create: Fluid 集水器 BE（`handlePrecipitationCollection` 内 `getBiome`/`getPrecipitationAt` 的位置参数 WrapOperation，经 `SableWorldPosition.projectBlock` 投影到世界坐标） | Sable 结构群系投影 | fluid 在场 |
+| compat.fluid.SmartGutterOutletBiomeProjectionMixin | Create: Fluid 智能集水器 BE（同上，目标方法 `handlePrecipitationCollectionFiltered`） | Sable 结构群系投影 | fluid 在场 |
 | client.ItemStackNicknameMixin | 原版 ItemStack | A8 | 无条件（原版目标，客户端侧） |
 
 事件处理器（非 mixin）：DeathRules（A1/A2，含 PlayerRespawnPositionEvent）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainOffStructureRules（E7）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、EnderStorageStructureGuard（G5）。
@@ -564,6 +566,7 @@
 
 ### 已知限制（在案）
 
+- **Sable 结构群系投影（2026-09-30）**：结构方块在 plot 坐标里，plot 区块群系是结构创建时烤入、之后不再更新，结构开到别的群系后集水器等仍按创建时的群系判降水（雨天收细雪）。修法两层：① Sable 本体新增 `biome_projection`（`BiomeManager#getBiome` 把 plot 坐标投影到结构当前世界位置；`Level#isRainingAt` 与 `ServerLevel#tickPrecipitation` 内 `Biome#getPrecipitationAt` 的位置参数同样投影），对所有模组的 `level.getBiome(plotPos)` 生效；② 本模组对集水器 `getBiome`/`getPrecipitationAt` 做同口径投影（幂等，不依赖 Sable 构建版本）。**残余限制**：`Biome` 的温度方法只收 `BlockPos`、无 level，无法在内部反投影，所以其他模组直接对 plot 坐标调 `Biome#getPrecipitationAt/shouldSnow/shouldFreeze`/温度方法时，群系已对但海拔修正（Y>80）仍按 plot 的 Y（约建筑高度中点，等效世界 Y≈128）、冰面噪声按 plot 的 XZ，只影响基础温度约 0.15~0.21 的群系的雪/雨边界。运行验证：`SableBiomeProjectionGameTests`（需带 `biome_projection` 的 Sable 构建）、`GutterOutletBiomeProjectionGameTests`（`-PwithFluid`）。
 - CDG 巨型柴油机（PoweredEngineShaft 出力、不实现 IEngine）不在 B 板块覆盖内
   （v1.2 第二版起由 B5 覆盖，本条作废，保留备查）
 - Simurail 0.0.0-a 方块注册表仅 PhysicsBogey/AutomaticCoupler 两项（CenteredGangwayJoint 有类无条目）；升级 Simurail 需重核 E1 清单

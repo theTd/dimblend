@@ -16,6 +16,8 @@ import dimblend.experience.compat.simurail.TrainForceGroups;
 import dimblend.experience.datagen.DataGenerators;
 import dimblend.experience.gametest.CdgKineticOverloadGameTests;
 import dimblend.experience.gametest.CdgRatedCapacityGameTests;
+import dimblend.experience.gametest.GutterOutletBiomeProjectionGameTests;
+import dimblend.experience.gametest.SableBiomeProjectionGameTests;
 import dimblend.experience.gametest.CopycatObsidianHardnessGameTests;
 import dimblend.experience.gametest.DeployerIcePlacementGameTests;
 import dimblend.experience.gametest.LimitedWaterGameTests;
@@ -82,6 +84,14 @@ public class DimBlend {
             event.register(KineticComponentScanGameTests.class);
             event.register(KineticUnloadedShareGameTests.class);
             event.register(CdgKineticOverloadGameTests.class);
+        }
+        // 引用 Sable 类：仅 Sable 在场时注册（dev 下 localRuntime 常驻）
+        if (ModList.get().isLoaded("sable")) {
+            event.register(SableBiomeProjectionGameTests.class);
+            // 另引用 Create: Fluid 类：dev 下 -PwithFluid
+            if (ModList.get().isLoaded("fluid")) {
+                event.register(GutterOutletBiomeProjectionGameTests.class);
+            }
         }
         // B7 引用 CDG 类：仅 CDG 在场（dev 下 -PwithCdg）时注册
         if (ModList.get().isLoaded("createdieselgenerators")) {

@@ -49,7 +49,9 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".compat.create.SteamEngineOverloadMixin")) {
             return isLoaded("create");
         }
-        if (mixinClassName.endsWith(".compat.fluid.GutterOutletPrecipitationMixin")) {
+        if (mixinClassName.endsWith(".compat.fluid.GutterOutletPrecipitationMixin")
+                || mixinClassName.endsWith(".compat.fluid.GutterOutletBiomeProjectionMixin")
+                || mixinClassName.endsWith(".compat.fluid.SmartGutterOutletBiomeProjectionMixin")) {
             return isLoaded("fluid");
         }
         return true;

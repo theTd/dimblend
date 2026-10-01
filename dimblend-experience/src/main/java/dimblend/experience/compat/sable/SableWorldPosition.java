@@ -1,6 +1,7 @@
 package dimblend.experience.compat.sable;
 
 import dev.ryanhcode.sable.Sable;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.ModList;
@@ -20,6 +21,14 @@ public final class SableWorldPosition {
             return position;
         }
         return Sable.HELPER.projectOutOfSubLevel(level, position);
+    }
+
+    /**
+     * 方块位置版：按所在方块中心投影后取整。不在子层级内的位置原样返回，对已投影的
+     * 世界坐标幂等（重复调用不会二次偏移）。
+     */
+    public static BlockPos projectBlock(Level level, BlockPos pos) {
+        return BlockPos.containing(project(level, pos.getCenter()));
     }
 
     private SableWorldPosition() {

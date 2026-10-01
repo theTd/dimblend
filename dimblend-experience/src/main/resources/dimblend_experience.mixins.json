@@ -25,6 +25,8 @@
 		"compat.create.KineticNetworkUnloadedAccessor",
 		"compat.create.KineticUnloadedShareMixin",
 		"compat.fluid.GutterOutletPrecipitationMixin",
+		"compat.fluid.GutterOutletBiomeProjectionMixin",
+		"compat.fluid.SmartGutterOutletBiomeProjectionMixin",
 		"compat.create.SteamEngineOverloadMixin",
 		"compat.simurail.PhysicsBogeyBrakeSoundMixin",
 		"compat.simurail.PhysicsBogeyLateralForceMixin",
