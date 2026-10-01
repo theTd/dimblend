@@ -21,6 +21,10 @@ import net.neoforged.neoforge.event.tick.PlayerTickEvent;
  * happy_villager；128~256 为僵持区——不恢复也不加重；回退跨过 256 边界
  * 同样不降档（严格口径：层级只增不减，仅 |z|≤128 清零）。
  *
+ * <p>层级即 z256 进度条的“已满次数”：变更、登录、重生、切维度时经
+ * {@link FarCurseTierPayload} 下发客户端，条按 {@code (|z| − 256×层级) / 256} 显示。
+ * 层级计数在旋转维度内常开，{@code depthCurse} 开关只管扣上限与粒子。</p>
+ *
  * <p>层级状态存实体附件（持久化）：离开旋转维度只摘修饰符不清层级，回来原样续上；
  * 层级纯由位置推导，死亡重生后按新位置重算，无需 copyOnDeath
  * （2026-09-22 拍板维持现状：死亡重算不视为违规清零，严格口径仅约束存活移动）。</p>
@@ -56,27 +60,46 @@ public final class DepthCurse {
 
         double absZ = Math.abs(player.getZ());
 
-        if (Config.DEPTH_CURSE.get()) {
-            int current = player.getData(ExplorationAttachments.FAR_CURSE_TIER.get());
-            int target = targetTier(absZ);
-            // 严格口径：仅 |z|≤128（target==0）清零；其余一律只增不减——
-            // 回退跨过 256 边界（target < current）保持现状，不恢复部分生命上限。
-            // target==-1（僵持区）同样被 max 接住（current 恒≥0），无需单独分支。
-            int held = target == 0 ? 0 : Math.max(target, current);
-            if (held != current) {
-                player.setData(ExplorationAttachments.FAR_CURSE_TIER.get(), held);
-                if (held > current) {
-                    player.serverLevel().sendParticles(player, ParticleTypes.ANGRY_VILLAGER, false,
-                            player.getX(), player.getY() + player.getEyeHeight(), player.getZ(), 8, 0.5D, 0.5D, 0.5D, 0.02D);
-                }
-                if (held == 0 && current > 0) {
-                    player.serverLevel().sendParticles(player, ParticleTypes.HAPPY_VILLAGER, false,
-                            player.getX(), player.getY() + player.getEyeHeight(), player.getZ(), 12, 0.5D, 0.5D, 0.5D, 0.05D);
-                }
+        // 层级计数常开（z256 进度条读它），开关只管扣上限与粒子。
+        int current = player.getData(ExplorationAttachments.FAR_CURSE_TIER.get());
+        int target = targetTier(absZ);
+        // 严格口径：仅 |z|≤128（target==0）清零；其余一律只增不减——
+        // 回退跨过 256 边界（target < current）保持现状，不恢复部分生命上限。
+        // target==-1（僵持区）同样被 max 接住（current 恒≥0），无需单独分支。
+        int held = target == 0 ? 0 : Math.max(target, current);
+        boolean curseOn = Config.DEPTH_CURSE.get();
+        if (held != current) {
+            player.setData(ExplorationAttachments.FAR_CURSE_TIER.get(), held);
+            FarCurseTierPayload.sendTo(player, held);
+            if (curseOn && held > current) {
+                player.serverLevel().sendParticles(player, ParticleTypes.ANGRY_VILLAGER, false,
+                        player.getX(), player.getY() + player.getEyeHeight(), player.getZ(), 8, 0.5D, 0.5D, 0.5D, 0.02D);
             }
+            if (curseOn && held == 0 && current > 0) {
+                player.serverLevel().sendParticles(player, ParticleTypes.HAPPY_VILLAGER, false,
+                        player.getX(), player.getY() + player.getEyeHeight(), player.getZ(), 12, 0.5D, 0.5D, 0.5D, 0.05D);
+            }
+        }
+        if (curseOn) {
             ensureModifier(player, held);
         } else {
             removeModifier(player);
+        }
+    }
+
+    /** 登录：把持久化层级下发给客户端进度条。 */
+    @SubscribeEvent
+    public static void onLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            syncTier(player);
+        }
+    }
+
+    /** 重生：新实体附件回到默认 0（层级按新位置重算），先把 0 下发，免得客户端沿用死前层级。 */
+    @SubscribeEvent
+    public static void onRespawn(PlayerEvent.PlayerRespawnEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            syncTier(player);
         }
     }
 
@@ -84,7 +107,12 @@ public final class DepthCurse {
     public static void onDimensionChanged(PlayerEvent.PlayerChangedDimensionEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             removeModifier(player);
+            syncTier(player);
         }
+    }
+
+    private static void syncTier(ServerPlayer player) {
+        FarCurseTierPayload.sendTo(player, player.getData(ExplorationAttachments.FAR_CURSE_TIER.get()));
     }
 
     /**

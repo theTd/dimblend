@@ -1,12 +1,12 @@
 package dimblend.experience.client;
 
 import dimblend.experience.Config;
+import dimblend.experience.exploration.ClientFarCurseTier;
 import dimblend.experience.exploration.RotatingDimension;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
 
 /**
  * z256 进度条：画在盔甲 HUD 列、与原版盔甲行同宽 81px，
@@ -15,24 +15,18 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
  * （内层原版渲染被跳过、但包裹无条件执行），故 {@code render()} 自拦到生存/冒险，
  * 创造改由 {@link #renderCreativeFallback} 经 HOTBAR 包裹层回退绘制，落点与生存一致。
  *
- * <p>显示规则见 docs/z256-bar-requirement.md：常驻显示当前段内进度
- * {@code (|z| % 256) / 256}，数字只显示 {@code |z|} 取整（{@code |z|≤16} 时隐藏数字、
- * 仅保留进度条）。回程瞬时归零（实测修订，原 2026-09-22 锁存口径作废）：回程且段内位置
- * 严格大于 128 的当刻显示 0%，一旦转头前进立刻按公式恢复，无锁存记忆
- * （回程判定带 0.5 格防抖，站立抖动不归零）。颜色按最终进度：
- * [0,60%) 绿、[60%,80%) 黄、[80%,100%] 红。
+ * <p>显示规则见 docs/z256-bar-requirement.md：进度 {@code (|z| − 256×层级) / 256}，
+ * 为负显示 0%，{@code |z|≤128} 层级清零重新开始；层级即进度条已满次数，
+ * 与远行诅咒共用服务端同一计数（{@link ClientFarCurseTier} 经 S2C 同步），与走向无关。
+ * 数字只显示 {@code |z|} 取整（{@code |z|≤16} 时隐藏数字、仅保留进度条）。
+ * 颜色按进度：[0,60%) 绿、[60%,80%) 黄、[80%,100%] 红。
  *
- * <p>与扣血逻辑（DepthCurse）的边界：本条只读 {@code |z|} 和客户端自采的方向，
- * 不读生命上限/层数；扣血逻辑也不读本条进度。256/128 常数各自独立定义。
+ * <p>与扣血逻辑（DepthCurse）的边界：本条只读 {@code |z|} 与同步下来的层级，不读生命上限；
+ * 256/128 常数取自 DepthCurse，单一来源。
  */
 public final class ZProgressHud {
     /** 数字隐藏半径：|z|≤16 时只画进度条、不画数字（新条目）。 */
     static final int NUMBER_HIDE_RADIUS = 16;
-    /** 回程判定防抖：单次采样回退超过半格才算回程，站立抖动不归零。 */
-    static final double RETURN_EPSILON = 0.5;
-    /** 方向采样间隔（tick），与服务端 DepthCurse 的 TICK_INTERVAL 对齐。 */
-    private static final int SAMPLE_INTERVAL = 10;
-
     private static final int BAR_WIDTH = 81; // 盔甲行：10 图标 × 8px 步进，末图标 9px 宽
     private static final int BAR_HEIGHT = 5;
     private static final int GAP_ABOVE_ARMOR = 1;
@@ -43,36 +37,7 @@ public final class ZProgressHud {
     private static final int YELLOW = 0xFFE0C020;
     private static final int RED = 0xFFE04040;
 
-    /** 上次采样点的 |z|；null 表示尚未建基线（首次/切维度回来后按去程处理）。 */
-    private static Double lastAbsZ;
-    private static int lastSampleTick;
-    private static boolean returning;
-
     private ZProgressHud() {
-    }
-
-    /** 客户端 tick 采样方向：每 10 tick 比较一次 |z|，变小超 0.5 格即回程（含重生 tick 归零重建基线）。 */
-    public static void onClientTick(ClientTickEvent.Post event) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null || !RotatingDimension.is(mc.level)) {
-            lastAbsZ = null;
-            returning = false;
-            return;
-        }
-        double absZ = Math.abs(mc.player.getZ());
-        int tick = mc.player.tickCount;
-        if (lastAbsZ == null || tick < lastSampleTick) {
-            // 基线重建（首次采样/切维度回来/重生 tick 归零）：方向复位
-            returning = false;
-            lastAbsZ = absZ;
-            lastSampleTick = tick;
-            return;
-        }
-        if (tick - lastSampleTick >= SAMPLE_INTERVAL) {
-            returning = lastAbsZ - absZ > RETURN_EPSILON;
-            lastAbsZ = absZ;
-            lastSampleTick = tick;
-        }
     }
 
     /** 按左闭右开边界取色：[0,60%) 绿、[60%,80%) 黄、[80%,100%] 红。 */
@@ -152,7 +117,7 @@ public final class ZProgressHud {
 
     private static void draw(GuiGraphics graphics, Minecraft mc, Player player, int barTop) {
         double absZ = Math.abs(player.getZ());
-        float progress = ZProgressMath.progressFor(absZ, returning);
+        float progress = ZProgressMath.progressFor(absZ, ClientFarCurseTier.get());
         int left = graphics.guiWidth() / 2 - 91;
         graphics.fill(left, barTop, left + BAR_WIDTH, barTop + BAR_HEIGHT, BACKGROUND_COLOR);
         int fillWidth = Math.round(progress * (BAR_WIDTH - 2));

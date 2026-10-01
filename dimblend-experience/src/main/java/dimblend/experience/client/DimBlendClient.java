@@ -1,23 +1,26 @@
 package dimblend.experience.client;
 
 import dimblend.experience.DimBlend;
+import dimblend.experience.exploration.ClientFarCurseTier;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
 import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
 import net.neoforged.neoforge.common.NeoForge;
 
 /**
- * 客户端入口：z256 进度条挂到原版盔甲层，方向采样挂游戏总线客户端 tick。
+ * 客户端入口：z256 进度条挂到原版盔甲层；断线复位同步下来的诅咒层级（游戏总线）。
  */
 @EventBusSubscriber(modid = DimBlend.MODID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
 public final class DimBlendClient {
 
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
-        event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(ZProgressHud::onClientTick));
+        event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(
+                (ClientPlayerNetworkEvent.LoggingOut logout) -> ClientFarCurseTier.reset()));
     }
 
     @SubscribeEvent

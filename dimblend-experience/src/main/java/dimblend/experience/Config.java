@@ -14,11 +14,11 @@ public final class Config {
             .define("deathRules", true);
 
     public static final ModConfigSpec.BooleanValue DEPTH_CURSE = BUILDER
-            .comment("探索限制 A3/A4：|z| 每跨过 256 生命上限 ×0.75（下限 1 点），回到 |z|≤128 完全恢复")
+            .comment("探索限制 A3/A4：|z| 每跨过 256 生命上限 ×0.75（下限 1 点），回到 |z|≤128 完全恢复；关闭只停扣上限，层级计数照常（进度条用）")
             .define("depthCurse", true);
 
     public static final ModConfigSpec.BooleanValue CURSE_BOSSBAR = BUILDER
-            .comment("探索限制 A5：旋转维度内在盔甲 HUD 位置常驻显示 z256 进度条（段内进度 + |z| 数字）")
+            .comment("探索限制 A5：旋转维度内在盔甲 HUD 位置常驻显示 z256 进度条（(|z| − 256×诅咒层级)/256，负数 0% + |z| 数字）")
             .define("curseBossbar", true);
 
     public static final ModConfigSpec.BooleanValue SAFE_ZONE = BUILDER
