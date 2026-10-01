@@ -37,6 +37,12 @@ public final class ShutdownUnloadGuard {
     private ShutdownUnloadGuard() {
     }
 
+    /** True inside {@code stopServer}'s save window (halted and saving); read-only, no guard state. */
+    public static boolean isStopping(ServerLevel level) {
+        MinecraftServer server = level.getServer();
+        return server != null && !server.isRunning() && server.isCurrentlySaving();
+    }
+
     /**
      * True once the server has been {@link MinecraftServer#isCurrentlySaving() saving} longer
      * than {@link #TIMEOUT_NANOS}. Resets automatically when saving ends.
