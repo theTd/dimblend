@@ -60,6 +60,17 @@ public final class CdgOverloadMath {
         return overloadTicks >= OVERLOAD_CONFIRM_TICKS;
     }
 
+    /**
+     * 读档宽限：服务端启动后的前 {@code graceTicks} 个 tick 内不判爆（含不累计过载、不推进引信）。
+     * 读档/进世界时 kinetic 网络仍在重建，实时账本在这几秒内不可信；{@code serverTick} 取
+     * {@code MinecraftServer#getTickCount()}（每次开服从 0 起，单人暂停不走）。
+     *
+     * @param graceTicks 宽限 tick 数，{@code <= 0} 视为关闭
+     */
+    public static boolean isWithinLoadGrace(long serverTick, int graceTicks) {
+        return graceTicks > 0 && serverTick < graceTicks;
+    }
+
     private CdgOverloadMath() {
     }
 }

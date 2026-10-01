@@ -9,6 +9,7 @@ import dimblend.experience.Config;
 import dimblend.experience.compat.cdg.CdgAttachments;
 import dimblend.experience.compat.cdg.CdgEngineState;
 import dimblend.experience.compat.cdg.CdgKineticOverload;
+import dimblend.experience.compat.cdg.CdgLoadGrace;
 import dimblend.experience.compat.cdg.CdgOverloadFuse;
 import dimblend.experience.compat.cdg.CdgOverloadMath;
 import dimblend.experience.compat.cdg.CdgOverloadProbe;
@@ -154,6 +155,7 @@ public abstract class DieselEngineRampMixin {
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
         boolean wasLatched = state.overloadLatched;
         CdgOverloadProbe.touch(self);
+        boolean loadGrace = CdgLoadGrace.active(level);
 
         boolean fuel = engine.validFS();
         int fuelAmount = engine.getTank().getFluidAmount();
@@ -163,6 +165,9 @@ public abstract class DieselEngineRampMixin {
             // 油箱恒空、本就点不着引信，只有持油的 controller 能进此分支。
             state.fuelPresent = fuel;
             state.lastFuelAmount = fuelAmount;
+            if (loadGrace) {
+                return; // 读档宽限：倒计时暂停，宽限过后接着走
+            }
             if (CdgOverloadFuse.tickFuse(level, self.getBlockPos(), state,
                     () -> level.destroyBlock(self.getBlockPos(), true))) {
                 state.overloadLatched = true;
@@ -199,6 +204,11 @@ public abstract class DieselEngineRampMixin {
             // 确认前爬梯/波动计时冻结（本 tick 直接 return，不断也不复位），燃油
             // 照常扣除（门控仅闩锁/引信后生效）。确认后警告音 1 次、出力立即归零
             // （闩锁口径），6 秒后爆音+粒子+自毁掉落（余油不返还）。
+            if (loadGrace) {
+                // 读档宽限：网络仍在重建，不累计；同未确认口径冻结爬梯/波动
+                state.overloadTicks = 0;
+                return;
+            }
             state.overloadTicks = CdgOverloadMath.countOverloadTick(state.overloadTicks);
             if (!CdgOverloadMath.isOverloadConfirmed(state.overloadTicks)) {
                 return;

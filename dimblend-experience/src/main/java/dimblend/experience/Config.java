@@ -43,6 +43,12 @@ public final class Config {
             .comment("B 板块：CDG 柴油机转速行为（点火爬梯 16rpm→每4秒+2→额定；额定后 80%~100% 随机波动，爬梯/波动期间应力容量恒按额定；运转中过载持续2秒确认后爆机掉落）")
             .define("dieselEngineBehavior", true);
 
+    public static final ModConfigSpec.IntValue DIESEL_LOAD_GRACE_SECONDS = BUILDER
+            .comment("B 板块读档宽限：进世界（开服）后这么多秒内柴油机不判爆——不累计过载确认、"
+                    + "已在走的引信倒计时也暂停，宽限过后重新累计。读档时 Create 动力网络仍在重建，"
+                    + "实时账本这几秒内不可信（0=关闭宽限）")
+            .defineInRange("dieselLoadGraceSeconds", 5, 0, 60);
+
     public static final ModConfigSpec.BooleanValue DIESEL_OVERLOAD_PROBE = BUILDER
             .comment("B 板块诊断探针：柴油机疑似过载（缓存 overStressed 为真）时在日志输出 [CDG-PROBE] 行——"
                     + "疑似开始/结束、网络账本快照、成员逐项明细、网络最近账本事件回放；点引信时 WARN 完整转储。"

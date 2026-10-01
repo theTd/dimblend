@@ -6,6 +6,7 @@ import dimblend.experience.Config;
 import dimblend.experience.compat.cdg.CdgAttachments;
 import dimblend.experience.compat.cdg.CdgEngineState;
 import dimblend.experience.compat.cdg.CdgKineticOverload;
+import dimblend.experience.compat.cdg.CdgLoadGrace;
 import dimblend.experience.compat.cdg.CdgOverloadFuse;
 import dimblend.experience.compat.cdg.CdgOverloadMath;
 import dimblend.experience.compat.cdg.CdgOverloadProbe;
@@ -161,7 +162,11 @@ public abstract class HugeDieselEngineMixin {
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
         boolean wasLatched = state.overloadLatched;
         CdgOverloadProbe.touch(self);
+        boolean loadGrace = CdgLoadGrace.active(level);
         if (state.fuseActive) {
+            if (loadGrace) {
+                return; // 读档宽限：倒计时暂停，宽限过后接着走
+            }
             // B6 引信优先且不可中断：只推进倒计时；到时爆音+粒子+自毁
             // （自毁前重摘一次登记——倒计时内轴登记可能被别的引擎 tick 覆盖写回；
             // 轴已不在时跳过摘登记直接自毁，不停摆）。
@@ -214,6 +219,11 @@ public abstract class HugeDieselEngineMixin {
             // CdgOverloadMath）确认才点引信。粘住的缓存位在复核时按实时值刷掉，
             // 不累计。确认前爬梯/波动计时冻结（直接 return，不断也不复位），
             // 燃油照常扣除；确认后先摘轴侧登记防残留末速空转，再点引信
+            if (loadGrace) {
+                // 读档宽限：网络仍在重建，不累计；同未确认口径冻结爬梯/波动
+                state.overloadTicks = 0;
+                return;
+            }
             state.overloadTicks = CdgOverloadMath.countOverloadTick(state.overloadTicks);
             if (!CdgOverloadMath.isOverloadConfirmed(state.overloadTicks)) {
                 return;
