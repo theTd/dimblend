@@ -38,6 +38,10 @@ import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
 import net.minecraft.world.level.levelgen.structure.StructureSet;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.material.Fluid;
+import net.minecraft.world.ticks.ProtoChunkTicks;
+import dimblend.mixin.ProtoChunkTicksAccessor;
 
 public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
     /**
@@ -304,8 +308,27 @@ public final class SlicedOverworldChunkGenerator extends ChunkGenerator {
         }
         this.writeBiomes(chunk, biomes);
         this.shiftPostProcessing(chunk);
+        this.shiftScheduledTicks(chunk);
         this.sealSlice(chunk);
         this.reprimeHeightmaps(chunk);
+    }
+
+    /**
+     * Worldgen ticks (spring features schedule a fluid tick at the source Y) live in the proto
+     * chunk's own tick containers; move them with the blocks so single-cell springs still start
+     * flowing after relocation. See {@link SliceTickShift}.
+     */
+    private void shiftScheduledTicks(ChunkAccess chunk) {
+        if (!(chunk instanceof ProtoChunk proto)) {
+            return;
+        }
+        ProtoChunkTicksAccessor accessor = (ProtoChunkTicksAccessor) proto;
+        int minY = chunk.getMinBuildHeight();
+        int maxY = chunk.getMaxBuildHeight();
+        accessor.dimblend$setBlockTicks(SliceTickShift.shifted(
+                (ProtoChunkTicks<Block>) proto.getBlockTicks(), this.slice, minY, maxY));
+        accessor.dimblend$setFluidTicks(SliceTickShift.shifted(
+                (ProtoChunkTicks<Fluid>) proto.getFluidTicks(), this.slice, minY, maxY));
     }
 
     private Holder<Biome>[][][] snapshotBiomes(ChunkAccess chunk) {
