@@ -1,0 +1,14 @@
+{
+	"required": true,
+	"package": "dimblend.radio.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"minVersion": "0.8",
+	"plugin": "dimblend.radio.mixin.DimBlendRadioMixinPlugin",
+	"client": [
+		"client.sodium.ChunkBuilderMeshingTaskMixin",
+		"client.sodium.RenderSectionManagerMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

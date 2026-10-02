@@ -18,6 +18,7 @@ public final class RadioPcmFeed {
         private final byte[] data;
         private final int start;
         private volatile boolean exhausted;
+        private volatile RadioPcmProcessor processor;
 
         private Handle(String id, AudioFormat format, byte[] data, double offsetSec) {
             this.id = id;
@@ -39,6 +40,12 @@ public final class RadioPcmFeed {
         public void release() {
             PCM.remove(this.id, this);
         }
+
+        public void setProcessor(RadioPcmProcessor processor) {
+            this.processor = processor;
+        }
+
+        public AudioFormat format() { return format; }
     }
 
     public static Handle register(AudioFormat format, byte[] data, double offsetSec) {
@@ -63,11 +70,14 @@ public final class RadioPcmFeed {
         }
 
         public AudioFormat getFormat() {
-            return this.handle.format;
+            return handle.processor == null ? handle.format : handle.processor.format();
         }
 
+        public boolean simulated() { return handle.processor != null; }
+
         public ByteBuffer read(int bytes) {
-            int n = Math.min(bytes, this.handle.data.length - this.cursor);
+            int inputBytes = handle.processor == null ? bytes : bytes / 2;
+            int n = Math.min(inputBytes, this.handle.data.length - this.cursor);
             ByteBuffer buf = ByteBuffer.allocateDirect(n).order(ByteOrder.LITTLE_ENDIAN);
             buf.put(this.handle.data, this.cursor, n);
             buf.flip();
@@ -85,16 +95,20 @@ public final class RadioPcmFeed {
                 }
             }
             this.cursor += n;
-            this.handle.exhausted = this.cursor >= this.handle.data.length;
-            return buf;
+            boolean end = this.cursor >= this.handle.data.length;
+            RadioPcmProcessor processor = handle.processor;
+            ByteBuffer result = processor == null ? buf : processor.process(buf, end);
+            this.handle.exhausted = end && (processor == null || !processor.hasTail());
+            return result;
         }
 
         public ByteBuffer readAll() {
-            return read(this.handle.data.length - this.cursor);
+            return read((this.handle.data.length - this.cursor) * (handle.processor == null ? 1 : 2));
         }
 
         @Override
         public void close() {
+            if (handle.processor != null) handle.processor.close();
             this.handle.release();
         }
     }

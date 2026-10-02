@@ -28,6 +28,8 @@ public final class RadioAudioStream implements FiniteAudioStream {
         return this.stream.getFormat();
     }
 
+    public boolean simulated() { return stream.simulated(); }
+
     @Override
     public ByteBuffer read(int bytes) {
         return this.stream.read(bytes);

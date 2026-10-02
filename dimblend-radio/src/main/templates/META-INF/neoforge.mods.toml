@@ -55,6 +55,10 @@ for everyone nearby via server-authoritative sync; clients decode locally.
 [[mixins]]
 config="${mod_id}.mixins.json"
 
+# Sodium chunk mesh 旁路（声学几何 tee）：未装 Sodium 时 mixin plugin 按 modid+版本整组过滤
+[[mixins]]
+config="${mod_id}.sodium.mixins.json"
+
 # A dependency - use the . to indicate dependency for a specific modid. Dependencies are optional.
 [[dependencies.${mod_id}]] #optional
     # the modid of the dependency
@@ -96,6 +100,14 @@ config="${mod_id}.mixins.json"
     modId="create"
     type="optional"
     versionRange="[0,)"
+    ordering="AFTER"
+    side="CLIENT"
+
+# Sodium 渲染 mesh 复用做声学几何（client mixin + MixinPlugin 过滤）：未装/版本不符时回退体素路径
+[[dependencies.${mod_id}]]
+    modId="sodium"
+    type="optional"
+    versionRange="[0.8,)"
     ordering="AFTER"
     side="CLIENT"
 

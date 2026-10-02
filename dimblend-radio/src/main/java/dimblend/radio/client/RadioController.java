@@ -13,6 +13,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.nio.file.Path;
@@ -66,10 +67,16 @@ public final class RadioController {
 
     /** A device/resource reload is an interruption, even if OpenAL had buffered the final seconds. */
     public static void onSoundReload() {
+        RadioAcousticController.reset();
         LIVE.values().forEach(live -> live.feed().release());
         LIVE.clear();
         REQUESTS.clear();
         // PLAYBACKS survives so the replacement channels resume without consulting gameTime.
+    }
+
+    @SubscribeEvent
+    public static void onRenderFrame(RenderFrameEvent.Pre event) {
+        RadioAcousticController.frameRefresh(Minecraft.getInstance());
     }
 
     @SubscribeEvent
@@ -97,6 +104,7 @@ public final class RadioController {
         if (!mc.isPaused()) {
             reconcile(mc);
         }
+        RadioAcousticController.tick(mc, LIVE.values().stream().map(Live::instance).toList());
     }
 
     private static void sendHello() {
@@ -217,7 +225,21 @@ public final class RadioController {
 
     private static void startInstance(Minecraft mc, LiveKey key, RadioStatePayload state) {
         RadioPlayback playback = PLAYBACKS.get(key);
-        if (REQUESTS.containsKey(key) || (playback != null && playback.finished(System.nanoTime()))) {
+        if (playback != null && playback.finished(System.nanoTime())) {
+            // A "finished" playback while the server is still mid-track is a stale record
+            // (e.g. from a startup-race offset), not a song that truly ended — drop it so the
+            // fresh server-clock offset below can rebuild playback instead of latching silence
+            // until the server advances the track. Tradeoff: if the local clock legitimately
+            // finished but the server estimate lags, the tail replays once (seconds, self-terminating).
+            double serverSeconds = Math.max(0, ClientRadioState.estimateServerNow(
+                    new ClientRadioState.Key(key.dimension(), key.pos()), state) - state.startMillis()) / 1000.0;
+            if (serverSeconds >= playback.duration()) {
+                return;
+            }
+            PLAYBACKS.remove(key);
+            playback = null;
+        }
+        if (REQUESTS.containsKey(key)) {
             return;
         }
         Path file = RadioLibrary.fileOf(state.trackHash());
@@ -293,6 +315,7 @@ public final class RadioController {
                     RadioPcmFeed.Handle feed = RadioPcmFeed.register(pcm.format(), pcm.pcm(), offset);
                     float gain = PcmHeadroom.channelGain(RadioSignals.volumePercent(current.side()), pcm.boost());
                     RadioInstance instance = new RadioInstance(mc.level, key.pos(), feed.id(), gain);
+                    RadioAcousticController.bind(mc, instance, feed);
                     try {
                         mc.getSoundManager().play(instance);
                     } catch (RuntimeException e) {
@@ -355,6 +378,7 @@ public final class RadioController {
     }
 
     private static void stopAll() {
+        RadioAcousticController.reset();
         Minecraft mc = Minecraft.getInstance();
         for (Live live : LIVE.values()) {
             try {

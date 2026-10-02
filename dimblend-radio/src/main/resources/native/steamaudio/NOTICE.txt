@@ -1,0 +1,7 @@
+Steam Audio 4.8.1
+Copyright Valve Corporation, 2017-2026.
+https://github.com/ValveSoftware/steam-audio
+
+The unmodified Windows x64 phonon.dll and GPUUtilities.dll are redistributed from the official
+steamaudio_4.8.1.zip SDK release under the Apache License, Version 2.0.
+See LICENSE.md in this directory.

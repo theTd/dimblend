@@ -18,11 +18,23 @@ public class DimBlendRadioMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.endsWith(".client.JukeboxGoggleMixin")) {
             return isLoaded("create");
         }
+        if (mixinClassName.startsWith("dimblend.radio.mixin.client.sodium.")) {
+            return isSodiumCompatible();
+        }
         return true;
     }
 
     private static boolean isLoaded(String modId) {
         return net.neoforged.fml.loading.FMLLoader.getLoadingModList().getModFileById(modId) != null;
+    }
+
+    /**
+     * The geometry tee hooks Sodium-internal classes whose layout is only verified for the 0.8.x
+     * 1.21.1 backport line; anything else keeps the voxel acoustic path instead of crashing.
+     */
+    private static boolean isSodiumCompatible() {
+        var file = net.neoforged.fml.loading.FMLLoader.getLoadingModList().getModFileById("sodium");
+        return file != null && file.versionString().startsWith("0.8.");
     }
 
     @Override

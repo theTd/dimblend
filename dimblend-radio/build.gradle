@@ -143,13 +143,32 @@ dependencies {
     // dev 运行真正装上 sable（测试要起真实结构）。模组本体运行时仍只依赖 companion shim。
     compileOnly files(rootProject.file("dimblend/libs/sable-neoforge-1.21.1-2.0.5_cui-modded.jar"))
     localRuntime files(rootProject.file("dimblend/libs/sable-neoforge-1.21.1-2.0.5_cui-modded.jar"))
+    // Sodium 渲染 mesh 旁路（声学几何 tee）：无公开 Maven 对应物，入库 dimblend/libs 的官方
+    // 0.8.13 jar（与 TrainTripWorld 实例一致）。外层是 JiJ 套壳，编译符号在内层 *-mod.jar；
+    // dev 运行时装外层套壳。符号仅 mixin/compat 层引用；缺 Sodium 时 MixinPlugin 过滤 sodium
+    // 组 mixin，声学回退体素路径。
+    compileOnly files(rootProject.file("dimblend/libs/net.caffeinemc.sodium-neoforge-0.8.13+mc1.21.1-mod.jar"))
+    // Sodium 内层 jar 实现的两个 Fabric API 接口（LevelSlice 签名链），编译期同样需要
+    compileOnly files(rootProject.file("dimblend/libs/fabric-rendering-data-attachment-v1-0.3.48+73761d2e19.jar"))
+    compileOnly files(rootProject.file("dimblend/libs/fabric-block-view-api-v2-1.0.10+9afaaf8c19.jar"))
+    localRuntime files(rootProject.file("dimblend/libs/sodium-neoforge-0.8.13+mc1.21.1.jar"))
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test', Test).configure {
     useJUnitPlatform()
+    workingDir = layout.buildDirectory.get().asFile
+    def audioNatives = providers.gradleProperty('radioAudioNatives')
+    if (audioNatives.isPresent()) {
+        systemProperty 'org.lwjgl.librarypath', audioNatives.get()
+        systemProperty 'dimblend.radio.testAudio', 'true'
+    }
 }
+
+// Geometry tests use the same mapped Minecraft/math classes as the main sources.
+sourceSets.test.compileClasspath += sourceSets.main.compileClasspath
+sourceSets.test.runtimeClasspath += sourceSets.main.compileClasspath
 
 // This block of code expands all declared replace properties in the specified resource targets.
 // A missing property will result in an error. Properties are expanded using ${} Groovy notation.

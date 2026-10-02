@@ -14,7 +14,7 @@
   - 侧面输入可用：贴在侧面的拉杆/模拟拉杆、贴着侧面的红石块、指入的红石线/中继器/比较器；放上/拿走即时生效。
   - 空唱片机不中继强充能：贴附的拉杆/模拟拉杆不会经唱片机串到其它面的红石线，顶/侧互不干扰
     （有盘时恢复原版导体行为）。
-- 声音随距离衰减，64 格归零（32 格约半音量）；远处实例继续推进，走回不重新起播。
+- 声音按声学传播路径衰减，96 格可听范围外静音（无仿真回退路径保持原版 64 格）；远处实例继续推进，走回不重新起播。
 - 唱片机可放在 Sable 结构上：距离按结构当前位置算，声源随结构移动/旋转。
 - 声音分类：唱片机/音符盒（RECORDS），跟随该音量滑块；该滑块或主音量为 0 → 电台静音、不压背景音乐，调回后按进度续播。
 - 电台可闻时，正在播放的原版背景音乐用约 1 秒淡出后停止；淡出中电台停止则平滑恢复。
@@ -43,6 +43,64 @@
   不再按可能落后的 gameTime 回退。单人暂停同时冻结本端进度。已播完的同一轮不再起播，等服务端换曲。
 
 ## 技术
+
+### Cave reverberation
+
+- Steam Audio 4.8.1 simulates direct occlusion, three-band wall transmission and
+  absorption, and reflected sound paths. Its simulated impulse response is rendered
+  with native convolution; there is no enclosure score or preset EFX reverb.
+- Direct arrival delay follows distance / 343 m/s, with fractional interpolation
+  while moving. Direct sound and reflection fields use headphone HRTF spatialization, including reflected arrival
+  directions, so distant sound is not given the same dry/wet distance curve.
+- Direct occlusion/transmission uses precise immutable terrain and Sable collision
+  rays on a CPU worker. Reflections use Steam Audio's OpenCL/Radeon Rays GPU backend
+  with five material classes and float coordinates relative to a nearby origin.
+  Terrain geometry mixes exact surfaces teed from Sodium's chunk-build pipeline with
+  a one-metre voxel fill for sections Sodium has not meshed (its build queue is
+  visibility-driven, so occluded sections stay unmeshed); without Sodium it is
+  merged one-metre voxel surfaces throughout.
+  Sable vertices are transformed in double precision
+  before conversion, preserving positioning even at distant plot coordinates.
+- GPU devices and triangle scenes live as long as the radio session; scene meshes are
+  re-uploaded in place when geometry changes, and the simulator accumulates reflection
+  paths across updates for coherence. Unsupported GPUs fall back to
+  CPU tracing. `-Ddimblend.radio.acoustic.gpu=false` forces the CPU backend;
+  `-Ddimblend.radio.acoustic.geometry=auto|sodium|voxel` selects the terrain
+  geometry source.
+- Up to four nearby radios simulate acoustics. Reflection simulation uses 64 rays,
+  up to 128 bounces, first-order Ambisonics, and a six-second IR limit. Direct results
+  update up to ten times/second and reflections up to four times/second; worker jobs
+  do not overlap for the same radio. Geometry palettes update twice/second, with
+  Sable poses refreshed separately. GPU terrain extends 24 blocks around the
+  source/listener bounds; nearby captured Sable structures are included.
+- Equivalent geometry snapshots and stationary source/listener positions reuse the
+  same response. Block/chunk changes, meaningful movement, or Sable pose changes
+  invalidate it. Material scattering is specular: the SDK's wall-clock-seeded random
+  diffuse scattering is disabled to avoid unrelated changes between responses.
+- Processed PCM uses roughly 0.37 seconds of queued audio at 44.1 kHz, with
+  recovery after temporary OpenAL starvation. GPU teardown runs outside the PCM lock.
+  Radio refills run on the sound thread every 20 ms independently of render frames;
+  each channel permits only one pending refill and unregisters on destruction.
+  Original PCM caches, source volume/category controls, and track clocks are retained.
+- The bundled native SDK currently supports Windows x64. Other platforms keep
+  vanilla mono playback. Sound Physics Remastered or `-Ddimblend.radio.reverb=false`
+  disables the local simulation backend.
+- Limits: finite loaded geometry (the Sodium mesh mirror only covers the current
+  render distance, and exact surfaces only for visibility-visited sections — the
+  rest is voxel-approximated), block-entity-rendered blocks (chests, beds) absent
+  from render meshes and skipped by the voxel filler inside mesh-mirrored sections,
+  water surfaces of waterlogged blocks counted as reflectors,
+  sparse reflection noise, snapshot/update latency, approximate block
+  materials, and no diffraction model. Musical listening and performance
+  profiling remain necessary beyond the tested room fixtures.
+- Geometry and audio regression tests run with `gradlew :dimblend-radio:test`.
+  Native audio tests are opt-in:
+  `gradlew :dimblend-radio:test -PradioAudioNatives=<LWJGL/OpenAL native directory>`.
+  `gradlew :dimblend-radio:runGameTestServer` includes terrain and real rotated Sable
+  room checks. Native impulse tests write open-air and room WAV files under `build/`.
+  The original, superseded EFX research is in `docs/cave-reverberation-research.md`.
+
+### Playback
 
 - 服务端：`JukeboxRedstoneInputMixin`（neighborChanged 即时重算 + 空盘不中继强充能）、
   `JukeboxControlMixin`（useItemOn 塞盘让位）、`RadioSync` 事件（放置/唱片机自身状态变化）

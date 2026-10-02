@@ -11,6 +11,7 @@
 		"SoundBufferMixin"
 	],
 	"client": [
+		"client.RadioStreamingChannelMixin",
 		"client.SoundManagerAccessor",
 		"client.SoundEngineAccessor",
 		"client.SoundEngineReloadMixin",
