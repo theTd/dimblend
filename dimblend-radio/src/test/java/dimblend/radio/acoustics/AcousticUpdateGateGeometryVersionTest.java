@@ -1,15 +1,15 @@
 package dimblend.radio.acoustics;
 
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AcousticUpdateGateGeometryVersionTest {
     private static Object snapshot(Object terrain, long geometryVersion) {
-        AcousticUpdateGate.registerTerrain(terrain, Map.of(), Set.of(1L), geometryVersion);
+        AcousticUpdateGate.registerTerrain(terrain, new Long2ObjectOpenHashMap<>(), LongSet.of(1L), geometryVersion);
         Object snapshot = new Object();
         AcousticUpdateGate.registerSnapshot(snapshot, terrain, List.of(), List.of(), List.of());
         return snapshot;
@@ -32,7 +32,7 @@ class AcousticUpdateGateGeometryVersionTest {
     void legacyCallerWithoutVersionBehavesAsBefore() {
         Object owner = new Object();
         Object terrain = new Object();
-        AcousticUpdateGate.registerTerrain(terrain, Map.of(), Set.of(1L));
+        AcousticUpdateGate.registerTerrain(terrain, new Long2ObjectOpenHashMap<>(), LongSet.of(1L));
         Object snapshot = new Object();
         AcousticUpdateGate.registerSnapshot(snapshot, terrain, List.of(), List.of(), List.of());
         assertTrue(AcousticUpdateGate.shouldSimulate(owner, snapshot, Vec3.ZERO, Vec3.ZERO, false));

@@ -12,7 +12,7 @@ class AcousticMeshCellsTest {
         Random random=new Random(718);
         for(int i=0;i<cells.length;i++)cells[i]=random.nextBoolean()?(byte)(1+random.nextInt(5)):0;
         var mesh=new AcousticMesh(Vec3.ZERO);
-        mesh.appendCells(cells,new int[]{-12,63,17},size,null);
+        mesh.appendCells(cells,new int[]{-12,63,17},size);
         var data=mesh.data();
         double area=0;
         for(int i=0;i<data.triangles().length;i+=3){
@@ -39,7 +39,7 @@ class AcousticMeshCellsTest {
         java.util.Arrays.fill(cells,(byte)5);
         var mesh=new AcousticMesh(Vec3.ZERO);
         long start=System.nanoTime();
-        mesh.appendCells(cells,new int[]{0,0,0},size,null);
+        mesh.appendCells(cells,new int[]{0,0,0},size);
         System.out.printf("[mesh] 245760-cell greedy surface extraction %.3f ms%n",(System.nanoTime()-start)/1e6);
         assertEquals(12,mesh.data().triangles().length/3);
     }

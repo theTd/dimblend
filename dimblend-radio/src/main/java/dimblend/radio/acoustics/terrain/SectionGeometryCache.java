@@ -1,10 +1,10 @@
 package dimblend.radio.acoustics.terrain;
 
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -135,7 +135,7 @@ public final class SectionGeometryCache {
     /** Incomplete sections use whole-section voxel fallback, avoiding holes or duplicate faces. */
     public static Coverage presentSections(AABB bounds, int minSection, int maxSection, boolean allowIncomplete) {
         List<SectionQuads> sections = new ArrayList<>();
-        Set<Long> covered = new HashSet<>();
+        LongSet covered = new LongOpenHashSet();
         int minY = Math.max(minSection, (int) Math.floor(bounds.minY) >> 4);
         int maxY = Math.min(maxSection - 1, (int) Math.floor(bounds.maxY) >> 4);
         for (int x = (int) Math.floor(bounds.minX) >> 4; x <= ((int) Math.floor(bounds.maxX) >> 4); x++) {
@@ -154,7 +154,7 @@ public final class SectionGeometryCache {
     }
 
     /** @param sections decoded geometry of covered sections; @param covered their section keys. */
-    public record Coverage(List<SectionQuads> sections, Set<Long> covered) { }
+    public record Coverage(List<SectionQuads> sections, LongSet covered) { }
 
     /** Counters for probes and diagnostics. */
     public static String stats() {

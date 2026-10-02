@@ -48,7 +48,8 @@ class AcousticRecoveryTest {
             var out = simulation.simulateGpu(new AcousticMesh.Data(vertices, triangles, materials, Vec3.ZERO),
                     Vec3.ZERO, new Vec3(4,0,0), 64,128);
             Object owner = new Object(), terrain = new Object(), snapshot = new Object();
-            AcousticUpdateGate.registerTerrain(terrain, java.util.Map.of(), java.util.Set.of(1L));
+            AcousticUpdateGate.registerTerrain(terrain, new it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<>(),
+                    it.unimi.dsi.fastutil.longs.LongSet.of(1L));
             AcousticUpdateGate.registerSnapshot(snapshot, terrain, List.of(), List.of(), List.of());
             assertTrue(AcousticUpdateGate.shouldSimulate(owner, snapshot, Vec3.ZERO, Vec3.ZERO, true));
             assertFalse(AcousticUpdateGate.shouldSimulate(owner, snapshot, Vec3.ZERO, Vec3.ZERO, true));

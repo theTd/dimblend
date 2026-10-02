@@ -12,15 +12,27 @@ import dimblend.radio.acoustics.SteamSimulation;
 import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.sound.sampled.AudioFormat;
 import net.minecraft.world.phys.Vec3;
 
+/**
+ * One radio's acoustic pipeline. Audio blocks go through two stages: the position-dependent one
+ * (propagation delay, occlusion, reflection convolution, path selection) runs on a DSP thread
+ * {@link #LOOKAHEAD_BLOCKS} blocks ahead of playback, under this monitor; the orientation-dependent
+ * one (HRTF/panning, decode, crossfades) runs on the sound thread as each block is played, so head
+ * turns keep the vanilla buffer latency while the convolution leaves the sound thread.
+ */
 public final class RadioSimulationSession implements RadioPcmProcessor {
     private static final ExecutorService DIRECT = worker("Radio acoustic direct");
     private static final ExecutorService REFLECTIONS = worker("Radio acoustic reflections");
+    private static final ExecutorService DSP = Executors.newFixedThreadPool(2, daemon("Radio acoustic DSP"));
+    /** Blocks the DSP thread works ahead of playback; also the stream's start delay (~23 ms at 44.1 kHz). */
+    static final int LOOKAHEAD_BLOCKS = 2;
     private static final AcousticTuningProperty WET_GAIN =
             new AcousticTuningProperty("dimblend.radio.acoustic.wetgain", 3, Float.MAX_VALUE);
     /**
@@ -30,6 +42,18 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     private record View(Vec3 source, Vec3 listener, Vec3 ahead, Vec3 up, boolean audible, boolean simulated) { }
     /** How an audio block is produced. */
     private enum Path { SILENT, PANNED, RENDERED }
+    /** @param tail no input arrived for this block (the stream ended): the delay line and reverb drain */
+    private record Pending(float[] input, boolean tail) { }
+    /**
+     * A block after the position-dependent stage.
+     * @param rendered the renderer's prepared block, when the rendered path is involved
+     * @param panned the panner's mono input, when the panned path is involved
+     * @param resetPanner the panned path starts out of silence
+     */
+    private record Staged(Path previous, Path next, SteamRenderer renderer, SteamRenderer.Prepared rendered,
+            float[] panned, boolean resetPanner) {
+        static final Staged SILENT = new Staged(Path.SILENT, Path.SILENT, null, null, null, false);
+    }
     private final AudioFormat format;
     private final int rate;
     private final AtomicBoolean directBusy = new AtomicBoolean(), reflectionBusy = new AtomicBoolean();
@@ -47,31 +71,53 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     private volatile boolean failed;
     private SteamRenderer renderer;
     private long lastDirect, lastReflection;
-    private boolean inputEnded;
     private int invalidFields;
-    // Audio-side state, guarded by this monitor (process/hasTail).
+    private final int lookahead;
+    /** Submitted blocks in order; the staged ones are prepared, the pending ones not yet. */
+    private final ConcurrentLinkedQueue<Pending> pending = new ConcurrentLinkedQueue<>();
+    private final ConcurrentLinkedQueue<Staged> staged = new ConcurrentLinkedQueue<>();
+    private final AtomicBoolean dspScheduled = new AtomicBoolean();
+    // Sound-thread state, guarded by the audio lock (process/hasTail). The sound thread takes this
+    // monitor only when the DSP thread fell behind and a block must be staged inline.
+    private final Object audio = new Object();
     private final RadioStereoPanner panner = new RadioStereoPanner();
+    /** Blocks submitted and not yet played. */
+    private int queued;
+    private boolean inputEnded;
+    // Position-stage state, guarded by this monitor.
     /** Path of the previous block; {@code null} before the first. */
     private Path path;
     /** The panner is playing undelayed input (no usable renderer when it took over). */
     private boolean pannedRaw;
     /** Input samples still inside the renderer's propagation delay after the input ended. */
     private int directTail;
+    /** As of the latest staged block: delayed direct sound or reverb is still sounding. */
+    private volatile boolean tailLive;
     /** Reflection-worker state. */
     private boolean firstIrLogged;
     private final boolean gpuEnabled = !"false".equalsIgnoreCase(System.getProperty("dimblend.radio.acoustic.gpu"));
 
     public RadioSimulationSession(AudioFormat input) {
+        this(input, LOOKAHEAD_BLOCKS);
+    }
+
+    /** @param lookahead blocks prepared ahead of playback; 0 stages every block inline, in its own process call */
+    RadioSimulationSession(AudioFormat input, int lookahead) {
         rate = Math.round(input.getSampleRate());
         format = new AudioFormat(rate, 16, 2, true, false);
+        this.lookahead = lookahead;
     }
 
     private static ExecutorService worker(String name) {
-        return Executors.newSingleThreadExecutor(task -> {
+        return Executors.newSingleThreadExecutor(daemon(name));
+    }
+
+    private static ThreadFactory daemon(String name) {
+        return task -> {
             Thread thread = new Thread(task, name);
             thread.setDaemon(true);
             return thread;
-        });
+        };
     }
 
     private void initialize(boolean reflections) {
@@ -99,7 +145,8 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     }
 
     // Only the reflection worker constructs/destroys native resources. Publication and removal
-    // share process()'s monitor, so no audio frame can retain a retired source-owned IR pointer.
+    // share the position stage's monitor, so no block can be prepared with a retired IR pointer;
+    // blocks already prepared get null from a closed renderer's spatial stage.
     private void installReflectionEngine(SteamSimulation engine) {
         SteamRenderer prepared;
         try { prepared = new SteamRenderer(engine.context(), rate, this::reflectionReset); }
@@ -211,7 +258,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
                             // A block edit can arrive while this radio waits behind another job.
                             AcousticSnapshot scene = latestSnapshot;
                             AcousticUpdateGate.shouldSimulate(this, scene, latest.source, latest.listener, true);
-                            var geometry = meshes.get(scene, latest.listener, latest.source, scene::mesh);
+                            var geometry = meshes.get(scene, latest.listener, latest.source);
                             SteamSimulation engine = reflectionEngine;
                             if (engine == null || closed || failed) return;
                             SteamAudio.SimulationOutputs outputs;
@@ -220,7 +267,8 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
                                 // the scene mesh in place when the geometry changed. Replacing the
                                 // engine per run was found to NaN the wet field after the second
                                 // close-retain cycle and stall the worker on native teardown.
-                                outputs = engine.simulateGpu(geometry, latest.listener, latest.source, SteamSimulation.GPU_RAYS, 128);
+                                outputs = engine.simulateGpu(geometry.terrain(), geometry.structures(),
+                                        latest.listener, latest.source, SteamSimulation.GPU_RAYS, 128);
                             } catch (RuntimeException | Error error) {
                                 fail(error);
                                 return;
@@ -240,7 +288,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
                             }
                             DimBlendRadio.LOGGER.debug("[radio] {} acoustic IR in {} ms ({} tris)",
                                     engine.gpu() ? "GPU" : "CPU", (System.nanoTime() - start) / 1_000_000,
-                                    geometry == null ? -1 : geometry.triangles().length / 3);
+                                    geometry.triangleCount());
                         }
                     } catch (RuntimeException | Error error) { fail(error); }
                     finally { reflectionBusy.set(false); }
@@ -271,33 +319,100 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
 
     @Override public AudioFormat format() { return format; }
 
-    @Override public synchronized ByteBuffer process(ByteBuffer mono, boolean endOfInput) {
-        int frames = mono.remaining() / 2;
-        if (frames == 0 && !hasTail()) return ByteBuffer.allocateDirect(0);
-        int blocks = Math.max(1, (frames + SteamRenderer.FRAME - 1) / SteamRenderer.FRAME);
-        ByteBuffer output = ByteBuffer.allocateDirect(blocks * SteamRenderer.FRAME * 4).order(ByteOrder.LITTLE_ENDIAN);
-        View captured = view;
-        Vec3 relative = captured.source.subtract(captured.listener);
-        try {
-            for (int block = 0; block < blocks; block++) {
+    @Override public ByteBuffer process(ByteBuffer mono, boolean endOfInput) {
+        synchronized (audio) {
+            int frames = mono.remaining() / 2;
+            boolean tail = frames == 0;
+            int inputs = tail ? (tailInput() ? 1 : 0) : (frames + SteamRenderer.FRAME - 1) / SteamRenderer.FRAME;
+            // A drained stream still plays out the blocks prepared ahead.
+            int outputs = tail ? Math.min(1, queued + inputs) : inputs;
+            inputEnded |= endOfInput;
+            if (outputs == 0) return ByteBuffer.allocateDirect(0);
+            for (int block = 0; block < inputs; block++) {
                 float[] input = new float[SteamRenderer.FRAME];
                 for (int i = 0; i < input.length && mono.remaining() >= 2; i++) input[i] = mono.getShort() / 32768f;
-                float[][] result = block(input, captured, relative, frames == 0);
-                for (int i = 0; i < input.length; i++) {
+                submit(new Pending(input, tail));
+            }
+            ByteBuffer output = ByteBuffer.allocateDirect(outputs * SteamRenderer.FRAME * 4).order(ByteOrder.LITTLE_ENDIAN);
+            for (int block = 0; block < outputs; block++) {
+                float[][] result = null;
+                // Until the look-ahead is filled the stream starts with silence.
+                if (queued > (tail ? 0 : lookahead)) {
+                    queued--;
+                    try { result = finish(take()); }
+                    catch (RuntimeException | Error error) { fail(error); }
+                }
+                for (int i = 0; i < SteamRenderer.FRAME; i++) {
                     for (int c = 0; c < 2; c++) {
                         float sample = result == null ? 0 : result[c][i];
                         output.putShort((short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, Math.round(sample * 32767))));
                     }
                 }
             }
+            return output.flip();
+        }
+    }
+
+    /** Another drained block is worth preparing: delayed direct sound or the reverb tail still sounds. */
+    private boolean tailInput() {
+        return inputEnded && view.audible && tailLive;
+    }
+
+    private void submit(Pending block) {
+        pending.add(block);
+        queued++;
+        if (lookahead > 0 && dspScheduled.compareAndSet(false, true)) DSP.execute(this::stageSubmitted);
+    }
+
+    /** DSP thread: stages submitted blocks in order until none are left. */
+    private void stageSubmitted() {
+        do {
+            while (stageNext()) { }
+            dspScheduled.set(false);
+            // A block submitted between the last poll and the reset found the flag still set.
+        } while (!pending.isEmpty() && dspScheduled.compareAndSet(false, true));
+    }
+
+    private synchronized boolean stageNext() {
+        Pending block = pending.poll();
+        if (block == null) return false;
+        staged.add(stage(block));
+        return true;
+    }
+
+    /** The oldest submitted block: staged by the DSP thread, or here if it fell behind. */
+    private Staged take() {
+        Staged next = staged.poll();
+        if (next != null) return next;
+        synchronized (this) {
+            // Staging polls and publishes under this monitor, so nothing is in between.
+            next = staged.poll();
+            if (next != null) return next;
+            Pending block = pending.poll();
+            return block == null ? Staged.SILENT : stage(block);
+        }
+    }
+
+    /** The position-dependent stage of one block; caller holds this monitor. */
+    private Staged stage(Pending block) {
+        View captured = view;
+        Vec3 relative = captured.source.subtract(captured.listener);
+        try {
+            Staged result = route(block.input, captured, relative, block.tail);
             directTail = delaying() ? renderer.directTailSamples() : 0;
+            tailLive = rendererUsable() && (directTail > 0 || captured.simulated && reflectionTail());
+            return result;
         } catch (RuntimeException | Error error) {
             fail(error);
             directTail = 0;
-            while (output.hasRemaining()) output.put((byte) 0);
+            tailLive = false;
+            return Staged.SILENT;
         }
-        inputEnded |= endOfInput;
-        return output.flip();
+    }
+
+    private boolean reflectionTail() {
+        var out = reflectionOutputs;
+        return out != null && out.reflections.ir != null && renderer.tailSamples() > 0;
     }
 
     private boolean rendererUsable() {
@@ -310,44 +425,55 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     }
 
     /**
-     * One block along the current path. A path change crossfades across the block from the
-     * previous path's output, so selection changes, pauses and failures do not click.
+     * Picks the path of one block and runs its position-dependent part. A path change crossfades
+     * across the block from the previous path's output, so selection changes, pauses and failures
+     * do not click.
      * <p>
      * While a renderer exists the panner plays its propagation-delayed input, so moving between
      * the two neither skips nor repeats audio. Before the renderer is ready (or after it failed)
      * the panner plays the input undelayed and stays undelayed until the next path change.
-     * @return stereo output, or {@code null} for silence
      */
-    private float[][] block(float[] input, View captured, Vec3 relative, boolean tail) {
+    private Staged route(float[] input, View captured, Vec3 relative, boolean tail) {
         boolean usable = rendererUsable();
         Path next = !captured.audible || closed ? Path.SILENT : usable && captured.simulated ? Path.RENDERED : Path.PANNED;
         Path previous = path == null ? next : path;
         path = next;
         // A failed renderer must not produce the fade-out; fade in from silence instead.
         if (previous == Path.RENDERED && !usable) previous = Path.SILENT;
-        if (previous == Path.SILENT && next == Path.SILENT) return null;
-        if (previous == Path.SILENT) {
-            panner.reset();
-            pannedRaw = false;
-        }
+        if (previous == Path.SILENT && next == Path.SILENT) return Staged.SILENT;
+        boolean resetPanner = previous == Path.SILENT;
+        if (resetPanner) pannedRaw = false;
         if (usable && next != Path.SILENT) {
             // Out of silence nothing from before the gap may replay; out of the delayed panner
             // the delay line kept running and only the idle native effects are stale.
             if (previous == Path.SILENT) restart(false);
             else if (previous == Path.PANNED && next == Path.RENDERED) restart(!pannedRaw);
         }
-        float[][] rendered = null, panned = null;
-        if (previous == Path.RENDERED || next == Path.RENDERED) rendered = render(input, captured, relative, tail);
+        SteamRenderer.Prepared rendered = null;
+        float[] panned = null;
+        if (previous == Path.RENDERED || next == Path.RENDERED) rendered = prepare(input, relative, tail);
         if (previous == Path.PANNED || next == Path.PANNED) {
-            float[] mono = input;
+            panned = input;
             if (!usable || pannedRaw && previous == Path.PANNED) pannedRaw = true;
-            else if (rendered != null) mono = renderer.delayedInput();
-            else renderer.bypass(mono, relative, tail);
-            panned = panner.process(mono, relative, captured.ahead, captured.up);
+            else if (rendered != null) panned = renderer.delayedInput().clone();
+            else renderer.bypass(panned, relative, tail);
         }
         if (next == Path.RENDERED) pannedRaw = false;
-        float[][] from = output(previous, rendered, panned), to = output(next, rendered, panned);
-        return previous == next ? to : crossfade(from, to);
+        return new Staged(previous, next, rendered == null ? null : renderer, rendered, panned, resetPanner);
+    }
+
+    /** The orientation-dependent stage, with the listener's pose as the block is played. */
+    private float[][] finish(Staged block) {
+        View now = view;
+        Vec3 relative = now.source.subtract(now.listener);
+        float[][] rendered = null, panned = null;
+        if (block.rendered != null) {
+            rendered = block.renderer.spatialize(block.rendered, relative, orientation(now), wetScale(relative.length()));
+        }
+        if (block.resetPanner) panner.reset();
+        if (block.panned != null) panned = panner.process(block.panned, relative, now.ahead, now.up);
+        float[][] from = output(block.previous, rendered, panned), to = output(block.next, rendered, panned);
+        return block.previous == block.next ? to : crossfade(from, to);
     }
 
     private static float[][] output(Path path, float[][] rendered, float[][] panned) {
@@ -373,7 +499,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         }
     }
 
-    private float[][] render(float[] input, View captured, Vec3 relative, boolean tail) {
+    private SteamRenderer.Prepared prepare(float[] input, Vec3 relative, boolean tail) {
         var directOut = directOutputs;
         var reflectionOut = reflectionOutputs;
         var direct = directOut == null ? null : directOut.direct;
@@ -381,11 +507,10 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         if (direct == null) {
             direct = new SteamAudio.DirectParams();
         }
-        // Distance follows the current audio-frame pose, not a completed ray job.
+        // Distance follows the current pose, not a completed ray job.
         direct.distance = distanceGain(relative.length());
         try {
-            return renderer.render(input, direct, impulse, relative, orientation(captured), tail,
-                    wetScale(relative.length()));
+            return renderer.prepare(input, direct, impulse, relative, tail);
         } finally {
             // The params sub-structures share their parents' backing store.
             Reference.reachabilityFence(directOut);
@@ -402,12 +527,14 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         return space;
     }
 
-    /** After the input ends: delayed direct sound still in the line, or (when rendered) the reverb tail. */
-    @Override public synchronized boolean hasTail() {
-        if (!inputEnded || !view.audible || !rendererUsable()) return false;
-        if (directTail > 0) return true;
-        var out = reflectionOutputs;
-        return view.simulated && out != null && out.reflections.ir != null && renderer.tailSamples() > 0;
+    /**
+     * After the input ends: blocks prepared ahead, delayed direct sound still in the line, or
+     * (when rendered) the reverb tail.
+     */
+    @Override public boolean hasTail() {
+        synchronized (audio) {
+            return inputEnded && (queued > 0 || tailInput());
+        }
     }
 
     @Override public synchronized void close() {
@@ -416,6 +543,8 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         AcousticUpdateGate.forget(this);
         directOutputs = null;
         reflectionOutputs = null;
+        pending.clear();
+        staged.clear();
         DIRECT.execute(() -> { if (directEngine != null) directEngine.close(); });
         REFLECTIONS.execute(this::retireReflectionEngine);
     }

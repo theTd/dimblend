@@ -2,6 +2,8 @@ package dimblend.radio.client;
 
 import dimblend.radio.acoustics.SteamRenderer;
 import dimblend.radio.acoustics.SteamSimulation;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -72,7 +74,7 @@ class RadioSimulationSessionTest {
     @Test void gpuDisabledCreatesNoAcousticEnginesButStillPlaysDistanceOnlyPcm() throws Exception {
         String previous = System.getProperty("dimblend.radio.acoustic.gpu");
         System.setProperty("dimblend.radio.acoustic.gpu", "false");
-        var session = new RadioSimulationSession(new AudioFormat(44100,16,1,true,false));
+        var session = new RadioSimulationSession(new AudioFormat(44100,16,1,true,false), 0);
         try {
             session.setView(new Vec3(4,0,0), Vec3.ZERO, new Vec3(0,0,-1), new Vec3(0,1,0), true);
             drainReflectionWorker(); drainWorker("DIRECT");
@@ -92,7 +94,7 @@ class RadioSimulationSessionTest {
     }
 
     @Test void unselectedRadiosArePannedWithoutCreatingNativeEngines() throws Exception {
-        var session = new RadioSimulationSession(new AudioFormat(44100,16,1,true,false));
+        var session = new RadioSimulationSession(new AudioFormat(44100,16,1,true,false), 0);
         try {
             session.setView(new Vec3(-4,0,0), Vec3.ZERO, new Vec3(0,0,-1), new Vec3(0,1,0), true, false);
             drainReflectionWorker();
@@ -105,7 +107,7 @@ class RadioSimulationSessionTest {
     }
 
     @Test void pathChangesFadeAcrossOneBlockInsteadOfClicking() throws Exception {
-        var session = new RadioSimulationSession(new AudioFormat(44100,16,1,true,false));
+        var session = new RadioSimulationSession(new AudioFormat(44100,16,1,true,false), 0);
         try {
             Vec3 ahead = new Vec3(0,0,-1), up = new Vec3(0,1,0), source = new Vec3(0,0,-4);
             session.setView(source, Vec3.ZERO, ahead, up, true, false);
@@ -122,6 +124,71 @@ class RadioSimulationSessionTest {
             for (float sample : silent) assertEquals(0, sample);
             assertEquals(0, fadeIn[0], level * 0.01f, "no step when it becomes audible again");
             assertEquals(level, fadeIn[SteamRenderer.FRAME - 1], level * 0.01f);
+        } finally { session.close(); }
+    }
+
+    @Test void lookaheadDelaysTheStreamButOrientationIsTakenAtPlayback() throws Exception {
+        var session = new RadioSimulationSession(new AudioFormat(44100,16,1,true,false));
+        try {
+            Vec3 up = new Vec3(0,1,0), source = new Vec3(4,0,0);
+            session.setView(source, Vec3.ZERO, new Vec3(0,0,-1), up, true, false);
+            for (int block = 0; block < RadioSimulationSession.LOOKAHEAD_BLOCKS; block++) {
+                for (float sample : left(session.process(constant(12000), false))) assertEquals(0, sample, "the look-ahead starts silent");
+            }
+            var facing = session.process(constant(12000), false).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            facing.position((SteamRenderer.FRAME - 1) * 4);
+            short facingLeft = facing.getShort(), facingRight = facing.getShort();
+            assertTrue(facingRight > facingLeft, "source on the right");
+            // These blocks were submitted while facing north; turning around before they play must
+            // swap the image at once, not a look-ahead later.
+            session.setView(source, Vec3.ZERO, new Vec3(0,0,1), up, true, false);
+            var turned = session.process(constant(12000), false).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            turned.position((SteamRenderer.FRAME - 1) * 4);
+            short turnedLeft = turned.getShort(), turnedRight = turned.getShort();
+            assertTrue(turnedLeft > turnedRight, "after turning around the source is on the left");
+        } finally { session.close(); }
+    }
+
+    @Test void endOfInputPlaysOutTheLookaheadInOrder() throws Exception {
+        var session = new RadioSimulationSession(new AudioFormat(44100,16,1,true,false));
+        try {
+            session.setView(new Vec3(0,0,-4), Vec3.ZERO, new Vec3(0,0,-1), new Vec3(0,1,0), true, false);
+            int[] levels = {3000, 6000, 9000, 12000};
+            List<Float> played = new ArrayList<>();
+            for (int block = 0; block < levels.length; block++) {
+                float[] out = left(session.process(constant(levels[block]), block == levels.length - 1));
+                played.add(out[SteamRenderer.FRAME - 1]);
+            }
+            assertTrue(session.hasTail(), "blocks prepared ahead are still to be played");
+            int guard = 0;
+            while (session.hasTail() && guard++ < 10) {
+                float[] out = left(session.process(java.nio.ByteBuffer.allocateDirect(0), true));
+                if (out.length > 0) played.add(out[SteamRenderer.FRAME - 1]);
+            }
+            assertFalse(session.hasTail());
+            List<Float> audible = played.stream().filter(level -> level > 0).toList();
+            assertEquals(levels.length, audible.size(), "every block plays exactly once: " + played);
+            for (int i = 1; i < audible.size(); i++) {
+                assertEquals(audible.get(0) * levels[i] / levels[0], audible.get(i), audible.get(0) * 0.01f, "in order: " + audible);
+            }
+        } finally { session.close(); }
+    }
+
+    @Test void playbackDoesNotWaitForTheDspStageOnceBlocksAreStaged() throws Exception {
+        var session = new RadioSimulationSession(new AudioFormat(44100,16,1,true,false));
+        try {
+            session.setView(new Vec3(0,0,-4), Vec3.ZERO, new Vec3(0,0,-1), new Vec3(0,1,0), true, false);
+            for (int block = 0; block < RadioSimulationSession.LOOKAHEAD_BLOCKS; block++) session.process(constant(12000), false);
+            var staged = (java.util.Queue<?>) read(session, "staged");
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (staged.size() < RadioSimulationSession.LOOKAHEAD_BLOCKS && System.nanoTime() < deadline) Thread.sleep(1);
+            assertEquals(RadioSimulationSession.LOOKAHEAD_BLOCKS, staged.size(), "the DSP thread stages submitted blocks");
+            synchronized (session) {
+                // The position stage is busy (this monitor); the sound thread still plays what is staged.
+                var played = CompletableFuture.supplyAsync(() -> left(session.process(constant(12000), false)));
+                float[] out = played.get(5, TimeUnit.SECONDS);
+                assertTrue(out[SteamRenderer.FRAME - 1] > 0.1f);
+            }
         } finally { session.close(); }
     }
 

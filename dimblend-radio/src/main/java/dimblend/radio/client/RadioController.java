@@ -1,6 +1,7 @@
 package dimblend.radio.client;
 
 import dimblend.radio.RadioSignals;
+import dimblend.radio.acoustics.AcousticSurfaceKinds;
 import dimblend.radio.net.ClientRadioState;
 import dimblend.radio.net.RadioHelloPayload;
 import dimblend.radio.net.RadioStatePayload;
@@ -13,6 +14,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.event.TagsUpdatedEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.nio.file.Path;
@@ -71,6 +73,12 @@ public final class RadioController {
         LIVE.clear();
         REQUESTS.clear();
         // PLAYBACKS survives so the replacement channels resume without consulting gameTime.
+    }
+
+    /** Wall reflectivity follows block tags: a datapack reload must not keep the old surface classes. */
+    @SubscribeEvent
+    public static void onTagsUpdated(TagsUpdatedEvent event) {
+        AcousticSurfaceKinds.clear();
     }
 
     @SubscribeEvent

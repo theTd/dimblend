@@ -80,26 +80,45 @@ public final class RadioAcousticsGameTests {
         Vec3 origin = SubLevelProjection.worldCenter(helper.getLevel(), source);
         AABB bounds = new AABB(origin, origin).inflate(8);
         var full = new dimblend.radio.acoustics.AcousticMesh(Vec3.ZERO);
-        full.append(helper.getLevel(), bounds, source, null);
+        full.append(helper.getLevel(), bounds, source);
         helper.assertTrue(full.data().triangles().length > 0, "room must mesh");
         // Skipping every section the room touches leaves no voxel faces at all.
-        java.util.Set<Long> all = new java.util.HashSet<>();
+        var all = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
         for (int x = (int) Math.floor(bounds.minX) >> 4; x <= ((int) Math.floor(bounds.maxX) >> 4); x++)
             for (int y = (int) Math.floor(bounds.minY) >> 4; y <= ((int) Math.floor(bounds.maxY) >> 4); y++)
                 for (int z = (int) Math.floor(bounds.minZ) >> 4; z <= ((int) Math.floor(bounds.maxZ) >> 4); z++)
                     all.add(net.minecraft.core.SectionPos.asLong(x, y, z));
         var skipped = new dimblend.radio.acoustics.AcousticMesh(Vec3.ZERO);
-        skipped.append(helper.getLevel(), bounds, source, null, all);
+        skipped.append(helper.getLevel(), bounds, source, all);
         helper.assertTrue(skipped.data().triangles().length == 0,
                 "skipped sections must contribute no voxel faces");
         // A skip key outside the bounds must not change anything.
         var unrelated = new dimblend.radio.acoustics.AcousticMesh(Vec3.ZERO);
-        unrelated.append(helper.getLevel(), bounds, source, null,
-                java.util.Set.of(net.minecraft.core.SectionPos.asLong(
+        unrelated.append(helper.getLevel(), bounds, source,
+                it.unimi.dsi.fastutil.longs.LongSet.of(net.minecraft.core.SectionPos.asLong(
                         (int) Math.floor(bounds.minX) >> 4, ((int) Math.floor(bounds.minY) >> 4) + 16,
                         (int) Math.floor(bounds.minZ) >> 4)));
         helper.assertTrue(unrelated.data().triangles().length == full.data().triangles().length,
                 "unrelated skip key must not change voxel geometry");
+        helper.succeed();
+    }
+
+    /** Frozen palettes are read section by section; the result must equal the live per-cell fill. */
+    @GameTest(template = "radio_signal_input", templateNamespace = "dimblend_radio")
+    public static void frozenSectionFillMatchesLiveCells(GameTestHelper helper) {
+        BlockPos source = buildRoom(helper);
+        Vec3 origin = SubLevelProjection.worldCenter(helper.getLevel(), source);
+        AABB bounds = new AABB(origin, origin).inflate(20);
+        var live = new dimblend.radio.acoustics.AcousticMesh(Vec3.ZERO);
+        live.append(helper.getLevel(), bounds, source);
+        var snapshot = AcousticSnapshot.capture(helper.getLevel(), bounds, source);
+        var frozen = snapshot.terrainMesh(bounds, Vec3.ZERO, new dimblend.radio.acoustics.AcousticMesh.Workspace());
+        var expected = live.data();
+        helper.assertTrue(expected.triangleCount() > 0, "room must mesh");
+        helper.assertTrue(java.util.Arrays.equals(expected.vertices(), frozen.vertices())
+                        && java.util.Arrays.equals(expected.triangles(), frozen.triangles())
+                        && java.util.Arrays.equals(expected.materials(), frozen.materials()),
+                "frozen section fill must match the live cells: " + expected.triangleCount() + " vs " + frozen.triangleCount());
         helper.succeed();
     }
 

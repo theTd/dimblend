@@ -29,7 +29,8 @@ public final class SteamSimulation implements AutoCloseable {
     private final PointerByReference openCL = new PointerByReference(), radeon = new PointerByReference(), mesh = new PointerByReference();
     private Memory vertexData, triangleData, materialIndices;
     private SteamAudio.Material[] gpuMaterials;
-    private AcousticMesh.Data uploaded;
+    /** The parts the uploaded scene mesh was combined from. */
+    private AcousticMesh.Data uploadedTerrain, uploadedStructures;
     private BiFunction<Vec3, Vec3, AcousticRay> tracer;
     private Vec3 offset = Vec3.ZERO;
     private Throwable callbackFailure;
@@ -102,11 +103,32 @@ public final class SteamSimulation implements AutoCloseable {
      */
     public SteamAudio.SimulationOutputs simulateGpu(AcousticMesh.Data data, Vec3 listenerWorld,
             Vec3 sourceWorld, int rays, int bounces) {
+        return simulateGpu(data, null, listenerWorld, sourceWorld, rays, bounces);
+    }
+
+    /**
+     * As {@link #simulateGpu(AcousticMesh.Data, Vec3, Vec3, int, int)} for terrain and structures
+     * kept apart by the caller; the scene is re-uploaded only when either part changed.
+     * <p>
+     * Both go up as ONE static mesh. Steam Audio 4.8.1 traces every mesh of a Radeon Rays scene but
+     * shades each hit with the first mesh's normal, material-index and material buffers
+     * ({@code radeonrays_reflection_simulator.cpp}: {@code scene.staticMeshes().front()}): hits on a
+     * second mesh get the first one's surfaces, and read past its buffers when the second has more
+     * triangles, which faults {@code iplSimulatorRunReflections} ("Invalid memory access").
+     *
+     * @param structures may be null; otherwise it must share {@code terrain}'s origin
+     */
+    public SteamAudio.SimulationOutputs simulateGpu(AcousticMesh.Data terrain, AcousticMesh.Data structures,
+            Vec3 listenerWorld, Vec3 sourceWorld, int rays, int bounces) {
         if (!gpu) throw new IllegalStateException("Not a GPU simulator");
-        if (!sameGeometry(uploaded, data)) {
-            upload(data);
+        if (structures != null && !structures.origin().equals(terrain.origin())) {
+            throw new IllegalArgumentException("Scene meshes must share one origin");
         }
-        uploaded = data;
+        if (!sameGeometry(uploadedTerrain, terrain) || !sameGeometry(uploadedStructures, structures)) {
+            upload(AcousticMesh.Data.concat(terrain, structures));
+        }
+        uploadedTerrain = terrain;
+        uploadedStructures = structures;
         return run(listenerWorld, sourceWorld, rays, bounces);
     }
 
@@ -176,7 +198,7 @@ public final class SteamSimulation implements AutoCloseable {
         api.iplSimulatorSetSharedInputs(simulator.getValue(), flags, shared);
         if ((flags & 1) != 0) api.iplSimulatorRunDirect(simulator.getValue());
         // Radeon Rays cannot trace an empty acceleration structure. Open air has no wet response.
-        boolean reflect = (flags & 2) != 0 && (!gpu || uploaded != null && uploaded.triangles().length > 0);
+        boolean reflect = (flags & 2) != 0 && (!gpu || mesh.getValue() != null);
         if (reflect) api.iplSimulatorRunReflections(simulator.getValue());
         if (callbackFailure != null) throw new IllegalStateException("Acoustic geometry callback failed", callbackFailure);
         var outputs = new SteamAudio.SimulationOutputs();
