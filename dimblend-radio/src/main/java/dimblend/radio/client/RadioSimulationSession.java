@@ -3,6 +3,7 @@ package dimblend.radio.client;
 import dimblend.radio.DimBlendRadio;
 import dimblend.radio.acoustics.AcousticAvailability;
 import dimblend.radio.acoustics.AcousticSnapshot;
+import dimblend.radio.acoustics.AcousticTuningProperty;
 import dimblend.radio.acoustics.AcousticUpdateGate;
 import dimblend.radio.acoustics.ReflectionMeshCache;
 import dimblend.radio.acoustics.SteamAudio;
@@ -11,7 +12,6 @@ import dimblend.radio.acoustics.SteamSimulation;
 import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -21,8 +21,8 @@ import net.minecraft.world.phys.Vec3;
 public final class RadioSimulationSession implements RadioPcmProcessor {
     private static final ExecutorService DIRECT = worker("Radio acoustic direct");
     private static final ExecutorService REFLECTIONS = worker("Radio acoustic reflections");
-    private static final String WET_GAIN_PROPERTY = "dimblend.radio.acoustic.wetgain";
-    private static final float DEFAULT_WET_GAIN = 3;
+    private static final AcousticTuningProperty WET_GAIN =
+            new AcousticTuningProperty("dimblend.radio.acoustic.wetgain", 3, Float.MAX_VALUE);
     /**
      * @param audible the radio is heard at all (in range, game not paused)
      * @param simulated Steam Audio renders it; other audible radios are stereo-panned
@@ -30,8 +30,6 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     private record View(Vec3 source, Vec3 listener, Vec3 ahead, Vec3 up, boolean audible, boolean simulated) { }
     /** How an audio block is produced. */
     private enum Path { SILENT, PANNED, RENDERED }
-    private record WetGain(String property, float value) { }
-    private static volatile WetGain wetGain = new WetGain(null, DEFAULT_WET_GAIN);
     private final AudioFormat format;
     private final int rate;
     private final AtomicBoolean directBusy = new AtomicBoolean(), reflectionBusy = new AtomicBoolean();
@@ -268,25 +266,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
      * the dry sound past the audible edge. The renderer's limiter handles hot room sums.
      */
     static float wetScale(double distance) {
-        return (float) Math.min(1, Math.max(0, (RadioAcousticController.AUDIBLE_RANGE - distance) / 32)) * wetGain();
-    }
-
-    /** The tunable base wet gain; parsed once per distinct value, invalid values fall back to the default. */
-    static float wetGain() {
-        String property = System.getProperty(WET_GAIN_PROPERTY);
-        WetGain cached = wetGain;
-        if (Objects.equals(cached.property(), property)) return cached.value();
-        float value = DEFAULT_WET_GAIN;
-        if (property != null) {
-            try { value = Float.parseFloat(property.trim()); }
-            catch (NumberFormatException invalid) { value = Float.NaN; }
-            if (!Float.isFinite(value) || value < 0) {
-                DimBlendRadio.LOGGER.warn("[radio] ignoring invalid -D{}={}; using {}", WET_GAIN_PROPERTY, property, DEFAULT_WET_GAIN);
-                value = DEFAULT_WET_GAIN;
-            }
-        }
-        wetGain = new WetGain(property, value);
-        return value;
+        return (float) Math.min(1, Math.max(0, (RadioAcousticController.AUDIBLE_RANGE - distance) / 32)) * WET_GAIN.value();
     }
 
     @Override public AudioFormat format() { return format; }
@@ -310,8 +290,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
                     }
                 }
             }
-            directTail = !delaying() ? 0 : frames > 0 ? renderer.directTailSamples()
-                    : Math.max(0, directTail - blocks * SteamRenderer.FRAME);
+            directTail = delaying() ? renderer.directTailSamples() : 0;
         } catch (RuntimeException | Error error) {
             fail(error);
             directTail = 0;
@@ -363,7 +342,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
             float[] mono = input;
             if (!usable || pannedRaw && previous == Path.PANNED) pannedRaw = true;
             else if (rendered != null) mono = renderer.delayedInput();
-            else renderer.bypass(mono, relative);
+            else renderer.bypass(mono, relative, tail);
             panned = panner.process(mono, relative, captured.ahead, captured.up);
         }
         if (next == Path.RENDERED) pannedRaw = false;

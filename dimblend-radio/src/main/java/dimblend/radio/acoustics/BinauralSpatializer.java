@@ -41,10 +41,7 @@ public final class BinauralSpatializer {
         final PointerByReference hrtf = new PointerByReference(), direct = new PointerByReference(), reflections = new PointerByReference();
         final Params directParams = new Params();
         final SteamAudio.DecodeParams decodeParams = new SteamAudio.DecodeParams();
-        double propagationDelay = Double.NaN;
     }
-    /** Delay changes beyond this many samples per sample (~86 m/s) are jumps, not motion. */
-    private static final double MAX_DELAY_SLEW = 0.25;
     private static final Map<Object, State> STATES = java.util.Collections.synchronizedMap(new IdentityHashMap<>());
     private static final Object HRTF_CREATION = new Object();
     private static volatile Api api;
@@ -105,36 +102,6 @@ public final class BinauralSpatializer {
         api.iplAmbisonicsDecodeEffectReset(state.reflections.getValue());
     }
 
-    /** The owner cleared its delay line: the next block starts at its target delay, without a ramp. */
-    public static void forgetDelay(Object owner) {
-        State state = STATES.get(owner);
-        if (state != null) state.propagationDelay = Double.NaN;
-    }
-
-    public static void delay(Object owner, float[] line, int cursor, float[] samples, double target) {
-        State state = STATES.get(owner);
-        double previous = state == null || Double.isNaN(state.propagationDelay) ? target : state.propagationDelay;
-        // Sweeping the read head across a teleport-sized change within one block is a loud chirp;
-        // crossfade between the two fixed delays instead. Plausible motion keeps its Doppler ramp.
-        boolean jump = Math.abs(target - previous) > samples.length * MAX_DELAY_SLEW;
-        for (int i = 0; i < samples.length; i++) {
-            line[cursor] = samples[i];
-            double weight = (i + 1.0) / samples.length;
-            samples[i] = (float) (jump
-                    ? read(line, cursor - previous) * (1 - weight) + read(line, cursor - target) * weight
-                    : read(line, cursor - (previous + (target - previous) * weight)));
-            cursor = (cursor + 1) % line.length;
-        }
-        if (state != null) state.propagationDelay = target;
-    }
-
-    private static double read(float[] line, double position) {
-        int first = (int) Math.floor(position);
-        double fraction = position - first;
-        float a = line[Math.floorMod(first, line.length)];
-        float b = line[Math.floorMod(first + 1, line.length)];
-        return a + (b - a) * fraction;
-    }
     private static void release(State state) {
         if (state.reflections.getValue() != null) api.iplAmbisonicsDecodeEffectRelease(state.reflections);
         if (state.direct.getValue() != null) api.iplBinauralEffectRelease(state.direct);

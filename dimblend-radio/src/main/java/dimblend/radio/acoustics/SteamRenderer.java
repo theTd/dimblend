@@ -3,7 +3,6 @@ package dimblend.radio.acoustics;
 import com.sun.jna.Pointer;
 import com.sun.jna.ptr.PointerByReference;
 import dimblend.radio.DimBlendRadio;
-import java.util.Arrays;
 import net.minecraft.world.phys.Vec3;
 
 /** Native convolution of simulated IRs, plus direct occlusion/transmission and spatial decoding. */
@@ -32,7 +31,6 @@ public final class SteamRenderer implements AutoCloseable {
     private final SteamAudio.Api api = SteamAudio.api();
     private final PointerByReference direct = new PointerByReference(), reflections = new PointerByReference();
     private final PointerByReference panning = new PointerByReference(), decoding = new PointerByReference();
-    private final SteamAudio.AudioBuffer input = new SteamAudio.AudioBuffer();
     private final SteamAudio.AudioBuffer delayedInput = new SteamAudio.AudioBuffer();
     private final SteamAudio.AudioBuffer dry = new SteamAudio.AudioBuffer();
     private final SteamAudio.AudioBuffer wet = new SteamAudio.AudioBuffer(4);
@@ -43,13 +41,13 @@ public final class SteamRenderer implements AutoCloseable {
     private final SteamAudio.DecodeParams decode = new SteamAudio.DecodeParams();
     private final float[] directSamples = new float[FRAME], dryScratch = new float[FRAME], wetScratch = new float[FRAME];
     private final float[] delayed = new float[FRAME];
-    private final float[] delayLine;
+    private final PropagationDelayLine propagation;
     private final int rate;
     private final float limiterRelease;
     private final DirectSoundGain directGain = new DirectSoundGain();
-    private int delayCursor;
-    private double propagationDelay;
     private float limiterGain = 1;
+    /** Samples of received input still inside the propagation delay line. */
+    private int pendingInput;
     /** History that {@link #resume(boolean)} must discard: delay line contents, native effect state. */
     private boolean delayUsed, effectsUsed;
 
@@ -60,7 +58,7 @@ public final class SteamRenderer implements AutoCloseable {
     public SteamRenderer(Pointer context, int rate, Runnable requestReflections) {
         this.requestReflections = requestReflections;
         this.rate = rate;
-        delayLine = new float[rate];
+        propagation = new PropagationDelayLine(rate);
         limiterRelease = (float) (1 - Math.exp(-1.0 / rate)); // ~1 s time constant, applied per sample
         var audio = new SteamAudio.AudioSettings();
         audio.samplingRate = rate;
@@ -82,11 +80,14 @@ public final class SteamRenderer implements AutoCloseable {
         if (samples.length != FRAME) throw new IllegalArgumentException("Expected one native audio frame");
         boolean meter = Boolean.getBoolean("dimblend.radio.acoustic.debug");
         effectsUsed = true;
-        input.memory(0).write(0, samples, 0, FRAME);
+        // Reverb tail only once everything received has left the propagation line.
+        boolean drained = tail && pendingInput <= 0;
         // Propagation delays emitted PCM, not the listener's current occlusion/distance state.
         // Filtering before the line makes a newly blocked path keep playing old clear audio.
+        // Steam Audio times reflection responses from the direct arrival, so the convolution
+        // takes the same delayed PCM: reflections follow the direct sound, never precede it.
         System.arraycopy(samples, 0, directSamples, 0, FRAME);
-        delay(directSamples, relativeSource);
+        delay(directSamples, relativeSource, tail);
         System.arraycopy(directSamples, 0, delayed, 0, FRAME);
         delayedInput.memory(0).write(0, directSamples, 0, FRAME);
         float targetGain = directGain.prepare(directParams);
@@ -101,8 +102,8 @@ public final class SteamRenderer implements AutoCloseable {
             api.iplPanningEffectApply(panning.getValue(), pan, dry, dryStereo);
         for (int c = 0; c < 4; c++) wet.memory(c).clear();
         if (!awaitingReflections && impulse != null && impulse.ir != null) {
-            if (tail) api.iplReflectionEffectGetTail(reflections.getValue(), wet, null);
-            else api.iplReflectionEffectApply(reflections.getValue(), impulse, input, wet, null);
+            if (drained) api.iplReflectionEffectGetTail(reflections.getValue(), wet, null);
+            else api.iplReflectionEffectApply(reflections.getValue(), impulse, delayedInput, wet, null);
         }
         // Non-finite wet (a NaN/Inf IR, whatever its source) must never reach the mix: it would
         // poison the limiter and silence the dry path too. Suppress and reset the effect.
@@ -178,11 +179,11 @@ public final class SteamRenderer implements AutoCloseable {
         return direction.x * axis.x + direction.y * axis.y + direction.z * axis.z;
     }
 
-    private void delay(float[] samples, Vec3 relativeSource) {
+    /** @param tail no input arrived for this block: the line drains instead of refilling */
+    private void delay(float[] samples, Vec3 relativeSource, boolean tail) {
         delayUsed = true;
-        propagationDelay = Math.min(delayLine.length - 2, relativeSource.length() / 343 * rate);
-        BinauralSpatializer.delay(this, delayLine, delayCursor, samples, propagationDelay);
-        delayCursor = (delayCursor + FRAME) % delayLine.length;
+        propagation.process(samples, relativeSource.length());
+        pendingInput = tail ? Math.max(0, pendingInput - FRAME) : propagation.pendingSamples();
     }
 
     /**
@@ -190,9 +191,9 @@ public final class SteamRenderer implements AutoCloseable {
      * replaced by its delayed copy, so moving between that path and {@link #render} neither skips
      * nor repeats audio. The idle native effects go stale; {@link #resume(boolean)} resets them.
      */
-    public void bypass(float[] samples, Vec3 relativeSource) {
+    public void bypass(float[] samples, Vec3 relativeSource, boolean tail) {
         if (samples.length != FRAME) throw new IllegalArgumentException("Expected one native audio frame");
-        delay(samples, relativeSource);
+        delay(samples, relativeSource, tail);
     }
 
     /** The last rendered block after the propagation delay, before occlusion; reused per block. */
@@ -201,7 +202,7 @@ public final class SteamRenderer implements AutoCloseable {
     public int tailSamples() { return api.iplReflectionEffectGetTailSize(reflections.getValue()); }
 
     /** Samples of already-received input still inside the propagation delay line. */
-    public int directTailSamples() { return delayUsed ? (int) Math.ceil(propagationDelay) + 1 : 0; }
+    public int directTailSamples() { return delayUsed ? pendingInput : 0; }
 
     /**
      * Discards history before rendering again, so stale audio cannot replay: the native filter
@@ -213,8 +214,8 @@ public final class SteamRenderer implements AutoCloseable {
     public boolean resume(boolean keepDelay) {
         if (!keepDelay && delayUsed) {
             delayUsed = false;
-            Arrays.fill(delayLine, 0);
-            BinauralSpatializer.forgetDelay(this);
+            pendingInput = 0;
+            propagation.clear();
         }
         if (!effectsUsed) return false;
         effectsUsed = false;

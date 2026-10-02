@@ -78,6 +78,15 @@ public abstract class RadioStreamingChannelMixin {
         dimblend$refilled = false;
     }
 
+    // Vanilla refills exactly what played, so headroom added after an underrun would stay forever.
+    @ModifyArg(method = "updateStream", index = 0, at = @At(value = "INVOKE",
+            target = "Lcom/mojang/blaze3d/audio/Channel;pumpBuffers(I)V"))
+    private int dimblend$adaptiveRefill(int played) {
+        if (!(stream instanceof RadioAudioStream radio) || !radio.simulated()) return played;
+        if (dimblend$buffering == null) dimblend$buffering = RadioStreamBuffering.forPlayback(stream.getFormat().getSampleRate());
+        return dimblend$buffering.refill(played, AL10.alGetSourcei(source, AL10.AL_BUFFERS_QUEUED));
+    }
+
     @ModifyExpressionValue(method = "pumpBuffers", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/sounds/AudioStream;read(I)Ljava/nio/ByteBuffer;"))
     private ByteBuffer dimblend$rememberRefill(ByteBuffer pcm) {

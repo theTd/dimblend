@@ -50,8 +50,15 @@
 - Steam Audio 4.8.1 simulates direct occlusion, three-band wall transmission and
   absorption, and reflected sound paths. Its simulated impulse response is rendered
   with native convolution; there is no enclosure score or preset EFX reverb.
-- Direct arrival delay follows distance / 343 m/s, with fractional interpolation
-  while moving. Current listener occlusion and distance gain apply after that delay,
+- Emitted PCM passes through one propagation delay that feeds both the direct path and
+  the reflection convolution: Steam Audio times reflection responses from the direct
+  arrival, so reflections follow the direct sound at their simulated offsets instead of
+  preceding it at range. The delay therefore only places sound in absolute time, and its
+  rate of change is the Doppler shift. It follows a scaled copy of distance / 343 m/s
+  (`-Ddimblend.radio.acoustic.doppler`, default 0.25; 0 disables Doppler, 1 is physical)
+  through a critically damped follower with fractional interpolation, so pitch glides in
+  and out over about 0.3 s instead of stepping with camera frames, jumps and strafing.
+  Current listener occlusion and distance gain apply after that delay,
   so a newly blocked path does not keep playing old unobstructed PCM. Spectral coloration
   stays in the native equalizer; attenuation uses a 5 ms ramp instead of the SDK's
   exponential gain smoothing. Direct sound and reflection fields use headphone HRTF spatialization, including reflected arrival
@@ -126,14 +133,20 @@
   soft knee above 0.95 of full scale. Teleport-sized propagation delay changes crossfade
   between the old and new delay instead of sweeping the read head. The processed PCM is
   already binaural, so OpenAL Soft's `AL_SOFT_direct_channels` keeps its HRTF from
-  filtering it a second time. An invalid `-Ddimblend.radio.acoustic.wetgain` value is
-  logged once and the default (3) is used.
+  filtering it a second time. An invalid `-Ddimblend.radio.acoustic.wetgain` or
+  `-Ddimblend.radio.acoustic.doppler` value is logged once and the default is used.
 - Processed PCM uses 512-frame blocks and starts with a short spatialized queue (about
   32–35 ms at 44.1/48 kHz). An actual OpenAL underrun adds two buffers before restarting,
-  bounded to roughly 90–100 ms, and retains that headroom for the current playback.
+  bounded to roughly 90–100 ms. Every queued buffer delays head-turn spatialization, so
+  after three seconds of played audio in which the queue never fell below two buffers,
+  one buffer is given back (never below the short start); each underrun of a playback
+  doubles that window (up to 16 times), so periodic hitches settle instead of cycling
+  between starving and shrinking, and a paused source never counts as stable.
   The next playback starts with the learned headroom instead of starving again to relearn
   it; each new playback gives one buffer of it back.
-  This prevents repeated play/starve/play cycles without deep buffering on healthy streams.
+  OpenAL Soft adds its own output buffer on top (3 × 20 ms updates by default; Minecraft's
+  context attributes cannot shorten it, `ALC_REFRESH` is ignored). A user-level
+  `alsoft.ini` with `period_size = 480` lowers it to about 30 ms for all game audio.
   Starvation counts are logged even when debug logging is off. Renderer/HRTF preparation and native
   teardown run on the reflection worker. Replacement withdraws the old renderer and
   source-owned IR under the PCM lock before releasing them; initialization does not

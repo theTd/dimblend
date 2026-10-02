@@ -150,7 +150,7 @@ class SteamRendererTest {
                 for (int block = 0; block < 25; block++) {
                     float[] loud = new float[SteamRenderer.FRAME];
                     java.util.Arrays.fill(loud, 0.2f);
-                    renderer.bypass(loud, source);
+                    renderer.bypass(loud, source, false);
                 }
                 assertTrue(renderer.resume(keepDelay), "effects idled during the bypass must be reset");
                 double delayed = 0;
@@ -190,6 +190,59 @@ class SteamRendererTest {
     }
 
     @Test
+    void reflectionsFollowTheDelayedDirectSoundInsteadOfPrecedingIt() {
+        assumeTrue(Boolean.getBoolean("dimblend.radio.testAudio"));
+        String property = "dimblend.radio.acoustic.doppler";
+        String previous = System.getProperty(property);
+        System.setProperty(property, "1");
+        try (var simulation = new SteamSimulation(44100, 3)) {
+            // Steam Audio times the reflection response from the direct arrival: a 40-block
+            // half-width room with the source 30 blocks away puts the first echo (off the near
+            // wall) 20 blocks behind the direct sound, i.e. 146 ms after emission.
+            Vec3 source = new Vec3(30, 0, 0);
+            var outputs = simulation.simulate(room(40), Vec3.ZERO, source, 128, 32);
+            var muted = new SteamAudio.DirectParams();
+            muted.distance = 0;
+            float[] dry = renderImpulse(simulation, outputs.direct, null, source, 0);
+            float[] wet = renderImpulse(simulation, muted, outputs.reflections, source, 1);
+            double directArrival = 30 / PropagationDelayLine.SPEED_OF_SOUND;
+            double dryOnset = onset(dry) / 44100.0, wetOnset = onset(wet) / 44100.0;
+            // HRIRs start a few milliseconds into their filters; both paths share that offset.
+            assertTrue(dryOnset >= directArrival && dryOnset < directArrival + 0.006,
+                    "direct sound arrives after the propagation delay: " + dryOnset * 1000 + " ms");
+            assertTrue(wetOnset > dryOnset + 0.03, "reflections must not precede the direct sound: echo at "
+                    + wetOnset * 1000 + " ms, direct at " + dryOnset * 1000 + " ms");
+        } finally {
+            if (previous == null) System.clearProperty(property);
+            else System.setProperty(property, previous);
+        }
+    }
+
+    @Test
+    void reverbTailWaitsForTheAudioStillInsideThePropagationLine() {
+        assumeTrue(Boolean.getBoolean("dimblend.radio.testAudio"));
+        try (var simulation = new SteamSimulation(48000, 1);
+                var renderer = new SteamRenderer(simulation.context(), 48000)) {
+            var direct = new SteamAudio.DirectParams();
+            Vec3 source = new Vec3(68.6, 0, 0);
+            float[] loud = new float[SteamRenderer.FRAME];
+            java.util.Arrays.fill(loud, 0.2f);
+            for (int block = 0; block < 10; block++) renderer.render(loud, direct, null, source, new SteamAudio.Space(), false, 0);
+            int pending = renderer.directTailSamples();
+            assertTrue(pending > SteamRenderer.FRAME, "the line still holds received audio: " + pending);
+            double drained = 0;
+            int blocks = 0;
+            while (renderer.directTailSamples() > 0) {
+                drained += energy(renderer.render(new float[SteamRenderer.FRAME], direct, null, source, new SteamAudio.Space(), true, 0));
+                blocks++;
+                assertTrue(blocks < 100);
+            }
+            assertEquals((pending + SteamRenderer.FRAME - 1) / SteamRenderer.FRAME, blocks);
+            assertTrue(drained > 1e-3, "audio inside the line plays out after the input ends");
+        }
+    }
+
+    @Test
     void limiterKneeIsTransparentBelowTheCeilingAndNeverExceedsFullScale() {
         assertEquals(0.5f, SteamRenderer.softLimit(0.5f));
         assertEquals(-0.95f, SteamRenderer.softLimit(-0.95f));
@@ -223,18 +276,48 @@ class SteamRendererTest {
     }
 
     private static BiFunction<Vec3, Vec3, AcousticRay> room() {
-        AABB room = new AABB(-8, -8, -8, 8, 8, 8);
+        return room(8);
+    }
+
+    private static BiFunction<Vec3, Vec3, AcousticRay> room(double half) {
+        AABB room = new AABB(-half, -half, -half, half, half, half);
         return (from, to) -> {
             double[] range = AcousticRaycaster.clipRange(from, to, room);
             if (range == null) return AcousticRay.miss(to);
             double t = room.contains(from) ? range[1] : range[0];
             if (t >= 1) return AcousticRay.miss(to);
             Vec3 point = from.add(to.subtract(from).scale(t));
-            Vec3 normal = Math.abs(Math.abs(point.x) - 8) < 1e-4 ? new Vec3(-Math.signum(point.x), 0, 0)
-                    : Math.abs(Math.abs(point.y) - 8) < 1e-4 ? new Vec3(0, -Math.signum(point.y), 0)
+            Vec3 normal = Math.abs(Math.abs(point.x) - half) < 1e-4 ? new Vec3(-Math.signum(point.x), 0, 0)
+                    : Math.abs(Math.abs(point.y) - half) < 1e-4 ? new Vec3(0, -Math.signum(point.y), 0)
                     : new Vec3(0, 0, -Math.signum(point.z));
             return new AcousticRay(AcousticRay.Kind.HIT, point, normal, 0.9f);
         };
+    }
+
+    /** One second of an impulse through a fresh renderer, both ears summed by magnitude. */
+    private static float[] renderImpulse(SteamSimulation simulation, SteamAudio.DirectParams direct,
+            SteamAudio.ReflectionParams reflections, Vec3 source, float wetGain) {
+        float[] result = new float[44100];
+        try (var renderer = new SteamRenderer(simulation.context(), 44100)) {
+            renderer.reflectionsReady();
+            for (int offset = 0; offset < result.length; offset += SteamRenderer.FRAME) {
+                float[] input = new float[SteamRenderer.FRAME];
+                if (offset == 0) input[0] = 1f;
+                float[][] block = renderer.render(input, direct, reflections, source, new SteamAudio.Space(), false, wetGain);
+                for (int i = 0; i < SteamRenderer.FRAME && offset + i < result.length; i++) {
+                    result[offset + i] = Math.abs(block[0][i]) + Math.abs(block[1][i]);
+                }
+            }
+        }
+        return result;
+    }
+
+    /** First sample above 5% of the peak. */
+    private static int onset(float[] samples) {
+        float peak = 0;
+        for (float sample : samples) peak = Math.max(peak, sample);
+        for (int i = 0; i < samples.length; i++) if (samples[i] > peak * 0.05f) return i;
+        return -1;
     }
 
     private static float[] render(SteamSimulation simulation, SteamAudio.SimulationOutputs outputs, Vec3 source) {
