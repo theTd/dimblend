@@ -24,12 +24,12 @@ class SteamSimulationTest {
                 Vec3 normal = Math.abs(Math.abs(point.x) - 8) < 1e-4 ? new Vec3(-Math.signum(point.x), 0, 0)
                         : Math.abs(Math.abs(point.y) - 8) < 1e-4 ? new Vec3(0, -Math.signum(point.y), 0)
                         : new Vec3(0, 0, -Math.signum(point.z));
-                return new AcousticRay(AcousticRay.Kind.HIT, point, normal, 0.9f);
+                return new AcousticRay(AcousticRay.Kind.HIT, point, normal, AcousticMaterials.STONE);
             }, Vec3.ZERO, new Vec3(4, 0, 0), 32, 64);
             assertNotNull(reflected.reflections.ir);
             assertEquals(4, reflected.reflections.channels);
             var blocked = simulation.simulate((from, to) -> new AcousticRay(AcousticRay.Kind.HIT,
-                    from.add(to.subtract(from).scale(0.5)), new Vec3(-1, 0, 0), 0.9f),
+                    from.add(to.subtract(from).scale(0.5)), new Vec3(-1, 0, 0), AcousticMaterials.STONE),
                     Vec3.ZERO, new Vec3(4, 0, 0), 16, 0);
             assertEquals(0, blocked.direct.occlusion, 0.001);
             assertTrue(blocked.direct.transmission[2] < blocked.direct.transmission[0]);

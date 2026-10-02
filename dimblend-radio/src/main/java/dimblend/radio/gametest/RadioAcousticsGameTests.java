@@ -3,12 +3,17 @@ package dimblend.radio.gametest;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dimblend.radio.SubLevelProjection;
+import dimblend.radio.acoustics.AcousticBlockMaterials;
+import dimblend.radio.acoustics.AcousticMaterials;
 import dimblend.radio.acoustics.AcousticRay;
 import dimblend.radio.acoustics.AcousticRaycaster;
 import dimblend.radio.acoustics.AcousticSnapshot;
+import dimblend.radio.acoustics.AcousticSurfaceKinds;
+import dimblend.radio.acoustics.AcousticVoxelTrace;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -120,6 +125,44 @@ public final class RadioAcousticsGameTests {
                         && java.util.Arrays.equals(expected.materials(), frozen.materials()),
                 "frozen section fill must match the live cells: " + expected.triangleCount() + " vs " + frozen.triangleCount());
         helper.succeed();
+    }
+
+    /** The hardcoded material table against the real registries, tags and sound types. */
+    @GameTest(template = "radio_signal_input", templateNamespace = "dimblend_radio")
+    public static void blockMaterialsFollowTagsAndSoundTypes(GameTestHelper helper) {
+        expectMaterial(helper, AcousticMaterials.STONE, Blocks.STONE, Blocks.DEEPSLATE, Blocks.COBBLESTONE,
+                Blocks.IRON_ORE, Blocks.GRANITE, Blocks.TUFF, Blocks.BRICKS, Blocks.WHITE_CONCRETE, Blocks.TERRACOTTA,
+                Blocks.NETHERRACK);
+        expectMaterial(helper, AcousticMaterials.SOIL, Blocks.DIRT, Blocks.GRASS_BLOCK, Blocks.SAND, Blocks.GRAVEL,
+                Blocks.MUD, Blocks.SOUL_SOIL, Blocks.ROOTED_DIRT);
+        expectMaterial(helper, AcousticMaterials.WOOD, Blocks.OAK_PLANKS, Blocks.OAK_LOG, Blocks.CHERRY_PLANKS,
+                Blocks.BAMBOO_PLANKS, Blocks.CRIMSON_PLANKS, Blocks.CRIMSON_STEM, Blocks.OAK_DOOR, Blocks.BOOKSHELF,
+                Blocks.JUKEBOX);
+        expectMaterial(helper, AcousticMaterials.WOOL, Blocks.WHITE_WOOL, Blocks.WHITE_CARPET, Blocks.RED_BED,
+                Blocks.HAY_BLOCK, Blocks.MOSS_BLOCK, Blocks.SPONGE);
+        expectMaterial(helper, AcousticMaterials.FOLIAGE, Blocks.OAK_LEAVES, Blocks.AZALEA_LEAVES, Blocks.CHERRY_LEAVES);
+        expectMaterial(helper, AcousticMaterials.GLASS, Blocks.GLASS, Blocks.GLASS_PANE, Blocks.WHITE_STAINED_GLASS,
+                Blocks.TINTED_GLASS);
+        expectMaterial(helper, AcousticMaterials.METAL, Blocks.IRON_BLOCK, Blocks.COPPER_BLOCK, Blocks.ANVIL,
+                Blocks.IRON_DOOR, Blocks.NETHERITE_BLOCK);
+        expectMaterial(helper, AcousticMaterials.ICE, Blocks.ICE, Blocks.PACKED_ICE, Blocks.BLUE_ICE);
+        expectMaterial(helper, AcousticMaterials.SNOW, Blocks.SNOW_BLOCK, Blocks.SNOW);
+        // Both geometry paths read the same table: the mesher's surface kind and the tracer's cell.
+        BlockPos pos = helper.absolutePos(new BlockPos(1, 1, 1));
+        helper.setBlock(new BlockPos(1, 1, 1), Blocks.GLASS);
+        var state = helper.getLevel().getBlockState(pos);
+        helper.assertTrue(AcousticSurfaceKinds.of(state, helper.getLevel(), pos) == AcousticMaterials.GLASS + 1,
+                "mesh surface kind is the material plus one");
+        helper.assertTrue(AcousticVoxelTrace.cell(state, helper.getLevel(), pos).material() == AcousticMaterials.GLASS,
+                "voxel cell carries the material");
+        helper.succeed();
+    }
+
+    private static void expectMaterial(GameTestHelper helper, int material, Block... blocks) {
+        for (Block block : blocks) {
+            int actual = AcousticBlockMaterials.of(block.defaultBlockState());
+            helper.assertTrue(actual == material, block + " should be material " + material + ", was " + actual);
+        }
     }
 
     private static BlockPos buildRoom(GameTestHelper helper) {

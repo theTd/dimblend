@@ -9,7 +9,7 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 
 /**
  * Voxel surface class of a block state for reflection meshes: {@code 0} is open, otherwise the
- * material bucket plus one. Tag and collision-shape queries run once per state, not per cell and
+ * {@link AcousticMaterials} index plus one. Tag and collision-shape queries run once per state, not per cell and
  * mesh build; {@link #clear()} drops the answers when tags reload or the level changes.
  */
 public final class AcousticSurfaceKinds {
@@ -29,7 +29,7 @@ public final class AcousticSurfaceKinds {
         boolean open;
         try { open = state.getCollisionShape(blocks, pos, CollisionContext.empty()).isEmpty(); }
         catch (RuntimeException unsupportedShape) { open = false; }
-        return open ? 0 : (byte) (AcousticMaterials.bucket(AcousticRaycaster.reflectivity(state)) + 1);
+        return open ? 0 : (byte) (AcousticBlockMaterials.of(state) + 1);
     }
 
     public static void clear() { KINDS.clear(); }

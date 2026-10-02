@@ -5,9 +5,7 @@ import dev.ryanhcode.sable.companion.SubLevelAccess;
 import dev.ryanhcode.sable.companion.math.BoundingBox3d;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
 import net.minecraft.core.BlockPos;
-import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.EmptyLevelChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
@@ -54,7 +52,7 @@ public final class AcousticRaycaster {
 
     public static AcousticRay projectHit(AcousticRay local, Pose3dc pose) {
         return new AcousticRay(local.kind(), pose.transformPosition(local.position()),
-                pose.transformNormal(local.normal()).normalize(), local.reflectivity(), local.thickness());
+                pose.transformNormal(local.normal()).normalize(), local.material(), local.thickness(), local.transmission());
     }
 
     private AcousticRay castLocal(Vec3 from, Vec3 to, SubLevelAccess structure) {
@@ -74,24 +72,6 @@ public final class AcousticRaycaster {
             BlockState state = chunk.getBlockState(pos);
             return state.isAir() ? null : AcousticVoxelTrace.cell(state, level, pos);
         });
-    }
-
-    public static float reflectivity(BlockState state) {
-        if (state.is(BlockTags.WOOL) || state.is(BlockTags.WOOL_CARPETS)) {
-            return 0.15f;
-        }
-        if (state.is(BlockTags.LEAVES)) {
-            return 0.25f;
-        }
-        SoundType type = state.getSoundType();
-        if (type == SoundType.SNOW || type == SoundType.SAND || type == SoundType.GRASS
-                || type == SoundType.GRAVEL) {
-            return 0.45f;
-        }
-        if (type == SoundType.WOOD) {
-            return 0.65f;
-        }
-        return 0.9f;
     }
 
     /** Slab intersection includes rays starting inside the box. */

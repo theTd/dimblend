@@ -22,7 +22,7 @@ public final class AcousticSelfTest {
             int[] triangles = {0,2,1,0,3,2, 4,5,6,4,6,7, 0,1,5,0,5,4,
                     3,7,6,3,6,2, 0,4,7,0,7,3, 1,2,6,1,6,5};
             int[] materials = new int[triangles.length / 3];
-            Arrays.fill(materials, 4);
+            Arrays.fill(materials, AcousticMaterials.STONE);
             try (var simulation = new SteamSimulation(44100, 2, true);
                     var renderer = new SteamRenderer(simulation.context(), 44100)) {
                 var outputs = simulation.simulateGpu(

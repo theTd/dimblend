@@ -66,10 +66,20 @@
 - Direct occlusion/transmission uses precise immutable terrain and Sable collision
   rays on a CPU worker. Steam Audio re-casts transmission rays from just past each hit,
   so a ray starting inside a solid skips that solid run; each wall counts once per side,
-  and each hit carries the path length through the run it entered (up to eight blocks).
-  Transmission depends on the material class (wool, foliage, soil, wood, stone/other)
-  and thickness: solid walls follow the mass law (−6 dB per doubling), foliage half
-  that. Two walls multiply.
+  and each hit carries the path through the run it entered (up to eight blocks).
+  Transmission depends on the materials along that path and its length: solid walls
+  follow the mass law (−6 dB per doubling), foliage half that. A run of mixed blocks
+  (carpet on planks on stone) adds each block like a mass, so a wool lining costs a
+  stone wall little in the lows but as much as more stone in the highs. Two walls multiply.
+- Block materials: a hardcoded table (`AcousticBlockMaterials` → `AcousticMaterials`) gives
+  nine materials with their own three-band absorption and transmission: wool (wool, carpets,
+  beds, hay, moss, sponge), foliage, soil (dirt, grass, sand, gravel, mud, soul soil),
+  wood (all wood families including cherry, bamboo and nether), stone (every rock, ore,
+  brick, concrete and unknown block), glass, metal, ice and snow. Tags are checked first
+  (`#wool`, `#leaves`, `#ice`, `#c:glass_blocks`, `#logs`, …), then the block's sound type,
+  so most modded blocks land sensibly. Common terrain stays in a few materials on purpose:
+  the reflection mesh merges only faces of one material. Every geometry path — the direct
+  path's voxel tracer, the voxel mesher and the Sodium tee — reads the same table.
 - Approximate diffraction: direct occlusion is Steam Audio's volumetric mode rather than
   one ray. 16 fixed points in a 2-block sphere around the radio are tested against the
   listener (points the radio cannot see are dropped); when some are hidden, a second sphere
@@ -84,7 +94,7 @@
   update costs about 0.35–0.4 ms with 16 samples against 0.18 ms for one ray (native benchmark
   in `SteamDirectDiffractionTest`), and runs only while something moves.
 - Reflections use Steam Audio's OpenCL/Radeon Rays GPU backend
-  with five material classes and float coordinates relative to a nearby origin.
+  with the same per-triangle materials and float coordinates relative to a nearby origin.
   Terrain geometry mixes exact surfaces teed from Sodium's chunk-build pipeline with
   a one-metre voxel fill for sections Sodium has not fully meshed (its build queue is
   visibility-driven, so occluded sections stay unmeshed); without Sodium it is

@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class SteamDirectCpuTransmissionTest {
     private static final Vec3 LISTENER = new Vec3(-3.5, 0.5, 0.5), SOURCE = new Vec3(6.5, 0.5, 0.5);
-    private static final float STONE = 0.9f, WOOL = 0.1f;
+    private static final int STONE = AcousticMaterials.STONE, WOOL = AcousticMaterials.WOOL;
 
     @Test
     void transmissionDependsOnMaterialThicknessAndWallCount() {
@@ -24,15 +24,37 @@ class SteamDirectCpuTransmissionTest {
             float[] thick = transmission(simulation, STONE, 0, 1, 2);
             float[] twoWalls = transmission(simulation, STONE, 0, 2);
             float[] wool = transmission(simulation, WOOL, 0);
-            float[] reference = AcousticMaterials.transmission(4, 1);
+            float[] reference = AcousticMaterials.transmission(STONE, 1);
             for (int band = 0; band < 3; band++) {
                 assertEquals(reference[band], stone[band], reference[band] * 0.02, "one block of stone, band " + band);
                 assertEquals(reference[band] / 3, thick[band], reference[band] * 0.02, "three blocks: mass law, band " + band);
                 assertEquals(reference[band] * reference[band], twoWalls[band], reference[band] * 0.02,
                         "two walls multiply, band " + band);
             }
-            assertArrayEquals(AcousticMaterials.transmission(0, 1), wool, 0.01f);
+            assertArrayEquals(AcousticMaterials.transmission(WOOL, 1), wool, 0.01f);
             assertTrue(wool[0] > stone[0], "wool passes more low end than stone");
+        }
+    }
+
+    @Test
+    void aLinedWallPassesItsLayersCombinedFromEitherSide() {
+        assumeTrue(Boolean.getBoolean("dimblend.radio.testAudio"));
+        // Wool on the listener's side of one stone block: the solver multiplies the hit from each
+        // side, and both hits carry the whole run, so the result is the run's own transmission.
+        var wool = new AcousticVoxelTrace.Cell(Shapes.block(), WOOL);
+        var stone = new AcousticVoxelTrace.Cell(Shapes.block(), STONE);
+        AcousticVoxelTrace.Lookup lookup = pos -> Math.abs(pos.getY()) > 8 || Math.abs(pos.getZ()) > 8 ? null
+                : pos.getX() == 0 ? wool : pos.getX() == 1 ? stone : null;
+        var expected = new AcousticMaterials.Path();
+        expected.add(WOOL, 1);
+        expected.add(STONE, 1);
+        float[] reference = expected.transmission();
+        try (var simulation = new SteamSimulation(44100, 1)) {
+            var outputs = simulation.simulate((from, to) -> AcousticVoxelTrace.cast(from, to, lookup), LISTENER, SOURCE, 1, 0);
+            System.out.println("[direct-cpu] wool+stone transmission=" + Arrays.toString(outputs.direct.transmission));
+            for (int band = 0; band < 3; band++) {
+                assertEquals(reference[band], outputs.direct.transmission[band], reference[band] * 0.02, "band " + band);
+            }
         }
     }
 
@@ -45,17 +67,17 @@ class SteamDirectCpuTransmissionTest {
         }
     }
 
-    private static float[] transmission(SteamSimulation simulation, float reflectivity, int... wallXs) {
-        var outputs = simulate(simulation, reflectivity, wallXs);
-        System.out.println("[direct-cpu] walls=" + Arrays.toString(wallXs) + " reflectivity=" + reflectivity
+    private static float[] transmission(SteamSimulation simulation, int material, int... wallXs) {
+        var outputs = simulate(simulation, material, wallXs);
+        System.out.println("[direct-cpu] walls=" + Arrays.toString(wallXs) + " material=" + material
                 + " occlusion=" + outputs.direct.occlusion + " transmission=" + Arrays.toString(outputs.direct.transmission));
         assertEquals(0, outputs.direct.occlusion, 0.001);
         return outputs.direct.transmission.clone();
     }
 
     /** Full-block walls spanning y,z in [-8, 8] at the given x positions. */
-    private static SteamAudio.SimulationOutputs simulate(SteamSimulation simulation, float reflectivity, int... wallXs) {
-        var cell = new AcousticVoxelTrace.Cell(Shapes.block(), reflectivity);
+    private static SteamAudio.SimulationOutputs simulate(SteamSimulation simulation, int material, int... wallXs) {
+        var cell = new AcousticVoxelTrace.Cell(Shapes.block(), material);
         AcousticVoxelTrace.Lookup lookup = pos -> Math.abs(pos.getY()) <= 8 && Math.abs(pos.getZ()) <= 8
                 && Arrays.stream(wallXs).anyMatch(x -> x == pos.getX()) ? cell : null;
         return simulation.simulate((from, to) -> AcousticVoxelTrace.cast(from, to, lookup), LISTENER, SOURCE, 1, 0);

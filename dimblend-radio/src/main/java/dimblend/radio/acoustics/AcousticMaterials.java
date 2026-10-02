@@ -1,12 +1,18 @@
 package dimblend.radio.acoustics;
 
 /**
- * The five acoustic material classes shared by the voxel mesher, the Sodium mesh tee and both
- * Steam Audio scenes. A class is chosen from {@link AcousticRaycaster#reflectivity}; transmission
- * depends on the class and on how much of it the direct path crosses.
+ * Acoustic material table shared by the voxel mesher, the Sodium mesh tee and both Steam Audio
+ * scenes. {@link AcousticBlockMaterials} maps block states to these indices; the indices are the
+ * per-triangle material IDs of the GPU mesh and the material bytes of section quads, so keep them
+ * stable (0–4 match the original five classes and the recorded validation meshes).
+ * <p>
+ * Absorption is per band. Transmission is the low/mid/high amplitude through one block and falls
+ * off with the path length by the material's thickness law; a run of mixed blocks combines its
+ * layers ({@link Path}).
  */
 public final class AcousticMaterials {
-    public static final int COUNT = 5;
+    public static final int WOOL = 0, FOLIAGE = 1, SOIL = 2, WOOD = 3, STONE = 4, GLASS = 5, METAL = 6, ICE = 7, SNOW = 8;
+    public static final int COUNT = 9;
     /** Shortest and longest path through one solid run the transmission model distinguishes. */
     public static final double MIN_THICKNESS = 0.125, MAX_THICKNESS = 8;
     /**
@@ -15,55 +21,95 @@ public final class AcousticMaterials {
      * axis-aligned voxel field sparse. CPU scenes keep zero so their reflection field stays repeatable.
      */
     public static final float GPU_SCATTERING = 0.05f;
-    private static final int THICKNESS_STEPS_PER_BLOCK = 8;
-    private static final float[] REFLECTIVITY = {0.15f, 0.25f, 0.45f, 0.65f, 0.9f};
-    /** Low/mid/high amplitude transmission through one block of each class. */
-    private static final float[][] TRANSMISSION = {
-            {0.50f, 0.25f, 0.08f}, // wool, carpet: porous, absorbs highs
-            {0.85f, 0.70f, 0.50f}, // leaves: open foliage
-            {0.30f, 0.16f, 0.06f}, // snow, sand, soil, gravel
-            {0.45f, 0.28f, 0.12f}, // wood
-            {0.35f, 0.20f, 0.08f}, // stone, metal, glass and everything else
-    };
+    /** Most a solid run may pass, whatever its material and thickness. */
+    private static final float MAX_TRANSMISSION = 0.95f;
+
     /**
-     * Thickness exponent: solid walls follow the mass law (amplitude halves per doubling of
-     * thickness, -6 dB); foliage is mostly air and loses far less per extra block.
+     * @param absorption low/mid/high energy absorbed per reflection
+     * @param transmission low/mid/high amplitude through one block
+     * @param thicknessLaw exponent of the path length: 1 is the mass law (amplitude halves per
+     *        doubling, -6 dB); foliage is mostly air and loses far less per extra block
+     * @param weight what one block adds to a {@link Path}: {@code transmission^(-1/law)} per band
      */
-    private static final double[] THICKNESS_LAW = {1, 0.5, 1, 1, 1};
-
-    /** Material class for a block reflectivity; the same thresholds feed every geometry path. */
-    public static int bucket(float reflectivity) {
-        return reflectivity < 0.2 ? 0 : reflectivity < 0.3 ? 1 : reflectivity < 0.5 ? 2 : reflectivity < 0.8 ? 3 : 4;
-    }
-
-    public static float reflectivity(int bucket) {
-        return REFLECTIVITY[bucket];
-    }
-
-    public static float[] absorption(int bucket) {
-        float absorption = Math.max(0.02f, 1 - REFLECTIVITY[bucket]);
-        return new float[] {absorption * 0.4f, absorption * 0.6f, Math.min(0.98f, absorption * 1.2f)};
-    }
-
-    /** Transmission through {@code thickness} blocks of the class, clamped to the modeled range. */
-    public static float[] transmission(int bucket, double thickness) {
-        double clamped = Math.max(MIN_THICKNESS, Math.min(MAX_THICKNESS, thickness));
-        double scale = Math.pow(clamped, -THICKNESS_LAW[bucket]);
-        float[] result = new float[3];
-        for (int band = 0; band < 3; band++) {
-            result[band] = (float) Math.min(0.95, TRANSMISSION[bucket][band] * scale);
+    private record Profile(float[] absorption, float[] transmission, double thicknessLaw, double[] weight) {
+        Profile(float[] absorption, float[] transmission, double thicknessLaw) {
+            this(absorption, transmission, thicknessLaw, new double[] {Math.pow(transmission[0], -1 / thicknessLaw),
+                    Math.pow(transmission[1], -1 / thicknessLaw), Math.pow(transmission[2], -1 / thicknessLaw)});
         }
-        return result;
     }
 
-    /** Quantizes a traversed thickness so native material records stay bounded and reusable. */
-    public static int thicknessStep(double thickness) {
-        double clamped = Math.max(MIN_THICKNESS, Math.min(MAX_THICKNESS, thickness));
-        return (int) Math.round(clamped * THICKNESS_STEPS_PER_BLOCK);
+    private static final Profile[] PROFILES = new Profile[COUNT];
+    static {
+        // Wool, carpets, beds, hay, moss, sponge: porous, absorbs highs.
+        PROFILES[WOOL] = new Profile(bands(0.34f, 0.51f, 0.98f), bands(0.50f, 0.25f, 0.08f), 1);
+        PROFILES[FOLIAGE] = new Profile(bands(0.30f, 0.45f, 0.90f), bands(0.85f, 0.70f, 0.50f), 0.5);
+        // Dirt, grass, sand, gravel, mud, soul soil.
+        PROFILES[SOIL] = new Profile(bands(0.22f, 0.33f, 0.66f), bands(0.30f, 0.16f, 0.06f), 1);
+        PROFILES[WOOD] = new Profile(bands(0.14f, 0.21f, 0.42f), bands(0.45f, 0.28f, 0.12f), 1);
+        // Every natural rock, ore, brick, concrete and unknown block: one class keeps cave meshes merged.
+        PROFILES[STONE] = new Profile(bands(0.04f, 0.06f, 0.12f), bands(0.35f, 0.20f, 0.08f), 1);
+        // Light and stiff: reflects almost everything, panes leak mids and lows.
+        PROFILES[GLASS] = new Profile(bands(0.10f, 0.05f, 0.04f), bands(0.55f, 0.40f, 0.20f), 1);
+        // Dense: the hardest reflector and the best barrier.
+        PROFILES[METAL] = new Profile(bands(0.08f, 0.05f, 0.05f), bands(0.25f, 0.10f, 0.03f), 1);
+        PROFILES[ICE] = new Profile(bands(0.04f, 0.04f, 0.06f), bands(0.40f, 0.28f, 0.12f), 1);
+        // Fresh snow is mostly air: soaks up highs like wool and blocks them like soil.
+        PROFILES[SNOW] = new Profile(bands(0.25f, 0.50f, 0.80f), bands(0.35f, 0.18f, 0.05f), 1);
     }
 
-    public static double thickness(int step) {
-        return step / (double) THICKNESS_STEPS_PER_BLOCK;
+    private static float[] bands(float low, float mid, float high) {
+        return new float[] {low, mid, high};
+    }
+
+    public static float[] absorption(int material) {
+        return PROFILES[material].absorption.clone();
+    }
+
+    /** Transmission through {@code thickness} blocks of one material, clamped to the modeled range. */
+    public static float[] transmission(int material, double thickness) {
+        Path path = new Path();
+        path.add(material, thickness);
+        return path.transmission();
+    }
+
+    /**
+     * The layers of one solid run along a ray, e.g. carpet on planks on stone. Each block weighs
+     * like a mass: one block of a material transmitting {@code T} counts {@code 1/T} (per band,
+     * {@code T^(-1/law)} for a softer law), the run transmits the inverse of the summed weight, and
+     * the law is the length-weighted mean. A run of one material gives
+     * {@code T * thickness^-law}, exactly as before; a stone wall lined with wool passes what two
+     * blocks of stone pass in the highs but what wool and stone together pass in the lows.
+     */
+    public static final class Path {
+        private final double[] weight = new double[3];
+        private double length, lawLength;
+
+        public void add(int material, double blocks) {
+            if (blocks <= 0) return;
+            Profile profile = PROFILES[material];
+            for (int band = 0; band < 3; band++) {
+                weight[band] += blocks * profile.weight[band];
+            }
+            length += blocks;
+            lawLength += blocks * profile.thicknessLaw;
+        }
+
+        public double length() { return length; }
+
+        public float[] transmission() {
+            float[] result = new float[3];
+            if (length <= 0) {
+                java.util.Arrays.fill(result, MAX_TRANSMISSION);
+                return result;
+            }
+            // Clamp the whole run to the modeled range, keeping the share of each layer.
+            double scale = Math.max(MIN_THICKNESS, Math.min(MAX_THICKNESS, length)) / length;
+            double law = lawLength / length;
+            for (int band = 0; band < 3; band++) {
+                result[band] = (float) Math.min(MAX_TRANSMISSION, Math.pow(weight[band] * scale, -law));
+            }
+            return result;
+        }
     }
 
     private AcousticMaterials() { }

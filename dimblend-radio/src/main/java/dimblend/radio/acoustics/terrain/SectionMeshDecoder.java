@@ -20,7 +20,7 @@ public final class SectionMeshDecoder {
         /**
          * @param ownerOut receives the world block coordinates that produced the material
          *                 (three ints); contents are only meaningful for non-negative verdicts
-         * @return acoustic material index 0..4, or a negative value to drop the quad
+         * @return {@link dimblend.radio.acoustics.AcousticMaterials} index, or a negative value to drop the quad
          */
         int classify(double centerX, double centerY, double centerZ,
                 double normalX, double normalY, double normalZ, int[] ownerOut);

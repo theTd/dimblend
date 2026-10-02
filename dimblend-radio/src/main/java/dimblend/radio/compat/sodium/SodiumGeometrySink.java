@@ -2,8 +2,7 @@ package dimblend.radio.compat.sodium;
 
 import dimblend.radio.DimBlendRadio;
 import dimblend.radio.acoustics.AcousticAvailability;
-import dimblend.radio.acoustics.AcousticMaterials;
-import dimblend.radio.acoustics.AcousticRaycaster;
+import dimblend.radio.acoustics.AcousticBlockMaterials;
 import dimblend.radio.acoustics.terrain.SectionGeometryCache;
 import dimblend.radio.acoustics.terrain.SectionMeshDecoder;
 import dimblend.radio.acoustics.terrain.SectionBlockFingerprint;
@@ -153,7 +152,7 @@ public final class SodiumGeometrySink {
         } catch (RuntimeException unsupportedShape) {
             // Modded shapes that need a live Level are treated as solid, as in the voxel path.
         }
-        return AcousticMaterials.bucket(AcousticRaycaster.reflectivity(state));
+        return AcousticBlockMaterials.of(state);
     }
 
     /** Debug hook: -Ddimblend.radio.acoustic.dumpSection=sx,sy,sz dumps raw pass buffers once. */

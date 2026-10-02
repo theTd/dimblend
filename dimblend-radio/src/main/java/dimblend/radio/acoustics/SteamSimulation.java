@@ -16,7 +16,12 @@ public final class SteamSimulation implements AutoCloseable {
     // Allocate AND trace whole workgroups (a multiple of 256); other counts read
     // uninitialized/OOB data. One workgroup left the field too sparse to converge.
     public static final int GPU_RAYS = 1024;
-    private record MaterialKey(float reflectivity, int thicknessStep) { }
+    /** A hit's material and its run's transmission per band, in {@link #TRANSMISSION_STEP_DB} steps. */
+    private record MaterialKey(int material, int low, int mid, int high) { }
+    /** Inaudible (about 1% amplitude) and keeps the native material records few and reusable. */
+    private static final double TRANSMISSION_STEP_DB = 0.1;
+    /** Mixed walls can yield many transmission combinations; drop the records between runs past this. */
+    private static final int MAX_CACHED_MATERIALS = 4096;
     private final SteamAudio.Api api = SteamAudio.api();
     private final PointerByReference context = new PointerByReference();
     private final PointerByReference scene = new PointerByReference();
@@ -181,6 +186,8 @@ public final class SteamSimulation implements AutoCloseable {
             Vec3 listenerWorld, Vec3 sourceWorld, int rays, int bounces) {
         this.tracer = tracer;
         offset = listenerWorld;
+        // The solver holds hit material pointers only during a run.
+        if (materials.size() > MAX_CACHED_MATERIALS) materials.clear();
         return run(listenerWorld, sourceWorld, rays, bounces);
     }
 
@@ -270,7 +277,7 @@ public final class SteamSimulation implements AutoCloseable {
             if (result.kind() == AcousticRay.Kind.HIT) {
                 Vec3 origin = offset.add(ray[0], ray[1], ray[2]);
                 float distance = (float) origin.distanceTo(result.position());
-                Pointer surface = material(result.reflectivity(), result.thickness()).getPointer();
+                Pointer surface = material(result.material(), result.transmission()).getPointer();
                 hitPointer.write(4, new int[] {0, 0, 0}, 0, 3);
                 hitPointer.write(16, new float[] {(float) result.normal().x, (float) result.normal().y,
                         (float) result.normal().z}, 0, 3);
@@ -292,24 +299,31 @@ public final class SteamSimulation implements AutoCloseable {
     }
 
     /**
-     * Absorption follows the block's own reflectivity; transmission follows its material class and
-     * the path length through the wall the ray entered (the solver multiplies one value per hit).
+     * Absorption follows the entered block's material; transmission is the whole run's (the
+     * solver multiplies one value per hit), quantized so equal walls share one native record.
      */
-    private SteamAudio.Material material(float reflectivity, float thickness) {
-        var key = new MaterialKey(reflectivity, AcousticMaterials.thicknessStep(thickness));
+    private SteamAudio.Material material(int material, float[] transmission) {
+        var key = new MaterialKey(material, transmissionStep(transmission[0]), transmissionStep(transmission[1]),
+                transmissionStep(transmission[2]));
         return materials.computeIfAbsent(key, value -> {
-            var material = new SteamAudio.Material();
-            float absorption = Math.max(0.02f, 1 - value.reflectivity());
-            material.absorption = new float[] {absorption * 0.4f, absorption * 0.6f,
-                    Math.min(0.98f, absorption * 1.2f)};
+            var entry = new SteamAudio.Material();
+            entry.absorption = AcousticMaterials.absorption(value.material());
             // The SDK seeds diffuse scattering from wall-clock time. Voxel surface normals
             // already provide geometric scattering; keep CPU material paths repeatable.
-            material.scattering = 0;
-            material.transmission = AcousticMaterials.transmission(AcousticMaterials.bucket(value.reflectivity()),
-                    AcousticMaterials.thickness(value.thicknessStep()));
-            material.write();
-            return material;
+            entry.scattering = 0;
+            entry.transmission = new float[] {transmissionOf(value.low()), transmissionOf(value.mid()),
+                    transmissionOf(value.high())};
+            entry.write();
+            return entry;
         });
+    }
+
+    private static int transmissionStep(float transmission) {
+        return (int) Math.round(-20 * Math.log10(Math.max(1e-6f, transmission)) / TRANSMISSION_STEP_DB);
+    }
+
+    private static float transmissionOf(int step) {
+        return (float) Math.pow(10, -step * TRANSMISSION_STEP_DB / 20);
     }
 
     @Override public void close() {

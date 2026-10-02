@@ -19,13 +19,14 @@ import net.minecraft.world.phys.shapes.VoxelShape;
  * inside a shape, so every re-cast from inside a wall hit that wall again until all transmission
  * rays were spent: any obstruction became T^4 regardless of its thickness, count or material.
  * Here only open-to-solid entries count. A ray that starts inside a solid run skips it, so each
- * wall is hit once from each side, and every hit carries the path length through the run it entered.
+ * wall is hit once from each side, and every hit carries the path through the run it entered: its
+ * length and its transmission, layer by layer when the run mixes materials.
  */
 public final class AcousticVoxelTrace {
     /** A block as the ray sees it. */
-    public record Cell(VoxelShape shape, float reflectivity) {
+    public record Cell(VoxelShape shape, int material) {
         /** Unloaded terrain: neither open nor solid. */
-        public static final Cell UNKNOWN = new Cell(Shapes.empty(), 0);
+        public static final Cell UNKNOWN = new Cell(Shapes.empty(), AcousticMaterials.STONE);
     }
 
     /** Resolves a block position; {@code null} means open (air, the excluded emitter, a foreign plot). */
@@ -46,7 +47,7 @@ public final class AcousticVoxelTrace {
             // A modded shape that requires a live Level falls back to its solid voxel.
             shape = Shapes.block();
         }
-        return new Cell(shape, AcousticRaycaster.reflectivity(state));
+        return new Cell(shape, AcousticBlockMaterials.of(state));
     }
 
     public static AcousticRay cast(Vec3 from, Vec3 to, Lookup lookup) {
@@ -74,16 +75,22 @@ public final class AcousticVoxelTrace {
                 return null;
             }
             Vec3 entry = hit.getLocation();
+            AcousticMaterials.Path path = path(entry, direction, lookup, cell.material());
             return new AcousticRay(AcousticRay.Kind.HIT, entry, Vec3.atLowerCornerOf(hit.getDirection().getNormal()),
-                    cell.reflectivity(), (float) thickness(entry, direction, lookup));
+                    cell.material(), (float) path.length(), path.transmission());
         }, cells -> AcousticRay.miss(to));
     }
 
-    /** Path length through the solid run entered at {@code entry}, up to the material model's range. */
-    static double thickness(Vec3 entry, Vec3 direction, Lookup lookup) {
+    /**
+     * The layers of the solid run entered at {@code entry} (of {@code material}), up to the
+     * material model's range: each voxel adds the length the ray spends in it.
+     */
+    static AcousticMaterials.Path path(Vec3 entry, Vec3 direction, Lookup lookup, int material) {
         double reach = AcousticMaterials.MAX_THICKNESS;
         Vec3 start = entry.add(direction.scale(PROBE));
         Vec3 end = start.add(direction.scale(reach));
+        AcousticMaterials.Path path = new AcousticMaterials.Path();
+        path.add(material, PROBE);
         double[] exit = {0};
         BlockGetter.traverseBlocks(start, end, lookup, (cells, pos) -> {
             Cell cell = cells.at(pos);
@@ -100,11 +107,12 @@ public final class AcousticVoxelTrace {
             }
             double[] inside = AcousticRaycaster.clipRange(start, end, box.move(pos));
             double far = inside == null ? span[1] : inside[1];
+            path.add(cell.material(), (far - exit[0]) * reach);
             exit[0] = far;
             // Leaving the box before the voxel boundary ends the run inside this voxel.
             return far < span[1] - 1e-9 ? Boolean.TRUE : null;
         }, cells -> Boolean.TRUE);
-        return PROBE + exit[0] * reach;
+        return path;
     }
 
     /** The shape box (in block-local coordinates) containing {@code point}, or {@code null}. */

@@ -290,7 +290,7 @@ class SteamRendererTest {
             Vec3 normal = Math.abs(Math.abs(point.x) - half) < 1e-4 ? new Vec3(-Math.signum(point.x), 0, 0)
                     : Math.abs(Math.abs(point.y) - half) < 1e-4 ? new Vec3(0, -Math.signum(point.y), 0)
                     : new Vec3(0, 0, -Math.signum(point.z));
-            return new AcousticRay(AcousticRay.Kind.HIT, point, normal, 0.9f);
+            return new AcousticRay(AcousticRay.Kind.HIT, point, normal, AcousticMaterials.STONE);
         };
     }
 

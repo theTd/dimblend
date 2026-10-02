@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class SteamDirectDiffractionTest {
     private static final String RADIUS = "dimblend.radio.acoustic.diffraction";
     private static final String SAMPLES = "dimblend.radio.acoustic.diffraction.samples";
-    private static final AcousticVoxelTrace.Cell STONE = new AcousticVoxelTrace.Cell(Shapes.block(), 0.9f);
+    private static final AcousticVoxelTrace.Cell STONE = new AcousticVoxelTrace.Cell(Shapes.block(), AcousticMaterials.STONE);
     /** One block thick wall in the plane x = 0, ending in a vertical edge at z = 0 (cells z <= -1). */
     private static final AcousticVoxelTrace.Lookup HALF_WALL =
             pos -> pos.getX() == 0 && Math.abs(pos.getY()) <= 8 && pos.getZ() <= -1 && pos.getZ() >= -40 ? STONE : null;

@@ -75,7 +75,7 @@ public final class RadioController {
         // PLAYBACKS survives so the replacement channels resume without consulting gameTime.
     }
 
-    /** Wall reflectivity follows block tags: a datapack reload must not keep the old surface classes. */
+    /** Block materials follow tags: a datapack reload must not keep the old surface classes. */
     @SubscribeEvent
     public static void onTagsUpdated(TagsUpdatedEvent event) {
         AcousticSurfaceKinds.clear();

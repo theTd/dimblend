@@ -15,7 +15,7 @@ class StructureAcousticsTest {
         Pose3d pose = new Pose3d(new Vector3d(10, 30, 20), new Quaterniond().rotateY(Math.PI / 2),
                 new Vector3d(plotCenter.x, plotCenter.y, plotCenter.z), new Vector3d(1, 1, 1));
         AcousticRay local = new AcousticRay(AcousticRay.Kind.HIT, plotCenter.add(3, 0, 0),
-                new Vec3(-1, 0, 0), 0.9f);
+                new Vec3(-1, 0, 0), AcousticMaterials.GLASS);
         AcousticRay world = AcousticRaycaster.projectHit(local, pose);
         Vec3 worldOrigin = pose.transformPosition(plotCenter);
         assertEquals(3, worldOrigin.distanceTo(world.position()), 1e-6);
@@ -26,6 +26,9 @@ class StructureAcousticsTest {
         Vec3 reflected = AcousticRay.reflect(incident, world.normal());
         assertEquals(-1, reflected.dot(incident), 1e-6);
         assertEquals(0, pose.transformPositionInverse(world.position()).distanceTo(local.position()), 1e-6);
+        assertEquals(AcousticMaterials.GLASS, world.material(), "the plot's block material survives the projection");
+        assertArrayEquals(local.transmission(), world.transmission());
+        assertEquals(local.thickness(), world.thickness());
     }
 
     @Test
