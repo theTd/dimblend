@@ -110,4 +110,19 @@ class SectionGeometryCacheTest {
         put(pos,0,0,0,1);
         assertEquals(before,SectionGeometryCache.foldHash(ONE_SECTION,-4,20));
     }
+
+    @Test
+    void onlyEditsNotYetFingerprintedAskCapturesToHashTheSection() {
+        long pos = SectionPos.asLong(0, 0, 0);
+        assertFalse(SectionGeometryCache.awaitingFingerprint(pos));
+        SectionGeometryCache.invalidate(pos);
+        assertTrue(SectionGeometryCache.awaitingFingerprint(pos));
+        SectionGeometryCache.expectBlocks(pos, 20L);
+        assertFalse(SectionGeometryCache.awaitingFingerprint(pos), "hashed once, not on every later capture");
+        assertTrue(SectionGeometryCache.needsValidation(pos), "late builds must still be checked against it");
+        SectionGeometryCache.invalidate(pos);
+        assertTrue(SectionGeometryCache.awaitingFingerprint(pos), "a later edit re-arms it");
+        SectionGeometryCache.remove(pos);
+        assertFalse(SectionGeometryCache.awaitingFingerprint(pos));
+    }
 }

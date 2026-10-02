@@ -1,6 +1,8 @@
 package dimblend.radio.compat.sodium;
 
 import dimblend.radio.DimBlendRadio;
+import dimblend.radio.acoustics.AcousticAvailability;
+import dimblend.radio.acoustics.AcousticMaterials;
 import dimblend.radio.acoustics.AcousticRaycaster;
 import dimblend.radio.acoustics.terrain.SectionGeometryCache;
 import dimblend.radio.acoustics.terrain.SectionMeshDecoder;
@@ -35,7 +37,8 @@ public final class SodiumGeometrySink {
     }
 
     public static void onSectionMeshBuilt(ChunkBuildOutput output, LevelSlice slice) {
-        if (TerrainGeometryMode.CURRENT == TerrainGeometryMode.VOXEL) {
+        // No consumer: voxel-only mode, or a client that can never run the acoustic pipeline.
+        if (TerrainGeometryMode.CURRENT == TerrainGeometryMode.VOXEL || !AcousticAvailability.possible()) {
             return;
         }
         RenderSection render = output.render;
@@ -150,9 +153,7 @@ public final class SodiumGeometrySink {
         } catch (RuntimeException unsupportedShape) {
             // Modded shapes that need a live Level are treated as solid, as in the voxel path.
         }
-        float reflectivity = AcousticRaycaster.reflectivity(state);
-        return reflectivity < 0.2 ? 0 : reflectivity < 0.3 ? 1 : reflectivity < 0.5 ? 2
-                : reflectivity < 0.8 ? 3 : 4;
+        return AcousticMaterials.bucket(AcousticRaycaster.reflectivity(state));
     }
 
     /** Debug hook: -Ddimblend.radio.acoustic.dumpSection=sx,sy,sz dumps raw pass buffers once. */

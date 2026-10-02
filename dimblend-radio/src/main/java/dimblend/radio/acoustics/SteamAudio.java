@@ -8,8 +8,6 @@ import com.sun.jna.Pointer;
 import com.sun.jna.Structure;
 import com.sun.jna.Structure.FieldOrder;
 import com.sun.jna.ptr.PointerByReference;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 /** Steam Audio 4.8.1 C ABI. Values and field order follow the distributed phonon.h. */
@@ -35,6 +33,7 @@ public final class SteamAudio {
         void iplSourceRelease(PointerByReference source);
         int iplDirectEffectCreate(Pointer context, AudioSettings audio, DirectSettings settings, PointerByReference effect);
         int iplDirectEffectApply(Pointer effect, DirectParams params, AudioBuffer in, AudioBuffer out);
+        void iplDirectEffectReset(Pointer effect);
         void iplDirectEffectRelease(PointerByReference effect);
         int iplReflectionEffectCreate(Pointer context, AudioSettings audio, ReflectionSettings settings, PointerByReference effect);
         int iplReflectionEffectApply(Pointer effect, ReflectionParams params, AudioBuffer in, AudioBuffer out, Pointer mixer);
@@ -44,9 +43,11 @@ public final class SteamAudio {
         int iplReflectionEffectGetTail(Pointer effect, AudioBuffer out, Pointer mixer);
         int iplPanningEffectCreate(Pointer context, AudioSettings audio, PanningSettings settings, PointerByReference effect);
         int iplPanningEffectApply(Pointer effect, PanningParams params, AudioBuffer in, AudioBuffer out);
+        void iplPanningEffectReset(Pointer effect);
         void iplPanningEffectRelease(PointerByReference effect);
         int iplAmbisonicsDecodeEffectCreate(Pointer context, AudioSettings audio, DecodeSettings settings, PointerByReference effect);
         int iplAmbisonicsDecodeEffectApply(Pointer effect, DecodeParams params, AudioBuffer in, AudioBuffer out);
+        void iplAmbisonicsDecodeEffectReset(Pointer effect);
         void iplAmbisonicsDecodeEffectRelease(PointerByReference effect);
     }
     public interface ClosestHit extends Callback { void invoke(Pointer ray, float min, float max, Pointer hit, Pointer user); }
@@ -56,17 +57,34 @@ public final class SteamAudio {
     public static class ContextSettings extends Structure {
         public int version = 0x040801;
         public Pointer log, allocate, free;
-        public int simd, flags;
+        /**
+         * Highest SIMD level Steam Audio may pick for this process (it falls back to what the CPU
+         * supports). 0 would pin SSE2; AVX2 is the header's recommended ceiling, avoiding AVX-512 throttling.
+         */
+        public int simd = 3;
+        public int flags;
     }
     @FieldOrder({"x", "y", "z"})
     public static class Vector extends Structure {
         public float x, y, z;
         public Vector() { }
-        public Vector(double x, double y, double z) { this.x = (float) x; this.y = (float) y; this.z = (float) z; }
+        public Vector(double x, double y, double z) { set(x, y, z); }
+        public void set(double x, double y, double z) { this.x = (float) x; this.y = (float) y; this.z = (float) z; }
+        /**
+         * Copies values. Assigning a Structure to an embedded field instead re-points that object's
+         * memory into the new parent, which breaks any other struct still embedding it.
+         */
+        public void set(Vector other) { x = other.x; y = other.y; z = other.z; }
     }
     @FieldOrder({"right", "up", "ahead", "origin"})
     public static class Space extends Structure {
         public Vector right = new Vector(1, 0, 0), up = new Vector(0, 1, 0), ahead = new Vector(0, 0, -1), origin = new Vector();
+        public void set(Space other) {
+            right.set(other.right);
+            up.set(other.up);
+            ahead.set(other.ahead);
+            origin.set(other.origin);
+        }
     }
     @FieldOrder({"origin", "direction"})
     public static class Ray extends Structure {
@@ -234,20 +252,14 @@ public final class SteamAudio {
             if (!System.getProperty("os.name").startsWith("Windows") || !System.getProperty("os.arch").equals("amd64")) {
                 throw new UnsupportedOperationException("Bundled Steam Audio currently targets Windows x64");
             }
-            try {
-                Path directory = Path.of(System.getProperty("java.io.tmpdir"), "dimblend-steamaudio-4.8.1");
-                Files.createDirectories(directory);
-                Path library = directory.resolve("phonon.dll");
-                if (!Files.exists(library)) {
-                    try (var input = SteamAudio.class.getResourceAsStream("/native/steamaudio/windows-x64/phonon.dll")) {
-                        if (input == null) throw new IOException("Missing bundled Steam Audio library");
-                        Files.copy(input, library);
-                    }
-                }
-                api = Native.load(library.toString(), Api.class);
-            } catch (IOException e) { throw new IllegalStateException("Cannot load Steam Audio", e); }
+            api = Native.load(library().toString(), Api.class);
         }
         return api;
+    }
+
+    /** The extracted phonon.dll every Steam Audio binding loads. */
+    static Path library() {
+        return SteamNativeLibraries.library("phonon.dll");
     }
     public static void check(int status, String operation) {
         if (status != 0) throw new IllegalStateException(operation + " failed: " + status);

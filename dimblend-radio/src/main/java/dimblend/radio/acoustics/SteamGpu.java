@@ -5,9 +5,6 @@ import com.sun.jna.Pointer;
 import com.sun.jna.Structure;
 import com.sun.jna.Structure.FieldOrder;
 import com.sun.jna.ptr.PointerByReference;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 
 public final class SteamGpu {
     public interface Api extends SteamAudio.Api {
@@ -42,16 +39,9 @@ public final class SteamGpu {
     public static synchronized Api api() {
         if (api == null) {
             SteamAudio.api();
-            Path directory = Path.of(System.getProperty("java.io.tmpdir"), "dimblend-steamaudio-4.8.1");
-            Path utility = directory.resolve("GPUUtilities.dll");
-            try {
-                if (!Files.exists(utility)) try (var input = SteamGpu.class.getResourceAsStream("/native/steamaudio/windows-x64/GPUUtilities.dll")) {
-                    if (input == null) throw new IOException("Missing GPUUtilities.dll");
-                    Files.copy(input, utility);
-                }
-                Native.load(utility.toString(), com.sun.jna.Library.class);
-                api = Native.load(directory.resolve("phonon.dll").toString(), Api.class);
-            } catch (IOException error) { throw new IllegalStateException(error); }
+            // Preloaded by path: phonon.dll's LoadLibrary("GPUUtilities.dll") then resolves to this module.
+            Native.load(SteamNativeLibraries.library("GPUUtilities.dll").toString(), com.sun.jna.Library.class);
+            api = Native.load(SteamAudio.library().toString(), Api.class);
         }
         return api;
     }

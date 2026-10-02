@@ -117,6 +117,97 @@ class SteamRendererTest {
         }
     }
 
+    @Test
+    void resumeAfterAnInaudibleGapDoesNotReplayTheOldDelayLine() {
+        assumeTrue(Boolean.getBoolean("dimblend.radio.testAudio"));
+        try (var simulation = new SteamSimulation(48000, 1);
+                var renderer = new SteamRenderer(simulation.context(), 48000)) {
+            var direct = new SteamAudio.DirectParams();
+            Vec3 source = new Vec3(68.6, 0, 0); // 200 ms of audio inside the propagation line
+            float[] loud = new float[SteamRenderer.FRAME];
+            java.util.Arrays.fill(loud, 0.2f);
+            for (int block = 0; block < 25; block++) renderer.render(loud, direct, null, source, new SteamAudio.Space(), false, 0);
+            assertTrue(renderer.resume(false), "rendered effects must be reset");
+            double replay = 0;
+            for (int block = 0; block < 10; block++) {
+                replay += energy(renderer.render(new float[SteamRenderer.FRAME], direct, null, source, new SteamAudio.Space(), false, 0));
+            }
+            assertTrue(replay < 1e-10, "audio from before the gap must not replay, energy=" + replay);
+        }
+    }
+
+    @Test
+    void bypassedBlocksKeepThePropagationDelayRunning() {
+        assumeTrue(Boolean.getBoolean("dimblend.radio.testAudio"));
+        for (boolean keepDelay : new boolean[] {true, false}) {
+            try (var simulation = new SteamSimulation(48000, 1);
+                    var renderer = new SteamRenderer(simulation.context(), 48000)) {
+                var direct = new SteamAudio.DirectParams();
+                Vec3 source = new Vec3(68.6, 0, 0);
+                for (int block = 0; block < 5; block++) {
+                    renderer.render(new float[SteamRenderer.FRAME], direct, null, source, new SteamAudio.Space(), false, 0);
+                }
+                for (int block = 0; block < 25; block++) {
+                    float[] loud = new float[SteamRenderer.FRAME];
+                    java.util.Arrays.fill(loud, 0.2f);
+                    renderer.bypass(loud, source);
+                }
+                assertTrue(renderer.resume(keepDelay), "effects idled during the bypass must be reset");
+                double delayed = 0;
+                for (int block = 0; block < 3; block++) {
+                    delayed += energy(renderer.render(new float[SteamRenderer.FRAME], direct, null, source, new SteamAudio.Space(), false, 0));
+                }
+                if (keepDelay) assertTrue(delayed > 1e-4, "panned audio still in flight must arrive after the switch");
+                else assertTrue(delayed < 1e-10, "a cleared line must not replay, energy=" + delayed);
+            }
+        }
+    }
+
+    @Test
+    void teleportSizedDelayChangesCrossfadeInsteadOfChirping() {
+        assumeTrue(Boolean.getBoolean("dimblend.radio.testAudio"));
+        try (var simulation = new SteamSimulation(48000, 1);
+                var renderer = new SteamRenderer(simulation.context(), 48000)) {
+            var direct = new SteamAudio.DirectParams();
+            float[][] output = null;
+            for (int block = 0; block < 26; block++) {
+                float[] input = new float[SteamRenderer.FRAME];
+                for (int i = 0; i < input.length; i++) input[i] = (float) Math.sin((block * input.length + i) * 0.06) * 0.2f;
+                // 4 blocks away, then 68.6: the read head would sweep 9000 samples within one block.
+                Vec3 source = block < 25 ? new Vec3(4, 0, 0) : new Vec3(68.6, 0, 0);
+                output = renderer.render(input, direct, null, source, new SteamAudio.Space(), false, 0);
+            }
+            double signal = 0, roughness = 0;
+            float[] right = output[1];
+            for (int i = 2; i < right.length; i++) {
+                double curvature = right[i] - 2 * right[i - 1] + right[i - 2];
+                signal += right[i] * (double) right[i];
+                roughness += curvature * curvature;
+            }
+            assertTrue(signal > 1e-4);
+            assertTrue(roughness < signal * 0.01, "no pitch sweep across the jump, ratio=" + roughness / signal);
+        }
+    }
+
+    @Test
+    void limiterKneeIsTransparentBelowTheCeilingAndNeverExceedsFullScale() {
+        assertEquals(0.5f, SteamRenderer.softLimit(0.5f));
+        assertEquals(-0.95f, SteamRenderer.softLimit(-0.95f));
+        float previous = 0.95f;
+        for (float sample = 0.951f; sample < 50; sample *= 1.1f) {
+            float limited = SteamRenderer.softLimit(sample);
+            assertTrue(limited >= previous && limited <= 1f, sample + " -> " + limited);
+            assertEquals(-limited, SteamRenderer.softLimit(-sample));
+            previous = limited;
+        }
+    }
+
+    private static double energy(float[][] stereo) {
+        double sum = 0;
+        for (float[] channel : stereo) for (float sample : channel) sum += sample * (double) sample;
+        return sum;
+    }
+
     private static double[] earEnergy(SteamSimulation simulation, Vec3 source) {
         var outputs = simulation.simulate((from, to) -> AcousticRay.miss(to), Vec3.ZERO, source, 1, 0);
         double[] energy = new double[2];

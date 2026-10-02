@@ -1,14 +1,17 @@
 package dimblend.radio.client;
 
 import dimblend.radio.DimBlendRadio;
+import dimblend.radio.acoustics.AcousticAvailability;
 import dimblend.radio.acoustics.AcousticSnapshot;
 import dimblend.radio.acoustics.AcousticUpdateGate;
 import dimblend.radio.acoustics.ReflectionMeshCache;
 import dimblend.radio.acoustics.SteamAudio;
 import dimblend.radio.acoustics.SteamRenderer;
 import dimblend.radio.acoustics.SteamSimulation;
+import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -18,7 +21,17 @@ import net.minecraft.world.phys.Vec3;
 public final class RadioSimulationSession implements RadioPcmProcessor {
     private static final ExecutorService DIRECT = worker("Radio acoustic direct");
     private static final ExecutorService REFLECTIONS = worker("Radio acoustic reflections");
-    private record View(Vec3 source, Vec3 listener, Vec3 ahead, Vec3 up, boolean audible) { }
+    private static final String WET_GAIN_PROPERTY = "dimblend.radio.acoustic.wetgain";
+    private static final float DEFAULT_WET_GAIN = 3;
+    /**
+     * @param audible the radio is heard at all (in range, game not paused)
+     * @param simulated Steam Audio renders it; other audible radios are stereo-panned
+     */
+    private record View(Vec3 source, Vec3 listener, Vec3 ahead, Vec3 up, boolean audible, boolean simulated) { }
+    /** How an audio block is produced. */
+    private enum Path { SILENT, PANNED, RENDERED }
+    private record WetGain(String property, float value) { }
+    private static volatile WetGain wetGain = new WetGain(null, DEFAULT_WET_GAIN);
     private final AudioFormat format;
     private final int rate;
     private final AtomicBoolean directBusy = new AtomicBoolean(), reflectionBusy = new AtomicBoolean();
@@ -28,16 +41,26 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     private volatile SteamSimulation directEngine, reflectionEngine;
     // JNA embedded sub-structures share the owning SimulationOutputs' native backing store.
     // Pin the owner: if it is collected, the params structs become garbage silently
-    // (wet dies, dry params jump around). Consumers pin the holder on the stack.
+    // (wet dies, dry params jump around). Consumers pin the holder until the native call returns.
     private volatile SteamAudio.SimulationOutputs directOutputs, reflectionOutputs;
     private volatile long directRevision = -1, reflectionRevision = -1;
-    private volatile View view = new View(Vec3.ZERO, Vec3.ZERO, new Vec3(0, 0, -1), new Vec3(0, 1, 0), false);
+    private volatile View view = new View(Vec3.ZERO, Vec3.ZERO, new Vec3(0, 0, -1), new Vec3(0, 1, 0), false, false);
     private volatile boolean closed;
     private volatile boolean failed;
     private SteamRenderer renderer;
     private long lastDirect, lastReflection;
     private boolean inputEnded;
     private int invalidFields;
+    // Audio-side state, guarded by this monitor (process/hasTail).
+    private final RadioStereoPanner panner = new RadioStereoPanner();
+    /** Path of the previous block; {@code null} before the first. */
+    private Path path;
+    /** The panner is playing undelayed input (no usable renderer when it took over). */
+    private boolean pannedRaw;
+    /** Input samples still inside the renderer's propagation delay after the input ended. */
+    private int directTail;
+    /** Reflection-worker state. */
+    private boolean firstIrLogged;
     private final boolean gpuEnabled = !"false".equalsIgnoreCase(System.getProperty("dimblend.radio.acoustic.gpu"));
 
     public RadioSimulationSession(AudioFormat input) {
@@ -57,8 +80,16 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         if (closed || failed) return;
         try {
             if (!gpuEnabled) throw new IllegalStateException("GPU acoustics disabled");
-            SteamSimulation engine = new SteamSimulation(rate, reflections ? 2 : 1, reflections);
+            SteamSimulation engine;
+            try {
+                engine = new SteamSimulation(rate, reflections ? 2 : 1, reflections);
+            } catch (RuntimeException | Error error) {
+                // The first GPU engine tells whether this machine can run the pipeline at all.
+                if (reflections) AcousticAvailability.gpuUnavailable(error);
+                throw error;
+            }
             if (reflections) {
+                AcousticAvailability.gpuAvailable();
                 installReflectionEngine(engine);
                 // Direct CPU rays are part of the GPU acoustic session, never a fallback.
                 if (!closed && !failed) DIRECT.execute(() -> initialize(false));
@@ -115,23 +146,29 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         directOutputs = null;
         reflectionOutputs = null;
         AcousticUpdateGate.forget(this);
-        DimBlendRadio.LOGGER.warn("[radio] acoustics disabled; using distance-only sound (no CPU fallback)", error);
+        DimBlendRadio.LOGGER.warn("[radio] acoustics disabled for this radio; using stereo panning (no CPU fallback)", error);
         DIRECT.execute(() -> { if (directEngine != null) { directEngine.close(); directEngine = null; } });
         REFLECTIONS.execute(this::retireReflectionEngine);
     }
 
     public boolean active() { return !closed && !failed; }
 
+    /** Audible radios are simulated, as when this session is the only radio. */
     public void setView(Vec3 source, Vec3 listener, Vec3 ahead, Vec3 up, boolean audible) {
+        setView(source, listener, ahead, up, audible, audible);
+    }
+
+    public void setView(Vec3 source, Vec3 listener, Vec3 ahead, Vec3 up, boolean audible, boolean simulated) {
         if (closed) return;
-        view = new View(source, listener, ahead, up, audible);
-        if (audible && initialized.compareAndSet(false, true)) {
+        view = new View(source, listener, ahead, up, audible, audible && simulated);
+        // Native engines are created once a radio is first simulated, never for panned-only radios.
+        if (audible && simulated && initialized.compareAndSet(false, true)) {
             REFLECTIONS.execute(() -> initialize(true));
         }
     }
 
     public void simulate(AcousticSnapshot snapshot, long now) {
-        if (closed || failed || !view.audible) return;
+        if (closed || failed || !view.simulated) return;
         latestSnapshot = snapshot;
         View captured = view;
         if (directEngine != null && (now - lastDirect >= 8_000_000
@@ -172,11 +209,10 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
                     try {
                         if (!closed && !failed) {
                             View latest = view;
-                            if (!latest.audible) return;
+                            if (!latest.simulated) return;
                             // A block edit can arrive while this radio waits behind another job.
                             AcousticSnapshot scene = latestSnapshot;
                             AcousticUpdateGate.shouldSimulate(this, scene, latest.source, latest.listener, true);
-                            boolean first = reflectionOutputs == null;
                             var geometry = meshes.get(scene, latest.listener, latest.source, scene::mesh);
                             SteamSimulation engine = reflectionEngine;
                             if (engine == null || closed || failed) return;
@@ -198,9 +234,12 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
                                     renderer.reflectionsReady();
                                 }
                             }
-                            if (first) DimBlendRadio.LOGGER.info("[radio] {} convolution IR ready: {} channels, {} samples, {} ms",
-                                    engine.gpu() ? "GPU" : "CPU", outputs.reflections.channels, outputs.reflections.irSize,
-                                    (System.nanoTime() - start) / 1_000_000);
+                            if (!firstIrLogged) {
+                                firstIrLogged = true;
+                                DimBlendRadio.LOGGER.info("[radio] {} convolution IR ready: {} channels, {} samples, {} ms",
+                                        engine.gpu() ? "GPU" : "CPU", outputs.reflections.channels, outputs.reflections.irSize,
+                                        (System.nanoTime() - start) / 1_000_000);
+                            }
                             DimBlendRadio.LOGGER.debug("[radio] {} acoustic IR in {} ms ({} tris)",
                                     engine.gpu() ? "GPU" : "CPU", (System.nanoTime() - start) / 1_000_000,
                                     geometry == null ? -1 : geometry.triangles().length / 3);
@@ -226,11 +265,28 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
      * Wet level is distance-independent inside rooms (diffuse field), which the simulated IR
      * already captures — so the wet field only gets a constant base gain (live-tunable via
      * -Ddimblend.radio.acoustic.wetgain) times a far taper, so orphaned reverb does not outlive
-     * the dry sound past the audible edge. The block limiter handles hot room sums.
+     * the dry sound past the audible edge. The renderer's limiter handles hot room sums.
      */
     static float wetScale(double distance) {
-        float base = Float.parseFloat(System.getProperty("dimblend.radio.acoustic.wetgain", "3"));
-        return (float) Math.min(1, Math.max(0, (RadioAcousticController.AUDIBLE_RANGE - distance) / 32)) * base;
+        return (float) Math.min(1, Math.max(0, (RadioAcousticController.AUDIBLE_RANGE - distance) / 32)) * wetGain();
+    }
+
+    /** The tunable base wet gain; parsed once per distinct value, invalid values fall back to the default. */
+    static float wetGain() {
+        String property = System.getProperty(WET_GAIN_PROPERTY);
+        WetGain cached = wetGain;
+        if (Objects.equals(cached.property(), property)) return cached.value();
+        float value = DEFAULT_WET_GAIN;
+        if (property != null) {
+            try { value = Float.parseFloat(property.trim()); }
+            catch (NumberFormatException invalid) { value = Float.NaN; }
+            if (!Float.isFinite(value) || value < 0) {
+                DimBlendRadio.LOGGER.warn("[radio] ignoring invalid -D{}={}; using {}", WET_GAIN_PROPERTY, property, DEFAULT_WET_GAIN);
+                value = DEFAULT_WET_GAIN;
+            }
+        }
+        wetGain = new WetGain(property, value);
+        return value;
     }
 
     @Override public AudioFormat format() { return format; }
@@ -246,39 +302,116 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
             for (int block = 0; block < blocks; block++) {
                 float[] input = new float[SteamRenderer.FRAME];
                 for (int i = 0; i < input.length && mono.remaining() >= 2; i++) input[i] = mono.getShort() / 32768f;
-                float[][] result;
-                if (renderer != null && !closed && !failed && captured.audible) {
-                    // Pin the JNA parents on the stack for the whole render call: the params
-                    // sub-structures share their backing store.
-                    var directOut = directOutputs;
-                    var reflectionOut = reflectionOutputs;
-                    var direct = directOut == null ? null : directOut.direct;
-                    var impulse = reflectionOut == null ? null : reflectionOut.reflections;
-                    if (direct == null) {
-                        direct = new SteamAudio.DirectParams();
-                    }
-                    // Distance follows the current audio-frame pose, not a completed ray job.
-                    direct.distance = distanceGain(relative.length());
-                    result = renderer.render(input, direct, impulse, relative, orientation(captured), frames == 0,
-                            wetScale(relative.length()));
-                } else {
-                    result = new float[2][input.length];
-                    float gain = distanceGain(relative.length()) * 0.7071f;
-                    for (int i = 0; i < input.length; i++) result[0][i] = result[1][i] = input[i] * gain;
-                }
+                float[][] result = block(input, captured, relative, frames == 0);
                 for (int i = 0; i < input.length; i++) {
                     for (int c = 0; c < 2; c++) {
-                        float sample = captured.audible && !closed ? result[c][i] : 0;
+                        float sample = result == null ? 0 : result[c][i];
                         output.putShort((short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, Math.round(sample * 32767))));
                     }
                 }
             }
+            directTail = !delaying() ? 0 : frames > 0 ? renderer.directTailSamples()
+                    : Math.max(0, directTail - blocks * SteamRenderer.FRAME);
         } catch (RuntimeException | Error error) {
             fail(error);
+            directTail = 0;
             while (output.hasRemaining()) output.put((byte) 0);
         }
         inputEnded |= endOfInput;
         return output.flip();
+    }
+
+    private boolean rendererUsable() {
+        return renderer != null && !closed && !failed;
+    }
+
+    /** The last block went through the renderer's propagation delay line. */
+    private boolean delaying() {
+        return rendererUsable() && (path == Path.RENDERED || path == Path.PANNED && !pannedRaw);
+    }
+
+    /**
+     * One block along the current path. A path change crossfades across the block from the
+     * previous path's output, so selection changes, pauses and failures do not click.
+     * <p>
+     * While a renderer exists the panner plays its propagation-delayed input, so moving between
+     * the two neither skips nor repeats audio. Before the renderer is ready (or after it failed)
+     * the panner plays the input undelayed and stays undelayed until the next path change.
+     * @return stereo output, or {@code null} for silence
+     */
+    private float[][] block(float[] input, View captured, Vec3 relative, boolean tail) {
+        boolean usable = rendererUsable();
+        Path next = !captured.audible || closed ? Path.SILENT : usable && captured.simulated ? Path.RENDERED : Path.PANNED;
+        Path previous = path == null ? next : path;
+        path = next;
+        // A failed renderer must not produce the fade-out; fade in from silence instead.
+        if (previous == Path.RENDERED && !usable) previous = Path.SILENT;
+        if (previous == Path.SILENT && next == Path.SILENT) return null;
+        if (previous == Path.SILENT) {
+            panner.reset();
+            pannedRaw = false;
+        }
+        if (usable && next != Path.SILENT) {
+            // Out of silence nothing from before the gap may replay; out of the delayed panner
+            // the delay line kept running and only the idle native effects are stale.
+            if (previous == Path.SILENT) restart(false);
+            else if (previous == Path.PANNED && next == Path.RENDERED) restart(!pannedRaw);
+        }
+        float[][] rendered = null, panned = null;
+        if (previous == Path.RENDERED || next == Path.RENDERED) rendered = render(input, captured, relative, tail);
+        if (previous == Path.PANNED || next == Path.PANNED) {
+            float[] mono = input;
+            if (!usable || pannedRaw && previous == Path.PANNED) pannedRaw = true;
+            else if (rendered != null) mono = renderer.delayedInput();
+            else renderer.bypass(mono, relative);
+            panned = panner.process(mono, relative, captured.ahead, captured.up);
+        }
+        if (next == Path.RENDERED) pannedRaw = false;
+        float[][] from = output(previous, rendered, panned), to = output(next, rendered, panned);
+        return previous == next ? to : crossfade(from, to);
+    }
+
+    private static float[][] output(Path path, float[][] rendered, float[][] panned) {
+        return path == Path.RENDERED ? rendered : path == Path.PANNED ? panned : null;
+    }
+
+    private static float[][] crossfade(float[][] from, float[][] to) {
+        float[][] mixed = new float[2][SteamRenderer.FRAME];
+        for (int c = 0; c < 2; c++) {
+            for (int i = 0; i < SteamRenderer.FRAME; i++) {
+                float weight = (i + 1f) / SteamRenderer.FRAME;
+                mixed[c][i] = (from == null ? 0 : from[c][i] * (1 - weight)) + (to == null ? 0 : to[c][i] * weight);
+            }
+        }
+        return mixed;
+    }
+
+    /** Re-entry into the renderer; a reset IR needs a fresh reflection simulation. */
+    private void restart(boolean keepDelay) {
+        if (renderer.resume(keepDelay)) {
+            reflectionOutputs = null;
+            AcousticUpdateGate.invalidateReflections(this);
+        }
+    }
+
+    private float[][] render(float[] input, View captured, Vec3 relative, boolean tail) {
+        var directOut = directOutputs;
+        var reflectionOut = reflectionOutputs;
+        var direct = directOut == null ? null : directOut.direct;
+        var impulse = reflectionOut == null ? null : reflectionOut.reflections;
+        if (direct == null) {
+            direct = new SteamAudio.DirectParams();
+        }
+        // Distance follows the current audio-frame pose, not a completed ray job.
+        direct.distance = distanceGain(relative.length());
+        try {
+            return renderer.render(input, direct, impulse, relative, orientation(captured), tail,
+                    wetScale(relative.length()));
+        } finally {
+            // The params sub-structures share their parents' backing store.
+            Reference.reachabilityFence(directOut);
+            Reference.reachabilityFence(reflectionOut);
+        }
     }
 
     private static SteamAudio.Space orientation(View view) {
@@ -290,10 +423,12 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         return space;
     }
 
+    /** After the input ends: delayed direct sound still in the line, or (when rendered) the reverb tail. */
     @Override public synchronized boolean hasTail() {
+        if (!inputEnded || !view.audible || !rendererUsable()) return false;
+        if (directTail > 0) return true;
         var out = reflectionOutputs;
-        return inputEnded && view.audible && !closed && !failed && renderer != null
-                && out != null && out.reflections.ir != null && renderer.tailSamples() > 0;
+        return view.simulated && out != null && out.reflections.ir != null && renderer.tailSamples() > 0;
     }
 
     @Override public synchronized void close() {

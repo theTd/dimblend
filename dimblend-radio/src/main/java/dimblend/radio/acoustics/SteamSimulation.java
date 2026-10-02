@@ -13,15 +13,17 @@ import net.minecraft.world.phys.Vec3;
 public final class SteamSimulation implements AutoCloseable {
     // Steam Audio 4.8.1 gatherEnergyField launches max(256, numRays) work items,
     // using that launch size as the SH stride, without a rayIndex bounds check.
-    // Allocate AND trace one complete workgroup; smaller counts read uninitialized/OOB data.
-    public static final int GPU_RAYS = 256;
+    // Allocate AND trace whole workgroups (a multiple of 256); other counts read
+    // uninitialized/OOB data. One workgroup left the field too sparse to converge.
+    public static final int GPU_RAYS = 1024;
+    private record MaterialKey(float reflectivity, int thicknessStep) { }
     private final SteamAudio.Api api = SteamAudio.api();
     private final PointerByReference context = new PointerByReference();
     private final PointerByReference scene = new PointerByReference();
     private final PointerByReference simulator = new PointerByReference();
     private final PointerByReference source = new PointerByReference();
     private final SteamAudio.SceneSettings sceneSettings = new SteamAudio.SceneSettings();
-    private final Map<Float, SteamAudio.Material> materials = new HashMap<>();
+    private final Map<MaterialKey, SteamAudio.Material> materials = new HashMap<>();
     private final int flags;
     private final boolean gpu;
     private final PointerByReference openCL = new PointerByReference(), radeon = new PointerByReference(), mesh = new PointerByReference();
@@ -127,21 +129,19 @@ public final class SteamSimulation implements AutoCloseable {
             vertexData.write(0, data.vertices(), 0, data.vertices().length);
             triangleData.write(0, data.triangles(), 0, data.triangles().length);
             materialIndices.write(0, data.materials(), 0, data.materials().length);
-            gpuMaterials = (SteamAudio.Material[]) new SteamAudio.Material().toArray(5);
-            float[] values = {0.15f, 0.25f, 0.45f, 0.65f, 0.9f};
-            for (int i = 0; i < values.length; i++) {
-                float absorption = 1 - values[i];
-                gpuMaterials[i].absorption = new float[] {absorption * 0.4f, absorption * 0.6f, Math.min(0.98f, absorption * 1.2f)};
+            gpuMaterials = (SteamAudio.Material[]) new SteamAudio.Material().toArray(AcousticMaterials.COUNT);
+            for (int i = 0; i < AcousticMaterials.COUNT; i++) {
                 // JNA toArray reads the contiguous native backing memory into new elements;
                 // field initializers on Material are not retained for every array element.
-                gpuMaterials[i].scattering = 0;
-                gpuMaterials[i].transmission = new float[] {0.35f, 0.2f, 0.08f};
+                gpuMaterials[i].absorption = AcousticMaterials.absorption(i);
+                gpuMaterials[i].scattering = AcousticMaterials.GPU_SCATTERING;
+                gpuMaterials[i].transmission = AcousticMaterials.transmission(i, 1);
                 gpuMaterials[i].write();
             }
             var settings = new SteamGpu.MeshSettings();
             settings.vertices = data.vertices().length / 3;
             settings.triangles = data.triangles().length / 3;
-            settings.materials = 5;
+            settings.materials = AcousticMaterials.COUNT;
             settings.vertexData = vertexData;
             settings.triangleData = triangleData;
             settings.materialIndices = materialIndices;
@@ -187,8 +187,7 @@ public final class SteamSimulation implements AutoCloseable {
         return outputs;
     }
 
-    private AcousticRay cast(Pointer pointer, float min, float max) {
-        float[] ray = pointer.getFloatArray(0, 6);
+    private AcousticRay cast(float[] ray, float min, float max) {
         Vec3 origin = offset.add(ray[0], ray[1], ray[2]);
         Vec3 direction = new Vec3(ray[3], ray[4], ray[5]).normalize();
         double start = Math.max(0.002, min);
@@ -202,40 +201,49 @@ public final class SteamSimulation implements AutoCloseable {
         hitPointer.setFloat(0, Float.POSITIVE_INFINITY);
         hitPointer.setPointer(materialOffset, null);
         try {
-            AcousticRay result = cast(rayPointer, min, max);
+            float[] ray = rayPointer.getFloatArray(0, 6);
+            AcousticRay result = cast(ray, min, max);
             if (result.kind() == AcousticRay.Kind.HIT) {
-                float[] ray = rayPointer.getFloatArray(0, 6);
                 Vec3 origin = offset.add(ray[0], ray[1], ray[2]);
-                hitPointer.setFloat(0, (float) origin.distanceTo(result.position()));
+                float distance = (float) origin.distanceTo(result.position());
+                Pointer surface = material(result.reflectivity(), result.thickness()).getPointer();
                 hitPointer.write(4, new int[] {0, 0, 0}, 0, 3);
                 hitPointer.write(16, new float[] {(float) result.normal().x, (float) result.normal().y,
                         (float) result.normal().z}, 0, 3);
-                hitPointer.setPointer(materialOffset, material(result.reflectivity()).getPointer());
+                hitPointer.setPointer(materialOffset, surface);
+                // Last: a finite distance tells the solver every other field is valid.
+                hitPointer.setFloat(0, distance);
             }
-        } catch (Throwable error) { callbackFailure = error; }
+        } catch (Throwable error) {
+            callbackFailure = error;
+            hitPointer.setFloat(0, Float.POSITIVE_INFINITY);
+        }
     }
 
     private void any(Pointer ray, float min, float max, Pointer output, Pointer user) {
-        try { output.setByte(0, (byte) (max <= min || cast(ray, min, max).kind() != AcousticRay.Kind.MISS ? 1 : 0)); }
+        try { output.setByte(0, (byte) (max <= min || cast(ray.getFloatArray(0, 6), min, max).kind() != AcousticRay.Kind.MISS ? 1 : 0)); }
         catch (Throwable error) { callbackFailure = error; output.setByte(0, (byte) 1); }
     }
 
-    private SteamAudio.Material material(float reflectivity) {
-        SteamAudio.Material result = materials.computeIfAbsent(reflectivity, value -> {
+    /**
+     * Absorption follows the block's own reflectivity; transmission follows its material class and
+     * the path length through the wall the ray entered (the solver multiplies one value per hit).
+     */
+    private SteamAudio.Material material(float reflectivity, float thickness) {
+        var key = new MaterialKey(reflectivity, AcousticMaterials.thicknessStep(thickness));
+        return materials.computeIfAbsent(key, value -> {
             var material = new SteamAudio.Material();
-            float absorption = Math.max(0.02f, 1 - value);
+            float absorption = Math.max(0.02f, 1 - value.reflectivity());
             material.absorption = new float[] {absorption * 0.4f, absorption * 0.6f,
                     Math.min(0.98f, absorption * 1.2f)};
+            // The SDK seeds diffuse scattering from wall-clock time. Voxel surface normals
+            // already provide geometric scattering; keep CPU material paths repeatable.
+            material.scattering = 0;
+            material.transmission = AcousticMaterials.transmission(AcousticMaterials.bucket(value.reflectivity()),
+                    AcousticMaterials.thickness(value.thicknessStep()));
             material.write();
             return material;
         });
-        // The SDK seeds diffuse scattering from wall-clock time. Voxel surface normals
-        // already provide geometric scattering; keep material paths coherent across updates.
-        if (result.scattering != 0) {
-            result.scattering = 0;
-            result.write();
-        }
-        return result;
     }
 
     @Override public void close() {

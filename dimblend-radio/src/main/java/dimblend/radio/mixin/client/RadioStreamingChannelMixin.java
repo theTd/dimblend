@@ -8,6 +8,8 @@ import dimblend.radio.client.RadioStreamPump;
 import dimblend.radio.client.RadioStreamBuffering;
 import dimblend.radio.acoustics.SteamRenderer;
 import net.minecraft.client.sounds.AudioStream;
+import org.lwjgl.openal.AL10;
+import org.lwjgl.openal.SOFTDirectChannels;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Shadow;
@@ -36,7 +38,7 @@ public abstract class RadioStreamingChannelMixin {
             target = "Lcom/mojang/blaze3d/audio/Channel;pumpBuffers(I)V"))
     private int dimblend$shallowQueue(int count) {
         if (!(stream instanceof RadioAudioStream radio) || !radio.simulated()) return count;
-        if (dimblend$buffering == null) dimblend$buffering = new RadioStreamBuffering.State(stream.getFormat().getSampleRate());
+        if (dimblend$buffering == null) dimblend$buffering = RadioStreamBuffering.forPlayback(stream.getFormat().getSampleRate());
         return dimblend$buffering.target();
     }
 
@@ -47,6 +49,11 @@ public abstract class RadioStreamingChannelMixin {
             streamingBufferSize = SteamRenderer.FRAME * stream.getFormat().getFrameSize();
             // Stereo is spatialized by Steam Audio, which also owns direct and reflected attenuation.
             disableAttenuation();
+            // The PCM is already binaural (or panned): with OpenAL Soft HRTF enabled, virtual
+            // speakers would filter it through a second set of HRTFs. Play the channels as-is.
+            if (AL10.alIsExtensionPresent("AL_SOFT_direct_channels")) {
+                AL10.alSourcei(source, SOFTDirectChannels.AL_DIRECT_CHANNELS_SOFT, AL10.AL_TRUE);
+            }
             RadioStreamPump.register((Channel) (Object) this);
         }
     }
@@ -83,9 +90,9 @@ public abstract class RadioStreamingChannelMixin {
         // Refilled OpenAL streams remain stopped after starvation. Recover before ChannelAccess retires them.
         if (!dimblend$explicitlyStopped && stream instanceof RadioAudioStream radio && radio.simulated()
                 && stopped() && dimblend$refilled) {
-            if (dimblend$buffering == null) dimblend$buffering = new RadioStreamBuffering.State(stream.getFormat().getSampleRate());
+            if (dimblend$buffering == null) dimblend$buffering = RadioStreamBuffering.forPlayback(stream.getFormat().getSampleRate());
             int target = dimblend$buffering.underrun();
-            int queued = org.lwjgl.openal.AL10.alGetSourcei(source, org.lwjgl.openal.AL10.AL_BUFFERS_QUEUED);
+            int queued = AL10.alGetSourcei(source, AL10.AL_BUFFERS_QUEUED);
             // Restarting with the same shallow queue can cause an endless play/starve/play cycle.
             if (queued < target) pumpBuffers(target - queued);
             int count = ++dimblend$starvations;

@@ -36,6 +36,9 @@ public final class DirectSoundGain {
         return gain;
     }
 
+    /** The next block starts at its own target instead of ramping from a stale level. */
+    public void reset() { current = Float.NaN; }
+
     /** Settle in at most 5 ms, independent of sample rate or block size. */
     public void apply(float[] samples, float target, int rate) {
         if (Float.isNaN(current)) current = target;

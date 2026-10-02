@@ -5,7 +5,6 @@ import com.sun.jna.Pointer;
 import com.sun.jna.Structure;
 import com.sun.jna.Structure.FieldOrder;
 import com.sun.jna.ptr.PointerByReference;
-import java.nio.file.Path;
 import java.util.IdentityHashMap;
 import java.util.Map;
 
@@ -16,6 +15,7 @@ public final class BinauralSpatializer {
         void iplHRTFRelease(PointerByReference hrtf);
         int iplBinauralEffectCreate(Pointer context, SteamAudio.AudioSettings audio, Settings settings, PointerByReference effect);
         int iplBinauralEffectApply(Pointer effect, Params params, SteamAudio.AudioBuffer input, SteamAudio.AudioBuffer output);
+        void iplBinauralEffectReset(Pointer effect);
         void iplBinauralEffectRelease(PointerByReference effect);
     }
     @FieldOrder({"type", "file", "data", "bytes", "volume", "normalization"})
@@ -35,10 +35,16 @@ public final class BinauralSpatializer {
         public float blend = 1;
         public Pointer hrtf, delays;
     }
+    // Params are reused per owner (each owner renders on one thread at a time); values are copied
+    // in, never assigned as embedded Structures.
     private static final class State {
         final PointerByReference hrtf = new PointerByReference(), direct = new PointerByReference(), reflections = new PointerByReference();
+        final Params directParams = new Params();
+        final SteamAudio.DecodeParams decodeParams = new SteamAudio.DecodeParams();
         double propagationDelay = Double.NaN;
     }
+    /** Delay changes beyond this many samples per sample (~86 m/s) are jumps, not motion. */
+    private static final double MAX_DELAY_SLEW = 0.25;
     private static final Map<Object, State> STATES = java.util.Collections.synchronizedMap(new IdentityHashMap<>());
     private static final Object HRTF_CREATION = new Object();
     private static volatile Api api;
@@ -52,8 +58,7 @@ public final class BinauralSpatializer {
         var state = new State();
         try {
             synchronized (HRTF_CREATION) {
-                if (api == null) api = Native.load(Path.of(System.getProperty("java.io.tmpdir"),
-                        "dimblend-steamaudio-4.8.1", "phonon.dll").toString(), Api.class);
+                if (api == null) api = Native.load(SteamAudio.library().toString(), Api.class);
                 SteamAudio.check(api.iplHRTFCreate(context, audio, new HrtfSettings(), state.hrtf), "HRTF");
             }
             var settings = new Settings();
@@ -62,6 +67,9 @@ public final class BinauralSpatializer {
             var decode = new SteamAudio.DecodeSettings();
             decode.hrtf = state.hrtf.getValue();
             SteamAudio.check(api.iplAmbisonicsDecodeEffectCreate(context, audio, decode, state.reflections), "binaural reflection effect");
+            state.directParams.hrtf = state.hrtf.getValue();
+            state.decodeParams.binaural = 1;
+            state.decodeParams.hrtf = state.hrtf.getValue();
             STATES.put(owner, state);
         } catch (RuntimeException | Error error) { release(state); throw error; }
     }
@@ -70,10 +78,8 @@ public final class BinauralSpatializer {
             SteamAudio.AudioBuffer input, SteamAudio.AudioBuffer output) {
         State state = STATES.get(owner);
         if (state == null) return false;
-        var params = new Params();
-        params.direction = direction;
-        params.hrtf = state.hrtf.getValue();
-        api.iplBinauralEffectApply(state.direct.getValue(), params, input, output);
+        state.directParams.direction.set(direction);
+        api.iplBinauralEffectApply(state.direct.getValue(), state.directParams, input, output);
         return true;
     }
 
@@ -81,11 +87,8 @@ public final class BinauralSpatializer {
             SteamAudio.AudioBuffer input, SteamAudio.AudioBuffer output) {
         State state = STATES.get(owner);
         if (state == null) return false;
-        var params = new SteamAudio.DecodeParams();
-        params.orientation = orientation;
-        params.binaural = 1;
-        params.hrtf = state.hrtf.getValue();
-        api.iplAmbisonicsDecodeEffectApply(state.reflections.getValue(), params, input, output);
+        state.decodeParams.orientation.set(orientation);
+        api.iplAmbisonicsDecodeEffectApply(state.reflections.getValue(), state.decodeParams, input, output);
         return true;
     }
 
@@ -94,21 +97,43 @@ public final class BinauralSpatializer {
         if (state != null) release(state);
     }
 
+    /** Forgets binaural filter history, e.g. after the effects sat idle. */
+    public static void reset(Object owner) {
+        State state = STATES.get(owner);
+        if (state == null) return;
+        api.iplBinauralEffectReset(state.direct.getValue());
+        api.iplAmbisonicsDecodeEffectReset(state.reflections.getValue());
+    }
+
+    /** The owner cleared its delay line: the next block starts at its target delay, without a ramp. */
+    public static void forgetDelay(Object owner) {
+        State state = STATES.get(owner);
+        if (state != null) state.propagationDelay = Double.NaN;
+    }
+
     public static void delay(Object owner, float[] line, int cursor, float[] samples, double target) {
         State state = STATES.get(owner);
         double previous = state == null || Double.isNaN(state.propagationDelay) ? target : state.propagationDelay;
+        // Sweeping the read head across a teleport-sized change within one block is a loud chirp;
+        // crossfade between the two fixed delays instead. Plausible motion keeps its Doppler ramp.
+        boolean jump = Math.abs(target - previous) > samples.length * MAX_DELAY_SLEW;
         for (int i = 0; i < samples.length; i++) {
             line[cursor] = samples[i];
-            double delay = previous + (target - previous) * (i + 1) / samples.length;
-            double read = cursor - delay;
-            int first = (int) Math.floor(read);
-            double fraction = read - first;
-            float a = line[Math.floorMod(first, line.length)];
-            float b = line[Math.floorMod(first + 1, line.length)];
-            samples[i] = (float) (a + (b - a) * fraction);
+            double weight = (i + 1.0) / samples.length;
+            samples[i] = (float) (jump
+                    ? read(line, cursor - previous) * (1 - weight) + read(line, cursor - target) * weight
+                    : read(line, cursor - (previous + (target - previous) * weight)));
             cursor = (cursor + 1) % line.length;
         }
         if (state != null) state.propagationDelay = target;
+    }
+
+    private static double read(float[] line, double position) {
+        int first = (int) Math.floor(position);
+        double fraction = position - first;
+        float a = line[Math.floorMod(first, line.length)];
+        float b = line[Math.floorMod(first + 1, line.length)];
+        return a + (b - a) * fraction;
     }
     private static void release(State state) {
         if (state.reflections.getValue() != null) api.iplAmbisonicsDecodeEffectRelease(state.reflections);

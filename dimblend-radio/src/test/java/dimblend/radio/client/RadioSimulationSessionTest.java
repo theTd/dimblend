@@ -61,7 +61,7 @@ class RadioSimulationSessionTest {
                 renderer.resetReflections();
                 assertEquals(false, read(session, "failed"));
                 renderer.resetReflections();
-                assertEquals(true, read(session, "failed"), "Repeated GPU failures must settle on distance-only playback");
+                assertEquals(true, read(session, "failed"), "Repeated GPU failures must settle on panned playback");
             }
         } finally {
             session.close();
@@ -80,15 +80,65 @@ class RadioSimulationSessionTest {
             assertNull(read(session,"reflectionEngine"));
             assertNull(read(session,"directEngine"));
             assertNull(read(session,"renderer"));
-            var input=java.nio.ByteBuffer.allocateDirect(SteamRenderer.FRAME*2).order(java.nio.ByteOrder.LITTLE_ENDIAN);
-            while(input.hasRemaining()) input.putShort((short)12000);
-            var output=session.process(input.flip(),false).order(java.nio.ByteOrder.LITTLE_ENDIAN);
-            assertTrue(output.getShort()>0);
+            var output=session.process(constant(12000),false).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            short left=output.getShort(), right=output.getShort();
+            assertTrue(right>0, "The fallback must keep playing");
+            assertTrue(right>left, "The fallback must keep the source direction (source on the right)");
         } finally {
             session.close();
             if(previous==null) System.clearProperty("dimblend.radio.acoustic.gpu");
             else System.setProperty("dimblend.radio.acoustic.gpu",previous);
         }
+    }
+
+    @Test void unselectedRadiosArePannedWithoutCreatingNativeEngines() throws Exception {
+        var session = new RadioSimulationSession(new AudioFormat(44100,16,1,true,false));
+        try {
+            session.setView(new Vec3(-4,0,0), Vec3.ZERO, new Vec3(0,0,-1), new Vec3(0,1,0), true, false);
+            drainReflectionWorker();
+            assertFalse(((java.util.concurrent.atomic.AtomicBoolean) read(session,"initialized")).get(),
+                    "Only simulated radios may create Steam Audio engines");
+            var output=session.process(constant(12000),false).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            short left=output.getShort(), right=output.getShort();
+            assertTrue(left>right && left>0, "An audible radio outside the simulated set must stay audible and directional");
+        } finally { session.close(); }
+    }
+
+    @Test void pathChangesFadeAcrossOneBlockInsteadOfClicking() throws Exception {
+        var session = new RadioSimulationSession(new AudioFormat(44100,16,1,true,false));
+        try {
+            Vec3 ahead = new Vec3(0,0,-1), up = new Vec3(0,1,0), source = new Vec3(0,0,-4);
+            session.setView(source, Vec3.ZERO, ahead, up, true, false);
+            float[] steady = left(session.process(constant(12000), false));
+            session.setView(source, Vec3.ZERO, ahead, up, false, false);
+            float[] fadeOut = left(session.process(constant(12000), false));
+            float[] silent = left(session.process(constant(12000), false));
+            session.setView(source, Vec3.ZERO, ahead, up, true, false);
+            float[] fadeIn = left(session.process(constant(12000), false));
+            float level = steady[SteamRenderer.FRAME - 1];
+            assertTrue(level > 0.1f);
+            assertEquals(level, fadeOut[0], level * 0.01f, "no step when the radio is paused or leaves range");
+            assertEquals(0, fadeOut[SteamRenderer.FRAME - 1], level * 0.01f);
+            for (float sample : silent) assertEquals(0, sample);
+            assertEquals(0, fadeIn[0], level * 0.01f, "no step when it becomes audible again");
+            assertEquals(level, fadeIn[SteamRenderer.FRAME - 1], level * 0.01f);
+        } finally { session.close(); }
+    }
+
+    private static java.nio.ByteBuffer constant(int value) {
+        var input=java.nio.ByteBuffer.allocateDirect(SteamRenderer.FRAME*2).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        while(input.hasRemaining()) input.putShort((short)value);
+        return input.flip();
+    }
+
+    private static float[] left(java.nio.ByteBuffer stereo) {
+        stereo.order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        float[] left = new float[stereo.remaining() / 4];
+        for (int i = 0; i < left.length; i++) {
+            left[i] = stereo.getShort() / 32768f;
+            stereo.getShort();
+        }
+        return left;
     }
 
     private static void drainReflectionWorker() throws Exception {

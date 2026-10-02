@@ -66,6 +66,16 @@ public final class SectionGeometryCache {
 
     public static boolean needsValidation(long sectionPos) { return EXPECTED.containsKey(sectionPos); }
 
+    /**
+     * An edited section whose new block contents have not been fingerprinted yet. Captures only
+     * hash these: every later edit goes through {@link #invalidate} and re-arms it, so a section
+     * edited once is not re-hashed (4096 blocks) on every capture for as long as it stays loaded.
+     */
+    public static boolean awaitingFingerprint(long sectionPos) {
+        ExpectedBlocks expected = EXPECTED.get(sectionPos);
+        return expected != null && expected.fingerprint == null;
+    }
+
     public static void expectBlocks(long sectionPos, long fingerprint) {
         EXPECTED.computeIfPresent(sectionPos, (key, old) -> new ExpectedBlocks(fingerprint));
     }

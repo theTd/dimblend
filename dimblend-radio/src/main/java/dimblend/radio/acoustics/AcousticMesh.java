@@ -60,8 +60,7 @@ public final class AcousticMesh {
                     boolean empty;
                     try { empty = state.getCollisionShape(blocks, pos, CollisionContext.empty()).isEmpty(); }
                     catch (RuntimeException error) { empty = false; }
-                    float reflectivity = AcousticRaycaster.reflectivity(state);
-                    cached = empty ? 0 : (byte) (reflectivity < 0.2 ? 1 : reflectivity < 0.3 ? 2 : reflectivity < 0.5 ? 3 : reflectivity < 0.8 ? 4 : 5);
+                    cached = empty ? 0 : (byte) (AcousticMaterials.bucket(AcousticRaycaster.reflectivity(state)) + 1);
                 }
                 kinds.put(state, cached);
             }

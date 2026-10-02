@@ -6,16 +6,13 @@ import dev.ryanhcode.sable.companion.math.BoundingBox3d;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.BlockTags;
-import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.EmptyLevelChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.shapes.CollisionContext;
 
 /** Loaded-only geometry queries. Call on the level's owning thread. */
 public final class AcousticRaycaster {
@@ -57,11 +54,11 @@ public final class AcousticRaycaster {
 
     public static AcousticRay projectHit(AcousticRay local, Pose3dc pose) {
         return new AcousticRay(local.kind(), pose.transformPosition(local.position()),
-                pose.transformNormal(local.normal()).normalize(), local.reflectivity());
+                pose.transformNormal(local.normal()).normalize(), local.reflectivity(), local.thickness());
     }
 
     private AcousticRay castLocal(Vec3 from, Vec3 to, SubLevelAccess structure) {
-        return BlockGetter.traverseBlocks(from, to, level, (getter, pos) -> {
+        return AcousticVoxelTrace.cast(from, to, pos -> {
             if (pos.equals(emitter) || level.isOutsideBuildHeight(pos)) {
                 return null;
             }
@@ -71,22 +68,12 @@ public final class AcousticRaycaster {
             var chunk = level.getChunkSource().getChunk(pos.getX() >> 4, pos.getZ() >> 4,
                     ChunkStatus.FULL, false);
             if (chunk == null || chunk instanceof EmptyLevelChunk) {
-                if (structure != null) {
-                    // Sable represents unallocated sparse plot chunks with its empty chunk.
-                    return null;
-                }
-                double[] entry = clipRange(from, to, new AABB(pos));
-                return AcousticRay.unknown(entry == null ? from
-                        : from.add(to.subtract(from).scale(entry[0])));
+                // Sable represents unallocated sparse plot chunks with its empty chunk.
+                return structure != null ? null : AcousticVoxelTrace.Cell.UNKNOWN;
             }
             BlockState state = chunk.getBlockState(pos);
-            if (state.isAir()) {
-                return null;
-            }
-            BlockHitResult hit = state.getCollisionShape(level, pos, CollisionContext.empty()).clip(from, to, pos);
-            return hit == null ? null : new AcousticRay(AcousticRay.Kind.HIT, hit.getLocation(),
-                    Vec3.atLowerCornerOf(hit.getDirection().getNormal()), reflectivity(state));
-        }, getter -> AcousticRay.miss(to));
+            return state.isAir() ? null : AcousticVoxelTrace.cell(state, level, pos);
+        });
     }
 
     public static float reflectivity(BlockState state) {

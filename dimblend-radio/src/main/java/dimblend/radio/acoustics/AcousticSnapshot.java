@@ -27,7 +27,6 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.shapes.CollisionContext;
 
 /** Copies palettes and poses on the client thread; worker raycasts never touch Level. */
 public final class AcousticSnapshot {
@@ -38,21 +37,35 @@ public final class AcousticSnapshot {
     private final List<Frame> structures;
     private final BlockPos emitter;
     private final long revision;
+    private final AABB bounds;
 
-    private AcousticSnapshot(FrozenBlocks terrain, List<Frame> structures, BlockPos emitter, long revision) {
+    private AcousticSnapshot(FrozenBlocks terrain, List<Frame> structures, BlockPos emitter, long revision, AABB bounds) {
         this.terrain = terrain;
         this.structures = structures;
         this.emitter = emitter;
         this.revision = revision;
+        this.bounds = bounds;
     }
 
     public long revision() { return revision; }
+
+    /** World region whose blocks and structures were frozen. */
+    public AABB bounds() { return bounds; }
+
+    public boolean covers(AABB region) {
+        return contains(bounds, region);
+    }
+
+    public static boolean contains(AABB outer, AABB inner) {
+        return outer.minX <= inner.minX && outer.minY <= inner.minY && outer.minZ <= inner.minZ
+                && outer.maxX >= inner.maxX && outer.maxY >= inner.maxY && outer.maxZ >= inner.maxZ;
+    }
 
     public static void clearCache() { PALETTES.clear(); }
 
     /** All nearby radios share frozen terrain/poses, but exclude their own emitter block. */
     public AcousticSnapshot forEmitter(BlockPos source) {
-        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, structures, source.immutable(), revision);
+        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, structures, source.immutable(), revision, bounds);
         AcousticUpdateGate.copySnapshot(this, snapshot);
         return snapshot;
     }
@@ -62,9 +75,13 @@ public final class AcousticSnapshot {
     }
 
     public static AcousticSnapshot capture(Level level, Vec3 listener, BlockPos emitter, double radius) {
+        return capture(level, new AABB(listener, listener).inflate(radius), emitter);
+    }
+
+    /** Freezes only {@code bounds}: callers size it to the radios' meshes and direct paths. */
+    public static AcousticSnapshot capture(Level level, AABB bounds, BlockPos emitter) {
         long revision = AcousticSceneChanges.revision();
         long generation = level.isClientSide ? AcousticSceneChanges.beginCapture() : 0;
-        AABB bounds = new AABB(listener, listener).inflate(radius);
         FrozenBlocks terrain = FrozenBlocks.capture(level, bounds, null, generation);
         List<Frame> frames = new ArrayList<>();
         for (SubLevelAccess structure : SableCompanion.INSTANCE.getAllIntersecting(level, new BoundingBox3d(bounds))) {
@@ -73,7 +90,7 @@ public final class AcousticSnapshot {
             AABB local = new BoundingBox3d(world).transformInverse(pose).toMojang();
             frames.add(new Frame(FrozenBlocks.capture(level, local, structure, generation), pose, world, local, structure));
         }
-        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, List.copyOf(frames), emitter.immutable(), revision);
+        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, List.copyOf(frames), emitter.immutable(), revision, bounds);
         AcousticUpdateGate.registerSnapshot(snapshot, terrain, frames.stream().map(Frame::blocks).toList(),
                 frames.stream().map(Frame::liveStructure).map(SubLevelAccess::getUniqueId).toList(), frames.stream().map(Frame::pose).toList());
         return snapshot;
@@ -87,7 +104,7 @@ public final class AcousticSnapshot {
             AABB bounds = new BoundingBox3d(frame.localBounds).transform(pose).toMojang();
             frames.add(new Frame(frame.blocks, pose, bounds, frame.localBounds, frame.liveStructure));
         }
-        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, List.copyOf(frames), emitter, revision);
+        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, List.copyOf(frames), emitter, revision, bounds);
         AcousticUpdateGate.registerSnapshot(snapshot, terrain, frames.stream().map(Frame::blocks).toList(),
                 frames.stream().map(Frame::liveStructure).map(SubLevelAccess::getUniqueId).toList(), frames.stream().map(Frame::pose).toList());
         return snapshot;
@@ -95,7 +112,7 @@ public final class AcousticSnapshot {
 
     public AcousticMesh.Data mesh(Vec3 listener, Vec3 source) {
         Vec3 origin = new Vec3(Math.floor(listener.x / 16) * 16, Math.floor(listener.y / 16) * 16, Math.floor(listener.z / 16) * 16);
-        return mesh(new AABB(listener, source).inflate(24), origin);
+        return mesh(new AABB(listener, source).inflate(ReflectionMeshCache.MARGIN), origin);
     }
 
     public AcousticMesh.Data mesh(AABB bounds) {
@@ -158,22 +175,12 @@ public final class AcousticSnapshot {
     }
 
     private AcousticRay castLocal(FrozenBlocks blocks, Vec3 from, Vec3 to) {
-        return BlockGetter.traverseBlocks(from, to, blocks, (world, pos) -> {
-            if (pos.equals(emitter) || world.isOutsideBuildHeight(pos)) return null;
-            if (!world.known(pos)) return AcousticRay.unknown(Vec3.atCenterOf(pos));
-            BlockState state = world.getBlockState(pos);
-            if (state.isAir()) return null;
-            try {
-                var hit = state.getCollisionShape(world, pos, CollisionContext.empty()).clip(from, to, pos);
-                return hit == null ? null : new AcousticRay(AcousticRay.Kind.HIT, hit.getLocation(),
-                        Vec3.atLowerCornerOf(hit.getDirection().getNormal()), AcousticRaycaster.reflectivity(state));
-            } catch (RuntimeException unsupportedShape) {
-                // A modded shape that requires a live Level falls back to its solid voxel.
-                var hit = net.minecraft.world.phys.shapes.Shapes.block().clip(from, to, pos);
-                return hit == null ? null : new AcousticRay(AcousticRay.Kind.HIT, hit.getLocation(),
-                        Vec3.atLowerCornerOf(hit.getDirection().getNormal()), AcousticRaycaster.reflectivity(state));
-            }
-        }, world -> AcousticRay.miss(to));
+        return AcousticVoxelTrace.cast(from, to, pos -> {
+            if (pos.equals(emitter) || blocks.isOutsideBuildHeight(pos)) return null;
+            if (!blocks.known(pos)) return AcousticVoxelTrace.Cell.UNKNOWN;
+            BlockState state = blocks.getBlockState(pos);
+            return state.isAir() ? null : AcousticVoxelTrace.cell(state, blocks, pos);
+        });
     }
 
     private static final class FrozenBlocks implements BlockGetter {
@@ -205,7 +212,8 @@ public final class AcousticSnapshot {
                             versioned.dimblend$observeAcoustics(generation, key);
                             AcousticSceneChanges.observe(generation, key);
                         }
-                        boolean validateMesh = SectionGeometryCache.needsValidation(key);
+                        // Fingerprint an edited section once; the next edit re-arms it.
+                        boolean validateMesh = SectionGeometryCache.awaitingFingerprint(key);
                         if (!section.hasOnlyAir() || validateMesh) {
                             var copy = PALETTES.freeze(section.getStates());
                             if (!section.hasOnlyAir()) {

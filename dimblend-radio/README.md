@@ -57,7 +57,12 @@
   exponential gain smoothing. Direct sound and reflection fields use headphone HRTF spatialization, including reflected arrival
   directions, so distant sound is not given the same dry/wet distance curve.
 - Direct occlusion/transmission uses precise immutable terrain and Sable collision
-  rays on a CPU worker. Reflections use Steam Audio's OpenCL/Radeon Rays GPU backend
+  rays on a CPU worker. Steam Audio re-casts transmission rays from just past each hit,
+  so a ray starting inside a solid skips that solid run; each wall counts once per side,
+  and each hit carries the path length through the run it entered (up to eight blocks).
+  Transmission depends on the material class (wool, foliage, soil, wood, stone/other)
+  and thickness: solid walls follow the mass law (−6 dB per doubling), foliage half
+  that. Two walls multiply. Reflections use Steam Audio's OpenCL/Radeon Rays GPU backend
   with five material classes and float coordinates relative to a nearby origin.
   Terrain geometry mixes exact surfaces teed from Sodium's chunk-build pipeline with
   a one-metre voxel fill for sections Sodium has not fully meshed (its build queue is
@@ -69,14 +74,22 @@
   before conversion, preserving positioning even at distant plot coordinates.
 - GPU devices and triangle scenes live as long as the radio session; scene meshes are
   re-uploaded in place when geometry changes, and convolution crossfades new responses.
-  GPU rays use a full 256-ray workgroup: Steam Audio
+  GPU rays come in complete 256-ray workgroups (1024 rays): Steam Audio
   4.8.1's histogram kernel reads at least 256 rays even when fewer are requested.
-  Unsupported or failed GPUs disable acoustic simulation, including its direct-ray
-  worker and effects, and retain distance-only playback. There is no CPU reflection fallback.
-  `-Ddimblend.radio.acoustic.gpu=false` disables acoustics;
+  A failed GPU session disables its acoustic simulation, including its direct-ray
+  worker and effects; that radio continues with equal-power stereo panning. There is
+  no CPU reflection fallback. If the first GPU engine of the game session cannot be
+  created, radios bound afterwards play as vanilla positional sound and the Sodium
+  mesh tee stops. `-Ddimblend.radio.acoustic.gpu=false` disables acoustics;
   `-Ddimblend.radio.acoustic.geometry=auto|sodium|voxel` selects the terrain
   geometry source.
-- Up to four nearby radios simulate acoustics. Reflection simulation uses 256 GPU rays,
+- Up to four nearby radios simulate acoustics; a simulated radio keeps its slot until
+  another is four blocks closer. Other radios in range are stereo-panned with the same
+  distance curve rather than muted, and native engines are only created for radios
+  that are simulated. Changes between simulated, panned and silent playback crossfade
+  over one block; panning keeps the propagation delay running, so switching neither
+  skips nor repeats audio, and audio from before a silent gap is never replayed.
+  Reflection simulation uses 1024 GPU rays,
   up to 128 bounces, first-order Ambisonics, and a six-second IR limit. Direct results
   update on camera frames (at most 125 times/second); reflections update up to twenty
   times/second. Camera poses are published after mouse processing and Camera.setup,
@@ -89,9 +102,12 @@
   fingerprints are reused until a block write or chunk packet changes the palette;
   world resets clear the cache. Sable poses refresh separately. Greedy surface extraction
   uses linear strides without allocating coordinate arrays per voxel. The reflection mesh is
-  reused while geometry is unchanged and movement stays within its eight-block padding.
-  GPU terrain retains a 24-block minimum margin around source/listener bounds;
-  nearby captured Sable structures are included.
+  reused while geometry is unchanged and movement stays within its sixteen-block padding;
+  slow Sable motion is compared against the pose the mesh was built from, so it cannot
+  drift away in sub-tolerance steps. GPU terrain retains a 32-block minimum margin around
+  source/listener bounds; nearby captured Sable structures are included. Snapshots cover
+  the union of all simulated radios' mesh regions plus 16 blocks, and are recaptured
+  when movement leaves that coverage.
 - A block edit immediately withdraws that section's old Sodium mesh. Fresh voxel data
   fills the section until a render mesh with matching block contents arrives; stale
   asynchronous builds cannot restore the old wall. Identical lighting-only rebuilds
@@ -99,14 +115,24 @@
   simulations take the newest snapshot when their worker actually starts.
 - Equivalent geometry snapshots and stationary source/listener positions reuse the
   same response. Block/chunk changes, meaningful movement, or Sable pose changes
-  invalidate it. Material scattering is specular: the SDK's wall-clock-seeded random
-  diffuse scattering is disabled to avoid unrelated changes between responses.
+  invalidate it. CPU materials are specular, so CPU responses stay repeatable. GPU
+  materials add 5% diffuse scattering: with axis-aligned voxel walls a purely specular
+  lobe gathers too few paths for the field to converge, so successive GPU responses
+  differ slightly (convolution crossfades between them).
 - A non-finite reflection field withdraws the old output and forces a fresh simulation,
   even while stationary. Three invalid GPU fields disable the acoustic session and
-  settle on distance-only playback. Failures are logged per session.
+  settle on stereo-panned playback. Failures are logged per session.
+- Mix peaks are limited per sample (linear attack across the block, ~1 s release) with a
+  soft knee above 0.95 of full scale. Teleport-sized propagation delay changes crossfade
+  between the old and new delay instead of sweeping the read head. The processed PCM is
+  already binaural, so OpenAL Soft's `AL_SOFT_direct_channels` keeps its HRTF from
+  filtering it a second time. An invalid `-Ddimblend.radio.acoustic.wetgain` value is
+  logged once and the default (3) is used.
 - Processed PCM uses 512-frame blocks and starts with a short spatialized queue (about
   32–35 ms at 44.1/48 kHz). An actual OpenAL underrun adds two buffers before restarting,
   bounded to roughly 90–100 ms, and retains that headroom for the current playback.
+  The next playback starts with the learned headroom instead of starving again to relearn
+  it; each new playback gives one buffer of it back.
   This prevents repeated play/starve/play cycles without deep buffering on healthy streams.
   Starvation counts are logged even when debug logging is off. Renderer/HRTF preparation and native
   teardown run on the reflection worker. Replacement withdraws the old renderer and
@@ -122,7 +148,7 @@
   render distance, and exact surfaces only for visibility-visited sections — the
   rest is voxel-approximated), block-entity and translucent sections approximated as voxels,
   water surfaces of waterlogged blocks counted as reflectors,
-  sparse reflection noise, snapshot/update latency, approximate block
+  residual reflection noise, snapshot/update latency, approximate block
   materials, and no diffraction model. Musical listening and performance
   profiling remain necessary beyond the tested room fixtures.
 - Geometry and audio regression tests run with `gradlew :dimblend-radio:test`.
