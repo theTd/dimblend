@@ -4,6 +4,7 @@ import java.util.Arrays;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /** Does phonon's GPU reflection sim care about triangle winding? */
 class SteamWindingTest {
@@ -22,8 +23,10 @@ class SteamWindingTest {
         }
         int[] materials = new int[triangles.length / 3];
         Arrays.fill(materials, 4);
-        System.out.println("[winding] as-is: " + wet(new AcousticMesh.Data(vertices, triangles, materials, Vec3.ZERO)));
-        System.out.println("[winding] flipped: " + wet(new AcousticMesh.Data(vertices, flipped, materials, Vec3.ZERO)));
+        double forward = wet(new AcousticMesh.Data(vertices, triangles, materials, Vec3.ZERO));
+        double backward = wet(new AcousticMesh.Data(vertices, flipped, materials, Vec3.ZERO));
+        assertTrue(Double.isFinite(forward) && forward > 1e-6);
+        assertTrue(Double.isFinite(backward) && backward > 1e-6);
     }
 
     private static double wet(AcousticMesh.Data data) {

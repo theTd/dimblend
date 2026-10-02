@@ -6,6 +6,15 @@ import org.junit.jupiter.params.provider.CsvSource;
 import static org.junit.jupiter.api.Assertions.*;
 
 class RadioAudibilityRulesTest {
+    @org.junit.jupiter.api.Test
+    void acousticRangeSuppressesMusicUntilItsOwnAudibleEdge() {
+        org.junit.jupiter.api.Assertions.assertTrue(RadioAudibilityRules.shouldSuppress(1, 15, 1, 80,
+                RadioAcousticController.AUDIBLE_RANGE));
+        org.junit.jupiter.api.Assertions.assertFalse(RadioAudibilityRules.shouldSuppress(1, 15, 1, 96,
+                RadioAcousticController.AUDIBLE_RANGE));
+        org.junit.jupiter.api.Assertions.assertFalse(RadioAudibilityRules.shouldSuppress(1, 15, 1, 80, RadioInjector.RANGE_BLOCKS));
+        org.junit.jupiter.api.Assertions.assertFalse(RadioAudibilityRules.shouldSuppress(1, 15, 1, 1, 0));
+    }
     @ParameterizedTest
     @CsvSource({"0,10,false", "15,10,false", "1,0,false", "14,0,false",
             "1,1,true", "14,15,true", "-1,10,false", "16,10,false", "1,16,false"})

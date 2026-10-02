@@ -21,7 +21,7 @@ public final class RadioStreamPump {
             thread.setDaemon(true);
             return thread;
         });
-        timer.scheduleWithFixedDelay(RadioStreamPump::refill, 20, 20, TimeUnit.MILLISECONDS);
+        timer.scheduleWithFixedDelay(RadioStreamPump::refill, 4, 4, TimeUnit.MILLISECONDS);
     }
 
     public static void register(Channel channel) {

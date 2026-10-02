@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import net.minecraft.core.SectionPos;
 import net.minecraft.world.phys.AABB;
+import dimblend.radio.acoustics.AcousticSceneChanges;
 
 /**
  * Thread-safe mirror of rendered terrain geometry for acoustics. Fed by the Sodium chunk-build
@@ -17,7 +18,10 @@ import net.minecraft.world.phys.AABB;
  * atomically per section; readers never see partially written state.
  */
 public final class SectionGeometryCache {
-    private static final Map<Long, SectionQuads> SECTIONS = new ConcurrentHashMap<>();
+    private record CachedSection(SectionQuads quads, boolean complete, Long blocks) { }
+    private record ExpectedBlocks(Long fingerprint) { }
+    private static final Map<Long, CachedSection> SECTIONS = new ConcurrentHashMap<>();
+    private static final Map<Long, ExpectedBlocks> EXPECTED = new ConcurrentHashMap<>();
     private static final AtomicLong EPOCH = new AtomicLong();
     private static final AtomicBoolean ACTIVE = new AtomicBoolean();
 
@@ -33,16 +37,53 @@ public final class SectionGeometryCache {
 
     public static void put(long sectionPos, int originX, int originY, int originZ,
             float[] vertices, byte[] materials, byte[] owners) {
-        SECTIONS.put(sectionPos, new SectionQuads(originX, originY, originZ, vertices, materials,
-                owners, EPOCH.incrementAndGet()));
+        put(sectionPos, originX, originY, originZ, vertices, materials, owners, true);
+    }
+
+    public static void put(long sectionPos, int originX, int originY, int originZ,
+            float[] vertices, byte[] materials, byte[] owners, boolean complete) {
+        put(sectionPos, originX, originY, originZ, vertices, materials, owners, complete, null);
+    }
+
+    public static void put(long sectionPos, int originX, int originY, int originZ,
+            float[] vertices, byte[] materials, byte[] owners, boolean complete, Long blocks) {
+        CachedSection previous = SECTIONS.get(sectionPos);
+        if (previous != null && previous.complete == complete && java.util.Objects.equals(previous.blocks, blocks)
+                && java.util.Arrays.equals(previous.quads.vertices(), vertices)
+                && java.util.Arrays.equals(previous.quads.materials(), materials)
+                && java.util.Arrays.equals(previous.quads.owners(), owners)) return;
+        SECTIONS.put(sectionPos, new CachedSection(new SectionQuads(originX, originY, originZ, vertices, materials,
+                owners, EPOCH.incrementAndGet()), complete, blocks));
+        AcousticSceneChanges.geometryChanged(sectionPos);
+    }
+
+    /** Immediately reject the old mesh; a late build must match the newly captured block contents. */
+    public static void invalidate(long sectionPos) {
+        EXPECTED.put(sectionPos, new ExpectedBlocks(null));
+        SECTIONS.remove(sectionPos);
+        EPOCH.incrementAndGet();
+    }
+
+    public static boolean needsValidation(long sectionPos) { return EXPECTED.containsKey(sectionPos); }
+
+    public static void expectBlocks(long sectionPos, long fingerprint) {
+        EXPECTED.computeIfPresent(sectionPos, (key, old) -> new ExpectedBlocks(fingerprint));
+    }
+
+    private static boolean current(long sectionPos, CachedSection entry) {
+        ExpectedBlocks expected = EXPECTED.get(sectionPos);
+        return expected == null || expected.fingerprint != null && expected.fingerprint.equals(entry.blocks);
     }
 
     public static void remove(long sectionPos) {
         SECTIONS.remove(sectionPos);
+        EXPECTED.remove(sectionPos);
+        AcousticSceneChanges.geometryChanged(sectionPos);
     }
 
     public static void clear() {
         SECTIONS.clear();
+        EXPECTED.clear();
         EPOCH.incrementAndGet();
     }
 
@@ -58,10 +99,10 @@ public final class SectionGeometryCache {
         for (int x = (int) Math.floor(bounds.minX) >> 4; x <= ((int) Math.floor(bounds.maxX) >> 4); x++) {
             for (int z = (int) Math.floor(bounds.minZ) >> 4; z <= ((int) Math.floor(bounds.maxZ) >> 4); z++) {
                 for (int y = minY; y <= maxY; y++) {
-                    SectionQuads entry = SECTIONS.get(SectionPos.asLong(x, y, z));
-                    if (entry != null) {
+                    CachedSection entry = SECTIONS.get(SectionPos.asLong(x, y, z));
+                    if (entry != null && current(SectionPos.asLong(x, y, z), entry)) {
                         long pos = SectionPos.asLong(x, y, z);
-                        hash ^= pos * 0x9E3779B97F4A7C15L + entry.version();
+                        hash ^= pos * 0x9E3779B97F4A7C15L + entry.quads.version();
                     }
                 }
             }
@@ -78,6 +119,11 @@ public final class SectionGeometryCache {
      * reported as covered, so the voxel filler still gets a chance at their collision shapes.
      */
     public static Coverage presentSections(AABB bounds, int minSection, int maxSection) {
+        return presentSections(bounds, minSection, maxSection, false);
+    }
+
+    /** Incomplete sections use whole-section voxel fallback, avoiding holes or duplicate faces. */
+    public static Coverage presentSections(AABB bounds, int minSection, int maxSection, boolean allowIncomplete) {
         List<SectionQuads> sections = new ArrayList<>();
         Set<Long> covered = new HashSet<>();
         int minY = Math.max(minSection, (int) Math.floor(bounds.minY) >> 4);
@@ -86,9 +132,9 @@ public final class SectionGeometryCache {
             for (int z = (int) Math.floor(bounds.minZ) >> 4; z <= ((int) Math.floor(bounds.maxZ) >> 4); z++) {
                 for (int y = minY; y <= maxY; y++) {
                     long pos = SectionPos.asLong(x, y, z);
-                    SectionQuads entry = SECTIONS.get(pos);
-                    if (entry != null && entry.quadCount() > 0) {
-                        sections.add(entry);
+                    CachedSection entry = SECTIONS.get(pos);
+                    if (entry != null && current(pos, entry) && entry.quads.quadCount() > 0 && (entry.complete || allowIncomplete)) {
+                        sections.add(entry.quads);
                         covered.add(pos);
                     }
                 }
@@ -103,8 +149,8 @@ public final class SectionGeometryCache {
     /** Counters for probes and diagnostics. */
     public static String stats() {
         long quads = 0;
-        for (SectionQuads entry : SECTIONS.values()) {
-            quads += entry.quadCount();
+        for (CachedSection entry : SECTIONS.values()) {
+            quads += entry.quads.quadCount();
         }
         return "sections=" + SECTIONS.size() + " quads=" + quads
                 + " approxBytes=" + (quads * (12 * 4 + 1 + 3));

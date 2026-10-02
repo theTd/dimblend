@@ -47,11 +47,12 @@ public final class RadioAudibility {
             }
             // Sable 结构上的唱片机 pos 是 plot 坐标：投影到世界坐标再比距离
             double distance = listener.distanceTo(SubLevelProjection.worldCenter(mc.level, key.pos()));
-            if (distance >= RadioInjector.RANGE_BLOCKS) {
+            double range = RadioController.audibleRange(state);
+            if (distance >= range) {
                 continue;
             }
             if (RadioAudibilityRules.shouldSuppress(state.station(), state.side(),
-                    RadioController.playingGain(state), distance, RadioInjector.RANGE_BLOCKS)) {
+                    RadioController.playingGain(state), distance, range)) {
                 return true;
             }
         }

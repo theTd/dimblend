@@ -3,13 +3,14 @@ package dimblend.radio.acoustics;
 import com.sun.jna.Pointer;
 import com.sun.jna.ptr.PointerByReference;
 import dimblend.radio.DimBlendRadio;
-import java.util.concurrent.atomic.AtomicBoolean;
 import net.minecraft.world.phys.Vec3;
 
 /** Native convolution of simulated IRs, plus direct occlusion/transmission and spatial decoding. */
 public final class SteamRenderer implements AutoCloseable {
-    public static final int FRAME = 2048;
-    private static final AtomicBoolean NAN_WARNED = new AtomicBoolean();
+    public static final int FRAME = 512;
+    private final Runnable requestReflections;
+    private int invalidFields;
+    private boolean awaitingReflections;
     /** Debug-gated wet/dry signal meters (read by live probes; averaged since last poll). */
     private static final java.util.concurrent.atomic.DoubleAdder WET_ENERGY = new java.util.concurrent.atomic.DoubleAdder();
     private static final java.util.concurrent.atomic.DoubleAdder WET_PRE_DECODE = new java.util.concurrent.atomic.DoubleAdder();
@@ -29,15 +30,22 @@ public final class SteamRenderer implements AutoCloseable {
     private final PointerByReference direct = new PointerByReference(), reflections = new PointerByReference();
     private final PointerByReference panning = new PointerByReference(), decoding = new PointerByReference();
     private final SteamAudio.AudioBuffer input = new SteamAudio.AudioBuffer();
+    private final SteamAudio.AudioBuffer delayedInput = new SteamAudio.AudioBuffer();
     private final SteamAudio.AudioBuffer dry = new SteamAudio.AudioBuffer();
     private final SteamAudio.AudioBuffer wet = new SteamAudio.AudioBuffer(4);
     private final SteamAudio.AudioBuffer dryStereo = new SteamAudio.AudioBuffer(2), wetStereo = new SteamAudio.AudioBuffer(2);
     private final float[] delayLine;
     private final int rate;
+    private final DirectSoundGain directGain = new DirectSoundGain();
     private int delayCursor;
     private float limiterGain = 1;
 
     public SteamRenderer(Pointer context, int rate) {
+        this(context, rate, () -> { });
+    }
+
+    public SteamRenderer(Pointer context, int rate, Runnable requestReflections) {
+        this.requestReflections = requestReflections;
         this.rate = rate;
         delayLine = new float[rate];
         var audio = new SteamAudio.AudioSettings();
@@ -60,11 +68,17 @@ public final class SteamRenderer implements AutoCloseable {
         if (samples.length != FRAME) throw new IllegalArgumentException("Expected one native audio frame");
         boolean meter = Boolean.getBoolean("dimblend.radio.acoustic.debug");
         input.memory(0).write(0, samples, 0, FRAME);
-        api.iplDirectEffectApply(direct.getValue(), directParams, input, dry);
-        float[] directSamples = dry.memory(0).getFloatArray(0, FRAME);
+        // Propagation delays emitted PCM, not the listener's current occlusion/distance state.
+        // Filtering before the line makes a newly blocked path keep playing old clear audio.
+        float[] directSamples = samples.clone();
         double delay = Math.min(delayLine.length - 2, relativeSource.length() / 343 * rate);
         BinauralSpatializer.delay(this, delayLine, delayCursor, directSamples, delay);
         delayCursor = (delayCursor + FRAME) % delayLine.length;
+        delayedInput.memory(0).write(0, directSamples, 0, FRAME);
+        float targetGain = directGain.prepare(directParams);
+        api.iplDirectEffectApply(direct.getValue(), directGain.equalization(), delayedInput, dry);
+        dry.memory(0).read(0, directSamples, 0, FRAME);
+        directGain.apply(directSamples, targetGain, rate);
         dry.memory(0).write(0, directSamples, 0, FRAME);
         var pan = new SteamAudio.PanningParams();
         Vec3 direction = relativeSource.normalize();
@@ -76,7 +90,7 @@ public final class SteamRenderer implements AutoCloseable {
         if (!BinauralSpatializer.direct(this, pan.direction, dry, dryStereo))
             api.iplPanningEffectApply(panning.getValue(), pan, dry, dryStereo);
         for (int c = 0; c < 4; c++) wet.memory(c).clear();
-        if (impulse != null && impulse.ir != null) {
+        if (!awaitingReflections && impulse != null && impulse.ir != null) {
             if (tail) api.iplReflectionEffectGetTail(reflections.getValue(), wet, null);
             else api.iplReflectionEffectApply(reflections.getValue(), impulse, input, wet, null);
         }
@@ -91,10 +105,8 @@ public final class SteamRenderer implements AutoCloseable {
         }
         if (poisoned) {
             for (int c = 0; c < 4; c++) wet.memory(c).clear();
-            api.iplReflectionEffectReset(reflections.getValue());
-            if (NAN_WARNED.compareAndSet(false, true)) {
-                DimBlendRadio.LOGGER.warn("[radio] non-finite reflection field suppressed (effect reset)");
-            }
+            resetReflections();
+            DimBlendRadio.LOGGER.warn("[radio] non-finite reflection field #{}; requesting fresh simulation", ++invalidFields);
         }
         var decode = new SteamAudio.DecodeParams();
         decode.orientation = orientation;
@@ -128,7 +140,8 @@ public final class SteamRenderer implements AutoCloseable {
         // Reflective rooms can legitimately sum past full scale; a fast-attack block limiter
         // with ~1s release keeps the mix intact instead of hard-clipping at the PCM write.
         float target = peak > 0.95f ? 0.95f / peak : 1;
-        limiterGain = target < limiterGain ? target : limiterGain + (target - limiterGain) * 0.1f;
+        float release = (float) (1 - Math.exp(-FRAME / (double) rate));
+        limiterGain = target < limiterGain ? target : limiterGain + (target - limiterGain) * release;
         if (limiterGain < 1) {
             for (int c = 0; c < 2; c++) for (int i = 0; i < FRAME; i++) output[c][i] *= limiterGain;
         }
@@ -136,6 +149,16 @@ public final class SteamRenderer implements AutoCloseable {
     }
 
     public int tailSamples() { return api.iplReflectionEffectGetTailSize(reflections.getValue()); }
+
+    /** A reset discards the active native IR; reusing its old parameters cannot restore it. */
+    public void resetReflections() {
+        api.iplReflectionEffectReset(reflections.getValue());
+        awaitingReflections = true;
+        requestReflections.run();
+    }
+
+    /** Called under the audio owner's lock only after the worker publishes a fresh simulation. */
+    public void reflectionsReady() { awaitingReflections = false; }
 
     @Override public void close() {
         BinauralSpatializer.detach(this);

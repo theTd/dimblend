@@ -11,6 +11,10 @@ import net.minecraft.world.phys.Vec3;
 
 /** Steam Audio simulation using immutable CPU rays or a GPU triangle scene. */
 public final class SteamSimulation implements AutoCloseable {
+    // Steam Audio 4.8.1 gatherEnergyField launches max(256, numRays) work items,
+    // using that launch size as the SH stride, without a rayIndex bounds check.
+    // Allocate AND trace one complete workgroup; smaller counts read uninitialized/OOB data.
+    public static final int GPU_RAYS = 256;
     private final SteamAudio.Api api = SteamAudio.api();
     private final PointerByReference context = new PointerByReference();
     private final PointerByReference scene = new PointerByReference();
@@ -59,6 +63,7 @@ public final class SteamSimulation implements AutoCloseable {
             settings.samplingRate = rate;
             settings.order = 1;
             if (gpu) {
+                settings.maxRays = GPU_RAYS;
                 settings.sceneType = 2;
                 settings.openCL = openCL.getValue();
                 settings.radeon = radeon.getValue();
@@ -81,7 +86,7 @@ public final class SteamSimulation implements AutoCloseable {
     public boolean gpu() { return gpu; }
 
     private static boolean sameGeometry(AcousticMesh.Data a, AcousticMesh.Data b) {
-        return a != null && b != null && a.origin().equals(b.origin())
+        return a == b || a != null && b != null && a.origin().equals(b.origin())
                 && java.util.Arrays.equals(a.vertices(), b.vertices())
                 && java.util.Arrays.equals(a.triangles(), b.triangles())
                 && java.util.Arrays.equals(a.materials(), b.materials());
@@ -127,6 +132,10 @@ public final class SteamSimulation implements AutoCloseable {
             for (int i = 0; i < values.length; i++) {
                 float absorption = 1 - values[i];
                 gpuMaterials[i].absorption = new float[] {absorption * 0.4f, absorption * 0.6f, Math.min(0.98f, absorption * 1.2f)};
+                // JNA toArray reads the contiguous native backing memory into new elements;
+                // field initializers on Material are not retained for every array element.
+                gpuMaterials[i].scattering = 0;
+                gpuMaterials[i].transmission = new float[] {0.35f, 0.2f, 0.08f};
                 gpuMaterials[i].write();
             }
             var settings = new SteamGpu.MeshSettings();
@@ -159,7 +168,7 @@ public final class SteamSimulation implements AutoCloseable {
         inputs.source.origin = new SteamAudio.Vector(relative.x, relative.y, relative.z);
         api.iplSourceSetInputs(source.getValue(), flags, inputs);
         var shared = new SteamAudio.SharedInputs();
-        shared.rays = rays;
+        shared.rays = gpu ? GPU_RAYS : rays;
         shared.bounces = bounces;
         shared.order = 1;
         Vec3 listener = listenerWorld.subtract(offset);

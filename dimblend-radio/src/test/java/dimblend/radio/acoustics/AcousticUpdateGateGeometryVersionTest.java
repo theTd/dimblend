@@ -40,4 +40,16 @@ class AcousticUpdateGateGeometryVersionTest {
         AcousticUpdateGate.registerSnapshot(again, terrain, List.of(), List.of(), List.of());
         assertFalse(AcousticUpdateGate.shouldSimulate(owner, again, Vec3.ZERO, Vec3.ZERO, false));
     }
+
+    @Test
+    void geometryChangesBypassTheMotionCadenceWhileIdenticalScenesDoNot() {
+        Object owner=new Object();
+        Object first=snapshot(new Object(),100L);
+        AcousticUpdateGate.shouldSimulate(owner,first,Vec3.ZERO,Vec3.ZERO,false);
+        AcousticUpdateGate.shouldSimulate(owner,first,Vec3.ZERO,Vec3.ZERO,true);
+        assertFalse(AcousticUpdateGate.geometryChanged(owner,snapshot(new Object(),100L),true));
+        Object changed=snapshot(new Object(),101L);
+        assertTrue(AcousticUpdateGate.geometryChanged(owner,changed,false));
+        assertTrue(AcousticUpdateGate.geometryChanged(owner,changed,true));
+    }
 }

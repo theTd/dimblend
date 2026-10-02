@@ -17,6 +17,56 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class SteamRendererTest {
     @Test
+    void newOcclusionFiltersTheArrivingSoundWithoutAnotherPropagationDelay() {
+        assumeTrue(Boolean.getBoolean("dimblend.radio.testAudio"));
+        try (var simulation = new SteamSimulation(48000, 1);
+                var renderer = new SteamRenderer(simulation.context(), 48000)) {
+            var direct = new SteamAudio.DirectParams();
+            direct.flags = 8; // isolate occlusion from transmission and EQ smoothing
+            Vec3 source = new Vec3(68.6, 0, 0); // 200 ms propagation, much longer than three blocks
+            float[] input = new float[SteamRenderer.FRAME];
+            java.util.Arrays.fill(input, 0.2f);
+            double clear = 0, blocked = 0;
+            for (int block = 0; block < 60; block++) {
+                var output = renderer.render(input, direct, null, source, new SteamAudio.Space(), false, 0);
+                if (block == 59) for (float[] channel : output) for (float sample : channel) clear += sample * (double) sample;
+            }
+            direct.occlusion = 0;
+            for (int block = 0; block < 3; block++) {
+                var output = renderer.render(input, direct, null, source, new SteamAudio.Space(), false, 0);
+                if (block == 2) for (float[] channel : output) for (float sample : channel) blocked += sample * (double) sample;
+            }
+            assertTrue(clear > 1e-4);
+            assertTrue(blocked < clear * 0.001, "Current occlusion must affect arriving PCM, not wait 200 ms in the propagation line");
+        }
+    }
+    @Test
+    void headTurnChangesEarBalanceWithinThreeSmallBlocksWithoutResimulation() {
+        assumeTrue(Boolean.getBoolean("dimblend.radio.testAudio"));
+        try (var simulation = new SteamSimulation(48000, 1);
+                var renderer = new SteamRenderer(simulation.context(), 48000)) {
+            var direct = new SteamAudio.DirectParams();
+            Vec3 source = new Vec3(4, 0, 0);
+            var forward = new SteamAudio.Space();
+            var turned = new SteamAudio.Space();
+            turned.right = new SteamAudio.Vector(-1, 0, 0);
+            turned.ahead = new SteamAudio.Vector(0, 0, 1);
+            double[] before = new double[2], after = new double[2];
+            for (int block = 0; block < 13; block++) {
+                float[] input = new float[SteamRenderer.FRAME];
+                for (int i = 0; i < input.length; i++) input[i] = (float) Math.sin((block * input.length + i) * 0.06) * 0.2f;
+                var output = renderer.render(input, direct, null, source, block < 10 ? forward : turned, false, 0);
+                if (block == 9 || block == 12) {
+                    double[] energy = block == 9 ? before : after;
+                    for (int c = 0; c < 2; c++) for (float sample : output[c]) energy[c] += sample * (double) sample;
+                }
+            }
+            assertTrue(before[1] > before[0] * 1.2, "Source starts on the right");
+            assertTrue(after[0] > after[1] * 1.2, "A head turn must affect the next few audio blocks without waiting for rays");
+            assertTrue(3.0 * SteamRenderer.FRAME / 48000 < 0.04);
+        }
+    }
+    @Test
     void simulatedWallsProduceDelayedEchoesAndAnOpenSceneDoesNot() throws Exception {
         assumeTrue(Boolean.getBoolean("dimblend.radio.testAudio"));
         try (var simulation = new SteamSimulation(44100, 3)) {

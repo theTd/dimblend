@@ -37,6 +37,13 @@ public final class AcousticUpdateGate {
      */
     public static void registerTerrain(Object token, Map<Long, PalettedContainer<BlockState>> sections,
             Set<Long> chunks, long geometryVersion) {
+        Map<Long, Long> fingerprints = new java.util.HashMap<>();
+        sections.forEach((key, blocks) -> fingerprints.put(key, AcousticPaletteCache.fingerprint(blocks)));
+        registerTerrainIdentity(token, fingerprints, chunks, geometryVersion);
+    }
+
+    public static void registerTerrainIdentity(Object token, Map<Long, Long> fingerprints,
+            Set<Long> chunks, long geometryVersion) {
         CRC32C hash = new CRC32C();
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
         try {
@@ -45,10 +52,10 @@ public final class AcousticUpdateGate {
                 buffer.writeLong(chunk);
                 hash.update(buffer.nioBuffer());
             }
-            for (var entry : sections.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
+            for (var entry : fingerprints.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
                 buffer.clear();
                 buffer.writeLong(entry.getKey());
-                entry.getValue().write(buffer);
+                buffer.writeLong(entry.getValue());
                 hash.update(buffer.nioBuffer());
             }
         } finally { buffer.release(); }
@@ -63,6 +70,11 @@ public final class AcousticUpdateGate {
         }
         bodies.sort(Comparator.comparing(Body::id));
         SCENES.put(snapshot, new Scene(TERRAIN.getOrDefault(terrain, -1L), List.copyOf(bodies)));
+    }
+
+    public static synchronized void copySnapshot(Object from, Object to) {
+        Scene scene = SCENES.get(from);
+        if (scene != null) SCENES.put(to, scene);
     }
 
     public static synchronized boolean shouldSimulate(Object owner, Object snapshot, Vec3 source,
@@ -95,7 +107,24 @@ public final class AcousticUpdateGate {
         return true;
     }
 
+    public static synchronized boolean sameGeometry(Object left, Object right) {
+        Scene a = SCENES.get(left), b = SCENES.get(right);
+        return a != null && b != null && sameScene(a, b);
+    }
+
+    public static synchronized boolean geometryChanged(Object owner, Object snapshot, boolean reflections) {
+        Scene scene = SCENES.get(snapshot);
+        State state = STATES.get(owner);
+        Input previous = state == null ? null : reflections ? state.reflections : state.direct;
+        return scene == null || previous == null || !sameScene(previous.scene, scene);
+    }
+
     public static synchronized void forget(Object owner) { STATES.remove(owner); }
+
+    public static synchronized void invalidateReflections(Object owner) {
+        State state = STATES.get(owner);
+        if (state != null) state.reflections = null;
+    }
 
     private AcousticUpdateGate() { }
 }

@@ -20,7 +20,8 @@
 - 电台可闻时，正在播放的原版背景音乐用约 1 秒淡出后停止；淡出中电台停止则平滑恢复。
   电台缺文件、尚未起播或本端已播完时不压背景音乐，不修改玩家音量设置。
   压制还要求本端音频通道确实在播：顶部 0/15、侧面 0、音量滑块 0、解码失败、设备通道未启动/
-  已停止、距离达到或超过 64 格时均放行。距离按声音监听器位置算；侧面 15 仍是有效的 150% 音量。
+  已停止、距离达到可闻边界（声学路径 96 格，原版回退 64 格）时均放行；未入选声学处理的电台也不压背景音乐。
+  距离按声音监听器位置算；侧面 15 仍是有效的 150% 音量。
 - 曲名显示：元数据标题/作者优先（MP3 的 ID3v2 TIT2/TPE1·ID3v1、OGG/FLAC 的 TITLE=/ARTIST=、
   WAV 的 LIST/INFO INAM/IART 或内嵌 ID3），无标签回退文件名（去扩展名）。两处同口径：
   - 工程师护目镜（Create，可选依赖）：戴上看唱片机（地面/结构通用，Sable 拾取本就是 plot 坐标），
@@ -50,36 +51,68 @@
   absorption, and reflected sound paths. Its simulated impulse response is rendered
   with native convolution; there is no enclosure score or preset EFX reverb.
 - Direct arrival delay follows distance / 343 m/s, with fractional interpolation
-  while moving. Direct sound and reflection fields use headphone HRTF spatialization, including reflected arrival
+  while moving. Current listener occlusion and distance gain apply after that delay,
+  so a newly blocked path does not keep playing old unobstructed PCM. Spectral coloration
+  stays in the native equalizer; attenuation uses a 5 ms ramp instead of the SDK's
+  exponential gain smoothing. Direct sound and reflection fields use headphone HRTF spatialization, including reflected arrival
   directions, so distant sound is not given the same dry/wet distance curve.
 - Direct occlusion/transmission uses precise immutable terrain and Sable collision
   rays on a CPU worker. Reflections use Steam Audio's OpenCL/Radeon Rays GPU backend
   with five material classes and float coordinates relative to a nearby origin.
   Terrain geometry mixes exact surfaces teed from Sodium's chunk-build pipeline with
-  a one-metre voxel fill for sections Sodium has not meshed (its build queue is
+  a one-metre voxel fill for sections Sodium has not fully meshed (its build queue is
   visibility-driven, so occluded sections stay unmeshed); without Sodium it is
-  merged one-metre voxel surfaces throughout.
+  merged one-metre voxel surfaces throughout. Sections containing omitted translucent
+  or block-entity solids use whole-section voxel fallback, avoiding gaps and duplicate faces.
+  Each submitted triangle is checked for finite vertices and nonzero area.
   Sable vertices are transformed in double precision
   before conversion, preserving positioning even at distant plot coordinates.
 - GPU devices and triangle scenes live as long as the radio session; scene meshes are
-  re-uploaded in place when geometry changes, and the simulator accumulates reflection
-  paths across updates for coherence. Unsupported GPUs fall back to
-  CPU tracing. `-Ddimblend.radio.acoustic.gpu=false` forces the CPU backend;
+  re-uploaded in place when geometry changes, and convolution crossfades new responses.
+  GPU rays use a full 256-ray workgroup: Steam Audio
+  4.8.1's histogram kernel reads at least 256 rays even when fewer are requested.
+  Unsupported or failed GPUs disable acoustic simulation, including its direct-ray
+  worker and effects, and retain distance-only playback. There is no CPU reflection fallback.
+  `-Ddimblend.radio.acoustic.gpu=false` disables acoustics;
   `-Ddimblend.radio.acoustic.geometry=auto|sodium|voxel` selects the terrain
   geometry source.
-- Up to four nearby radios simulate acoustics. Reflection simulation uses 64 rays,
+- Up to four nearby radios simulate acoustics. Reflection simulation uses 256 GPU rays,
   up to 128 bounces, first-order Ambisonics, and a six-second IR limit. Direct results
-  update up to ten times/second and reflections up to four times/second; worker jobs
-  do not overlap for the same radio. Geometry palettes update twice/second, with
-  Sable poses refreshed separately. GPU terrain extends 24 blocks around the
-  source/listener bounds; nearby captured Sable structures are included.
+  update on camera frames (at most 125 times/second); reflections update up to twenty
+  times/second. Camera poses are published after mouse processing and Camera.setup,
+  rather than vanilla's earlier sound-listener update from the preceding frame;
+  worker jobs do not overlap for the same radio and sample the latest view when they start.
+  Head turns spatialize every audio block independently of ray simulation. Block edits
+  in observed sections (including air-only sections) wake a snapshot capture on the next
+  camera frame; the half-second refresh remains a fallback for coverage/chunk changes.
+  Snapshots are shared by nearby radios. Immutable palette copies and
+  fingerprints are reused until a block write or chunk packet changes the palette;
+  world resets clear the cache. Sable poses refresh separately. Greedy surface extraction
+  uses linear strides without allocating coordinate arrays per voxel. The reflection mesh is
+  reused while geometry is unchanged and movement stays within its eight-block padding.
+  GPU terrain retains a 24-block minimum margin around source/listener bounds;
+  nearby captured Sable structures are included.
+- A block edit immediately withdraws that section's old Sodium mesh. Fresh voxel data
+  fills the section until a render mesh with matching block contents arrives; stale
+  asynchronous builds cannot restore the old wall. Identical lighting-only rebuilds
+  do not invalidate acoustics. Geometry changes bypass the motion cadence, and queued
+  simulations take the newest snapshot when their worker actually starts.
 - Equivalent geometry snapshots and stationary source/listener positions reuse the
   same response. Block/chunk changes, meaningful movement, or Sable pose changes
   invalidate it. Material scattering is specular: the SDK's wall-clock-seeded random
   diffuse scattering is disabled to avoid unrelated changes between responses.
-- Processed PCM uses roughly 0.37 seconds of queued audio at 44.1 kHz, with
-  recovery after temporary OpenAL starvation. GPU teardown runs outside the PCM lock.
-  Radio refills run on the sound thread every 20 ms independently of render frames;
+- A non-finite reflection field withdraws the old output and forces a fresh simulation,
+  even while stationary. Three invalid GPU fields disable the acoustic session and
+  settle on distance-only playback. Failures are logged per session.
+- Processed PCM uses 512-frame blocks and starts with a short spatialized queue (about
+  32–35 ms at 44.1/48 kHz). An actual OpenAL underrun adds two buffers before restarting,
+  bounded to roughly 90–100 ms, and retains that headroom for the current playback.
+  This prevents repeated play/starve/play cycles without deep buffering on healthy streams.
+  Starvation counts are logged even when debug logging is off. Renderer/HRTF preparation and native
+  teardown run on the reflection worker. Replacement withdraws the old renderer and
+  source-owned IR under the PCM lock before releasing them; initialization does not
+  hold locks used by other radios' audio processing.
+  Radio refills run on the sound thread every 4 ms independently of render frames;
   each channel permits only one pending refill and unregisters on destruction.
   Original PCM caches, source volume/category controls, and track clocks are retained.
 - The bundled native SDK currently supports Windows x64. Other platforms keep
@@ -87,8 +120,7 @@
   disables the local simulation backend.
 - Limits: finite loaded geometry (the Sodium mesh mirror only covers the current
   render distance, and exact surfaces only for visibility-visited sections — the
-  rest is voxel-approximated), block-entity-rendered blocks (chests, beds) absent
-  from render meshes and skipped by the voxel filler inside mesh-mirrored sections,
+  rest is voxel-approximated), block-entity and translucent sections approximated as voxels,
   water surfaces of waterlogged blocks counted as reflectors,
   sparse reflection noise, snapshot/update latency, approximate block
   materials, and no diffraction model. Musical listening and performance
@@ -117,7 +149,7 @@
   异步解码请求持续占位到主线程落地，并复核维度、nonce、hash、startTick 和完成状态。
 - 回归单测：`RadioPlaybackTest`（低 TPS/重建/曲终/暂停/换曲）、`RadioPcmFeedTest`（同曲多实例/
   EOF/淡入/释放）、`RadioMusicFadeTest`（淡出/中断恢复）。根目录执行 `gradlew :dimblend-radio:test`。
-- 可听性回归：`RadioAudibilityRulesTest`（顶部旁路/侧面静音、无播放通道、零音量、64 格边界、多电台）。
+- 可听性回归：`RadioAudibilityRulesTest`（顶部旁路/侧面静音、无播放通道、零音量、64/96 格边界、多电台）。
 - Sable 结构：结构上唱片机的 `BlockPos` 是 plot 坐标（原点 20,480,000），不是世界坐标。
   `SubLevelProjection`（sable-companion 软依赖 shim，未装 Sable 时原样返回）统一换算：
   客户端建实例/保活/压背景音乐的距离判定、`RadioInstance` 声源位置（逐 tick 跟结构位姿；

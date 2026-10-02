@@ -3,6 +3,7 @@ package dimblend.radio.acoustics;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /** Prints the direct-sim outputs for a source behind a single wall. */
 class SteamDirectTransmissionTest {
@@ -14,6 +15,8 @@ class SteamDirectTransmissionTest {
                 new int[] {0,1,2,0,2,3}, new int[] {4,4}, Vec3.ZERO);
         try (var simulation = new SteamSimulation(44100, 1, true)) {
             var outputs = simulation.simulateGpu(wall, Vec3.ZERO, new Vec3(4, 0, 0), 1, 0);
+            assertEquals(0, outputs.direct.occlusion, 0.001);
+            assertTrue(outputs.direct.transmission[0] > outputs.direct.transmission[2]);
             System.out.println("[direct] occlusion=" + outputs.direct.occlusion
                     + " distance=" + outputs.direct.distance
                     + " transmission=" + java.util.Arrays.toString(outputs.direct.transmission)
@@ -24,6 +27,7 @@ class SteamDirectTransmissionTest {
             System.out.println("[direct] open: occlusion=" + clear.direct.occlusion
                     + " distance=" + clear.direct.distance
                     + " transmission=" + java.util.Arrays.toString(clear.direct.transmission));
+            assertEquals(1, clear.direct.occlusion, 0.001);
         }
     }
 }

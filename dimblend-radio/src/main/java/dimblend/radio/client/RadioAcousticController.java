@@ -3,6 +3,7 @@ package dimblend.radio.client;
 import dimblend.radio.DimBlendRadio;
 import dimblend.radio.SubLevelProjection;
 import dimblend.radio.acoustics.AcousticSnapshot;
+import dimblend.radio.acoustics.AcousticSceneChanges;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +12,7 @@ import java.util.Comparator;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.Level;
 import net.neoforged.fml.ModList;
+import com.mojang.blaze3d.audio.ListenerTransform;
 
 public final class RadioAcousticController {
     /**
@@ -22,16 +24,23 @@ public final class RadioAcousticController {
 
     private static final class Entry {
         final RadioSimulationSession session;
-        AcousticSnapshot snapshot;
-        long captured;
         boolean selected;
         Entry(RadioSimulationSession session) { this.session = session; }
     }
     private static final Map<RadioInstance, Entry> SESSIONS = new IdentityHashMap<>();
     private static Level level;
+    private static AcousticSnapshot snapshot;
+    private static long captured;
+    private static long capturedRevision;
+
+    public static double audibleRange(RadioInstance radio) {
+        Entry entry = SESSIONS.get(radio);
+        return entry == null ? RadioInjector.RANGE_BLOCKS : entry.selected ? AUDIBLE_RANGE : 0;
+    }
 
     public static void bind(Minecraft mc, RadioInstance instance, RadioPcmFeed.Handle feed) {
         if ("false".equalsIgnoreCase(System.getProperty("dimblend.radio.reverb"))
+                || "false".equalsIgnoreCase(System.getProperty("dimblend.radio.acoustic.gpu"))
                 || !System.getProperty("os.name").startsWith("Windows") || !System.getProperty("os.arch").equals("amd64")
                 || ModList.get().isLoaded("sound_physics_remastered")) return;
         var session = new RadioSimulationSession(feed.format());
@@ -44,6 +53,10 @@ public final class RadioAcousticController {
     public static void reset() {
         SESSIONS.values().forEach(entry -> entry.session.close());
         SESSIONS.clear();
+        snapshot = null;
+        captured = 0;
+        AcousticSnapshot.clearCache();
+        AcousticSceneChanges.reset();
         level = null;
     }
 
@@ -55,8 +68,6 @@ public final class RadioAcousticController {
             entry.getValue().session.close();
             return true;
         });
-        boolean capturedThisTick = false;
-        long now = System.nanoTime();
         var listener = mc.getSoundManager().getListenerTransform().position();
         var selected = new ArrayList<>(radios);
         selected.sort(Comparator.comparingDouble(radio -> listener.distanceToSqr(SubLevelProjection.worldCenter(mc.level, radio.pos()))));
@@ -65,15 +76,13 @@ public final class RadioAcousticController {
             RadioInstance radio = entry.getKey();
             Entry state = entry.getValue();
             state.selected = selected.contains(radio);
-            updateView(mc, radio, state.session, state.selected);
             if (mc.isPaused() || !selected.contains(radio)
-                    || listener.distanceToSqr(SubLevelProjection.worldCenter(mc.level, radio.pos())) >= AUDIBLE_RANGE * AUDIBLE_RANGE) continue;
-            if (!capturedThisTick && now - state.captured >= 500_000_000L) {
-                state.snapshot = AcousticSnapshot.capture(mc.level, mc.getSoundManager().getListenerTransform().position(), radio.pos(), AUDIBLE_RANGE + 24);
-                state.captured = now;
-                capturedThisTick = true;
+                    || listener.distanceToSqr(SubLevelProjection.worldCenter(mc.level, radio.pos())) >= AUDIBLE_RANGE * AUDIBLE_RANGE) {
+                updateView(mc, radio, state.session, false);
+                continue;
             }
-            if (state.snapshot != null) state.session.simulate(state.snapshot.currentPoses(), now);
+            // Only the post-mouse camera hook publishes audible poses and schedules ray jobs.
+            // A client tick must not overwrite it with last frame's OpenAL listener transform.
         }
     }
 
@@ -81,15 +90,30 @@ public final class RadioAcousticController {
      * Per-frame view refresh: the tick loop owns snapshots and simulation cadence, but head-turn
      * and movement must reach the audio pipeline at frame rate, not at 20 Hz.
      */
-    public static void frameRefresh(Minecraft mc) {
+    public static void frameRefresh(Minecraft mc, ListenerTransform listener) {
         if (mc.level == null || mc.isPaused()) return;
-        var listener = mc.getSoundManager().getListenerTransform();
+        AcousticSnapshot poses = null;
+        long now = System.nanoTime();
         for (var entry : SESSIONS.entrySet()) {
             RadioInstance radio = entry.getKey();
             Entry state = entry.getValue();
             var source = SubLevelProjection.worldCenter(mc.level, radio.pos());
             state.session.setView(source, listener.position(), listener.forward(), listener.up(),
                     state.selected && listener.position().distanceToSqr(source) < AUDIBLE_RANGE * AUDIBLE_RANGE);
+            if (state.selected && state.session.active()
+                    && listener.position().distanceToSqr(source) < AUDIBLE_RANGE * AUDIBLE_RANGE) {
+                if (poses == null) {
+                    if (AcousticSceneChanges.needsCapture(snapshot == null, capturedRevision, captured, now)) {
+                        long revision = AcousticSceneChanges.revision();
+                        snapshot = AcousticSnapshot.capture(mc.level, listener.position(), radio.pos(), AUDIBLE_RANGE + 32);
+                        captured = now;
+                        // A mesh arriving during capture must still wake the following frame.
+                        capturedRevision = revision;
+                    }
+                    poses = snapshot.currentPoses();
+                }
+                state.session.simulate(poses.forEmitter(radio.pos()), now);
+            }
         }
     }
 

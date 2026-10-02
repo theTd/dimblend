@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /** Replays a dumped live world mesh (build/reverb-validation/worldmesh.bin) through the GPU path. */
 class SteamWorldMeshTest {
@@ -29,9 +30,11 @@ class SteamWorldMeshTest {
         int bad = 0;
         for (int t : triangles) if (t < 0 || t >= vertices.length / 3) bad++;
         System.out.println("[worldmesh] out-of-range indices=" + bad);
+        assertEquals(0, bad, "Dump contains invalid triangle indices");
         int nan = 0;
         for (float v : vertices) if (!Float.isFinite(v)) nan++;
         System.out.println("[worldmesh] non-finite verts=" + nan);
+        assertEquals(0, nan, "Dump contains invalid vertices");
         // Brute-force CPU raycast: is the room actually enclosed in this mesh?
         Vec3 src = new Vec3(221980.5, 69.5, -8.5).subtract(origin);
         int hit = 0;
@@ -85,6 +88,7 @@ class SteamWorldMeshTest {
                 for (float[] channel : output) for (float sample : channel) wet += sample * (double) sample;
             }
             System.out.println("[worldmesh] wet=" + wet);
+            assertTrue(Double.isFinite(wet), "World mesh must not poison output");
         }
     }
 

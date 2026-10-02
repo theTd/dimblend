@@ -11,6 +11,8 @@
 		"SoundBufferMixin"
 	],
 	"client": [
+		"client.RadioCameraMixin",
+		"client.AcousticPaletteVersionMixin",
 		"client.RadioStreamingChannelMixin",
 		"client.SoundManagerAccessor",
 		"client.SoundEngineAccessor",

@@ -4,6 +4,7 @@ import dimblend.radio.DimBlendRadio;
 import dimblend.radio.acoustics.AcousticRaycaster;
 import dimblend.radio.acoustics.terrain.SectionGeometryCache;
 import dimblend.radio.acoustics.terrain.SectionMeshDecoder;
+import dimblend.radio.acoustics.terrain.SectionBlockFingerprint;
 import dimblend.radio.acoustics.terrain.TerrainGeometryMode;
 import java.util.Arrays;
 import java.util.Map;
@@ -50,12 +51,14 @@ public final class SodiumGeometrySink {
             byte[] materials = new byte[totalVertices / 4];
             byte[] owners = new byte[totalVertices / 4 * 3];
             int quads = 0;
+            boolean complete = !hasUnmeshedSolids(slice, originX, originY, originZ);
             for (Map.Entry<TerrainRenderPass, BuiltSectionMeshParts> entry : output.meshes.entrySet()) {
                 // Translucent pass is skipped: its dynamically-resorted buffers use a different
                 // quad layout (verified to produce cross-quad smears in the decoder). Stained
                 // glass / ice / slime and similar translucent blocks fall to the voxel gap-fill;
                 // plain glass is CUTOUT and stays.
                 if (entry.getKey().isTranslucent()) {
+                    if (entry.getValue().getVertexData().getLength() > 0) complete = false;
                     continue;
                 }
                 quads += SectionMeshDecoder.decode(originX, originY, originZ,
@@ -70,7 +73,9 @@ public final class SodiumGeometrySink {
             }
             SectionGeometryCache.put(sectionPos, originX, originY, originZ,
                     Arrays.copyOf(vertices, quads * 12), Arrays.copyOf(materials, quads),
-                    Arrays.copyOf(owners, quads * 3));
+                    Arrays.copyOf(owners, quads * 3), complete,
+                    SectionGeometryCache.needsValidation(sectionPos)
+                            ? SectionBlockFingerprint.of((x,y,z) -> slice.getBlockState(originX+x, originY+y, originZ+z)) : null);
             if (SectionGeometryCache.markActive()) {
                 DimBlendRadio.LOGGER.info("[radio] render-mesh acoustics active (Sodium chunk mesh tee)");
             }
@@ -79,6 +84,18 @@ public final class SodiumGeometrySink {
                 DimBlendRadio.LOGGER.warn("[radio] render-mesh acoustics tee failed; keeping voxel fallback", error);
             }
         }
+    }
+
+    private static boolean hasUnmeshedSolids(LevelSlice slice, int ox, int oy, int oz) {
+        var pos = new BlockPos.MutableBlockPos();
+        for (int y = oy; y < oy + 16; y++) for (int z = oz; z < oz + 16; z++) for (int x = ox; x < ox + 16; x++) {
+            BlockState state = slice.getBlockState(x, y, z);
+            if (state.isAir() || state.getRenderShape() == RenderShape.MODEL && !state.hasBlockEntity()) continue;
+            try {
+                if (!state.getCollisionShape(slice, pos.set(x, y, z), CollisionContext.empty()).isEmpty()) return true;
+            } catch (RuntimeException unsupportedShape) { return true; }
+        }
+        return false;
     }
 
     /**

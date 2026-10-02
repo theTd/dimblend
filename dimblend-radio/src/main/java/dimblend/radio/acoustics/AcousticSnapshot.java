@@ -3,6 +3,7 @@ package dimblend.radio.acoustics;
 import dimblend.radio.DimBlendRadio;
 import dimblend.radio.acoustics.terrain.SectionGeometryCache;
 import dimblend.radio.acoustics.terrain.TerrainGeometryMode;
+import dimblend.radio.acoustics.terrain.SectionBlockFingerprint;
 import dev.ryanhcode.sable.companion.SableCompanion;
 import dev.ryanhcode.sable.companion.SubLevelAccess;
 import dev.ryanhcode.sable.companion.math.BoundingBox3d;
@@ -30,16 +31,30 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 
 /** Copies palettes and poses on the client thread; worker raycasts never touch Level. */
 public final class AcousticSnapshot {
+    private static final AcousticPaletteCache<BlockState> PALETTES = new AcousticPaletteCache<>();
     private record Frame(FrozenBlocks blocks, Pose3d pose, AABB worldBounds, AABB localBounds,
             SubLevelAccess liveStructure) { }
     private final FrozenBlocks terrain;
     private final List<Frame> structures;
     private final BlockPos emitter;
+    private final long revision;
 
-    private AcousticSnapshot(FrozenBlocks terrain, List<Frame> structures, BlockPos emitter) {
+    private AcousticSnapshot(FrozenBlocks terrain, List<Frame> structures, BlockPos emitter, long revision) {
         this.terrain = terrain;
         this.structures = structures;
         this.emitter = emitter;
+        this.revision = revision;
+    }
+
+    public long revision() { return revision; }
+
+    public static void clearCache() { PALETTES.clear(); }
+
+    /** All nearby radios share frozen terrain/poses, but exclude their own emitter block. */
+    public AcousticSnapshot forEmitter(BlockPos source) {
+        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, structures, source.immutable(), revision);
+        AcousticUpdateGate.copySnapshot(this, snapshot);
+        return snapshot;
     }
 
     public static AcousticSnapshot capture(Level level, Vec3 listener, BlockPos emitter) {
@@ -47,16 +62,18 @@ public final class AcousticSnapshot {
     }
 
     public static AcousticSnapshot capture(Level level, Vec3 listener, BlockPos emitter, double radius) {
+        long revision = AcousticSceneChanges.revision();
+        long generation = level.isClientSide ? AcousticSceneChanges.beginCapture() : 0;
         AABB bounds = new AABB(listener, listener).inflate(radius);
-        FrozenBlocks terrain = FrozenBlocks.capture(level, bounds, null);
+        FrozenBlocks terrain = FrozenBlocks.capture(level, bounds, null, generation);
         List<Frame> frames = new ArrayList<>();
         for (SubLevelAccess structure : SableCompanion.INSTANCE.getAllIntersecting(level, new BoundingBox3d(bounds))) {
             Pose3d pose = new Pose3d(structure.logicalPose());
             AABB world = structure.boundingBox().toMojang().intersect(bounds).inflate(0.01);
             AABB local = new BoundingBox3d(world).transformInverse(pose).toMojang();
-            frames.add(new Frame(FrozenBlocks.capture(level, local, structure), pose, world, local, structure));
+            frames.add(new Frame(FrozenBlocks.capture(level, local, structure, generation), pose, world, local, structure));
         }
-        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, List.copyOf(frames), emitter.immutable());
+        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, List.copyOf(frames), emitter.immutable(), revision);
         AcousticUpdateGate.registerSnapshot(snapshot, terrain, frames.stream().map(Frame::blocks).toList(),
                 frames.stream().map(Frame::liveStructure).map(SubLevelAccess::getUniqueId).toList(), frames.stream().map(Frame::pose).toList());
         return snapshot;
@@ -70,7 +87,7 @@ public final class AcousticSnapshot {
             AABB bounds = new BoundingBox3d(frame.localBounds).transform(pose).toMojang();
             frames.add(new Frame(frame.blocks, pose, bounds, frame.localBounds, frame.liveStructure));
         }
-        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, List.copyOf(frames), emitter);
+        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, List.copyOf(frames), emitter, revision);
         AcousticUpdateGate.registerSnapshot(snapshot, terrain, frames.stream().map(Frame::blocks).toList(),
                 frames.stream().map(Frame::liveStructure).map(SubLevelAccess::getUniqueId).toList(), frames.stream().map(Frame::pose).toList());
         return snapshot;
@@ -78,8 +95,16 @@ public final class AcousticSnapshot {
 
     public AcousticMesh.Data mesh(Vec3 listener, Vec3 source) {
         Vec3 origin = new Vec3(Math.floor(listener.x / 16) * 16, Math.floor(listener.y / 16) * 16, Math.floor(listener.z / 16) * 16);
+        return mesh(new AABB(listener, source).inflate(24), origin);
+    }
+
+    public AcousticMesh.Data mesh(AABB bounds) {
+        Vec3 center = bounds.getCenter();
+        return mesh(bounds, new Vec3(Math.floor(center.x / 16) * 16, Math.floor(center.y / 16) * 16, Math.floor(center.z / 16) * 16));
+    }
+
+    private AcousticMesh.Data mesh(AABB bounds, Vec3 origin) {
         AcousticMesh mesh = new AcousticMesh(origin);
-        AABB bounds = new AABB(listener, source).inflate(24);
         // Sodium only meshes sections its visibility traversal visits, so the mirror's coverage
         // is always partial: AUTO mixes exact render geometry with a voxel fill of the gaps.
         boolean mirror = TerrainGeometryMode.CURRENT != TerrainGeometryMode.VOXEL && SectionGeometryCache.active();
@@ -88,7 +113,7 @@ public final class AcousticSnapshot {
             logGeometrySource("voxel");
         } else {
             SectionGeometryCache.Coverage coverage = SectionGeometryCache.presentSections(bounds,
-                    terrain.minSection(), terrain.maxSection());
+                    terrain.minSection(), terrain.maxSection(), TerrainGeometryMode.CURRENT == TerrainGeometryMode.SODIUM);
             mesh.appendSections(coverage.sections(), emitter);
             if (TerrainGeometryMode.CURRENT == TerrainGeometryMode.AUTO) {
                 mesh.append(terrain, bounds, emitter, null, coverage.covered());
@@ -162,8 +187,9 @@ public final class AcousticSnapshot {
             height = level.getHeight();
             this.plot = plot;
         }
-        static FrozenBlocks capture(Level level, AABB box, SubLevelAccess structure) {
+        static FrozenBlocks capture(Level level, AABB box, SubLevelAccess structure, long generation) {
             var frozen = new FrozenBlocks(level, structure != null);
+            Map<Long, Long> fingerprints = new HashMap<>();
             int minY = Math.max(level.getMinSection(), (int) Math.floor(box.minY) >> 4);
             int maxY = Math.min(level.getMaxSection() - 1, (int) Math.floor(box.maxY) >> 4);
             for (int x = (int) Math.floor(box.minX) >> 4; x <= ((int) Math.floor(box.maxX) >> 4); x++) {
@@ -174,11 +200,24 @@ public final class AcousticSnapshot {
                     frozen.chunks.add(net.minecraft.world.level.ChunkPos.asLong(x, z));
                     for (int y = minY; y <= maxY; y++) {
                         var section = chunk.getSection(level.getSectionIndexFromSectionY(y));
-                        if (!section.hasOnlyAir()) frozen.sections.put(SectionPos.asLong(x, y, z), section.getStates().copy());
+                        long key = SectionPos.asLong(x, y, z);
+                        if (generation != 0 && section.getStates() instanceof AcousticPaletteVersion versioned) {
+                            versioned.dimblend$observeAcoustics(generation, key);
+                            AcousticSceneChanges.observe(generation, key);
+                        }
+                        boolean validateMesh = SectionGeometryCache.needsValidation(key);
+                        if (!section.hasOnlyAir() || validateMesh) {
+                            var copy = PALETTES.freeze(section.getStates());
+                            if (!section.hasOnlyAir()) {
+                                frozen.sections.put(key, copy.blocks());
+                                fingerprints.put(key, copy.fingerprint());
+                            }
+                            if (validateMesh) SectionGeometryCache.expectBlocks(key, SectionBlockFingerprint.of(copy.blocks()::get));
+                        }
                     }
                 }
             }
-            AcousticUpdateGate.registerTerrain(frozen, frozen.sections, frozen.chunks,
+            AcousticUpdateGate.registerTerrainIdentity(frozen, fingerprints, frozen.chunks,
                     SectionGeometryCache.foldHash(box, frozen.minSection(), frozen.maxSection()));
             return frozen;
         }

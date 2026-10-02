@@ -42,6 +42,21 @@ class SectionGeometryCacheTest {
     }
 
     @Test
+    void mixedOpaqueAndOmittedGeometryFallsBackAsAWholeSection() {
+        long pos = SectionPos.asLong(0, 0, 0);
+        SectionGeometryCache.put(pos, 0, 0, 0, new float[12], new byte[1], new byte[3], false);
+        var hybrid = SectionGeometryCache.presentSections(ONE_SECTION, -4, 20);
+        assertTrue(hybrid.sections().isEmpty(), "Do not duplicate the opaque faces in voxel fallback");
+        assertTrue(hybrid.covered().isEmpty(), "Translucent and block-entity solids must reach voxel fallback");
+        assertEquals(1, SectionGeometryCache.presentSections(ONE_SECTION, -4, 20, true).sections().size(),
+                "Explicit Sodium diagnostic mode may still inspect partial geometry");
+        long incomplete = SectionGeometryCache.foldHash(ONE_SECTION, -4, 20);
+        put(pos, 0, 0, 0, 1);
+        assertNotEquals(incomplete, SectionGeometryCache.foldHash(ONE_SECTION, -4, 20));
+        assertTrue(SectionGeometryCache.presentSections(ONE_SECTION, -4, 20).covered().contains(pos));
+    }
+
+    @Test
     void sectionsOutsideBoundsOrWorldHeightAreIgnored() {
         put(SectionPos.asLong(100, 0, 100), 1600, 0, 1600, 1);
         assertTrue(SectionGeometryCache.presentSections(ONE_SECTION, -4, 20).sections().isEmpty());
@@ -67,5 +82,32 @@ class SectionGeometryCacheTest {
         long before = SectionGeometryCache.foldHash(ONE_SECTION, -4, 20);
         put(SectionPos.asLong(100, 0, 100), 1600, 0, 1600, 1);
         assertEquals(before, SectionGeometryCache.foldHash(ONE_SECTION, -4, 20));
+    }
+
+    @Test
+    void editsImmediatelyWithdrawOldGeometryAndLateStaleBuildsCannotRestoreIt() {
+        long pos=SectionPos.asLong(0,0,0);
+        put(pos,0,0,0,1);
+        SectionGeometryCache.invalidate(pos);
+        assertTrue(SectionGeometryCache.presentSections(ONE_SECTION,-4,20).covered().isEmpty());
+        // An old worker can complete after the block edit; version bumps alone are insufficient.
+        SectionGeometryCache.put(pos,0,0,0,new float[12],new byte[1],new byte[3],true,10L);
+        assertTrue(SectionGeometryCache.presentSections(ONE_SECTION,-4,20).covered().isEmpty());
+        SectionGeometryCache.expectBlocks(pos,20L);
+        assertTrue(SectionGeometryCache.presentSections(ONE_SECTION,-4,20).covered().isEmpty());
+        SectionGeometryCache.put(pos,0,0,0,new float[12],new byte[1],new byte[3],true,20L);
+        assertTrue(SectionGeometryCache.presentSections(ONE_SECTION,-4,20).covered().contains(pos));
+        // Even a still-later stale completion must not override the actual new block contents.
+        SectionGeometryCache.put(pos,0,0,0,new float[12],new byte[1],new byte[3],true,10L);
+        assertTrue(SectionGeometryCache.presentSections(ONE_SECTION,-4,20).covered().isEmpty());
+    }
+
+    @Test
+    void lightingOnlyRebuildsDoNotInvalidateIdenticalAcousticGeometry() {
+        long pos=SectionPos.asLong(0,0,0);
+        put(pos,0,0,0,1);
+        long before=SectionGeometryCache.foldHash(ONE_SECTION,-4,20);
+        put(pos,0,0,0,1);
+        assertEquals(before,SectionGeometryCache.foldHash(ONE_SECTION,-4,20));
     }
 }

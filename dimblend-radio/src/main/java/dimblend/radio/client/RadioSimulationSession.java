@@ -3,7 +3,7 @@ package dimblend.radio.client;
 import dimblend.radio.DimBlendRadio;
 import dimblend.radio.acoustics.AcousticSnapshot;
 import dimblend.radio.acoustics.AcousticUpdateGate;
-import dimblend.radio.acoustics.BinauralSpatializer;
+import dimblend.radio.acoustics.ReflectionMeshCache;
 import dimblend.radio.acoustics.SteamAudio;
 import dimblend.radio.acoustics.SteamRenderer;
 import dimblend.radio.acoustics.SteamSimulation;
@@ -23,18 +23,22 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     private final int rate;
     private final AtomicBoolean directBusy = new AtomicBoolean(), reflectionBusy = new AtomicBoolean();
     private final AtomicBoolean initialized = new AtomicBoolean();
+    private final ReflectionMeshCache meshes = new ReflectionMeshCache();
+    private volatile AcousticSnapshot latestSnapshot;
     private volatile SteamSimulation directEngine, reflectionEngine;
     // JNA embedded sub-structures share the owning SimulationOutputs' native backing store.
     // Pin the owner: if it is collected, the params structs become garbage silently
     // (wet dies, dry params jump around). Consumers pin the holder on the stack.
     private volatile SteamAudio.SimulationOutputs directOutputs, reflectionOutputs;
+    private volatile long directRevision = -1, reflectionRevision = -1;
     private volatile View view = new View(Vec3.ZERO, Vec3.ZERO, new Vec3(0, 0, -1), new Vec3(0, 1, 0), false);
     private volatile boolean closed;
     private volatile boolean failed;
     private SteamRenderer renderer;
     private long lastDirect, lastReflection;
     private boolean inputEnded;
-    private boolean gpuEnabled = !"false".equalsIgnoreCase(System.getProperty("dimblend.radio.acoustic.gpu"));
+    private int invalidFields;
+    private final boolean gpuEnabled = !"false".equalsIgnoreCase(System.getProperty("dimblend.radio.acoustic.gpu"));
 
     public RadioSimulationSession(AudioFormat input) {
         rate = Math.round(input.getSampleRate());
@@ -50,59 +54,115 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     }
 
     private void initialize(boolean reflections) {
-        if (closed) return;
+        if (closed || failed) return;
         try {
-            SteamSimulation engine;
-            try { engine = new SteamSimulation(rate, reflections ? 2 : 1, reflections && gpuEnabled); }
-            catch (RuntimeException | Error unavailable) {
-                if (!reflections || !gpuEnabled) throw unavailable;
-                gpuEnabled = false;
-                DimBlendRadio.LOGGER.warn("[radio] GPU acoustics unavailable; using reduced CPU tracing", unavailable);
-                engine = new SteamSimulation(rate, 2);
+            if (!gpuEnabled) throw new IllegalStateException("GPU acoustics disabled");
+            SteamSimulation engine = new SteamSimulation(rate, reflections ? 2 : 1, reflections);
+            if (reflections) {
+                installReflectionEngine(engine);
+                // Direct CPU rays are part of the GPU acoustic session, never a fallback.
+                if (!closed && !failed) DIRECT.execute(() -> initialize(false));
+            } else {
+                if (closed || failed) engine.close();
+                else directEngine = engine;
             }
-            if (closed) { engine.close(); return; }
-            if (reflections) reflectionEngine = engine;
-            else directEngine = engine;
         } catch (RuntimeException | Error error) { fail(error); }
     }
 
-    private void fail(Throwable error) {
-        if (!failed) DimBlendRadio.LOGGER.warn("[radio] acoustic simulation failed; using distance-only sound", error);
-        failed = true;
+    // Only the reflection worker constructs/destroys native resources. Publication and removal
+    // share process()'s monitor, so no audio frame can retain a retired source-owned IR pointer.
+    private void installReflectionEngine(SteamSimulation engine) {
+        SteamRenderer prepared;
+        try { prepared = new SteamRenderer(engine.context(), rate, this::reflectionReset); }
+        catch (RuntimeException | Error error) { engine.close(); throw error; }
+        synchronized (this) {
+            if (!closed && !failed) {
+                renderer = prepared;
+                reflectionOutputs = null;
+                reflectionEngine = engine;
+                return;
+            }
+        }
+        prepared.close();
+        engine.close();
     }
 
+    private void retireReflectionEngine() {
+        SteamRenderer oldRenderer;
+        SteamSimulation oldEngine;
+        synchronized (this) {
+            oldRenderer = renderer;
+            oldEngine = reflectionEngine;
+            renderer = null;
+            reflectionEngine = null;
+            reflectionOutputs = null;
+        }
+        try { if (oldRenderer != null) oldRenderer.close(); }
+        finally { if (oldEngine != null) oldEngine.close(); }
+    }
+
+    private synchronized void reflectionReset() {
+        reflectionOutputs = null;
+        AcousticUpdateGate.invalidateReflections(this);
+        if (++invalidFields >= 3) {
+            fail(new IllegalStateException("Repeated invalid GPU reflection output"));
+        }
+    }
+
+    private synchronized void fail(Throwable error) {
+        if (failed) return;
+        failed = true;
+        directOutputs = null;
+        reflectionOutputs = null;
+        AcousticUpdateGate.forget(this);
+        DimBlendRadio.LOGGER.warn("[radio] acoustics disabled; using distance-only sound (no CPU fallback)", error);
+        DIRECT.execute(() -> { if (directEngine != null) { directEngine.close(); directEngine = null; } });
+        REFLECTIONS.execute(this::retireReflectionEngine);
+    }
+
+    public boolean active() { return !closed && !failed; }
+
     public void setView(Vec3 source, Vec3 listener, Vec3 ahead, Vec3 up, boolean audible) {
+        if (closed) return;
         view = new View(source, listener, ahead, up, audible);
         if (audible && initialized.compareAndSet(false, true)) {
-            DIRECT.execute(() -> initialize(false));
             REFLECTIONS.execute(() -> initialize(true));
         }
     }
 
     public void simulate(AcousticSnapshot snapshot, long now) {
         if (closed || failed || !view.audible) return;
+        latestSnapshot = snapshot;
         View captured = view;
-        if (directEngine != null && now - lastDirect >= 50_000_000 && directBusy.compareAndSet(false, true)) {
+        if (directEngine != null && (now - lastDirect >= 8_000_000
+                || AcousticUpdateGate.geometryChanged(this, snapshot, false)) && directBusy.compareAndSet(false, true)) {
             lastDirect = now;
             if (!AcousticUpdateGate.shouldSimulate(this, snapshot, captured.source, captured.listener, false)) {
                 directBusy.set(false);
             } else {
                 DIRECT.execute(() -> {
                     try {
-                        if (!closed) {
-                            var outputs = directEngine.simulate(snapshot::cast, captured.listener, captured.source, 1, 0);
+                        if (!closed && !failed) {
+                            View latest = view;
+                            AcousticSnapshot scene = latestSnapshot;
+                            AcousticUpdateGate.shouldSimulate(this, scene, latest.source, latest.listener, false);
+                            var outputs = directEngine.simulate(scene::cast, latest.listener, latest.source, 1, 0);
                             // Steam's 1/d rolloff is far quieter than the vanilla jukebox feel at
                             // range; own the loudness curve here (linear to zero at the audible
                             // edge) and let Steam keep occlusion/transmission/air absorption.
-                            outputs.direct.distance = distanceGain(captured.listener.distanceTo(captured.source));
-                            directOutputs = outputs;
+                            outputs.direct.distance = distanceGain(latest.listener.distanceTo(latest.source));
+                            if (!closed && !failed) {
+                                directOutputs = outputs;
+                                directRevision = scene.revision();
+                            }
                         }
                     } catch (RuntimeException | Error error) { fail(error); }
                     finally { directBusy.set(false); }
                 });
             }
         }
-        if (reflectionEngine != null && now - lastReflection >= reflectionInterval() && reflectionBusy.compareAndSet(false, true)) {
+        if (reflectionEngine != null && (now - lastReflection >= reflectionInterval()
+                || AcousticUpdateGate.geometryChanged(this, snapshot, true)) && reflectionBusy.compareAndSet(false, true)) {
             lastReflection = now;
             if (!AcousticUpdateGate.shouldSimulate(this, snapshot, captured.source, captured.listener, true)) {
                 reflectionBusy.set(false);
@@ -110,36 +170,32 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
                 REFLECTIONS.execute(() -> {
                     long start = System.nanoTime();
                     try {
-                        if (!closed) {
+                        if (!closed && !failed) {
+                            View latest = view;
+                            if (!latest.audible) return;
+                            // A block edit can arrive while this radio waits behind another job.
+                            AcousticSnapshot scene = latestSnapshot;
+                            AcousticUpdateGate.shouldSimulate(this, scene, latest.source, latest.listener, true);
                             boolean first = reflectionOutputs == null;
-                            var geometry = gpuEnabled ? snapshot.mesh(captured.listener, captured.source) : null;
+                            var geometry = meshes.get(scene, latest.listener, latest.source, scene::mesh);
                             SteamSimulation engine = reflectionEngine;
+                            if (engine == null || closed || failed) return;
                             SteamAudio.SimulationOutputs outputs;
                             try {
                                 // Engines are long-lived: re-run in place; simulateGpu re-uploads
                                 // the scene mesh in place when the geometry changed. Replacing the
                                 // engine per run was found to NaN the wet field after the second
                                 // close-retain cycle and stall the worker on native teardown.
-                                outputs = engine.gpu()
-                                        ? engine.simulateGpu(geometry, captured.listener, captured.source, 64, 128)
-                                        : engine.simulate(snapshot::cast, captured.listener, captured.source, 64, 128);
+                                outputs = engine.simulateGpu(geometry, latest.listener, latest.source, SteamSimulation.GPU_RAYS, 128);
                             } catch (RuntimeException | Error error) {
-                                if (!engine.gpu()) throw error;
-                                gpuEnabled = false;
-                                DimBlendRadio.LOGGER.warn("[radio] GPU acoustics unavailable; using reduced CPU tracing", error);
-                                engine.close();
-                                engine = new SteamSimulation(rate, 2);
-                                reflectionEngine = engine;
-                                // The new engine owns a new context; the renderer's effects belong to
-                                // the released one, so rebuild it (next process() frame recreates it).
-                                synchronized (RadioSimulationSession.this) {
-                                    if (renderer != null) { renderer.close(); renderer = null; }
-                                }
-                                outputs = engine.simulate(snapshot::cast, captured.listener, captured.source, 64, 128);
+                                fail(error);
+                                return;
                             }
                             synchronized (RadioSimulationSession.this) {
-                                if (!closed) {
+                                if (!closed && !failed) {
                                     reflectionOutputs = outputs;
+                                    reflectionRevision = scene.revision();
+                                    renderer.reflectionsReady();
                                 }
                             }
                             if (first) DimBlendRadio.LOGGER.info("[radio] {} convolution IR ready: {} channels, {} samples, {} ms",
@@ -156,10 +212,9 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         }
     }
 
-    /** GPU scenes are cheap to re-simulate; CPU tracing keeps the slower cadence. */
+    /** Motion updates are scheduled from the latest camera pose, independently of client ticks. */
     private long reflectionInterval() {
-        var engine = reflectionEngine;
-        return engine != null && engine.gpu() ? 125_000_000L : 250_000_000L;
+        return 50_000_000L;
     }
 
     /** Linear-to-zero loudness out to the acoustic audibility range (vanilla jukebox feel, longer reach). */
@@ -188,11 +243,6 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         View captured = view;
         Vec3 relative = captured.source.subtract(captured.listener);
         try {
-            if (!closed && !failed && renderer == null && reflectionEngine != null) {
-                renderer = new SteamRenderer(reflectionEngine.context(), rate);
-            }
-            if (renderer != null && reflectionEngine != null && !closed)
-                BinauralSpatializer.attach(renderer, reflectionEngine.context(), rate);
             for (int block = 0; block < blocks; block++) {
                 float[] input = new float[SteamRenderer.FRAME];
                 for (int i = 0; i < input.length && mono.remaining() >= 2; i++) input[i] = mono.getShort() / 32768f;
@@ -206,8 +256,9 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
                     var impulse = reflectionOut == null ? null : reflectionOut.reflections;
                     if (direct == null) {
                         direct = new SteamAudio.DirectParams();
-                        direct.distance = distanceGain(relative.length());
                     }
+                    // Distance follows the current audio-frame pose, not a completed ray job.
+                    direct.distance = distanceGain(relative.length());
                     result = renderer.render(input, direct, impulse, relative, orientation(captured), frames == 0,
                             wetScale(relative.length()));
                 } else {
@@ -249,10 +300,9 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         if (closed) return;
         closed = true;
         AcousticUpdateGate.forget(this);
-        if (renderer != null) { renderer.close(); renderer = null; }
         directOutputs = null;
         reflectionOutputs = null;
         DIRECT.execute(() -> { if (directEngine != null) directEngine.close(); });
-        REFLECTIONS.execute(() -> { if (reflectionEngine != null) reflectionEngine.close(); });
+        REFLECTIONS.execute(this::retireReflectionEngine);
     }
 }

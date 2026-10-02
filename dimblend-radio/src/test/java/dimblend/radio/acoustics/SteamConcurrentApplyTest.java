@@ -3,6 +3,7 @@ package dimblend.radio.acoustics;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * The last untested in-game ingredient: iplSimulatorRunReflections on a worker thread while the
@@ -31,17 +32,18 @@ class SteamConcurrentApplyTest {
             java.util.concurrent.atomic.AtomicReference<SteamAudio.SimulationOutputs> current =
                     new java.util.concurrent.atomic.AtomicReference<>(first);
             java.util.concurrent.atomic.AtomicBoolean stop = new java.util.concurrent.atomic.AtomicBoolean();
+            var workerFailure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
             Thread worker = new Thread(() -> {
-                while (!stop.get()) {
-                    current.set(simulation.simulateGpu(geometry, Vec3.ZERO, new Vec3(4, 0, 0), 64, 128));
-                }
+                try {
+                    while (!stop.get()) current.set(simulation.simulateGpu(geometry, Vec3.ZERO, new Vec3(4, 0, 0), 64, 128));
+                } catch (Throwable error) { workerFailure.set(error); }
             });
             worker.setDaemon(true);
             worker.start();
             long end = System.nanoTime() + 3_000_000_000L;
             double wetSum = 0;
             int frames = 0, silentFrames = 0;
-            while (System.nanoTime() < end) {
+            try { while (System.nanoTime() < end) {
                 var impulse = current.get().reflections;
                 float[] input = new float[SteamRenderer.FRAME];
                 input[0] = 0.5f;
@@ -52,11 +54,15 @@ class SteamConcurrentApplyTest {
                 wetSum += energy;
                 frames++;
                 if (energy < 1e-9) silentFrames++;
+            } } finally {
+                stop.set(true);
+                worker.join(5000);
             }
-            stop.set(true);
-            worker.join(5000);
-            System.out.println("[concurrent] frames=" + frames + " silent=" + silentFrames
-                    + " avgWet=" + (wetSum / Math.max(1, frames)));
+            assertFalse(worker.isAlive(), "Simulation worker must finish before native resource release");
+            assertNull(workerFailure.get(), "Worker failures must fail the test");
+            assertTrue(frames > 10);
+            assertTrue(Double.isFinite(wetSum) && wetSum > 1e-6);
+            assertTrue(silentFrames <= 2, "Concurrent updates must not erase the reflection field");
         }
     }
 }

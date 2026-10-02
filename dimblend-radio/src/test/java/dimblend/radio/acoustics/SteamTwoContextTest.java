@@ -3,6 +3,7 @@ package dimblend.radio.acoustics;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /** In-game topology: a CPU direct engine and a GPU reflections engine alive in one JVM. */
 class SteamTwoContextTest {
@@ -31,6 +32,9 @@ class SteamTwoContextTest {
             double wet2 = wet(renderer,
                     reflections.simulateGpu(room(), Vec3.ZERO, new Vec3(4, 0, 0), 64, 128).reflections);
             System.out.println("[two-ctx] wet after interleaved direct run: " + wet2);
+            assertEquals(1, directOut.direct.occlusion, 0.001);
+            assertTrue(Double.isFinite(wet1) && wet1 > 1e-6);
+            assertTrue(Double.isFinite(wet2) && wet2 > wet1 * 0.5);
         }
     }
 

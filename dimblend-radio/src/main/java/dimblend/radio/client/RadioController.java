@@ -13,7 +13,6 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.nio.file.Path;
@@ -72,11 +71,6 @@ public final class RadioController {
         LIVE.clear();
         REQUESTS.clear();
         // PLAYBACKS survives so the replacement channels resume without consulting gameTime.
-    }
-
-    @SubscribeEvent
-    public static void onRenderFrame(RenderFrameEvent.Pre event) {
-        RadioAcousticController.frameRefresh(Minecraft.getInstance());
     }
 
     @SubscribeEvent
@@ -221,6 +215,11 @@ public final class RadioController {
         }
         return engine.dimblend$radioVolume(live.instance())
                 * mc.options.getSoundSourceVolume(net.minecraft.sounds.SoundSource.MASTER);
+    }
+
+    public static double audibleRange(RadioStatePayload state) {
+        Live live = LIVE.get(new LiveKey(state.dimension().toString(), state.pos()));
+        return live == null ? 0 : RadioAcousticController.audibleRange(live.instance());
     }
 
     private static void startInstance(Minecraft mc, LiveKey key, RadioStatePayload state) {

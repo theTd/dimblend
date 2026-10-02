@@ -67,15 +67,21 @@ public final class AcousticMesh {
             }
             cells[index(x, y, z, size)] = cached;
         }
+        appendCells(cells, min, size, pose);
+    }
+
+    /** Greedy surface extraction. Indexed strides avoid three temporary coordinates per voxel. */
+    void appendCells(byte[] cells, int[] min, int[] size, Pose3d pose) {
+        int[] stride = {1, size[0], size[0] * size[1]};
         for (int axis = 0; axis < 3; axis++) {
             int u = (axis + 1) % 3, v = (axis + 2) % 3;
             int width = size[u], height = size[v];
             int[] mask = new int[width * height];
             for (int plane = 0; plane <= size[axis]; plane++) {
                 for (int j = 0; j < height; j++) for (int i = 0; i < width; i++) {
-                    int[] p = new int[3]; p[axis] = plane; p[u] = i; p[v] = j;
-                    int b = cell(cells, p, size); p[axis]--;
-                    int a = cell(cells, p, size);
+                    int index = plane * stride[axis] + i * stride[u] + j * stride[v];
+                    int b = plane < size[axis] ? cells[index] : 0;
+                    int a = plane > 0 ? cells[index - stride[axis]] : 0;
                     mask[j * width + i] = a != 0 && b == 0 ? a : a == 0 && b != 0 ? -b : 0;
                 }
                 for (int j = 0; j < height; j++) for (int i = 0; i < width;) {
@@ -114,26 +120,43 @@ public final class AcousticMesh {
                         && section.ownerY(q) == emitter.getY() && section.ownerZ(q) == emitter.getZ()) {
                     continue;
                 }
-                ensure(12, 6, 2);
                 int base = q * 12;
+                boolean first = validTriangle(decoded, base, base + 3, base + 6);
+                boolean second = validTriangle(decoded, base, base + 6, base + 9);
+                if (!first && !second) continue;
+                ensure(12, 6, 2);
                 int baseVertex = vertexCount / 3;
                 for (int corner = 0; corner < 4; corner++) {
                     vertices[vertexCount++] = (float) (decoded[base + corner * 3] + section.originX() - origin.x);
                     vertices[vertexCount++] = (float) (decoded[base + corner * 3 + 1] + section.originY() - origin.y);
                     vertices[vertexCount++] = (float) (decoded[base + corner * 3 + 2] + section.originZ() - origin.z);
                 }
-                int[] indices = {0, 1, 2, 0, 2, 3};
-                for (int index : indices) triangles[triangleCount++] = baseVertex + index;
-                materials[triangleCount / 3 - 2] = materials[triangleCount / 3 - 1] = section.materials()[q];
+                if (first) appendTriangle(baseVertex, baseVertex + 1, baseVertex + 2, section.materials()[q]);
+                if (second) appendTriangle(baseVertex, baseVertex + 2, baseVertex + 3, section.materials()[q]);
             }
         }
     }
 
-    private static int index(int x, int y, int z, int[] size) { return (z * size[1] + y) * size[0] + x; }
-    private static int cell(byte[] cells, int[] p, int[] size) {
-        if (p[0] < 0 || p[1] < 0 || p[2] < 0 || p[0] >= size[0] || p[1] >= size[1] || p[2] >= size[2]) return 0;
-        return cells[index(p[0], p[1], p[2], size)];
+    /** Validate the actual GPU triangles, including collapsed corners of triangle-shaped quads. */
+    public static boolean validTriangle(float[] vertices, int a, int b, int c) {
+        for (int axis = 0; axis < 3; axis++) {
+            if (!Float.isFinite(vertices[a + axis]) || !Float.isFinite(vertices[b + axis])
+                    || !Float.isFinite(vertices[c + axis])) return false;
+        }
+        double ux = vertices[b] - (double) vertices[a], uy = vertices[b+1] - (double) vertices[a+1], uz = vertices[b+2] - (double) vertices[a+2];
+        double vx = vertices[c] - (double) vertices[a], vy = vertices[c+1] - (double) vertices[a+1], vz = vertices[c+2] - (double) vertices[a+2];
+        double nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        return nx * nx + ny * ny + nz * nz >= 1e-6;
     }
+
+    private void appendTriangle(int a, int b, int c, int material) {
+        materials[triangleCount / 3] = material;
+        triangles[triangleCount++] = a;
+        triangles[triangleCount++] = b;
+        triangles[triangleCount++] = c;
+    }
+
+    private static int index(int x, int y, int z, int[] size) { return (z * size[1] + y) * size[0] + x; }
     private void quad(double[] p, double[] u, double[] v, int material, Pose3d pose) {
         ensure(12, 6, 2);
         int base = vertexCount / 3;

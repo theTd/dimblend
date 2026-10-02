@@ -39,18 +39,23 @@ public final class BinauralSpatializer {
         final PointerByReference hrtf = new PointerByReference(), direct = new PointerByReference(), reflections = new PointerByReference();
         double propagationDelay = Double.NaN;
     }
-    private static final Map<Object, State> STATES = new IdentityHashMap<>();
-    private static Api api;
+    private static final Map<Object, State> STATES = java.util.Collections.synchronizedMap(new IdentityHashMap<>());
+    private static final Object HRTF_CREATION = new Object();
+    private static volatile Api api;
 
-    public static synchronized void attach(Object owner, Pointer context, int rate) {
+    // The caller serializes each owner's lifetime. HRTF creation needs its own SDK-wide lock,
+    // but must never hold the map lock (or a lock used by other owners' audio processing).
+    public static void attach(Object owner, Pointer context, int rate) {
         if (STATES.containsKey(owner)) return;
-        if (api == null) api = Native.load(Path.of(System.getProperty("java.io.tmpdir"),
-                "dimblend-steamaudio-4.8.1", "phonon.dll").toString(), Api.class);
         var audio = new SteamAudio.AudioSettings();
         audio.samplingRate = rate;
         var state = new State();
         try {
-            SteamAudio.check(api.iplHRTFCreate(context, audio, new HrtfSettings(), state.hrtf), "HRTF");
+            synchronized (HRTF_CREATION) {
+                if (api == null) api = Native.load(Path.of(System.getProperty("java.io.tmpdir"),
+                        "dimblend-steamaudio-4.8.1", "phonon.dll").toString(), Api.class);
+                SteamAudio.check(api.iplHRTFCreate(context, audio, new HrtfSettings(), state.hrtf), "HRTF");
+            }
             var settings = new Settings();
             settings.hrtf = state.hrtf.getValue();
             SteamAudio.check(api.iplBinauralEffectCreate(context, audio, settings, state.direct), "binaural direct effect");
@@ -61,7 +66,7 @@ public final class BinauralSpatializer {
         } catch (RuntimeException | Error error) { release(state); throw error; }
     }
 
-    public static synchronized boolean direct(Object owner, SteamAudio.Vector direction,
+    public static boolean direct(Object owner, SteamAudio.Vector direction,
             SteamAudio.AudioBuffer input, SteamAudio.AudioBuffer output) {
         State state = STATES.get(owner);
         if (state == null) return false;
@@ -72,7 +77,7 @@ public final class BinauralSpatializer {
         return true;
     }
 
-    public static synchronized boolean reflections(Object owner, SteamAudio.Space orientation,
+    public static boolean reflections(Object owner, SteamAudio.Space orientation,
             SteamAudio.AudioBuffer input, SteamAudio.AudioBuffer output) {
         State state = STATES.get(owner);
         if (state == null) return false;
@@ -84,12 +89,12 @@ public final class BinauralSpatializer {
         return true;
     }
 
-    public static synchronized void detach(Object owner) {
+    public static void detach(Object owner) {
         State state = STATES.remove(owner);
         if (state != null) release(state);
     }
 
-    public static synchronized void delay(Object owner, float[] line, int cursor, float[] samples, double target) {
+    public static void delay(Object owner, float[] line, int cursor, float[] samples, double target) {
         State state = STATES.get(owner);
         double previous = state == null || Double.isNaN(state.propagationDelay) ? target : state.propagationDelay;
         for (int i = 0; i < samples.length; i++) {

@@ -95,10 +95,10 @@ public final class SteamAudio {
         public Pointer batchClosest, batchAny, user, embree, radeon;
     }
     @FieldOrder({"samplingRate", "frameSize"})
-    public static class AudioSettings extends Structure { public int samplingRate, frameSize = 2048; }
+    public static class AudioSettings extends Structure { public int samplingRate, frameSize = SteamRenderer.FRAME; }
     @FieldOrder({"channels", "samples", "data"})
     public static class AudioBuffer extends Structure {
-        public int channels = 1, samples = 2048;
+        public int channels = 1, samples = SteamRenderer.FRAME;
         public Pointer data;
         private final Memory[] storage;
         private final Memory pointers;
@@ -108,7 +108,7 @@ public final class SteamAudio {
             storage = new Memory[channels];
             pointers = new Memory((long) Native.POINTER_SIZE * channels);
             for (int i = 0; i < channels; i++) {
-                storage[i] = new Memory(2048 * 4L);
+                storage[i] = new Memory(SteamRenderer.FRAME * 4L);
                 pointers.setPointer((long) i * Native.POINTER_SIZE, storage[i]);
             }
             data = pointers;
@@ -179,7 +179,7 @@ public final class SteamAudio {
     public static class SimulationSettings extends Structure {
         public int flags = 3, sceneType = 3, reflectionType, occlusionSamples = 1, maxRays = 128, diffuseSamples = 128;
         public float duration = 6;
-        public int order, sources = 1, threads = 1, batch = 1, visSamples = 1, samplingRate, frameSize = 2048;
+        public int order, sources = 1, threads = 1, batch = 1, visSamples = 1, samplingRate, frameSize = SteamRenderer.FRAME;
         public Pointer openCL, radeon, tan;
     }
     @FieldOrder({"listener", "rays", "bounces", "duration", "order", "minimum", "callback", "user"})

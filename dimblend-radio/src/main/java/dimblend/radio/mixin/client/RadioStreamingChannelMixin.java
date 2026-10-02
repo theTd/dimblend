@@ -5,8 +5,11 @@ import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import java.nio.ByteBuffer;
 import dimblend.radio.client.RadioAudioStream;
 import dimblend.radio.client.RadioStreamPump;
+import dimblend.radio.client.RadioStreamBuffering;
+import dimblend.radio.acoustics.SteamRenderer;
 import net.minecraft.client.sounds.AudioStream;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -16,28 +19,32 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Channel.class)
 public abstract class RadioStreamingChannelMixin {
+    @Shadow @Final private int source;
     @Shadow private int streamingBufferSize;
     @Shadow private AudioStream stream;
     @Shadow public abstract void disableAttenuation();
     @Shadow public abstract boolean stopped();
     @Shadow public abstract void play();
+    @Shadow private void pumpBuffers(int count) { throw new AssertionError(); }
     @Unique private boolean dimblend$explicitlyStopped;
     @Unique private boolean dimblend$refilled;
+    @Unique private RadioStreamBuffering.State dimblend$buffering;
+    @Unique private int dimblend$starvations;
 
-    // Two 2048-frame buffers (~93ms total) instead of four: halves the end-to-end pipeline
-    // latency of the acoustic path so head-turns and movement track faster.
+    // Start short. An actual underrun raises this channel's depth before it restarts.
     @ModifyArg(method = "attachBufferStream", index = 0, at = @At(value = "INVOKE",
             target = "Lcom/mojang/blaze3d/audio/Channel;pumpBuffers(I)V"))
     private int dimblend$shallowQueue(int count) {
-        return stream instanceof RadioAudioStream radio && radio.simulated() ? 2 : count;
+        if (!(stream instanceof RadioAudioStream radio) || !radio.simulated()) return count;
+        if (dimblend$buffering == null) dimblend$buffering = new RadioStreamBuffering.State(stream.getFormat().getSampleRate());
+        return dimblend$buffering.target();
     }
 
     @Inject(method = "attachBufferStream", at = @At(value = "INVOKE",
             target = "Lcom/mojang/blaze3d/audio/Channel;pumpBuffers(I)V"))
     private void dimblend$acousticStream(AudioStream stream, CallbackInfo ci) {
         if (stream instanceof RadioAudioStream radio && radio.simulated()) {
-            // 2048 frames = one native render block (~46ms): keeps end-to-end pipeline latency low.
-            streamingBufferSize = 2048 * stream.getFormat().getFrameSize();
+            streamingBufferSize = SteamRenderer.FRAME * stream.getFormat().getFrameSize();
             // Stereo is spatialized by Steam Audio, which also owns direct and reflected attenuation.
             disableAttenuation();
             RadioStreamPump.register((Channel) (Object) this);
@@ -71,17 +78,20 @@ public abstract class RadioStreamingChannelMixin {
         return pcm;
     }
 
-    @Unique private static final java.util.concurrent.atomic.AtomicInteger dimblend$underruns
-            = new java.util.concurrent.atomic.AtomicInteger();
-
     @Inject(method = "updateStream", at = @At("TAIL"))
     private void dimblend$recoverUnderrun(CallbackInfo ci) {
         // Refilled OpenAL streams remain stopped after starvation. Recover before ChannelAccess retires them.
         if (!dimblend$explicitlyStopped && stream instanceof RadioAudioStream radio && radio.simulated()
                 && stopped() && dimblend$refilled) {
-            if (Boolean.getBoolean("dimblend.radio.acoustic.debug")) {
-                dimblend.radio.DimBlendRadio.LOGGER.info("[radio] underrun recovered #{}",
-                        dimblend$underruns.incrementAndGet());
+            if (dimblend$buffering == null) dimblend$buffering = new RadioStreamBuffering.State(stream.getFormat().getSampleRate());
+            int target = dimblend$buffering.underrun();
+            int queued = org.lwjgl.openal.AL10.alGetSourcei(source, org.lwjgl.openal.AL10.AL_BUFFERS_QUEUED);
+            // Restarting with the same shallow queue can cause an endless play/starve/play cycle.
+            if (queued < target) pumpBuffers(target - queued);
+            int count = ++dimblend$starvations;
+            if (count <= 3 || (count & (count - 1)) == 0) {
+                dimblend.radio.DimBlendRadio.LOGGER.warn("[radio] audio starvation #{}; recovered with {} buffers ({} ms)",
+                        count, target, Math.round(target * SteamRenderer.FRAME * 1000f / stream.getFormat().getSampleRate()));
             }
             play();
         }
