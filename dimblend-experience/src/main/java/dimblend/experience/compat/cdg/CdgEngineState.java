@@ -53,8 +53,8 @@ public class CdgEngineState {
             Codec.INT.fieldOf("lastFuelAmount").forGetter(s -> s.lastFuelAmount),
             Codec.FLOAT.fieldOf("fluctFactor").forGetter(s -> s.fluctFactor),
             Codec.INT.fieldOf("fluctTicksLeft").forGetter(s -> s.fluctTicksLeft),
-            Codec.BOOL.optionalFieldOf("fuseActive", false).forGetter(s -> s.fuseActive),
-            Codec.INT.optionalFieldOf("fuseTicksLeft", 0).forGetter(s -> s.fuseTicksLeft))
+            Codec.BOOL.fieldOf("fuseActive").forGetter(s -> s.fuseActive),
+            Codec.INT.fieldOf("fuseTicksLeft").forGetter(s -> s.fuseTicksLeft))
             .apply(instance, CdgEngineState::new));
 
     public CdgEngineState(int rampTicks, boolean overloadLatched, boolean fuelPresent, int lastFuelAmount,
