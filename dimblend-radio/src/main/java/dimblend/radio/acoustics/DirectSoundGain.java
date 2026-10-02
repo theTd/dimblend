@@ -14,13 +14,13 @@ public final class DirectSoundGain {
         if ((source.flags & 4) != 0) gain *= source.directivity;
         for (int band = 0; band < 3; band++) equalization.air[band] = (source.flags & 2) != 0 ? source.air[band] : 1;
         if ((source.flags & 8) != 0) {
-            if ((source.flags & 16) == 0) gain *= source.occlusion;
-            else if (source.transmissionType == 0) {
-                float transmission = (source.transmission[0] + source.transmission[1] + source.transmission[2]) / 3;
-                gain *= source.occlusion + (1 - source.occlusion) * transmission;
-            } else {
-                for (int band = 0; band < 3; band++)
-                    equalization.air[band] *= source.occlusion + (1 - source.occlusion) * source.transmission[band];
+            // Partial (volumetric) occlusion shades highs more than lows; 0 and 1 are unchanged.
+            float average = (source.transmission[0] + source.transmission[1] + source.transmission[2]) / 3;
+            for (int band = 0; band < 3; band++) {
+                float open = AcousticDiffraction.bandOcclusion(source.occlusion, band);
+                float through = (source.flags & 16) == 0 ? 0
+                        : source.transmissionType == 0 ? average : source.transmission[band];
+                equalization.air[band] *= open + (1 - open) * through;
             }
         }
         float peak = Math.max(equalization.air[0], Math.max(equalization.air[1], equalization.air[2]));

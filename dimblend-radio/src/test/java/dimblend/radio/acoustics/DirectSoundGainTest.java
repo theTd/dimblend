@@ -33,6 +33,29 @@ class DirectSoundGainTest {
         assertEquals(1,samples[239],1e-6);
     }
 
+    @Test void partialOcclusionMufflesHighsMoreThanLows() {
+        var gain = new DirectSoundGain();
+        var params = new SteamAudio.DirectParams();
+        params.occlusion = 0.25f;
+        params.transmission = new float[3];
+        float level = gain.prepare(params);
+        assertEquals(0.5, level * gain.equalization().air[0], 1e-6);
+        assertEquals(0.25, level * gain.equalization().air[1], 1e-6);
+        assertEquals(0.0625, level * gain.equalization().air[2], 1e-6);
+    }
+
+    @Test void transmissionFillsInWhatPartialOcclusionRemoves() {
+        var gain = new DirectSoundGain();
+        var params = new SteamAudio.DirectParams();
+        params.occlusion = 0.25f;
+        params.transmission = new float[]{0.35f, 0.2f, 0.08f};
+        float level = gain.prepare(params);
+        float[] expected = {0.5f + 0.5f * 0.35f, 0.25f + 0.75f * 0.2f, 0.0625f + 0.9375f * 0.08f};
+        for (int band = 0; band < 3; band++) {
+            assertEquals(expected[band], level * gain.equalization().air[band], 1e-6, "band " + band);
+        }
+    }
+
     @Test void completeOcclusionDoesNotCreateInvalidEqualizerCoefficients() {
         var gain=new DirectSoundGain();
         var params=new SteamAudio.DirectParams();

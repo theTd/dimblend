@@ -69,7 +69,21 @@
   and each hit carries the path length through the run it entered (up to eight blocks).
   Transmission depends on the material class (wool, foliage, soil, wood, stone/other)
   and thickness: solid walls follow the mass law (−6 dB per doubling), foliage half
-  that. Two walls multiply. Reflections use Steam Audio's OpenCL/Radeon Rays GPU backend
+  that. Two walls multiply.
+- Approximate diffraction: direct occlusion is Steam Audio's volumetric mode rather than
+  one ray. 16 fixed points in a 2-block sphere around the radio are tested against the
+  listener (points the radio cannot see are dropped); when some are hidden, a second sphere
+  around the listener is tested against the radio and the larger visible share wins. Walking
+  behind a corner or past a doorway near either end therefore fades the dry sound over a few
+  blocks (about half level at the shadow edge, no step there) instead of cutting it, and the
+  share is applied per band (low^0.5, mid^1, high^2), so the fade also muffles. Spheres are
+  sampled even with a clear line of sight, so obstacles beside the line take a little off.
+  The sound keeps its true direction, and openings more than the radius from both ends do not
+  help. `-Ddimblend.radio.acoustic.diffraction=<radius, 0–8, default 2>` (0 restores the single
+  ray) and `-Ddimblend.radio.acoustic.diffraction.samples=<2–32, default 16>` tune it; a direct
+  update costs about 0.35–0.4 ms with 16 samples against 0.18 ms for one ray (native benchmark
+  in `SteamDirectDiffractionTest`), and runs only while something moves.
+- Reflections use Steam Audio's OpenCL/Radeon Rays GPU backend
   with five material classes and float coordinates relative to a nearby origin.
   Terrain geometry mixes exact surfaces teed from Sodium's chunk-build pipeline with
   a one-metre voxel fill for sections Sodium has not fully meshed (its build queue is
@@ -162,7 +176,8 @@
   rest is voxel-approximated), block-entity and translucent sections approximated as voxels,
   water surfaces of waterlogged blocks counted as reflectors,
   residual reflection noise, snapshot/update latency, approximate block
-  materials, and no diffraction model. Musical listening and performance
+  materials, and diffraction approximated by volumetric occlusion (no path search around
+  obstacles, no change of apparent direction). Musical listening and performance
   profiling remain necessary beyond the tested room fixtures.
 - Geometry and audio regression tests run with `gradlew :dimblend-radio:test`.
   Native audio tests are opt-in:

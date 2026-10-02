@@ -65,6 +65,8 @@ public final class SteamSimulation implements AutoCloseable {
             settings.flags = flags;
             settings.samplingRate = rate;
             settings.order = 1;
+            // Volumetric occlusion (AcousticDiffraction) on the CPU direct path.
+            if ((flags & 1) != 0 && !gpu) settings.occlusionSamples = AcousticDiffraction.MAX_SAMPLES;
             if (gpu) {
                 settings.maxRays = GPU_RAYS;
                 settings.sceneType = 2;
@@ -188,6 +190,7 @@ public final class SteamSimulation implements AutoCloseable {
         inputs.flags = flags;
         Vec3 relative = sourceWorld.subtract(offset);
         inputs.source.origin = new SteamAudio.Vector(relative.x, relative.y, relative.z);
+        boolean volumetric = (flags & 1) != 0 && occludeVolumetrically(inputs);
         api.iplSourceSetInputs(source.getValue(), flags, inputs);
         var shared = new SteamAudio.SharedInputs();
         shared.rays = gpu ? GPU_RAYS : rays;
@@ -204,9 +207,48 @@ public final class SteamSimulation implements AutoCloseable {
         var outputs = new SteamAudio.SimulationOutputs();
         api.iplSourceGetOutputs(source.getValue(), flags, outputs);
         if (!reflect) outputs.reflections.ir = null;
+        if (volumetric && outputs.direct.occlusion < 1) {
+            outputs.direct.occlusion = Math.max(outputs.direct.occlusion, listenerSideOcclusion(inputs, listener, relative));
+        }
         outputs.direct.flags = 27;
         outputs.direct.transmissionType = 1;
         return outputs;
+    }
+
+    /**
+     * Picks the direct path's occlusion mode: with {@link AcousticDiffraction} on, a sphere around
+     * the source is sampled even when the centre line is clear, so the level stays continuous
+     * across the shadow boundary (about half the sphere is visible on either side of it). CPU
+     * scenes only: a Radeon Rays scene has no single-ray queries.
+     *
+     * @return whether the volumetric mode was chosen
+     */
+    private boolean occludeVolumetrically(SteamAudio.SimulationInputs inputs) {
+        float radius = AcousticDiffraction.radius();
+        if (gpu || tracer == null || radius <= 0) return false;
+        inputs.occlusionType = 1;
+        inputs.occlusionRadius = radius;
+        inputs.occlusionSamples = Math.min(AcousticDiffraction.MAX_SAMPLES, AcousticDiffraction.samples());
+        return true;
+    }
+
+    /**
+     * The same volumetric occlusion with the sphere around the listener (source and listener
+     * swapped), so an opening near the listener counts as well as one near the source. Only run
+     * when the source sphere is partly hidden; the larger share wins, which keeps it continuous.
+     */
+    private float listenerSideOcclusion(SteamAudio.SimulationInputs inputs, Vec3 listener, Vec3 sourcePosition) {
+        inputs.source.origin = new SteamAudio.Vector(listener.x, listener.y, listener.z);
+        inputs.directFlags = 8;
+        api.iplSourceSetInputs(source.getValue(), 1, inputs);
+        var shared = new SteamAudio.SharedInputs();
+        shared.listener.origin = new SteamAudio.Vector(sourcePosition.x, sourcePosition.y, sourcePosition.z);
+        api.iplSimulatorSetSharedInputs(simulator.getValue(), 1, shared);
+        api.iplSimulatorRunDirect(simulator.getValue());
+        if (callbackFailure != null) throw new IllegalStateException("Acoustic geometry callback failed", callbackFailure);
+        var swapped = new SteamAudio.SimulationOutputs();
+        api.iplSourceGetOutputs(source.getValue(), 1, swapped);
+        return swapped.direct.occlusion;
     }
 
     private AcousticRay cast(float[] ray, float min, float max) {
@@ -243,7 +285,9 @@ public final class SteamSimulation implements AutoCloseable {
     }
 
     private void any(Pointer ray, float min, float max, Pointer output, Pointer user) {
-        try { output.setByte(0, (byte) (max <= min || cast(ray.getFloatArray(0, 6), min, max).kind() != AcousticRay.Kind.MISS ? 1 : 0)); }
+        // An empty segment is clear: volumetric occlusion's first sample is the sphere's centre,
+        // and Steam Audio asks whether the centre occludes itself.
+        try { output.setByte(0, (byte) (max > min && cast(ray.getFloatArray(0, 6), min, max).kind() != AcousticRay.Kind.MISS ? 1 : 0)); }
         catch (Throwable error) { callbackFailure = error; output.setByte(0, (byte) 1); }
     }
 
