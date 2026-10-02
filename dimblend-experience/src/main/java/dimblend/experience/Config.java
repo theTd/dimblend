@@ -115,8 +115,8 @@ public final class Config {
             .define("trainLateralForce", true);
 
     public static final ModConfigSpec.BooleanValue VILLAGER_MASTER = BUILDER
-            .comment("G 板块 G1：旋转维度内村民生成/转职瞬间定大师并补全全部交易，每条只能成交一次、不补货，掉工作站点不掉职业；"
-                    + "新生无业者随机指派职业（不含无业/傻子），存量不追溯，傻子/婴儿/流浪商人跳过")
+            .comment("G 板块 G1：旋转维度内村民首次获得职业时定大师并补全全部交易，每条只能成交一次、不补货，掉工作站点不掉职业；"
+                    + "无业新生保持无业不指派，存量不追溯，傻子/婴儿/流浪商人跳过")
             .define("villagerMaster", true);
 
     public static final ModConfigSpec.BooleanValue STRUCTURE_BED = BUILDER

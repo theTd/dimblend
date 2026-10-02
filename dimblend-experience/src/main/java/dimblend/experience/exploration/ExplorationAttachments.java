@@ -40,9 +40,9 @@ public final class ExplorationAttachments {
                     .build());
 
     /**
-     * G1 新鲜戳：转职瞬间由 {@code VillagerMasterMixin} 打上，新生瞬间由
-     * {@code VillagerMasterRules#onFinalizeSpawn} 打上，扫描收编时消费。
-     * 只认戳不认交易/经验——`getOffers()` 自带物化副作用，不能拿它判新鲜。
+     * G1 新鲜戳：转职瞬间由 {@code VillagerMasterMixin} 打上，自带职业的新生由
+     * {@code VillagerMasterRules#onFinalizeSpawn} 打上，无业/傻子/婴儿新生不打戳，
+     * 扫描收编时消费。只认戳不认交易/经验——`getOffers()` 自带物化副作用，不能拿它判新鲜。
      * 持久化，重启不丢。
      */
     public static final DeferredHolder<AttachmentType<?>, AttachmentType<Boolean>> VILLAGER_FRESH =

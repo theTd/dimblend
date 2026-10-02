@@ -23,17 +23,15 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.living.FinalizeSpawnEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
-import java.util.List;
-
 /**
  * G1 村民大师收编（服务端定期扫描认戳）：
- * 戳有两个来源——转职瞬间由 {@code VillagerMasterMixin} 打上（工作站点认领），
- * 新生瞬间由下方 {@code onFinalizeSpawn} 打上（刷怪蛋 / /summon / 繁殖 / 治愈 /
- * 自然 / 结构；读档加载不走此事件，存量村民天然无戳，满足“仅新生成”）。
- * rotating 内定期扫村民——有戳即收编：无业新生先随机指派职业（不含无业/傻子），
- * 再瞬间定大师（level 5）、补全该职业 1–5 级全部交易（每级照原版取
- * 2 条）、全部条目 {@code maxUses=1}、职业 id 记附件、戳消费。掉职业的已收编
- * 村民凭附件恢复职业（工作站点丢失主由 mixin 拦截，此处为双保险）。
+ * 戳有两个来源——转职瞬间由 {@code VillagerMasterMixin} 打上（工作站点认领/治愈），
+ * 自带职业新生由下方 {@code onFinalizeSpawn} 打上（刷怪蛋 / /summon / 自然 /
+ * 结构；读档加载不走此事件，存量村民天然无戳，满足“仅新生成”）。
+ * rotating 内定期扫村民——有戳即收编：瞬间定大师（level 5）、补全该职业 1–5 级
+ * 全部交易（每级照原版取 2 条）、全部条目 {@code maxUses=1}、职业 id 记附件、
+ * 戳消费。无业新生保持无业，首次自然获得职业时再收编，不做随机指派。
+ * 掉职业的已收编村民凭附件恢复职业（工作站点丢失主由 mixin 拦截，此处为双保险）。
  *
  * <p>不追溯原则：只认戳——老存档村民天然无戳，永不收编；开关关闭期转职/生成不打戳，
  * 同样不收。戳持久化，重启不丢；转职后何时交易都不影响收编（无窗口竞态）。
@@ -70,9 +68,9 @@ public final class VillagerMasterRules {
     }
 
     /**
-     * 新生打戳：rotating 服务端内生成的村民统一带戳（转职前）。
+     * 新生打戳：rotating 服务端内自带职业的新生统一带戳（转职前）。
      * 读档加载（NBT 直写 entityData）不走此事件，故存量村民天然无戳；
-     * 出生自带职业的新生凭此戳直接收编；无业新生凭此戳随机指派职业；傻子由扫描跳过。
+     * 无业/傻子/婴儿新生不打戳——无业者等自然认领工作站点时由 mixin 打戳再收编。
      */
     @SubscribeEvent
     public static void onFinalizeSpawn(FinalizeSpawnEvent event) {
@@ -87,6 +85,13 @@ public final class VillagerMasterRules {
             return;
         }
         if (event.getEntity() instanceof Villager villager && event.getEntity().getType() == EntityType.VILLAGER) {
+            if (villager.isBaby()) {
+                return;
+            }
+            VillagerProfession newbornProfession = villager.getVillagerData().getProfession();
+            if (newbornProfession == VillagerProfession.NONE || newbornProfession == VillagerProfession.NITWIT) {
+                return;
+            }
             if (villager.getData(ExplorationAttachments.VILLAGER_PROFESSION.get()).isEmpty()) {
                 villager.setData(ExplorationAttachments.VILLAGER_FRESH.get(), true);
             }
@@ -113,7 +118,6 @@ public final class VillagerMasterRules {
         }
         VillagerProfession profession = villager.getVillagerData().getProfession();
         String recorded = villager.getData(ExplorationAttachments.VILLAGER_PROFESSION.get());
-        boolean fresh = villager.getData(ExplorationAttachments.VILLAGER_FRESH.get());
         if (profession == VillagerProfession.NITWIT) {
             // 傻子永不收编：消费残留戳直接返回；已收编者被改成傻子视为掉职业，照常恢复
             villager.setData(ExplorationAttachments.VILLAGER_FRESH.get(), false);
@@ -131,10 +135,7 @@ public final class VillagerMasterRules {
             profession = want;
         } else if (profession == VillagerProfession.NONE) {
             if (recorded.isEmpty()) {
-                // 无业：有戳是新生（spawn 戳）——随机指派职业并收编；无戳是存量，不追溯
-                if (fresh) {
-                    assignRandomProfessionAndAdopt(villager);
-                }
+                // 无业保持无业：等自然认领工作站点（mixin 打戳）后再收编，不做随机指派
                 return;
             }
             // 已收编掉职业：恢复（工作站点丢失主由 mixin 拦截，此处为双保险）
@@ -176,7 +177,7 @@ public final class VillagerMasterRules {
 
     /**
      * 单次交易钳制：全部条目 {@code maxUses=1}。收编入口（adopt）与扫描尾部共用，
-     * 自动指派路（assign 后直接 return、不落尾部）同样在首轮即钳好，无多用途窗口。
+     * 首轮即钳好，无多用途窗口。
      */
     private static void clampSingleUse(MerchantOffers offers) {
         for (MerchantOffer offer : offers) {
@@ -192,48 +193,6 @@ public final class VillagerMasterRules {
         villager.setData(ExplorationAttachments.VILLAGER_PROFESSION.get(), professionId);
         rebuildTrades(villager, profession, villager.getOffers());
         clampSingleUse(villager.getOffers());
-    }
-
-    /**
-     * 新生无业收编：随机指派职业（不含无业/傻子）→ 定大师 + 全量重建交易。
-     * 指派后按原版转职礼仪刷新 brain 并广播绿色粒子；职业池为空（理论上不可能）
-     * 则消费戳直接返回，保持无业。
-     */
-    private static void assignRandomProfessionAndAdopt(Villager villager) {
-        VillagerProfession picked = randomProfession(villager);
-        if (picked == null) {
-            villager.setData(ExplorationAttachments.VILLAGER_FRESH.get(), false);
-            return;
-        }
-        villager.setVillagerData(villager.getVillagerData().setProfession(picked));
-        if (villager.level() instanceof ServerLevel serverLevel) {
-            villager.refreshBrain(serverLevel);
-            serverLevel.broadcastEntityEvent(villager, (byte) 14);
-        }
-        String professionId = BuiltInRegistries.VILLAGER_PROFESSION.getKey(picked).toString();
-        adopt(villager, picked, professionId);
-        villager.setData(ExplorationAttachments.VILLAGER_FRESH.get(), false);
-        // 批量繁殖/刷怪场景下 info 会刷屏，降为 debug（现场单只验证时开 debug 日志仍可见）
-        DimBlend.LOGGER.debug("VillagerMaster: auto-assigned {} to new villager at {}",
-                professionId, villager.blockPosition());
-    }
-
-    // 单服务端线程读写 + 注册表冻结后不变；datapack/mid-game 增补职业不刷新系接受。
-    private static volatile List<VillagerProfession> assignablePool;
-
-    /** 可指派职业池（全体注册职业减去无业/傻子）：注册表冻结后不变，懒初始化一次。 */
-    private static VillagerProfession randomProfession(Villager villager) {
-        List<VillagerProfession> pool = assignablePool;
-        if (pool == null) {
-            pool = BuiltInRegistries.VILLAGER_PROFESSION.stream()
-                    .filter(p -> p != VillagerProfession.NONE && p != VillagerProfession.NITWIT)
-                    .toList();
-            assignablePool = pool;
-        }
-        if (pool.isEmpty()) {
-            return null;
-        }
-        return pool.get(villager.getRandom().nextInt(pool.size()));
     }
 
     /** 全量重建：清空后逐级取 2 条（1–5 级），新人新口味与 mod 增补一并生效。 */
