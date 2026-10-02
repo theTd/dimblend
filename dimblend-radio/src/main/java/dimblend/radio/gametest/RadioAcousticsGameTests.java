@@ -133,13 +133,15 @@ public final class RadioAcousticsGameTests {
         expectMaterial(helper, AcousticMaterials.STONE, Blocks.STONE, Blocks.DEEPSLATE, Blocks.COBBLESTONE,
                 Blocks.IRON_ORE, Blocks.GRANITE, Blocks.TUFF, Blocks.BRICKS, Blocks.WHITE_CONCRETE, Blocks.TERRACOTTA,
                 Blocks.NETHERRACK);
+        // Vanilla never goes by name: packed mud keeps its own (stone) sound despite "mud".
+        expectMaterial(helper, AcousticMaterials.STONE, Blocks.PACKED_MUD, Blocks.MUD_BRICKS);
         expectMaterial(helper, AcousticMaterials.SOIL, Blocks.DIRT, Blocks.GRASS_BLOCK, Blocks.SAND, Blocks.GRAVEL,
                 Blocks.MUD, Blocks.SOUL_SOIL, Blocks.ROOTED_DIRT);
         expectMaterial(helper, AcousticMaterials.WOOD, Blocks.OAK_PLANKS, Blocks.OAK_LOG, Blocks.CHERRY_PLANKS,
                 Blocks.BAMBOO_PLANKS, Blocks.CRIMSON_PLANKS, Blocks.CRIMSON_STEM, Blocks.OAK_DOOR, Blocks.BOOKSHELF,
                 Blocks.JUKEBOX);
         expectMaterial(helper, AcousticMaterials.WOOL, Blocks.WHITE_WOOL, Blocks.WHITE_CARPET, Blocks.RED_BED,
-                Blocks.HAY_BLOCK, Blocks.MOSS_BLOCK, Blocks.SPONGE);
+                Blocks.HAY_BLOCK, Blocks.MOSS_BLOCK, Blocks.SPONGE, Blocks.CACTUS);
         expectMaterial(helper, AcousticMaterials.FOLIAGE, Blocks.OAK_LEAVES, Blocks.AZALEA_LEAVES, Blocks.CHERRY_LEAVES);
         expectMaterial(helper, AcousticMaterials.GLASS, Blocks.GLASS, Blocks.GLASS_PANE, Blocks.WHITE_STAINED_GLASS,
                 Blocks.TINTED_GLASS);

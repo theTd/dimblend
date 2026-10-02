@@ -76,8 +76,11 @@
   beds, hay, moss, sponge), foliage, soil (dirt, grass, sand, gravel, mud, soul soil),
   wood (all wood families including cherry, bamboo and nether), stone (every rock, ore,
   brick, concrete and unknown block), glass, metal, ice and snow. Tags are checked first
-  (`#wool`, `#leaves`, `#ice`, `#c:glass_blocks`, `#logs`, …), then the block's sound type,
-  so most modded blocks land sensibly. Common terrain stays in a few materials on purpose:
+  (`#wool`, `#leaves`, `#ice`, `#c:glass_blocks`, `#logs`, …), then the block's sound type.
+  A modded block that both leave as stone (default or custom sound type) is classified by
+  its registry name (`AcousticBlockNames`): material words decide and the last one wins
+  (`iron_framed_glass` is glass, `deepslate_tin_ore` stone, `locometal` metal), form words
+  (`bricks`, `casing`, `sofa`, `table`) only without one. Vanilla blocks never go by name. Common terrain stays in a few materials on purpose:
   the reflection mesh merges only faces of one material. Every geometry path — the direct
   path's voxel tracer, the voxel mesher and the Sodium tee — reads the same table.
 - Approximate diffraction: direct occlusion is Steam Audio's volumetric mode rather than
