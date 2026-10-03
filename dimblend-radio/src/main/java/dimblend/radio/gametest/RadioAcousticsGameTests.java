@@ -86,7 +86,7 @@ public final class RadioAcousticsGameTests {
         Vec3 origin = SubLevelProjection.worldCenter(helper.getLevel(), source);
         AABB bounds = new AABB(origin, origin).inflate(20);
         var live = new dimblend.radio.acoustics.AcousticMesh(Vec3.ZERO);
-        live.append(helper.getLevel(), bounds, source);
+        live.append(helper.getLevel(), bounds, java.util.Set.of(source));
         var snapshot = AcousticSnapshot.capture(helper.getLevel(), bounds, source);
         var frozen = snapshot.terrainMesh(bounds, Vec3.ZERO, new dimblend.radio.acoustics.AcousticMesh.Workspace());
         var expected = live.data();

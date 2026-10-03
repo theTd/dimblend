@@ -1,13 +1,11 @@
 package dimblend.radio.client;
 
 import dimblend.radio.DimBlendRadio;
-import dimblend.radio.acoustics.AcousticAvailability;
 import dimblend.radio.acoustics.AcousticPathing;
 import dimblend.radio.acoustics.AcousticSnapshot;
 import dimblend.radio.acoustics.AcousticTuningProperty;
 import dimblend.radio.acoustics.AcousticUpdateGate;
 import dimblend.radio.acoustics.PathingField;
-import dimblend.radio.acoustics.ReflectionMeshCache;
 import dimblend.radio.acoustics.SteamAudio;
 import dimblend.radio.acoustics.SteamRenderer;
 import dimblend.radio.acoustics.SteamSimulation;
@@ -29,10 +27,12 @@ import net.minecraft.world.phys.Vec3;
  * {@link #LOOKAHEAD_BLOCKS} blocks ahead of playback, under this monitor; the orientation-dependent
  * one (HRTF/panning, decode, crossfades) runs on the sound thread as each block is played, so head
  * turns keep the vanilla buffer latency while the convolution leaves the sound thread.
+ * <p>
+ * Direct sound and pathing are simulated per radio; reflections by the {@link SharedReflectionSimulator},
+ * in which this radio has its own source.
  */
 public final class RadioSimulationSession implements RadioPcmProcessor {
     private static final ExecutorService DIRECT = worker("Radio acoustic direct");
-    private static final ExecutorService REFLECTIONS = worker("Radio acoustic reflections");
     private static final ExecutorService DSP = Executors.newFixedThreadPool(2, daemon("Radio acoustic DSP"));
     /** Blocks the DSP thread works ahead of playback; also the stream's start delay (~23 ms at 44.1 kHz). */
     static final int LOOKAHEAD_BLOCKS = 2;
@@ -44,7 +44,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
      * @param audible the radio is heard at all (in range, game not paused)
      * @param simulated Steam Audio renders it; other audible radios are stereo-panned
      */
-    private record View(Vec3 source, Vec3 listener, Vec3 ahead, Vec3 up, boolean audible, boolean simulated) { }
+    record View(Vec3 source, Vec3 listener, Vec3 ahead, Vec3 up, boolean audible, boolean simulated) { }
     /** How an audio block is produced. */
     private enum Path { SILENT, PANNED, RENDERED }
     /** @param tail no input arrived for this block (the stream ended): the delay line and reverb drain */
@@ -61,11 +61,12 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     }
     private final AudioFormat format;
     private final int rate;
-    private final AtomicBoolean directBusy = new AtomicBoolean(), reflectionBusy = new AtomicBoolean();
+    private final AtomicBoolean directBusy = new AtomicBoolean();
     private final AtomicBoolean initialized = new AtomicBoolean();
-    private final ReflectionMeshCache meshes = new ReflectionMeshCache();
     private volatile AcousticSnapshot latestSnapshot;
-    private volatile SteamSimulation directEngine, reflectionEngine;
+    private volatile SteamSimulation directEngine;
+    /** This radio's source in the shared reflection simulator; set with {@link #renderer}. */
+    private volatile SharedReflectionSimulator.Membership reflections;
     // JNA embedded sub-structures share the owning SimulationOutputs' native backing store.
     // Pin the owner: if it is collected, the params structs become garbage silently
     // (wet dies, dry params jump around). Consumers pin the holder until the native call returns.
@@ -85,7 +86,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     private volatile boolean closed;
     private volatile boolean failed;
     private SteamRenderer renderer;
-    private long lastDirect, lastReflection;
+    private long lastDirect;
     private int invalidFields;
     private final int lookahead;
     /** Submitted blocks in order; the staged ones are prepared, the pending ones not yet. */
@@ -123,7 +124,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         this.lookahead = lookahead;
     }
 
-    private static ExecutorService worker(String name) {
+    static ExecutorService worker(String name) {
         return Executors.newSingleThreadExecutor(daemon(name));
     }
 
@@ -135,62 +136,82 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         };
     }
 
-    private void initialize(boolean reflections) {
+    /** Reflection worker: a source in the shared reflection simulator, then the direct engine. */
+    private void joinReflections() {
         if (closed || failed) return;
         try {
             if (!gpuEnabled) throw new IllegalStateException("GPU acoustics disabled");
-            SteamSimulation engine;
-            try {
-                engine = new SteamSimulation(rate, reflections ? SteamSimulation.REFLECTIONS
-                        : SteamSimulation.DIRECT | SteamSimulation.PATHING, reflections);
-            } catch (RuntimeException | Error error) {
-                // The first GPU engine tells whether this machine can run the pipeline at all.
-                if (reflections) AcousticAvailability.gpuUnavailable(error);
-                throw error;
-            }
-            if (reflections) {
-                AcousticAvailability.gpuAvailable();
-                installReflectionEngine(engine);
-                // Direct CPU rays are part of the GPU acoustic session, never a fallback.
-                if (!closed && !failed) DIRECT.execute(() -> initialize(false));
-            } else {
-                if (closed || failed) engine.close();
-                else directEngine = engine;
-            }
+            installReflections(SharedReflectionSimulator.join(this, rate));
+            // Direct CPU rays are part of the GPU acoustic session, never a fallback.
+            if (!closed && !failed) DIRECT.execute(this::initializeDirect);
+        } catch (RuntimeException | Error error) { fail(error); }
+    }
+
+    private void initializeDirect() {
+        if (closed || failed) return;
+        try {
+            var engine = new SteamSimulation(rate, SteamSimulation.DIRECT | SteamSimulation.PATHING, false);
+            if (closed || failed) engine.close();
+            else directEngine = engine;
         } catch (RuntimeException | Error error) { fail(error); }
     }
 
     // Only the reflection worker constructs/destroys native resources. Publication and removal
     // share the position stage's monitor, so no block can be prepared with a retired IR pointer;
     // blocks already prepared get null from a closed renderer's spatial stage.
-    private void installReflectionEngine(SteamSimulation engine) {
+    private void installReflections(SharedReflectionSimulator.Membership membership) {
         SteamRenderer prepared;
-        try { prepared = new SteamRenderer(engine.context(), rate, this::reflectionReset); }
-        catch (RuntimeException | Error error) { engine.close(); throw error; }
+        try { prepared = new SteamRenderer(membership.simulation().context(), rate, this::reflectionReset); }
+        catch (RuntimeException | Error error) { SharedReflectionSimulator.leave(this, membership); throw error; }
         synchronized (this) {
             if (!closed && !failed) {
                 renderer = prepared;
                 reflectionOutputs = null;
-                reflectionEngine = engine;
+                reflections = membership;
                 return;
             }
         }
         prepared.close();
-        engine.close();
+        SharedReflectionSimulator.leave(this, membership);
     }
 
-    private void retireReflectionEngine() {
+    /** Reflection worker: the renderer goes first, so the source's IR is unused when the source leaves. */
+    private void retireReflections() {
         SteamRenderer oldRenderer;
-        SteamSimulation oldEngine;
+        SharedReflectionSimulator.Membership old;
         synchronized (this) {
             oldRenderer = renderer;
-            oldEngine = reflectionEngine;
+            old = reflections;
             renderer = null;
-            reflectionEngine = null;
+            reflections = null;
             reflectionOutputs = null;
         }
         try { if (oldRenderer != null) oldRenderer.close(); }
-        finally { if (oldEngine != null) oldEngine.close(); }
+        finally { if (old != null) SharedReflectionSimulator.leave(this, old); }
+    }
+
+    /** This radio's source in the shared reflection simulator, or null before it joined or after it left. */
+    SharedReflectionSimulator.Membership reflections() { return reflections; }
+
+    /** Where the radio and listener are now, or null while this radio takes no part in reflection runs. */
+    View reflectionView() {
+        View current = view;
+        return closed || failed || !current.simulated || reflections == null ? null : current;
+    }
+
+    /** Reflection worker: a shared run's outputs for this radio's source. */
+    void publishReflections(SteamAudio.SimulationOutputs outputs, long revision, long started) {
+        synchronized (this) {
+            if (closed || failed || renderer == null) return;
+            reflectionOutputs = outputs;
+            reflectionRevision = revision;
+            renderer.reflectionsReady();
+        }
+        if (!firstIrLogged) {
+            firstIrLogged = true;
+            DimBlendRadio.LOGGER.info("[radio] GPU convolution IR ready: {} channels, {} samples, {} ms",
+                    outputs.reflections.channels, outputs.reflections.irSize, (System.nanoTime() - started) / 1_000_000);
+        }
     }
 
     private synchronized void reflectionReset() {
@@ -201,7 +222,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         }
     }
 
-    private synchronized void fail(Throwable error) {
+    synchronized void fail(Throwable error) {
         if (failed) return;
         failed = true;
         directOutputs = null;
@@ -210,7 +231,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         AcousticUpdateGate.forget(this);
         DimBlendRadio.LOGGER.warn("[radio] acoustics disabled for this radio; using stereo panning (no CPU fallback)", error);
         DIRECT.execute(() -> { if (directEngine != null) { directEngine.close(); directEngine = null; } });
-        REFLECTIONS.execute(this::retireReflectionEngine);
+        SharedReflectionSimulator.WORKER.execute(this::retireReflections);
     }
 
     public boolean active() { return !closed && !failed; }
@@ -223,12 +244,13 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     public void setView(Vec3 source, Vec3 listener, Vec3 ahead, Vec3 up, boolean audible, boolean simulated) {
         if (closed) return;
         view = new View(source, listener, ahead, up, audible, audible && simulated);
-        // Native engines are created once a radio is first simulated, never for panned-only radios.
+        // Native state is created once a radio is first simulated, never for panned-only radios.
         if (audible && simulated && initialized.compareAndSet(false, true)) {
-            REFLECTIONS.execute(() -> initialize(true));
+            SharedReflectionSimulator.WORKER.execute(this::joinReflections);
         }
     }
 
+    /** Client thread, each frame: the direct path and pathing; {@link SharedReflectionSimulator} schedules reflections. */
     public void simulate(AcousticSnapshot snapshot, long now) {
         if (closed || failed || !view.simulated) return;
         latestSnapshot = snapshot;
@@ -263,63 +285,6 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
                 });
             }
         }
-        if (reflectionEngine != null && (now - lastReflection >= reflectionInterval()
-                || AcousticUpdateGate.geometryChanged(this, snapshot, true)) && reflectionBusy.compareAndSet(false, true)) {
-            lastReflection = now;
-            if (!AcousticUpdateGate.shouldSimulate(this, snapshot, captured.source, captured.listener, true)) {
-                reflectionBusy.set(false);
-            } else {
-                REFLECTIONS.execute(() -> {
-                    long start = System.nanoTime();
-                    try {
-                        if (!closed && !failed) {
-                            View latest = view;
-                            if (!latest.simulated) return;
-                            // A block edit can arrive while this radio waits behind another job.
-                            AcousticSnapshot scene = latestSnapshot;
-                            AcousticUpdateGate.shouldSimulate(this, scene, latest.source, latest.listener, true);
-                            var geometry = meshes.get(scene, latest.listener, latest.source);
-                            SteamSimulation engine = reflectionEngine;
-                            if (engine == null || closed || failed) return;
-                            SteamAudio.SimulationOutputs outputs;
-                            try {
-                                // Engines are long-lived: re-run in place; simulateGpu re-uploads
-                                // the scene mesh in place when the geometry changed. Replacing the
-                                // engine per run was found to NaN the wet field after the second
-                                // close-retain cycle and stall the worker on native teardown.
-                                outputs = engine.simulateGpu(geometry.terrain(), geometry.structures(),
-                                        latest.listener, latest.source, SteamSimulation.GPU_RAYS, 128);
-                            } catch (RuntimeException | Error error) {
-                                fail(error);
-                                return;
-                            }
-                            synchronized (RadioSimulationSession.this) {
-                                if (!closed && !failed) {
-                                    reflectionOutputs = outputs;
-                                    reflectionRevision = scene.revision();
-                                    renderer.reflectionsReady();
-                                }
-                            }
-                            if (!firstIrLogged) {
-                                firstIrLogged = true;
-                                DimBlendRadio.LOGGER.info("[radio] {} convolution IR ready: {} channels, {} samples, {} ms",
-                                        engine.gpu() ? "GPU" : "CPU", outputs.reflections.channels, outputs.reflections.irSize,
-                                        (System.nanoTime() - start) / 1_000_000);
-                            }
-                            DimBlendRadio.LOGGER.debug("[radio] {} acoustic IR in {} ms ({} tris)",
-                                    engine.gpu() ? "GPU" : "CPU", (System.nanoTime() - start) / 1_000_000,
-                                    geometry.triangleCount());
-                        }
-                    } catch (RuntimeException | Error error) { fail(error); }
-                    finally { reflectionBusy.set(false); }
-                });
-            }
-        }
-    }
-
-    /** Motion updates are scheduled from the latest camera pose, independently of client ticks. */
-    private long reflectionInterval() {
-        return 50_000_000L;
     }
 
     /** The diffracted path the renderer currently adds, or null; for the bake view. */
@@ -616,6 +581,6 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         pending.clear();
         staged.clear();
         DIRECT.execute(() -> { if (directEngine != null) directEngine.close(); });
-        REFLECTIONS.execute(this::retireReflectionEngine);
+        SharedReflectionSimulator.WORKER.execute(this::retireReflections);
     }
 }

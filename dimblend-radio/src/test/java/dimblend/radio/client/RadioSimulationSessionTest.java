@@ -1,14 +1,20 @@
 package dimblend.radio.client;
 
+import dimblend.radio.acoustics.AcousticMesh;
+import dimblend.radio.acoustics.ReflectionGeometry;
+import dimblend.radio.acoustics.SteamAudio;
 import dimblend.radio.acoustics.SteamRenderer;
 import dimblend.radio.acoustics.SteamSimulation;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import javax.sound.sampled.AudioFormat;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -20,7 +26,8 @@ class RadioSimulationSessionTest {
         var session = new RadioSimulationSession(new AudioFormat(44100, 16, 1, true, false));
         try {
             session.setView(new Vec3(4,0,0), Vec3.ZERO, new Vec3(0,0,-1), new Vec3(0,1,0), true);
-            SteamSimulation old = awaitEngine(session);
+            SharedReflectionSimulator.Membership membership = awaitMembership(session);
+            SteamSimulation old = membership.simulation();
             assertTrue(old.gpu());
             assertNotNull(read(session, "renderer"), "Renderer must be prepared before the engine is published");
             var started = new CountDownLatch(1);
@@ -28,20 +35,21 @@ class RadioSimulationSessionTest {
             synchronized (session) {
                 replacement = CompletableFuture.supplyAsync(() -> {
                     started.countDown();
-                    failSession(session);
+                    session.fail(new IllegalStateException("Injected GPU failure"));
                     return null;
                 });
                 assertTrue(started.await(5, TimeUnit.SECONDS));
                 assertThrows(TimeoutException.class, () -> replacement.get(100, TimeUnit.MILLISECONDS));
                 assertNotNull(old.context(), "Native source must remain alive while an audio frame holds the monitor");
-                assertSame(old, read(session, "reflectionEngine"));
+                assertSame(membership, session.reflections());
             }
             replacement.get(10, TimeUnit.SECONDS);
-            drainWorker("REFLECTIONS");
+            drainReflectionWorker();
             drainWorker("DIRECT");
-            assertNull(old.context(), "Retired native context must be released");
+            assertTrue(membership.source().closed(), "The failed radio's source must leave the shared simulator");
+            assertNull(old.context(), "The last radio leaving must release the shared native context");
             assertNull(read(session, "reflectionOutputs"));
-            assertNull(read(session, "reflectionEngine"), "GPU failure must not install a CPU simulator");
+            assertNull(session.reflections(), "GPU failure must not install a CPU simulator");
             assertNull(read(session, "directEngine"), "GPU failure must stop direct simulation too");
             assertNull(read(session, "renderer"));
             assertFalse(session.active());
@@ -56,7 +64,7 @@ class RadioSimulationSessionTest {
         var session = new RadioSimulationSession(new AudioFormat(44100, 16, 1, true, false));
         try {
             session.setView(new Vec3(4,0,0), Vec3.ZERO, new Vec3(0,0,-1), new Vec3(0,1,0), true);
-            awaitEngine(session);
+            awaitMembership(session);
             synchronized (session) {
                 var renderer = (SteamRenderer) read(session, "renderer");
                 renderer.resetReflections();
@@ -79,7 +87,7 @@ class RadioSimulationSessionTest {
             session.setView(new Vec3(4,0,0), Vec3.ZERO, new Vec3(0,0,-1), new Vec3(0,1,0), true);
             drainReflectionWorker(); drainWorker("DIRECT");
             assertFalse(session.active());
-            assertNull(read(session,"reflectionEngine"));
+            assertNull(session.reflections());
             assertNull(read(session,"directEngine"));
             assertNull(read(session,"renderer"));
             var output=session.process(constant(12000),false).order(java.nio.ByteOrder.LITTLE_ENDIAN);
@@ -90,6 +98,53 @@ class RadioSimulationSessionTest {
             session.close();
             if(previous==null) System.clearProperty("dimblend.radio.acoustic.gpu");
             else System.setProperty("dimblend.radio.acoustic.gpu",previous);
+        }
+    }
+
+    @Test void radiosOfOneRateShareOneSimulatorAndEachHearsItsOwnResponse() throws Exception {
+        assumeTrue(Boolean.getBoolean("dimblend.radio.testAudio"));
+        Vec3 ahead = new Vec3(0,0,-1), up = new Vec3(0,1,0);
+        var first = new RadioSimulationSession(new AudioFormat(44100,16,1,true,false));
+        var second = new RadioSimulationSession(new AudioFormat(44100,16,1,true,false));
+        var other = new RadioSimulationSession(new AudioFormat(48000,16,1,true,false));
+        try {
+            first.setView(new Vec3(4,0,0), Vec3.ZERO, ahead, up, true);
+            second.setView(new Vec3(-3,0,2), Vec3.ZERO, ahead, up, true);
+            other.setView(new Vec3(0,0,5), Vec3.ZERO, ahead, up, true);
+            var a = awaitMembership(first);
+            var b = awaitMembership(second);
+            var c = awaitMembership(other);
+            assertSame(a.simulation(), b.simulation(), "radios of one sampling rate share one simulator");
+            assertNotSame(a.source(), b.source());
+            assertEquals(2, a.simulation().sourceCount());
+            assertNotSame(a.simulation(), c.simulation(), "the simulator runs at its radios' rate");
+            assertNotSame(read(first, "renderer"), read(second, "renderer"));
+
+            SharedReflectionSimulator.simulate(List.of(first, second, other), new Room(), 1, System.nanoTime());
+            drainReflectionWorker();
+            var heardFirst = (SteamAudio.SimulationOutputs) read(first, "reflectionOutputs");
+            var heardSecond = (SteamAudio.SimulationOutputs) read(second, "reflectionOutputs");
+            assertNotNull(heardFirst, "one shared run answers every radio in it");
+            assertNotNull(heardSecond);
+            assertNotNull(read(other, "reflectionOutputs"));
+            assertNotNull(heardFirst.reflections.ir);
+            assertNotEquals(heardFirst.reflections.ir, heardSecond.reflections.ir, "each radio has its own IR");
+            assertEquals(1L, read(first, "reflectionRevision"));
+
+            first.close();
+            drainReflectionWorker();
+            assertTrue(a.source().closed());
+            assertNotNull(b.simulation().context(), "the simulator stays while another radio uses it");
+            assertEquals(1, b.simulation().sourceCount());
+            second.close();
+            drainReflectionWorker();
+            assertNull(b.simulation().context(), "the last radio to leave closes it");
+            assertNotNull(c.simulation().context());
+        } finally {
+            first.close();
+            second.close();
+            other.close();
+            drainReflectionWorker();
         }
     }
 
@@ -209,7 +264,7 @@ class RadioSimulationSessionTest {
     }
 
     private static void drainReflectionWorker() throws Exception {
-        drainWorker("REFLECTIONS");
+        SharedReflectionSimulator.WORKER.submit(() -> { }).get(10, TimeUnit.SECONDS);
     }
 
     private static void drainWorker(String name) throws Exception {
@@ -219,12 +274,12 @@ class RadioSimulationSessionTest {
         worker.submit(() -> { }).get(10, TimeUnit.SECONDS);
     }
 
-    private static SteamSimulation awaitEngine(RadioSimulationSession session) throws Exception {
+    private static SharedReflectionSimulator.Membership awaitMembership(RadioSimulationSession session) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (System.nanoTime() < deadline) {
             synchronized (session) {
-                var engine = (SteamSimulation) read(session, "reflectionEngine");
-                if (engine != null) return engine;
+                var membership = session.reflections();
+                if (membership != null) return membership;
                 assertEquals(false, read(session, "failed"));
             }
             Thread.sleep(10);
@@ -232,17 +287,31 @@ class RadioSimulationSessionTest {
         throw new AssertionError("Reflection initialization timed out");
     }
 
+    /** A closed 16-block room around the origin, nothing moving in it. */
+    private static final class Room implements ReflectionGeometry {
+        @Override public long terrainSection(long key) { return UNCAPTURED; }
+        @Override public int minSection() { return -4; }
+        @Override public int maxSection() { return 20; }
+        @Override public Set<BlockPos> emitters() { return Set.of(); }
+        @Override public List<? extends Body> bodies() { return List.of(); }
+
+        @Override public AcousticMesh.Data terrainMesh(AABB bounds, Vec3 origin, AcousticMesh.Workspace workspace) {
+            float[] vertices = {-8,-8,-8,8,-8,-8,8,8,-8,-8,8,-8,-8,-8,8,8,-8,8,8,8,8,-8,8,8};
+            for (int i = 0; i < vertices.length; i += 3) {
+                vertices[i] -= (float) origin.x;
+                vertices[i + 1] -= (float) origin.y;
+                vertices[i + 2] -= (float) origin.z;
+            }
+            int[] triangles = {0,2,1,0,3,2,4,5,6,4,6,7,0,1,5,0,5,4,3,7,6,3,6,2,0,4,7,0,7,3,1,2,6,1,6,5};
+            int[] materials = new int[12];
+            java.util.Arrays.fill(materials, 4);
+            return new AcousticMesh.Data(vertices, triangles, materials, origin);
+        }
+    }
+
     private static Object read(Object owner, String name) throws Exception {
         var field = owner.getClass().getDeclaredField(name);
         field.setAccessible(true);
         return field.get(owner);
-    }
-
-    private static void failSession(Object owner) {
-        try {
-            var method = owner.getClass().getDeclaredMethod("fail", Throwable.class);
-            method.setAccessible(true);
-            method.invoke(owner, new IllegalStateException("Injected GPU failure"));
-        } catch (ReflectiveOperationException error) { throw new AssertionError(error); }
     }
 }

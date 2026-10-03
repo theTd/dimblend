@@ -1,6 +1,7 @@
 package dimblend.radio.acoustics;
 
 import java.util.Arrays;
+import java.util.Collection;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.BlockGetter;
@@ -76,15 +77,15 @@ public final class AcousticMesh {
         this.workspace = workspace;
     }
 
-    /** Voxel surfaces of {@code bounds}; the {@code emitter} cell (may be null) reads as air. */
-    public void append(BlockGetter blocks, AABB bounds, BlockPos emitter) {
+    /** Voxel surfaces of {@code bounds}; the {@code emitters}' cells (the radios themselves) read as air. */
+    public void append(BlockGetter blocks, AABB bounds, Collection<BlockPos> emitters) {
         int[] min = {(int) Math.floor(bounds.minX), Math.max(blocks.getMinBuildHeight(), (int) Math.floor(bounds.minY)), (int) Math.floor(bounds.minZ)};
         int[] size = {(int) Math.ceil(bounds.maxX) - min[0], Math.min(blocks.getMaxBuildHeight(), (int) Math.ceil(bounds.maxY)) - min[1], (int) Math.ceil(bounds.maxZ) - min[2]};
         if (size[0] <= 0 || size[1] <= 0 || size[2] <= 0) return;
         byte[] cells = workspace.cells(Math.multiplyExact(Math.multiplyExact(size[0], size[1]), size[2]));
         if (blocks instanceof SectionSource sections) fillSections(sections, cells, min, size);
         else fillCells(blocks, cells, min, size);
-        if (emitter != null) {
+        for (BlockPos emitter : emitters) {
             int x = emitter.getX() - min[0], y = emitter.getY() - min[1], z = emitter.getZ() - min[2];
             if (x >= 0 && y >= 0 && z >= 0 && x < size[0] && y < size[1] && z < size[2]) cells[index(x, y, z, size)] = 0;
         }

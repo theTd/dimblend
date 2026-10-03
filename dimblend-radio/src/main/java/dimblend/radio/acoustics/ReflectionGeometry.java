@@ -2,7 +2,9 @@ package dimblend.radio.acoustics;
 
 import dev.ryanhcode.sable.companion.math.Pose3dc;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -53,6 +55,9 @@ public interface ReflectionGeometry {
 
     /** Terrain surfaces inside {@code bounds}, relative to {@code origin}. */
     AcousticMesh.Data terrainMesh(AABB bounds, Vec3 origin, AcousticMesh.Workspace workspace);
+
+    /** Cells meshed as air wherever they are: the radios the scene is simulated for. */
+    Set<BlockPos> emitters();
 
     /** Moving structures in the scene. */
     List<? extends Body> bodies();

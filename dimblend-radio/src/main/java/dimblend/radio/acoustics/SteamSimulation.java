@@ -4,7 +4,9 @@ import com.sun.jna.Pointer;
 import com.sun.jna.Native;
 import com.sun.jna.Memory;
 import com.sun.jna.ptr.PointerByReference;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
 import net.minecraft.world.phys.Vec3;
@@ -31,9 +33,13 @@ public final class SteamSimulation implements AutoCloseable {
     private final PointerByReference scene = new PointerByReference();
     private final PointerByReference simulator = new PointerByReference();
     private final PointerByReference source = new PointerByReference();
+    /** Sources added after construction (see {@link #addSource}); the constructor's own is not among them. */
+    private final List<Source> added = new ArrayList<>();
     private final SteamAudio.SceneSettings sceneSettings = new SteamAudio.SceneSettings();
     private final Map<MaterialKey, SteamAudio.Material> materials = new HashMap<>();
     private final int flags;
+    /** Most sources one reflection run traces: Radeon Rays ignores the ones past it. */
+    private final int sourcesPerRun;
     private final boolean gpu;
     private final PointerByReference openCL = new PointerByReference(), radeon = new PointerByReference();
     private SteamStaticMesh mesh;
@@ -52,7 +58,17 @@ public final class SteamSimulation implements AutoCloseable {
     }
 
     public SteamSimulation(int rate, int flags, boolean gpu) {
+        this(rate, flags, gpu, 1);
+    }
+
+    /**
+     * @param sourcesPerRun most {@link #addSource added} sources one reflection run traces together
+     *     (Steam Audio's {@code maxNumSources}); runs for more are split
+     */
+    public SteamSimulation(int rate, int flags, boolean gpu, int sourcesPerRun) {
+        if (sourcesPerRun < 1) throw new IllegalArgumentException("A run traces at least one source");
         this.flags = flags;
+        this.sourcesPerRun = sourcesPerRun;
         this.gpu = gpu;
         try {
             SteamAudio.check(api.iplContextCreate(new SteamAudio.ContextSettings(), context), "context");
@@ -77,6 +93,7 @@ public final class SteamSimulation implements AutoCloseable {
             settings.flags = flags;
             settings.samplingRate = rate;
             settings.order = 1;
+            settings.sources = sourcesPerRun;
             // Volumetric occlusion (AcousticDiffraction) on the CPU direct path.
             if ((flags & 1) != 0 && !gpu) settings.occlusionSamples = AcousticDiffraction.MAX_SAMPLES;
             if ((flags & PATHING) != 0) {
@@ -104,6 +121,45 @@ public final class SteamSimulation implements AutoCloseable {
     }
 
     public Pointer context() { return context.getValue(); }
+
+    /**
+     * Another sound source in this simulator, for {@link #simulateGpu(AcousticMesh.Data,
+     * AcousticMesh.Data, Vec3, List, List, int)}: sources share the scene and the listener's rays,
+     * and each keeps its own outputs (its reflection IR). Close it on the thread running this simulation.
+     */
+    public final class Source implements AutoCloseable {
+        private final PointerByReference handle = new PointerByReference();
+
+        private Source() {
+            var settings = new SteamAudio.SourceSettings();
+            settings.flags = flags;
+            SteamAudio.check(api.iplSourceCreate(simulator.getValue(), settings, handle), "source");
+            api.iplSourceAdd(handle.getValue(), simulator.getValue());
+            api.iplSimulatorCommit(simulator.getValue());
+        }
+
+        /** Removes the source; its outputs (and the IR they point to) must no longer be in use. */
+        @Override public void close() {
+            if (handle.getValue() == null) return;
+            added.remove(this);
+            api.iplSourceRemove(handle.getValue(), simulator.getValue());
+            api.iplSimulatorCommit(simulator.getValue());
+            api.iplSourceRelease(handle);
+            handle.setValue(null);
+        }
+
+        public boolean closed() { return handle.getValue() == null; }
+    }
+
+    public Source addSource() {
+        if (simulator.getValue() == null) throw new IllegalStateException("Simulation closed");
+        Source added = new Source();
+        this.added.add(added);
+        return added;
+    }
+
+    /** Sources added with {@link #addSource} and not closed yet. */
+    public int sourceCount() { return added.size(); }
 
     public boolean gpu() { return gpu; }
 
@@ -149,6 +205,74 @@ public final class SteamSimulation implements AutoCloseable {
         uploadedTerrain = terrain;
         uploadedStructures = structures;
         return run(listenerWorld, sourceWorld, rays, bounces);
+    }
+
+    /**
+     * Reflections of several {@link #addSource added} sources in one run: the scene is uploaded
+     * (when it changed) and the listener's rays are traced once, each source gathering its own
+     * response. More sources than the simulator traces at once are run in batches of that many.
+     * Sources of this simulator not listed sit the run out and keep their last outputs; Radeon Rays
+     * scenes never accumulate across runs, so that leaves nothing stale behind.
+     *
+     * @param positions world position of each of {@code sources}, in order
+     * @return the outputs of each of {@code sources}, in order
+     */
+    public List<SteamAudio.SimulationOutputs> simulateGpu(AcousticMesh.Data terrain, AcousticMesh.Data structures,
+            Vec3 listenerWorld, List<Source> sources, List<Vec3> positions, int bounces) {
+        if (!gpu || flags != REFLECTIONS) throw new IllegalStateException("Not a GPU reflection simulator");
+        if (sources.size() != positions.size()) throw new IllegalArgumentException("One position per source");
+        if (structures != null && !structures.origin().equals(terrain.origin())) {
+            throw new IllegalArgumentException("Scene meshes must share one origin");
+        }
+        for (Source listed : sources) {
+            if (listed.closed() || !added.contains(listed)) throw new IllegalArgumentException("Not a source of this simulation");
+            if (sources.indexOf(listed) != sources.lastIndexOf(listed)) throw new IllegalArgumentException("Source listed twice");
+        }
+        if (!sameGeometry(uploadedTerrain, terrain) || !sameGeometry(uploadedStructures, structures)) {
+            upload(AcousticMesh.Data.concat(terrain, structures));
+        }
+        uploadedTerrain = terrain;
+        uploadedStructures = structures;
+        sitOut(source.getValue());
+        var shared = new SteamAudio.SharedInputs();
+        shared.rays = GPU_RAYS;
+        shared.bounces = bounces;
+        shared.order = 1;
+        Vec3 listener = listenerWorld.subtract(offset);
+        shared.listener.origin = new SteamAudio.Vector(listener.x, listener.y, listener.z);
+        api.iplSimulatorSetSharedInputs(simulator.getValue(), REFLECTIONS, shared);
+        List<SteamAudio.SimulationOutputs> results = new ArrayList<>(sources.size());
+        for (int from = 0; from < sources.size(); from += sourcesPerRun) {
+            List<Source> batch = sources.subList(from, Math.min(sources.size(), from + sourcesPerRun));
+            for (Source other : added) {
+                int index = batch.indexOf(other);
+                if (index < 0) {
+                    sitOut(other.handle.getValue());
+                    continue;
+                }
+                var inputs = new SteamAudio.SimulationInputs();
+                inputs.flags = REFLECTIONS;
+                Vec3 relative = positions.get(from + index).subtract(offset);
+                inputs.source.origin = new SteamAudio.Vector(relative.x, relative.y, relative.z);
+                api.iplSourceSetInputs(other.handle.getValue(), REFLECTIONS, inputs);
+            }
+            // Radeon Rays cannot trace an empty acceleration structure. Open air has no wet response.
+            if (mesh != null) api.iplSimulatorRunReflections(simulator.getValue());
+            for (Source listed : batch) {
+                var outputs = new SteamAudio.SimulationOutputs();
+                api.iplSourceGetOutputs(listed.handle.getValue(), REFLECTIONS, outputs);
+                if (mesh == null) outputs.reflections.ir = null;
+                results.add(outputs);
+            }
+        }
+        return results;
+    }
+
+    /** {@code handle} takes no part in the next reflection run. */
+    private void sitOut(Pointer handle) {
+        var inputs = new SteamAudio.SimulationInputs();
+        inputs.flags = 0;
+        api.iplSourceSetInputs(handle, REFLECTIONS, inputs);
     }
 
     private void upload(AcousticMesh.Data data) {
@@ -258,6 +382,7 @@ public final class SteamSimulation implements AutoCloseable {
         boolean traced = (flags & 1) != 0 && !gpu && tracer != null;
         if (traced) inputs.directFlags &= ~16;
         api.iplSourceSetInputs(source.getValue(), active, inputs);
+        if ((active & REFLECTIONS) != 0) for (Source other : added) sitOut(other.handle.getValue());
         var shared = new SteamAudio.SharedInputs();
         shared.rays = gpu ? GPU_RAYS : rays;
         shared.bounces = bounces;
@@ -394,6 +519,7 @@ public final class SteamSimulation implements AutoCloseable {
     }
 
     @Override public void close() {
+        if (simulator.getValue() != null) for (Source other : List.copyOf(added)) other.close();
         if (source.getValue() != null) {
             api.iplSourceRemove(source.getValue(), simulator.getValue());
             api.iplSourceRelease(source);

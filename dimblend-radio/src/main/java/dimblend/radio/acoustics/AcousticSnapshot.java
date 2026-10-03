@@ -12,7 +12,9 @@ import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
@@ -34,11 +36,11 @@ public final class AcousticSnapshot implements ReflectionGeometry {
     private record Frame(FrozenBlocks blocks, Pose3d pose, AABB worldBounds, AABB localBounds,
             SubLevelAccess liveStructure) { }
 
-    /** A structure as one radio's reflection scene sees it: that radio's own block is left out. */
-    private record Structure(Frame frame, BlockPos emitter) implements ReflectionGeometry.Body {
+    /** A structure as the reflection scene sees it: the simulated radios' own blocks are left out. */
+    private record Structure(Frame frame, Set<BlockPos> emitters) implements ReflectionGeometry.Body {
         @Override public UUID id() { return frame.liveStructure.getUniqueId(); }
 
-        @Override public long contentKey() { return frame.blocks.contentKey ^ HashCommon.mix(emitter.asLong()); }
+        @Override public long contentKey() { return frame.blocks.contentKey ^ emitterKey(emitters); }
 
         @Override public Pose3dc pose() { return frame.pose; }
 
@@ -47,20 +49,21 @@ public final class AcousticSnapshot implements ReflectionGeometry {
             AABB box = frame.blocks.contentBounds;
             if (box == null) return AcousticMesh.Data.empty(Vec3.ZERO);
             AcousticMesh mesh = new AcousticMesh(new Vec3(box.minX, box.minY, box.minZ), workspace);
-            mesh.append(frame.blocks, box, emitter);
+            mesh.append(frame.blocks, box, emitters);
             return mesh.data();
         }
     }
     private final FrozenBlocks terrain;
     private final List<Frame> structures;
-    private final BlockPos emitter;
+    /** Cells read as air: the radios this view is for (their sound starts inside them). */
+    private final Set<BlockPos> emitters;
     private final long revision;
     private final AABB bounds;
 
-    private AcousticSnapshot(FrozenBlocks terrain, List<Frame> structures, BlockPos emitter, long revision, AABB bounds) {
+    private AcousticSnapshot(FrozenBlocks terrain, List<Frame> structures, Set<BlockPos> emitters, long revision, AABB bounds) {
         this.terrain = terrain;
         this.structures = structures;
-        this.emitter = emitter;
+        this.emitters = emitters;
         this.revision = revision;
         this.bounds = bounds;
     }
@@ -86,10 +89,25 @@ public final class AcousticSnapshot implements ReflectionGeometry {
 
     /** All nearby radios share frozen terrain/poses, but exclude their own emitter block. */
     public AcousticSnapshot forEmitter(BlockPos source) {
-        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, structures, source.immutable(), revision, bounds);
+        return forEmitters(Set.of(source.immutable()));
+    }
+
+    /** The same frozen scene with every one of {@code sources} read as air: the radios' shared reflection scene. */
+    public AcousticSnapshot forEmitters(Collection<BlockPos> sources) {
+        Set<BlockPos> cells = Set.copyOf(sources.stream().map(BlockPos::immutable).toList());
+        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, structures, cells, revision, bounds);
         AcousticUpdateGate.copySnapshot(this, snapshot);
         return snapshot;
     }
+
+    /** Order-independent; one emitter keys as it always has. */
+    private static long emitterKey(Set<BlockPos> emitters) {
+        long key = 0;
+        for (BlockPos emitter : emitters) key += HashCommon.mix(emitter.asLong());
+        return key;
+    }
+
+    @Override public Set<BlockPos> emitters() { return emitters; }
 
     public static AcousticSnapshot capture(Level level, Vec3 listener, BlockPos emitter) {
         return capture(level, listener, emitter, 96);
@@ -111,7 +129,7 @@ public final class AcousticSnapshot implements ReflectionGeometry {
             AABB local = new BoundingBox3d(world).transformInverse(pose).toMojang();
             frames.add(new Frame(FrozenBlocks.capture(level, local, structure, generation), pose, world, local, structure));
         }
-        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, List.copyOf(frames), emitter.immutable(), revision, bounds);
+        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, List.copyOf(frames), Set.of(emitter.immutable()), revision, bounds);
         AcousticUpdateGate.registerSnapshot(snapshot, terrain, frames.stream().map(Frame::blocks).toList(),
                 frames.stream().map(Frame::liveStructure).map(SubLevelAccess::getUniqueId).toList(), frames.stream().map(Frame::pose).toList());
         return snapshot;
@@ -124,7 +142,7 @@ public final class AcousticSnapshot implements ReflectionGeometry {
      */
     public static AcousticSnapshot captureTerrain(Level level, AABB bounds, BlockPos emitter) {
         FrozenBlocks terrain = FrozenBlocks.capture(level, bounds, null, 0);
-        return new AcousticSnapshot(terrain, List.of(), emitter.immutable(), AcousticSceneChanges.revision(), bounds);
+        return new AcousticSnapshot(terrain, List.of(), Set.of(emitter.immutable()), AcousticSceneChanges.revision(), bounds);
     }
 
     /** How a block cell lets sound and listeners through, for flood fills over captured terrain. */
@@ -157,7 +175,7 @@ public final class AcousticSnapshot implements ReflectionGeometry {
             AABB bounds = new BoundingBox3d(frame.localBounds).transform(pose).toMojang();
             frames.add(new Frame(frame.blocks, pose, bounds, frame.localBounds, frame.liveStructure));
         }
-        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, List.copyOf(frames), emitter, revision, bounds);
+        AcousticSnapshot snapshot = new AcousticSnapshot(terrain, List.copyOf(frames), emitters, revision, bounds);
         AcousticUpdateGate.registerSnapshot(snapshot, terrain, frames.stream().map(Frame::blocks).toList(),
                 frames.stream().map(Frame::liveStructure).map(SubLevelAccess::getUniqueId).toList(), frames.stream().map(Frame::pose).toList());
         return snapshot;
@@ -168,14 +186,14 @@ public final class AcousticSnapshot implements ReflectionGeometry {
         Vec3 origin = new Vec3(Math.floor(listener.x / 16) * 16, Math.floor(listener.y / 16) * 16, Math.floor(listener.z / 16) * 16);
         var workspace = new AcousticMesh.Workspace();
         AcousticMesh mesh = new AcousticMesh(origin, workspace);
-        mesh.append(terrain, new AABB(listener, source).inflate(ReflectionMeshCache.MARGIN), emitter);
+        mesh.append(terrain, new AABB(listener, source).inflate(ReflectionMeshCache.MARGIN), emitters);
         for (ReflectionGeometry.Body body : bodies()) mesh.appendPlaced(body.localMesh(workspace), body.pose());
         return mesh.data();
     }
 
     @Override public AcousticMesh.Data terrainMesh(AABB bounds, Vec3 origin, AcousticMesh.Workspace workspace) {
         AcousticMesh mesh = new AcousticMesh(origin, workspace);
-        mesh.append(terrain, bounds, emitter);
+        mesh.append(terrain, bounds, emitters);
         return mesh.data();
     }
 
@@ -187,7 +205,7 @@ public final class AcousticSnapshot implements ReflectionGeometry {
 
     @Override public List<? extends ReflectionGeometry.Body> bodies() {
         List<Structure> bodies = new ArrayList<>(structures.size());
-        for (Frame frame : structures) bodies.add(new Structure(frame, emitter));
+        for (Frame frame : structures) bodies.add(new Structure(frame, emitters));
         return bodies;
     }
 
@@ -214,7 +232,7 @@ public final class AcousticSnapshot implements ReflectionGeometry {
 
     private AcousticRay castLocal(FrozenBlocks blocks, Vec3 from, Vec3 to) {
         return AcousticVoxelTrace.cast(from, to, pos -> {
-            if (pos.equals(emitter) || blocks.isOutsideBuildHeight(pos)) return null;
+            if (emitters.contains(pos) || blocks.isOutsideBuildHeight(pos)) return null;
             if (!blocks.known(pos)) return AcousticVoxelTrace.Cell.UNKNOWN;
             BlockState state = blocks.getBlockState(pos);
             return state.isAir() ? null : AcousticVoxelTrace.cell(state, blocks, pos);

@@ -5,14 +5,17 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Worker-owned reflection scene, kept as two parts. Terrain is meshed for a padded region and kept
- * until the listener leaves it or a section inside it changes; moving structures are meshed once in
- * their own frame and only re-placed when they move, so a passing train never remeshes the world.
+ * Worker-owned reflection scene, kept as two parts. Terrain is meshed for a padded region around the
+ * listener and every simulated radio, and kept until they leave it, a section inside it changes or
+ * the set of radios changes; moving structures are meshed once in their own frame and only
+ * re-placed when they move, so a passing train never remeshes the world.
  */
 public final class ReflectionMeshCache {
     /** Geometry kept around the listener-source box: reflection paths leave it through walls this far out. */
@@ -31,6 +34,8 @@ public final class ReflectionMeshCache {
     private final AcousticMesh.Workspace workspace = new AcousticMesh.Workspace();
     private final Map<UUID, LocalMesh> localMeshes = new HashMap<>();
     private AABB bounds;
+    /** The radios whose cells the terrain mesh left open. */
+    private Set<BlockPos> emitters = Set.of();
     private AcousticMesh.Data terrain;
     /** Every terrain section the mesh region spans, with its state when the mesh was built. */
     private long[] sectionKeys = new long[0], sectionStates = new long[0];
@@ -43,14 +48,22 @@ public final class ReflectionMeshCache {
         return new AABB(listener, source).inflate(MARGIN + PADDING);
     }
 
-    public Scene get(ReflectionGeometry geometry, Vec3 listener, Vec3 source) {
-        AABB required = new AABB(listener, source).inflate(MARGIN);
-        if (terrain == null || !AcousticSnapshot.contains(bounds, required) || terrainChanged(geometry)) {
+    /**
+     * The scene for one listener and every source simulated against it: their regions are merged,
+     * so a run for several radios meshes and uploads one scene.
+     */
+    public Scene get(ReflectionGeometry geometry, Vec3 listener, List<Vec3> sources) {
+        AABB required = new AABB(listener, listener);
+        for (Vec3 source : sources) required = required.minmax(new AABB(source, source));
+        required = required.inflate(MARGIN);
+        if (terrain == null || !AcousticSnapshot.contains(bounds, required) || !emitters.equals(geometry.emitters())
+                || terrainChanged(geometry)) {
             AABB expanded = required.inflate(PADDING);
             Vec3 center = expanded.getCenter();
             Vec3 origin = new Vec3(Math.floor(center.x / 16) * 16, Math.floor(center.y / 16) * 16, Math.floor(center.z / 16) * 16);
             terrain = geometry.terrainMesh(expanded, origin, workspace);
             bounds = expanded;
+            emitters = geometry.emitters();
             recordSections(geometry, expanded);
         }
         AcousticMesh.Data placed = place(geometry.bodies());

@@ -143,9 +143,16 @@ public final class RadioAcousticController {
             capturedRevision = revision;
         }
         AcousticSnapshot poses = snapshot.currentPoses();
+        List<RadioSimulationSession> sessions = new ArrayList<>(simulated.size());
+        List<BlockPos> emitters = new ArrayList<>(simulated.size());
         for (RadioInstance radio : simulated) {
-            SESSIONS.get(radio).session.simulate(poses.forEmitter(radio.pos()), now);
+            RadioSimulationSession session = SESSIONS.get(radio).session;
+            session.simulate(poses.forEmitter(radio.pos()), now);
+            sessions.add(session);
+            emitters.add(radio.pos());
         }
+        // One reflection scene for all of them: each radio's block is open in it, as in its own direct view.
+        SharedReflectionSimulator.simulate(sessions, poses.forEmitters(emitters), poses.revision(), now);
     }
 
     private static void updateView(Minecraft mc, RadioInstance radio, RadioSimulationSession session, boolean simulated) {
