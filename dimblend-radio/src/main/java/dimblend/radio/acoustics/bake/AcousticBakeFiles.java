@@ -18,14 +18,16 @@ import net.minecraft.core.BlockPos;
 
 /**
  * Baked acoustics on disk: {@code <root>/<world>/<dimension>/<x>_<y>_<z>.pathing}. A file holds a
- * magic number, the format, the bake settings key, the radio, the probe summary, every section the
- * bake spans with its state, the serialized probe batch and a CRC32C of all of that. Files are
+ * magic number, the format, the bake settings key, the radio, the column cell size, the probe
+ * centres, every section the bake spans with its state, the serialized probe batch and a CRC32C of
+ * all of that. A file in another format reads as none and is replaced by the next bake. Files are
  * written to a temporary file and moved into place; the least recently used beyond the disk budget
  * are deleted.
  */
 public final class AcousticBakeFiles {
     private static final int MAGIC = 0x44425041;
-    static final int FORMAT = 1;
+    /** 2: probe centres stored. */
+    static final int FORMAT = 2;
     private static final String PATHING = ".pathing";
     private final Path root;
 
@@ -54,11 +56,13 @@ public final class AcousticBakeFiles {
     }
 
     public void write(Path file, PathingBake bake, int settings) throws IOException {
-        int size = 9 * Integer.BYTES + bake.sectionKeys().length * 2 * Long.BYTES + Integer.BYTES + bake.batch().length;
+        int size = 9 * Integer.BYTES + bake.probes().length * Float.BYTES + bake.sectionKeys().length * 2 * Long.BYTES
+                + Integer.BYTES + bake.batch().length;
         ByteBuffer buffer = ByteBuffer.allocate(size + Long.BYTES);
         buffer.putInt(MAGIC).putInt(FORMAT).putInt(settings);
         buffer.putInt(bake.radio().getX()).putInt(bake.radio().getY()).putInt(bake.radio().getZ());
-        buffer.putInt(bake.probeCount()).putInt(bake.cellSize());
+        buffer.putInt(bake.cellSize()).putInt(bake.probeCount());
+        for (float coordinate : bake.probes()) buffer.putFloat(coordinate);
         buffer.putInt(bake.sectionKeys().length);
         for (long key : bake.sectionKeys()) buffer.putLong(key);
         for (long state : bake.sectionStates()) buffer.putLong(state);
@@ -111,7 +115,10 @@ public final class AcousticBakeFiles {
             if (buffer.getInt() != MAGIC || buffer.getInt() != FORMAT || buffer.getInt() != settings) return null;
             BlockPos stored = new BlockPos(buffer.getInt(), buffer.getInt(), buffer.getInt());
             if (!stored.equals(radio)) return null;
-            int probeCount = buffer.getInt(), cellSize = buffer.getInt();
+            int cellSize = buffer.getInt(), probeCount = buffer.getInt();
+            if (probeCount < 0 || (long) probeCount * 3 * Float.BYTES > buffer.remaining()) return null;
+            float[] probes = new float[probeCount * 3];
+            for (int i = 0; i < probes.length; i++) probes[i] = buffer.getFloat();
             int sections = buffer.getInt();
             if (sections < 0 || (long) sections * 2 * Long.BYTES > buffer.remaining()) return null;
             long[] keys = new long[sections], states = new long[sections];
@@ -121,7 +128,7 @@ public final class AcousticBakeFiles {
             if (length <= 0 || length != buffer.remaining() - Long.BYTES) return null;
             byte[] batch = new byte[length];
             buffer.get(batch);
-            return new PathingBake(radio, keys, states, probeCount, cellSize, batch);
+            return new PathingBake(radio, keys, states, probes, cellSize, batch);
         } catch (BufferUnderflowException damaged) {
             return null;
         }

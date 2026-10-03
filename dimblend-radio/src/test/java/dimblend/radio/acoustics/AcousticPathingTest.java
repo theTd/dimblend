@@ -1,13 +1,14 @@
 package dimblend.radio.acoustics;
 
 import java.util.function.DoubleUnaryOperator;
+import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AcousticPathingTest {
     private static final DoubleUnaryOperator LINEAR = d -> Math.max(0, 1 - d / 96);
 
-    /** Steam Audio's coefficients for a path of {@code length} blocks arriving along +x. */
+    /** Steam Audio's coefficients for a path of {@code length} blocks arriving from -z (its Ambisonic X axis). */
     private static float[] steamCoefficients(double length) {
         float w = (float) (AcousticPathing.W_UNIT / length);
         return new float[] {w, 0, 0, w * 0.8f};
@@ -23,6 +24,25 @@ class AcousticPathingTest {
         assertEquals(sh[0] * scale, field.sh()[0], 1e-6);
         assertEquals(sh[3] * scale, field.sh()[3], 1e-6);
         assertEquals(AcousticPathing.W_UNIT * (1 - 30 / 96.0), field.sh()[0], 1e-6, "W carries only the distance curve");
+    }
+
+    @Test
+    void theFieldKeepsThePathLengthAndArrivalDirection() {
+        var field = AcousticPathing.shape(new float[] {1, 1, 1}, steamCoefficients(30), 0, 1, LINEAR);
+        assertNotNull(field);
+        assertEquals(30, field.length(), 1e-3);
+        assertDirection(new Vec3(0, 0, -1), field.arrival());
+        float[] eq = {1, 1, 1};
+        // Steam Audio's Ambisonic frame: Y grows with arrival from -x, Z from +y, X from -z.
+        assertDirection(new Vec3(1, 0, 0), new PathingField(eq, new float[] {0.1f, -0.1f, 0, 0}, 10).arrival());
+        assertDirection(new Vec3(0, 1, 0), new PathingField(eq, new float[] {0.1f, 0, 0.1f, 0}, 10).arrival());
+        assertDirection(new Vec3(0, 0, 1), new PathingField(eq, new float[] {0.1f, 0, 0, -0.1f}, 10).arrival());
+        assertNull(new PathingField(eq, new float[] {0.1f, 0, 0, 0}, 10).arrival(), "W alone has no direction");
+    }
+
+    private static void assertDirection(Vec3 expected, Vec3 actual) {
+        assertNotNull(actual);
+        assertEquals(0, expected.distanceTo(actual), 1e-6, actual.toString());
     }
 
     @Test

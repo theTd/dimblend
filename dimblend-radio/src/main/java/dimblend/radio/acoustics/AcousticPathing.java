@@ -63,7 +63,7 @@ public final class AcousticPathing {
         if (!(scale > 0) || loudest * scale * W_UNIT / length < SILENT) return null;
         float[] coefficients = new float[4];
         for (int i = 0; i < 4; i++) coefficients[i] = (float) (sh[i] * scale);
-        return new PathingField(gains, coefficients);
+        return new PathingField(gains, coefficients, (float) length);
     }
 
     private AcousticPathing() { }

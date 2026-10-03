@@ -74,6 +74,43 @@ public final class AcousticBakeScheduler {
     /** What a radio's session should use. */
     public record Pathing(PathingBake bake, boolean stale) { }
 
+    /** Where a radio's bake stands, for the bake view. */
+    public enum BakeState {
+        /** Reading the radio's file. */
+        LOADING,
+        /** No bake, and the region not compared yet. */
+        CHECKING,
+        /** No bake yet: waiting for the region to settle and the client to be idle. */
+        WAITING,
+        BAKING,
+        /** In use, and its region unchanged since it was baked. */
+        VALID,
+        /** In use with validation: its region changed, or has not been compared yet. */
+        STALE,
+        /** Nothing to bake: no walkable air around the radio. */
+        NO_AIR,
+        /** No bake, and baking it failed too often to try again. */
+        FAILED
+    }
+
+    /**
+     * A radio's bake as the bake view shows it; client thread.
+     *
+     * @param bake the bake in use, or null
+     * @param changedSections sections ({@code SectionPos.asLong}) whose blocks differ from the bake's
+     * @param verified the region was compared with the bake since its last change
+     * @param needsBake a (re)bake is due once the region is stable and the client idle
+     * @param stableIn seconds until the region counts as stable; 0 once it does
+     * @param retryIn seconds until a failed or incomplete bake may be tried again; 0 if it may now
+     * @param bakingFor seconds the running bake has taken so far; 0 when none runs
+     * @param bakeThreads threads of the running or last bake
+     * @param lastBakeSeconds how long the last bake took here; 0 for a bake read from disk
+     * @param deferredProbes probes of a placement too large for the allowance it was tried with
+     */
+    public record Inspection(BlockPos radio, AABB region, BakeState state, PathingBake bake, long[] changedSections,
+            boolean regionLoaded, boolean verified, boolean needsBake, double stableIn, double retryIn, double bakingFor,
+            int bakeThreads, double lastBakeSeconds, int deferredProbes, int failures) { }
+
     private static final class RadioBake {
         final BlockPos radio;
         final AABB region;
@@ -92,16 +129,41 @@ public final class AcousticBakeScheduler {
         int deferredProbes;
         long retryAt;
         int failures;
+        /** The last bake found no walkable air. */
+        boolean noAir;
+        /** Sections that differ from the bake's, as of {@link #compared}. */
+        long[] changedSections = new long[0];
+        /** The signature the sections were last compared at, or null. */
+        AcousticRegionSignature compared;
+        long bakeStartedAt;
+        int bakeThreads;
+        long lastBakeNanos;
 
         RadioBake(BlockPos radio) {
             this.radio = radio;
             region = new AABB(radio).inflate(AcousticPathing.REGION_RADIUS + MESH_MARGIN);
         }
+
+        BakeState state() {
+            if (busy) return loaded ? BakeState.BAKING : BakeState.LOADING;
+            if (bake != null) return stale ? BakeState.STALE : BakeState.VALID;
+            if (!loaded) return BakeState.LOADING;
+            if (needsBake) return BakeState.WAITING;
+            if (!verified) return BakeState.CHECKING;
+            if (noAir) return BakeState.NO_AIR;
+            return failures >= MAX_FAILURES ? BakeState.FAILED : BakeState.CHECKING;
+        }
+
+        void setBake(PathingBake next) {
+            bake = next;
+            changedSections = new long[0];
+            compared = null;
+        }
     }
 
     /** What a bake job came back with. */
     private sealed interface Outcome {
-        record Baked(PathingBake bake, AcousticRegionSignature signature) implements Outcome { }
+        record Baked(PathingBake bake, AcousticRegionSignature signature, long nanos) implements Outcome { }
         /** No walkable air around the radio: nothing for sound to bend round. */
         record Empty() implements Outcome { }
         record Incomplete() implements Outcome { }
@@ -128,12 +190,38 @@ public final class AcousticBakeScheduler {
     private static int generation;
     private static boolean baking;
     private static long lastSample;
+    /** The bake view is open: compare a changed region with its bake every sample, not only once it settles. */
+    private static boolean inspecting;
 
     /** The bake a radio's session should use now, or null. */
     public static Pathing pathing(BlockPos radio) {
         RadioBake state = RADIOS.get(radio);
         return state == null || state.bake == null ? null : new Pathing(state.bake, state.stale);
     }
+
+    /** Client thread: while the bake view is open, edits show up within a second instead of once the region settles. */
+    public static void setInspecting(boolean open) { inspecting = open; }
+
+    /** Client thread: every tracked radio's bake, nearest the listener first. */
+    public static List<Inspection> inspect(Vec3 listener, long now) {
+        List<Inspection> inspections = new ArrayList<>();
+        for (RadioBake state : RADIOS.values()) {
+            double stableIn = state.signature == null ? STABLE_NANOS / 1e9 : Math.max(0, STABLE_NANOS - (now - state.changedAt)) / 1e9;
+            boolean running = state.busy && state.loaded;
+            inspections.add(new Inspection(state.radio, state.region, state.state(), state.bake, state.changedSections,
+                    state.signature != null && state.signature.loaded(), state.verified, state.needsBake, stableIn,
+                    Math.max(0, state.retryAt - now) / 1e9, running ? (now - state.bakeStartedAt) / 1e9 : 0,
+                    state.bakeThreads, state.lastBakeNanos / 1e9, state.deferredProbes, state.failures));
+        }
+        inspections.sort(Comparator.comparingDouble(inspection -> Vec3.atCenterOf(inspection.radio()).distanceToSqr(listener)));
+        return inspections;
+    }
+
+    /** Client thread: the idle gate's last decision. */
+    public static AcousticIdleGate.Status gateStatus() { return GATE.status(); }
+
+    /** Client thread: a bake is running. */
+    public static boolean baking() { return baking; }
 
     /** Client thread, every tick. */
     public static void tick(Minecraft mc, Collection<BlockPos> radios, Vec3 listener, long now) {
@@ -186,6 +274,9 @@ public final class AcousticBakeScheduler {
             state.stale = true;
             state.deferredProbes = 0;
         }
+        if (inspecting && state.bake != null && signature.loaded() && !signature.equals(state.compared)) {
+            compare(state, false);
+        }
         if (state.busy) return;
         if (!state.loaded) {
             load(state);
@@ -197,15 +288,41 @@ public final class AcousticBakeScheduler {
             state.verified = true;
             return;
         }
+        compare(state, true);
+    }
+
+    /**
+     * Captures the region and records which of its sections differ from the bake's. With
+     * {@code verify}, a complete capture also settles whether the bake is still valid.
+     */
+    private static void compare(RadioBake state, boolean verify) {
         var capture = AcousticSnapshot.captureTerrain(level, state.region, state.radio);
         long[] keys = capture.sectionKeys(state.region);
         long[] sections = capture.terrainSections(keys);
-        if (!complete(sections)) return;
-        boolean same = state.bake != null && Arrays.equals(keys, state.bake.sectionKeys())
-                && Arrays.equals(sections, state.bake.sectionStates());
+        state.changedSections = changedSections(state.bake, keys, sections);
+        state.compared = state.signature;
+        if (!verify || !complete(sections)) return;
+        boolean same = Arrays.equals(keys, state.bake.sectionKeys()) && Arrays.equals(sections, state.bake.sectionStates());
         state.stale = !same;
         state.needsBake = !same;
         state.verified = true;
+    }
+
+    /**
+     * The sections whose captured state differs from the bake's; sections not captured now (an
+     * unloaded chunk) are unknown, not changed.
+     */
+    static long[] changedSections(PathingBake bake, long[] keys, long[] sections) {
+        Map<Long, Long> baked = new HashMap<>(bake.sectionKeys().length * 2);
+        for (int i = 0; i < bake.sectionKeys().length; i++) baked.put(bake.sectionKeys()[i], bake.sectionStates()[i]);
+        long[] changed = new long[keys.length];
+        int count = 0;
+        for (int i = 0; i < keys.length; i++) {
+            if (sections[i] == ReflectionGeometry.UNLOADED || sections[i] == ReflectionGeometry.UNCAPTURED) continue;
+            Long before = baked.get(keys[i]);
+            if (before == null || before != sections[i]) changed[count++] = keys[i];
+        }
+        return Arrays.copyOf(changed, count);
     }
 
     private static boolean complete(long[] sections) {
@@ -233,7 +350,7 @@ public final class AcousticBakeScheduler {
                 state.busy = false;
                 state.loaded = true;
                 if (loaded != null && state.bake == null) {
-                    state.bake = loaded;
+                    state.setBake(loaded);
                     state.stale = true;
                     state.verified = false;
                     DimBlendRadio.LOGGER.info("[radio] loaded baked pathing for {}: {} probes", state.radio, loaded.probeCount());
@@ -251,6 +368,8 @@ public final class AcousticBakeScheduler {
             return;
         }
         state.busy = true;
+        state.bakeStartedAt = now;
+        state.bakeThreads = allowance.threads();
         baking = true;
         int expected = generation;
         var signature = state.signature;
@@ -299,7 +418,16 @@ public final class AcousticBakeScheduler {
         long meshed = System.nanoTime();
         byte[] batch = baker.bake(mesh, probes, (float) RadioAcousticController.AUDIBLE_RANGE, allowance.threads(), fraction -> { });
         long baked = System.nanoTime();
-        var bake = new PathingBake(radio, keys, sections, probes.count(), probes.cellSize(), batch);
+        // Kept in the radio's frame, like the batch: the bake view draws them.
+        Vec3 origin = Vec3.atLowerCornerOf(radio);
+        double[] centres = probes.centres();
+        float[] local = new float[centres.length];
+        for (int i = 0; i < centres.length; i += 3) {
+            local[i] = (float) (centres[i] - origin.x);
+            local[i + 1] = (float) (centres[i + 1] - origin.y);
+            local[i + 2] = (float) (centres[i + 2] - origin.z);
+        }
+        var bake = new PathingBake(radio, keys, sections, local, probes.cellSize(), batch);
         DimBlendRadio.LOGGER.info("[radio] baked pathing for {}: {} probes ({}-block cells), {} triangles, {} KiB;"
                 + " placement {} ms, mesh {} ms, bake {} ms on {} threads", radio, probes.count(), probes.cellSize(),
                 mesh.triangleCount(), batch.length / 1024, (placed - start) / 1_000_000, (meshed - placed) / 1_000_000,
@@ -310,7 +438,7 @@ public final class AcousticBakeScheduler {
         } catch (IOException | RuntimeException error) {
             DimBlendRadio.LOGGER.warn("[radio] could not save baked pathing {}", file, error);
         }
-        return new Outcome.Baked(bake, signature);
+        return new Outcome.Baked(bake, signature, baked - meshed);
     }
 
     /** Client thread. */
@@ -318,8 +446,10 @@ public final class AcousticBakeScheduler {
         state.busy = false;
         switch (outcome) {
             case Outcome.Baked baked -> {
-                state.bake = baked.bake();
+                state.setBake(baked.bake());
+                state.lastBakeNanos = baked.nanos();
                 state.needsBake = false;
+                state.noAir = false;
                 state.deferredProbes = 0;
                 state.failures = 0;
                 // Edited while baking: still the best there is, but re-verified before trusted.
@@ -327,8 +457,9 @@ public final class AcousticBakeScheduler {
                 if (state.stale) state.verified = false;
             }
             case Outcome.Empty empty -> {
-                state.bake = null;
+                state.setBake(null);
                 state.needsBake = false;
+                state.noAir = true;
             }
             case Outcome.Incomplete incomplete -> state.retryAt = now + RETRY_NANOS;
             case Outcome.Deferred deferred -> state.deferredProbes = deferred.probes();

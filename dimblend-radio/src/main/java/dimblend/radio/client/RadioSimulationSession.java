@@ -322,6 +322,9 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         return 50_000_000L;
     }
 
+    /** The diffracted path the renderer currently adds, or null; for the bake view. */
+    public PathingField pathingField() { return pathingField; }
+
     /**
      * Client thread: the radio's baked pathing, or null. A stale bake predates an edit in its
      * region: its routes are re-traced (and dropped where blocked) at a slower cadence.

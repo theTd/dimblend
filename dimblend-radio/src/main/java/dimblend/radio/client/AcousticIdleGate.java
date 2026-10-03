@@ -1,6 +1,7 @@
 package dimblend.radio.client;
 
 import java.lang.management.ManagementFactory;
+import java.util.Arrays;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.GenericMessageScreen;
 import net.minecraft.client.gui.screens.LevelLoadingScreen;
@@ -35,6 +36,23 @@ public final class AcousticIdleGate {
         public boolean open() { return threads > 0; }
     }
 
+    /** What the player is doing, as far as the gate cares. */
+    public enum Activity { PLAYING, PAUSED, UNFOCUSED, STILL }
+
+    /**
+     * The gate's last decision and what it was based on, for the bake view.
+     *
+     * @param loads the load samples taken since the last bake, newest last (fewer than
+     *     {@link #LOAD_SAMPLES} while measuring)
+     * @param targetFps the frame rate counted as smooth
+     */
+    public record Status(Allowance allowance, boolean loading, Activity activity, double[] loads, int fps, int targetFps) {
+        public boolean smoothFrames() { return smooth(fps, targetFps); }
+    }
+
+    /** Frames keep up with the lower of 60 fps and the frame rate limit, give or take a tenth. */
+    private static boolean smooth(int fps, int targetFps) { return fps >= 0.9 * targetFps; }
+
     /**
      * @param recentLoads system CPU load (0 to 1) once a second, newest last; NaN where unknown
      */
@@ -54,6 +72,9 @@ public final class AcousticIdleGate {
     private Vec3 lastPosition;
     private float lastYaw, lastPitch;
     private boolean loadUnavailable;
+    private Status status = new Status(Allowance.NONE, true, Activity.PLAYING, new double[0], 0, 60);
+
+    public Status status() { return status; }
 
     /**
      * Called every client tick.
@@ -74,9 +95,14 @@ public final class AcousticIdleGate {
         boolean loading = mc.level == null || mc.player == null || mc.getOverlay() != null
                 || mc.screen instanceof ReceivingLevelScreen || mc.screen instanceof LevelLoadingScreen
                 || mc.screen instanceof ProgressScreen || mc.screen instanceof GenericMessageScreen;
-        boolean away = mc.isPaused() || !mc.isWindowActive() || now - lastMovement >= (long) (AWAY_SECONDS * SECOND);
-        double[] recent = java.util.Arrays.copyOfRange(loads, LOAD_SAMPLES - loadCount, LOAD_SAMPLES);
-        return decide(loading, away, recent, smoothFrames(mc), Runtime.getRuntime().availableProcessors());
+        Activity activity = mc.isPaused() ? Activity.PAUSED : !mc.isWindowActive() ? Activity.UNFOCUSED
+                : now - lastMovement >= (long) (AWAY_SECONDS * SECOND) ? Activity.STILL : Activity.PLAYING;
+        double[] recent = Arrays.copyOfRange(loads, LOAD_SAMPLES - loadCount, LOAD_SAMPLES);
+        int fps = mc.getFps(), targetFps = Math.min(60, mc.options.framerateLimit().get());
+        var allowance = decide(loading, activity != Activity.PLAYING, recent, smooth(fps, targetFps),
+                Runtime.getRuntime().availableProcessors());
+        status = new Status(allowance, loading, activity, recent, fps, targetFps);
+        return allowance;
     }
 
     private void trackMovement(Minecraft mc, long now) {
@@ -92,12 +118,6 @@ public final class AcousticIdleGate {
         lastPosition = position;
         lastYaw = yaw;
         lastPitch = pitch;
-    }
-
-    /** Frames keep up with the lower of 60 fps and the frame rate limit. */
-    private static boolean smoothFrames(Minecraft mc) {
-        int limit = mc.options.framerateLimit().get();
-        return mc.getFps() >= 0.9 * Math.min(60, limit);
     }
 
     /** NaN when the platform does not report it: then only being away opens the gate. */

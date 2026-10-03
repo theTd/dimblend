@@ -307,9 +307,10 @@ thread count is the throttle.
   product (`<x>_<y>_<z>.pathing`, later `<x>_<y>_<z>/<tile>.reflections`). `<world>` is the
   singleplayer save folder or the server address, sanitised.
 - Content: magic, format version, bake settings key (a hash of every setting that shapes the
-  bake), the radio's position (frame origin; the region follows from it), probe count and column
-  cell size, section keys with their palette fingerprints, the serialized probe batch, then a
-  CRC32C over all of it. Written by the bake worker after a bake (to a temporary file, then moved
+  bake), the radio's position (frame origin; the region follows from it), column cell size, the
+  probe centres in the radio's frame (format 2; the batch keeps no positions that can be read
+  back, and the bake view draws them), section keys with their palette fingerprints, the
+  serialized probe batch, then a CRC32C over all of it. Written by the bake worker after a bake (to a temporary file, then moved
   into place). A file for other settings or another radio reads as none; a damaged one is deleted
   and baked again.
 - On radio start: read on the bake worker, then compared with fingerprints from a one-off capture
@@ -359,6 +360,30 @@ The feasibility spikes stay in the tree as `*ScratchTest`. The two `cancelCallba
 `SteamPathingFeasibilityScratchTest` call `iplPathBakerCancelBake`, which kills the JVM; they are
 `@Disabled` and only worth enabling one at a time to re-check a newer `phonon.dll`.
 
+## Bake view
+
+`/radioacoustics bakeview [on|off]` (a client command; without an argument it toggles) shows
+the playing radios' bakes (`client/AcousticBakeView`, text from `client/AcousticBakeReadout`):
+
+- Every probe of a radio's bake as a small box at head height, coloured by the bake's state:
+  green `VALID`, yellow `STALE`, blue `BAKING`. Probes behind terrain show faintly through it.
+- Sections whose blocks differ from the bake's are outlined in red, and the probes in them or
+  within their influence radius (the column cell size) of them turn red. While the view is open
+  the scheduler compares a changed region with its bake at every one-second sample instead of
+  waiting for it to settle, so an edit shows within about a second: the bake turns yellow at once
+  (the whole bake is validated, not only near the edit), the edited sections and nearby probes red
+  a moment later; once the region has been unchanged for 5 s and the client is idle it bakes
+  (blue) and turns green, or turns green straight away when the edit was undone.
+- A label above each radio: state, probe count, cell size, data size, and what a due bake waits
+  for (chunks, the 5 s of stability, a retry, the running bake, an idle client, or being away
+  for a placement too large for the CPU-idle budget).
+- A panel (joining the debug screen's left column while that is open) with the idle gate's
+  decision and its reason (paused, unfocused, still, or the CPU load samples and frame rate), and
+  for each radio its bake and the path its session renders now: length, compass direction it
+  arrives from, and per-band gain in dB.
+
+Radios that are not playing, or that sit on Sable structures, have no bake state to show.
+
 ## Risks and open questions
 
 - Frame-time impact of native bake threads on the game's own threads has not been measured in
@@ -386,4 +411,4 @@ The feasibility spikes stay in the tree as `*ScratchTest`. The two `cancelCallba
    maths.
 2. **Static-source reflection tiles** on the same worker, gates and persistence; runtime coverage
    switch; memory budget.
-3. A debug readout of bake state and progress; in-game tuning.
+3. A debug readout of bake state and progress (the bake view, done); in-game tuning.

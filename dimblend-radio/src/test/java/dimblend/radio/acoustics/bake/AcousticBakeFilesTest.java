@@ -15,7 +15,8 @@ class AcousticBakeFilesTest {
     private static PathingBake bake(int batchSize) {
         byte[] batch = new byte[batchSize];
         for (int i = 0; i < batch.length; i++) batch[i] = (byte) (i * 31);
-        return new PathingBake(RADIO, new long[] {1, 2, 3}, new long[] {77, -3, -2}, 42, 6, batch);
+        return new PathingBake(RADIO, new long[] {1, 2, 3}, new long[] {77, -3, -2}, new float[] {0.5f, 1.5f, -3, 8, 1.5f, 12.25f},
+                6, batch);
     }
 
     @Test
@@ -30,7 +31,8 @@ class AcousticBakeFilesTest {
         assertEquals(RADIO, read.radio());
         assertArrayEquals(new long[] {1, 2, 3}, read.sectionKeys());
         assertArrayEquals(new long[] {77, -3, -2}, read.sectionStates());
-        assertEquals(42, read.probeCount());
+        assertEquals(2, read.probeCount());
+        assertArrayEquals(new float[] {0.5f, 1.5f, -3, 8, 1.5f, 12.25f}, read.probes(), "probe centres for the bake view");
         assertEquals(6, read.cellSize());
         assertArrayEquals(bake(5000).batch(), read.batch());
         try (var leftovers = Files.list(file.getParent())) {
@@ -79,8 +81,8 @@ class AcousticBakeFilesTest {
         Path recent = files.pathingFile("w", "d", RADIO.east());
         Path middle = files.pathingFile("w", "e", RADIO.west());
         files.write(old, bake(1000), 9);
-        files.write(recent, new PathingBake(RADIO.east(), new long[0], new long[0], 1, 4, new byte[1000]), 9);
-        files.write(middle, new PathingBake(RADIO.west(), new long[0], new long[0], 1, 4, new byte[1000]), 9);
+        files.write(recent, new PathingBake(RADIO.east(), new long[0], new long[0], new float[3], 4, new byte[1000]), 9);
+        files.write(middle, new PathingBake(RADIO.west(), new long[0], new long[0], new float[3], 4, new byte[1000]), 9);
         Files.setLastModifiedTime(old, FileTime.fromMillis(1_000_000));
         Files.setLastModifiedTime(middle, FileTime.fromMillis(2_000_000));
         Files.setLastModifiedTime(recent, FileTime.fromMillis(3_000_000));

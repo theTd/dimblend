@@ -5,6 +5,7 @@ import dimblend.radio.SubLevelProjection;
 import dimblend.radio.acoustics.AcousticAvailability;
 import dimblend.radio.acoustics.AcousticSnapshot;
 import dimblend.radio.acoustics.AcousticSceneChanges;
+import dimblend.radio.acoustics.PathingField;
 import dimblend.radio.acoustics.ReflectionMeshCache;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -100,6 +101,14 @@ public final class RadioAcousticController {
             var pathing = AcousticBakeScheduler.pathing(entry.getKey().pos());
             entry.getValue().session.setPathing(pathing == null ? null : pathing.bake(), pathing != null && pathing.stale());
         }
+    }
+
+    /** The diffracted path a radio's session currently renders, or null; for the bake view. */
+    public static PathingField pathingField(BlockPos radio) {
+        for (var entry : SESSIONS.entrySet()) {
+            if (entry.getKey().pos().equals(radio)) return entry.getValue().session.pathingField();
+        }
+        return null;
     }
 
     /**

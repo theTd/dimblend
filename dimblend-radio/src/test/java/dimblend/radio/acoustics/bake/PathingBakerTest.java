@@ -148,9 +148,10 @@ class PathingBakerTest {
             assertTrue(field.eq()[0] > 0.05, "low frequencies bend round the edge: " + field.eq()[0]);
             assertTrue(field.eq()[0] >= field.eq()[2], "highs bend less");
             assertEquals(W_UNIT * LINEAR.applyAsDouble(length), field.sh()[0], 1e-4);
-            // Steam's first-order terms: sh[1] grows with arrival from -x, sh[3] with arrival from +z.
-            // The straight line comes mostly along x; the path through the gap mostly along +z.
-            assertTrue(-field.sh()[3] > Math.abs(field.sh()[1]),
+            assertEquals(length, field.length(), 1e-3);
+            // The straight line comes mostly along x; the path through the gap from +z.
+            Vec3 arrival = field.arrival();
+            assertTrue(arrival.z > Math.abs(arrival.x),
                     "it arrives from the gap, not along the straight line: " + java.util.Arrays.toString(field.sh()));
 
             var validated = simulation.runPathing(tracer, frame, HIDDEN, SOURCE, true);
@@ -174,7 +175,7 @@ class PathingBakerTest {
         byte[] bytes = bake();
         var files = new AcousticBakeFiles(root);
         Path file = files.pathingFile("w", "d", RADIO);
-        files.write(file, new PathingBake(RADIO, new long[] {5}, new long[] {6}, 100, 4, bytes), 1);
+        files.write(file, new PathingBake(RADIO, new long[] {5}, new long[] {6}, new float[] {1, 2, 3}, 4, bytes), 1);
         var read = files.read(file, RADIO, 1);
         assertNotNull(read);
         var tracer = tracer(hall());
@@ -199,7 +200,7 @@ class PathingBakerTest {
             silentDirect.flags = 8;
             silentDirect.occlusion = 0;
             Vec3 relative = new Vec3(0, 0, -20);
-            var field = new PathingField(new float[] {0.8f, 0.6f, 0.4f}, new float[] {0.2f, 0, 0, 0.15f});
+            var field = new PathingField(new float[] {0.8f, 0.6f, 0.4f}, new float[] {0.2f, 0, 0, 0.15f}, 20);
             Random random = new Random(7);
             double[] energy = new double[40];
             for (int block = 0; block < energy.length; block++) {
