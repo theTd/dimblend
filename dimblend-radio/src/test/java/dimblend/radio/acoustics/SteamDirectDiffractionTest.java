@@ -50,6 +50,71 @@ class SteamDirectDiffractionTest {
         }
     }
 
+    /**
+     * What the listener hears, per band, from occlusion and transmission alone (distance and air
+     * absorption left out): it must fall without steps from full level to the wall's transmission.
+     * Fine steps tell a steep fade (the path through the wall's corner lengthens quickly past the
+     * edge) from a jump, which stays the same size however finely the walk is sampled.
+     */
+    @Test
+    void theHeardLevelFadesWithoutStepsInEveryBand() {
+        assumeTrue(Boolean.getBoolean("dimblend.radio.testAudio"));
+        try (var simulation = new SteamSimulation(44100, 1)) {
+            float[] previous = null;
+            for (double z = 30; z >= -10; z -= 0.125) {
+                Vec3 listener = new Vec3(-4.5, 0.5, z);
+                var direct = simulate(simulation, HALF_WALL, listener, SOURCE).direct;
+                float[] heard = heard(direct);
+                System.out.printf(Locale.ROOT, "[diffraction] z=%5.1f occlusion=%.3f heard low %.3f mid %.3f high %.3f%n",
+                        z, direct.occlusion, heard[0], heard[1], heard[2]);
+                for (int band = 0; band < 3; band++) {
+                    if (z >= 24) assertEquals(1, heard[band], 1e-6, "full level with the sphere in view, z=" + z);
+                    if (previous == null) continue;
+                    // Deeper in the shadow the path through the wall turns square and shortens a little.
+                    assertTrue(heard[band] <= previous[band] * 1.06f, "falls, band " + band + " z=" + z);
+                    double step = 20 * Math.log10(previous[band] / heard[band]);
+                    assertTrue(step < 3, "no step over 3 dB per eighth of a block, band " + band + " z=" + z + ": " + step);
+                }
+                previous = heard;
+            }
+            float[] wall = AcousticMaterials.transmission(AcousticMaterials.STONE, 1);
+            for (int band = 0; band < 3; band++) {
+                assertEquals(wall[band], previous[band], wall[band] * 0.35, "deep shadow is the wall's transmission, band " + band);
+            }
+        }
+    }
+
+    /**
+     * A cave full of one-block pillars, walked at about 4.3 blocks a second (1/16 block per 512-sample
+     * block): with several pillars on the line, the sampled occlusion and the path through the
+     * stone change quickly, but what the listener hears from one block to the next must not jump.
+     */
+    @Test
+    void walkingThroughPillarsChangesTheLevelWithoutJumps() {
+        assumeTrue(Boolean.getBoolean("dimblend.radio.testAudio"));
+        AcousticVoxelTrace.Lookup pillars = pos -> Math.floorMod(pos.getX(), 4) == 0
+                && Math.floorMod(pos.getZ(), 4) == 0 && Math.abs(pos.getY()) <= 8 ? STONE : null;
+        Vec3 source = new Vec3(2.5, 0.5, -14.5);
+        try (var simulation = new SteamSimulation(44100, 1)) {
+            for (double lane : new double[] {6.5, 5.5, 2.5}) {
+                var gain = new DirectSoundGain(SteamRenderer.FRAME / 44100.0);
+                float[] previous = null;
+                double worst = 0;
+                for (double x = -12; x <= 12; x += 1.0 / 16) {
+                    var direct = simulate(simulation, pillars, new Vec3(x, 0.5, lane), source).direct;
+                    float[] heard = heard(gain, direct);
+                    for (int band = 0; previous != null && band < 3; band++) {
+                        double step = Math.abs(20 * Math.log10(previous[band] / heard[band]));
+                        worst = Math.max(worst, step);
+                        assertTrue(step < 4, "lane " + lane + " x=" + x + " band " + band + ": " + step + " dB in one block");
+                    }
+                    previous = heard;
+                }
+                System.out.printf(Locale.ROOT, "[diffraction] pillars, lane %.1f: worst %.1f dB per block%n", lane, worst);
+            }
+        }
+    }
+
     @Test
     void anOpeningNearTheListenerCountsAsWellAsOneNearTheSource() {
         assumeTrue(Boolean.getBoolean("dimblend.radio.testAudio"));
@@ -132,6 +197,22 @@ class SteamDirectDiffractionTest {
             simulate(simulation, lookup, listeners[i % listeners.length], source);
         }
         return (System.nanoTime() - start) / 1000.0 / runs;
+    }
+
+    private static float[] heard(SteamAudio.DirectParams direct) {
+        return heard(new DirectSoundGain(), direct);
+    }
+
+    private static float[] heard(DirectSoundGain gain, SteamAudio.DirectParams direct) {
+        var shading = new SteamAudio.DirectParams();
+        shading.flags = 8 | 16;
+        shading.transmissionType = direct.transmissionType;
+        shading.occlusion = direct.occlusion;
+        shading.transmission = direct.transmission.clone();
+        float level = gain.prepare(shading);
+        float[] heard = new float[3];
+        for (int band = 0; band < 3; band++) heard[band] = level * gain.equalization().air[band];
+        return heard;
     }
 
     private static boolean blocked(Vec3 listener, Vec3 source) {

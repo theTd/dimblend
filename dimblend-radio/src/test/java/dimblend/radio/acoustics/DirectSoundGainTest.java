@@ -39,8 +39,8 @@ class DirectSoundGainTest {
         params.occlusion = 0.25f;
         params.transmission = new float[3];
         float level = gain.prepare(params);
-        assertEquals(0.5, level * gain.equalization().air[0], 1e-6);
-        assertEquals(0.25, level * gain.equalization().air[1], 1e-6);
+        assertEquals(0.25, level * gain.equalization().air[0], 1e-6);
+        assertEquals(0.125, level * gain.equalization().air[1], 1e-6);
         assertEquals(0.0625, level * gain.equalization().air[2], 1e-6);
     }
 
@@ -50,10 +50,27 @@ class DirectSoundGainTest {
         params.occlusion = 0.25f;
         params.transmission = new float[]{0.35f, 0.2f, 0.08f};
         float level = gain.prepare(params);
-        float[] expected = {0.5f + 0.5f * 0.35f, 0.25f + 0.75f * 0.2f, 0.0625f + 0.9375f * 0.08f};
+        float[] expected = {0.25f + 0.75f * 0.35f, 0.125f + 0.875f * 0.2f, 0.0625f + 0.9375f * 0.08f};
         for (int band = 0; band < 3; band++) {
             assertEquals(expected[band], level * gain.equalization().air[band], 1e-6, "band " + band);
         }
+    }
+
+    @Test void blockedPathsFadeInsteadOfJumping() {
+        double block = 512 / 44100.0;
+        var gain = new DirectSoundGain(block);
+        var params = new SteamAudio.DirectParams();
+        params.occlusion = 1;
+        params.transmission = new float[] {0.01f, 0.01f, 0.01f};
+        assertEquals(1, gain.prepare(params), 1e-6, "the first block takes its target");
+        params.occlusion = 0;
+        double weight = 1 - Math.exp(-block / DirectSoundGain.SHADING_SECONDS);
+        assertEquals(-40 * weight, 20 * Math.log10(gain.prepare(params)), 1e-3, "one block moves part of the way, in dB");
+        for (int i = 0; i < 100; i++) gain.prepare(params);
+        assertEquals(0.01, gain.prepare(params), 1e-4, "settles after a second");
+        gain.reset();
+        params.occlusion = 1;
+        assertEquals(1, gain.prepare(params), 1e-6, "a reset starts at the new target");
     }
 
     @Test void completeOcclusionDoesNotCreateInvalidEqualizerCoefficients() {

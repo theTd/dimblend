@@ -61,12 +61,18 @@
   Current listener occlusion and distance gain apply after that delay,
   so a newly blocked path does not keep playing old unobstructed PCM. Spectral coloration
   stays in the native equalizer; attenuation uses a 5 ms ramp instead of the SDK's
-  exponential gain smoothing. Direct sound and reflection fields use headphone HRTF spatialization, including reflected arrival
+  exponential gain smoothing. The occlusion/transmission shading itself is smoothed per band
+  in decibels with a 60 ms time constant, so an obstacle passing the line fades the sound
+  instead of stepping it from one audio block to the next. Direct sound and reflection fields use headphone HRTF spatialization, including reflected arrival
   directions, so distant sound is not given the same dry/wet distance curve.
 - Direct occlusion/transmission uses precise immutable terrain and Sable collision
-  rays on a CPU worker. Steam Audio re-casts transmission rays from just past each hit,
-  so a ray starting inside a solid skips that solid run; each wall counts once per side,
-  and each hit carries the path through the run it entered (up to eight blocks).
+  rays on a CPU worker. Transmission is traced by the mod (`AcousticDirectTransmission`), not
+  Steam Audio's solver, which alternates casts from either end and stops after eight hits: with
+  several pillars on the line, which hits it counted hinged on exact geometry and the level
+  jumped by whole pillars. Each ray multiplies the transmission of every solid run it crosses,
+  once, carrying the path through the run (up to eight blocks), and twelve rays in a
+  block-wide bundle (narrowing to a point at each end, so none starts inside a wall beside the
+  listener) are averaged per band, so clipping a corner changes the level gradually.
   Transmission depends on the materials along that path and its length: solid walls
   follow the mass law (−6 dB per doubling), foliage half that. A run of mixed blocks
   (carpet on planks on stone) adds each block like a mass, so a wool lining costs a
@@ -85,17 +91,25 @@
   path's voxel tracer, the voxel mesher and the Sodium tee — reads the same table.
 - Approximate diffraction: direct occlusion is Steam Audio's volumetric mode rather than
   one ray. 16 fixed points in a 2-block sphere around the radio are tested against the
-  listener (points the radio cannot see are dropped); when some are hidden, a second sphere
-  around the listener is tested against the radio and the larger visible share wins. Walking
-  behind a corner or past a doorway near either end therefore fades the dry sound over a few
-  blocks (about half level at the shadow edge, no step there) instead of cutting it, and the
-  share is applied per band (low^0.5, mid^1, high^2), so the fade also muffles. Spheres are
-  sampled even with a clear line of sight, so obstacles beside the line take a little off.
-  The sound keeps its true direction, and openings more than the radius from both ends do not
-  help. `-Ddimblend.radio.acoustic.diffraction=<radius, 0–8, default 2>` (0 restores the single
-  ray) and `-Ddimblend.radio.acoustic.diffraction.samples=<2–32, default 16>` tune it; a direct
-  update costs about 0.35–0.4 ms with 16 samples against 0.18 ms for one ray (native benchmark
-  in `SteamDirectDiffractionTest`), and runs only while something moves.
+  listener (points the radio cannot see are dropped); when that sphere is partly hidden, a second
+  sphere around the listener is tested against the radio and the larger visible share wins (an
+  obstacle beside the listener hides nearly all of the radio's sphere, whose rays converge there).
+  The heard level per band is `open + (1 − open) × transmission`, with the visible share shaped
+  per band (low^1, mid^1.5, high^2). Past the shadow edge the bundle first grazes the
+  wall's corner, short paths that pass nearly everything, so walking behind a corner or past
+  a doorway near either end fades the dry sound over a few blocks instead of cutting it, the
+  highs first. Before the edge, part of the sphere hidden by an obstacle beside the line dulls
+  the highs (about −3 dB at the edge for stone) while lows and mids stay near full level: the
+  hidden share passes no more than a grazing chord of stone, which also keeps the clear and
+  blocked sides continuous. Native tests walk past a wall edge in eighth-block steps (every band
+  falls, no step over 3 dB) and through a field of one-block pillars at walking pace (under
+  4 dB from one audio block to the next; about 15 dB before the traced transmission and
+  smoothing). The sound keeps its true direction, and openings more
+  than the radius from both ends do not help. `-Ddimblend.radio.acoustic.diffraction=<radius,
+  0–8, default 2>` (0 restores the single ray) and
+  `-Ddimblend.radio.acoustic.diffraction.samples=<2–32, default 16>` tune it; a direct update,
+  transmission bundle included, costs about 0.42–0.46 ms with 16 samples against 0.2 ms for one
+  ray (native benchmark in `SteamDirectDiffractionTest`), and runs only while something moves.
 - Reflections use Steam Audio's OpenCL/Radeon Rays GPU backend
   with the same per-triangle materials and float coordinates relative to a nearby origin.
   Terrain geometry mixes exact surfaces teed from Sodium's chunk-build pipeline with

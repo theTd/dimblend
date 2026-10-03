@@ -198,6 +198,9 @@ public final class SteamSimulation implements AutoCloseable {
         Vec3 relative = sourceWorld.subtract(offset);
         inputs.source.origin = new SteamAudio.Vector(relative.x, relative.y, relative.z);
         boolean volumetric = (flags & 1) != 0 && occludeVolumetrically(inputs);
+        // The voxel scene traces its own transmission (AcousticDirectTransmission).
+        boolean traced = (flags & 1) != 0 && !gpu && tracer != null;
+        if (traced) inputs.directFlags &= ~16;
         api.iplSourceSetInputs(source.getValue(), flags, inputs);
         var shared = new SteamAudio.SharedInputs();
         shared.rays = gpu ? GPU_RAYS : rays;
@@ -214,8 +217,13 @@ public final class SteamSimulation implements AutoCloseable {
         var outputs = new SteamAudio.SimulationOutputs();
         api.iplSourceGetOutputs(source.getValue(), flags, outputs);
         if (!reflect) outputs.reflections.ir = null;
-        if (volumetric && outputs.direct.occlusion < 1) {
-            outputs.direct.occlusion = Math.max(outputs.direct.occlusion, listenerSideOcclusion(inputs, listener, relative));
+        if (traced) {
+            float[] transmission = AcousticDirectTransmission.between(listenerWorld, sourceWorld, tracer);
+            if (volumetric && outputs.direct.occlusion < 1) {
+                outputs.direct.occlusion = Math.max(outputs.direct.occlusion, listenerSideOcclusion(inputs, listener, relative));
+                transmission = AcousticDiffraction.hiddenTransmission(transmission);
+            }
+            outputs.direct.transmission = transmission;
         }
         outputs.direct.flags = 27;
         outputs.direct.transmissionType = 1;
@@ -243,6 +251,9 @@ public final class SteamSimulation implements AutoCloseable {
      * The same volumetric occlusion with the sphere around the listener (source and listener
      * swapped), so an opening near the listener counts as well as one near the source. Only run
      * when the source sphere is partly hidden; the larger share wins, which keeps it continuous.
+     * It must run whether or not the centre line is clear: an obstacle next to the listener hides
+     * nearly all of the source sphere (its rays converge there) while the line is still clear, and
+     * the listener sphere is what keeps that share from collapsing and then jumping back.
      */
     private float listenerSideOcclusion(SteamAudio.SimulationInputs inputs, Vec3 listener, Vec3 sourcePosition) {
         inputs.source.origin = new SteamAudio.Vector(listener.x, listener.y, listener.z);

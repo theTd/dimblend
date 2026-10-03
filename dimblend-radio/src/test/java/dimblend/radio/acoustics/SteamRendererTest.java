@@ -32,9 +32,10 @@ class SteamRendererTest {
                 if (block == 59) for (float[] channel : output) for (float sample : channel) clear += sample * (double) sample;
             }
             direct.occlusion = 0;
-            for (int block = 0; block < 3; block++) {
+            // The shading fades over 60 ms (DirectSoundGain), far less than the 200 ms in the line.
+            for (int block = 0; block < 9; block++) {
                 var output = renderer.render(input, direct, null, source, new SteamAudio.Space(), false, 0);
-                if (block == 2) for (float[] channel : output) for (float sample : channel) blocked += sample * (double) sample;
+                if (block == 8) for (float[] channel : output) for (float sample : channel) blocked += sample * (double) sample;
             }
             assertTrue(clear > 1e-4);
             assertTrue(blocked < clear * 0.001, "Current occlusion must affect arriving PCM, not wait 200 ms in the propagation line");

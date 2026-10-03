@@ -46,7 +46,7 @@ public final class SteamRenderer implements AutoCloseable {
     private final float[] directSamples = new float[FRAME];
     private final float[] delayed = new float[FRAME];
     private final PropagationDelayLine propagation;
-    private final DirectSoundGain directGain = new DirectSoundGain();
+    private final DirectSoundGain directGain;
     /** Samples of received input still inside the propagation delay line. */
     private int pendingInput;
     /** History that {@link #resume(boolean)} must discard: delay line contents, native effect state. */
@@ -85,6 +85,7 @@ public final class SteamRenderer implements AutoCloseable {
         this.requestReflections = requestReflections;
         this.rate = rate;
         propagation = new PropagationDelayLine(rate);
+        directGain = new DirectSoundGain((double) FRAME / rate);
         limiterRelease = (float) (1 - Math.exp(-1.0 / rate)); // ~1 s time constant, applied per sample
         var audio = new SteamAudio.AudioSettings();
         audio.samplingRate = rate;
