@@ -40,7 +40,7 @@ public interface EngineFuelGateMixin {
         if (!(engine.self().getLevel() instanceof ServerLevel)) {
             return; // 客户端无 SERVER 配置，不读
         }
-        if (!Config.DIESEL_ENGINE_BEHAVIOR.get()) {
+        if (!Config.DIESEL_ENGINE_BEHAVIOR.get() || !Config.DIESEL_ENGINE_OVERLOAD.get()) {
             return;
         }
         if (engine.self().getData(CdgAttachments.ENGINE_STATE).overloadLatched) {

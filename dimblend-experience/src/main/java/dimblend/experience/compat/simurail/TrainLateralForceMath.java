@@ -12,7 +12,7 @@ public final class TrainLateralForceMath {
     public static final double FORCE_PN = 1200.0D;
     /** 单次横向力持续时长（游戏 tick）。 */
     public static final int PUSH_DURATION_TICKS = 10;
-    /** 判定间隔：固定 2 秒。 */
+    /** 默认判定间隔：2 秒，运行时取 Config.TRAIN_SHAKE_INTERVAL_SECONDS。 */
     public static final int INTERVAL_TICKS = 40;
     /** 概率 = 速度 / 20，达到此速度即 100%。 */
     public static final double FULL_CHANCE_SPEED = 20.0D;
@@ -33,7 +33,15 @@ public final class TrainLateralForceMath {
 
     /** 单个物理子步的冲量大小（pN·s）：力 × 子步时长，子步数量变化时总冲量不变。 */
     public static double impulsePerStep(double timeStep) {
-        return FORCE_PN * timeStep;
+        return impulsePerStep(timeStep, FORCE_PN);
+    }
+
+    public static double impulsePerStep(double timeStep, double forcePn) {
+        return forcePn * timeStep;
+    }
+
+    public static int intervalTicks(double seconds) {
+        return seconds <= 0.0D ? 0 : Math.max(1, (int) Math.round(seconds * 20.0D));
     }
 
     private TrainLateralForceMath() {

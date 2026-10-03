@@ -3,6 +3,8 @@ package dimblend.experience.compat.simurail;
 import dimblend.experience.Config;
 import dimblend.experience.DimBlend;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModList;
@@ -64,7 +66,16 @@ public final class SimurailBlockGuard {
         if (!Config.SIMURAIL_PROTECT.get() || event.getEntity().isCreative()) {
             return;
         }
-        if (isSimurailBlock(event.getLevel().getBlockState(event.getPos()))) {
+        BlockState state = event.getLevel().getBlockState(event.getPos());
+        if (isSimurailBlock(state)) {
+            Player player = event.getEntity();
+            boolean survival = player instanceof ServerPlayer serverPlayer
+                    ? serverPlayer.gameMode.getGameModeForPlayer() == GameType.SURVIVAL
+                    : !player.isSpectator() && player.getAbilities().mayBuild;
+            if (survival
+                    && Config.ALLOW_SURVIVAL_COUPLER_INTERACTION.get() && SimurailBlocksHolder.isCoupler(state)) {
+                return;
+            }
             event.setCanceled(true);
         }
     }

@@ -129,6 +129,9 @@ public abstract class ElectricMotorMixin {
             dimblend$clearLatch();
             return;
         }
+        if (!Config.ELECTRIC_MOTOR_OVERLOAD.get()) {
+            dimblend$clearLatch();
+        }
         if (dimblend$overstressLatched) {
             if (MotorOverstressLatch.shouldReset(self.isOverStressed(), this.active)) {
                 dimblend$clearLatch();
@@ -138,7 +141,7 @@ public abstract class ElectricMotorMixin {
                 dimblend$latchAge++;
                 return;
             }
-        } else if (MotorOverstressLatch.shouldEnter(self.isOverStressed(),
+        } else if (Config.ELECTRIC_MOTOR_OVERLOAD.get() && MotorOverstressLatch.shouldEnter(self.isOverStressed(),
                 this.generatedSpeed.getValue(), this.active, self.getTheoreticalSpeed())) {
             dimblend$overstressLatched = true;
             dimblend$latchedSignal = dimblend$analogSignal(self);
@@ -171,7 +174,8 @@ public abstract class ElectricMotorMixin {
         if (!(self.getLevel() instanceof ServerLevel)) {
             return;
         }
-        if ((!Config.ELECTRIC_MOTOR_BEHAVIOR.get() || !this.active) && dimblend$overstressLatched) {
+        if ((!Config.ELECTRIC_MOTOR_BEHAVIOR.get() || !Config.ELECTRIC_MOTOR_OVERLOAD.get()
+                || !this.active) && dimblend$overstressLatched) {
             dimblend$clearLatch();
         }
     }

@@ -63,7 +63,7 @@ public abstract class ElectricMotorGoggleMixin {
             return panelRpm;
         }
         float actual = Math.abs(self.getTheoreticalSpeed());
-        if (MotorOverstressLatch.clientDerived(self.isOverStressed(),
+        if (Config.ELECTRIC_MOTOR_OVERLOAD.get() && MotorOverstressLatch.clientDerived(self.isOverStressed(),
                 this.generatedSpeed.getValue(), self.getTheoreticalSpeed())) {
             return actual * 2.0F;
         }

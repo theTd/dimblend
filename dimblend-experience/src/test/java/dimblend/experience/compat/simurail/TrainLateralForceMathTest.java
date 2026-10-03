@@ -27,8 +27,17 @@ class TrainLateralForceMathTest {
     }
 
     @Test
-    void intervalIsFixedTwoSeconds() {
-        assertEquals(40, TrainLateralForceMath.INTERVAL_TICKS);
+    void intervalSupportsDisabledValueAndTenthsOfSeconds() {
+        assertEquals(0, TrainLateralForceMath.intervalTicks(0.0D));
+        assertEquals(2, TrainLateralForceMath.intervalTicks(0.1D));
+        assertEquals(40, TrainLateralForceMath.intervalTicks(2.0D));
+        assertEquals(1200, TrainLateralForceMath.intervalTicks(60.0D));
+    }
+
+    @Test
+    void customForceScalesImpulseAndZeroForceHasNoImpulse() {
+        assertEquals(0.0D, TrainLateralForceMath.impulsePerStep(0.05D, 0.0D));
+        assertEquals(500.0D, TrainLateralForceMath.impulsePerStep(0.05D, 10000.0D));
     }
 
     @Test

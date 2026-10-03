@@ -23,8 +23,8 @@ public final class NicknameCommand {
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
         event.getDispatcher().register(Commands.literal("dbx")
-                .requires(source -> Config.NICKNAME.get() && source.hasPermission(Config.NICKNAME_PERMISSION.get()))
                 .then(Commands.literal("nickname")
+                        .requires(source -> Config.NICKNAME.get() && source.hasPermission(Config.NICKNAME_PERMISSION.get()))
                         .then(Commands.argument("名称", StringArgumentType.greedyString())
                                 .executes(context -> NicknameActions.set(context.getSource().getPlayerOrException(),
                                         StringArgumentType.getString(context, "名称"))))

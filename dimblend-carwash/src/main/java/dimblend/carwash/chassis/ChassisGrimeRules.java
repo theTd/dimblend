@@ -57,10 +57,14 @@ public final class ChassisGrimeRules {
 
     /** 车厢速度对应的每秒积灰概率（0 = 不积灰）。 */
     public static double soilingChance(double speed) {
+        return soilingChance(speed, 0.5D);
+    }
+
+    public static double soilingChance(double speed, double multiplier) {
         if (!(speed > MIN_SOILING_SPEED)) {
             return 0.0;
         }
-        return Math.min(1.0, speed / FULL_CHANCE_SPEED);
+        return Math.max(0.0D, Math.min(1.0D, speed / 12.0D * multiplier));
     }
 
     public static int dirtVariant(int variant) {

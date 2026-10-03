@@ -86,7 +86,7 @@ public abstract class HugeDieselEngineMixin {
             return rated;
         }
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
-        if (state.overloadLatched) {
+        if (Config.DIESEL_ENGINE_OVERLOAD.get() && state.overloadLatched) {
             return 0.0F;
         }
         return dimblend$steppedSpeed(state, rated);
@@ -115,7 +115,7 @@ public abstract class HugeDieselEngineMixin {
             return capacityPerRpm;
         }
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
-        if (state.overloadLatched) {
+        if (Config.DIESEL_ENGINE_OVERLOAD.get() && state.overloadLatched) {
             return capacityPerRpm;
         }
         float rated = self.getCachedFuelSpeed() * self.getThrottle();
@@ -160,6 +160,9 @@ public abstract class HugeDieselEngineMixin {
             return;
         }
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
+        if (!Config.DIESEL_ENGINE_OVERLOAD.get() && state.clearOverload()) {
+            self.setChanged();
+        }
         boolean wasLatched = state.overloadLatched;
         CdgOverloadProbe.touch(self);
         boolean loadGrace = CdgLoadGrace.active(level);
@@ -214,7 +217,7 @@ public abstract class HugeDieselEngineMixin {
             state.fluctTicksLeft = 0;
             return;
         }
-        if (CdgKineticOverload.refreshedOverstressed(shaft)) {
+        if (Config.DIESEL_ENGINE_OVERLOAD.get() && CdgKineticOverload.refreshedOverstressed(shaft)) {
             // B6 过载损坏（只炸本体）：实时容量盖不住应力时连续 40 tick（2 秒，见
             // CdgOverloadMath）确认才点引信。粘住的缓存位在复核时按实时值刷掉，
             // 不累计。确认前爬梯/波动计时冻结（直接 return，不断也不复位），

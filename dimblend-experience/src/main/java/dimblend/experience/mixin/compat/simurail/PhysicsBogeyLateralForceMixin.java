@@ -55,6 +55,9 @@ public abstract class PhysicsBogeyLateralForceMixin {
     @Unique
     private double dimblend$lateralSign;
 
+    @Unique
+    private int dimblend$lastInterval;
+
     @Inject(method = "tick()V", at = @At("RETURN"))
     private void dimblend$lateralForceTick(CallbackInfo ci) {
         PhysicsBogeyBlockEntity self = (PhysicsBogeyBlockEntity) (Object) this;
@@ -65,7 +68,12 @@ public abstract class PhysicsBogeyLateralForceMixin {
         if (dimblend$lateralPushTicks > 0) {
             dimblend$lateralPushTicks--;
         }
-        if (!Config.TRAIN_LATERAL_FORCE.get()
+        int interval = TrainLateralForceMath.intervalTicks(Config.TRAIN_SHAKE_INTERVAL_SECONDS.get());
+        if (interval != dimblend$lastInterval) {
+            dimblend$lateralCountdown = -1;
+            dimblend$lastInterval = interval;
+        }
+        if (!Config.TRAIN_LATERAL_FORCE.get() || interval == 0
                 || !(Sable.HELPER.getContaining(self) instanceof ServerSubLevel)) {
             dimblend$lateralCountdown = -1;
             dimblend$lateralPushTicks = 0;
@@ -78,12 +86,12 @@ public abstract class PhysicsBogeyLateralForceMixin {
         }
         RandomSource random = level.getRandom();
         if (dimblend$lateralCountdown < 0) {
-            dimblend$lateralCountdown = TrainLateralForceMath.INTERVAL_TICKS;
+            dimblend$lateralCountdown = interval;
         }
         if (--dimblend$lateralCountdown > 0) {
             return;
         }
-        dimblend$lateralCountdown = TrainLateralForceMath.INTERVAL_TICKS;
+        dimblend$lateralCountdown = interval;
         if (TrainLateralForceMath.shouldTrigger(speed, random.nextDouble())) {
             dimblend$lateralPushTicks = TrainLateralForceMath.PUSH_DURATION_TICKS;
             dimblend$lateralSign = random.nextBoolean() ? 1.0D : -1.0D;
@@ -101,7 +109,8 @@ public abstract class PhysicsBogeyLateralForceMixin {
         PhysicsBogeyBlockEntity self = (PhysicsBogeyBlockEntity) (Object) this;
         // getLateral() 为子层级局部系下的水平横向单位向量；作用点用 plot 局部方块中心
         Vector3d impulse = new Vector3d(self.getLateral())
-                .mul(TrainLateralForceMath.impulsePerStep(timeStep) * dimblend$lateralSign);
+                .mul(TrainLateralForceMath.impulsePerStep(timeStep, Config.TRAIN_SHAKE_FORCE_PN.get())
+                        * dimblend$lateralSign);
         Vec3 center = self.getBlockPos().getCenter();
         subLevel.getOrCreateQueuedForceGroup(TrainForceGroups.LATERAL_FORCE.get())
                 .applyAndRecordPointForce(new Vector3d(center.x, center.y, center.z), impulse);

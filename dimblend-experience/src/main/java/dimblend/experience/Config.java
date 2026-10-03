@@ -43,6 +43,10 @@ public final class Config {
             .comment("B 板块：CDG 柴油机转速行为（点火爬梯 16rpm→每4秒+2→额定；额定后 80%~100% 随机波动，爬梯/波动期间应力容量恒按额定；运转中过载持续2秒确认后爆机掉落）")
             .define("dieselEngineBehavior", true);
 
+    public static final ModConfigSpec.BooleanValue DIESEL_ENGINE_OVERLOAD = BUILDER
+            .comment("Diesel engine overload penalty; default true. Disabling clears pending overload fuses without changing RPM behavior.")
+            .define("dieselEngineOverload", true);
+
     public static final ModConfigSpec.IntValue DIESEL_LOAD_GRACE_SECONDS = BUILDER
             .comment("B 板块读档宽限：进世界（开服）后这么多秒内柴油机不判爆——不累计过载确认、"
                     + "已在走的引信倒计时也暂停，宽限过后重新累计。读档时 Create 动力网络仍在重建，"
@@ -67,6 +71,10 @@ public final class Config {
                     + "开启将改变 CCA 原版'红石=停转'语义，既有红石装置请注意")
             .define("electricMotorBehavior", true);
 
+    public static final ModConfigSpec.BooleanValue ELECTRIC_MOTOR_OVERLOAD = BUILDER
+            .comment("Electric motor overload penalty; default true. Independent of redstone and energy behavior.")
+            .define("electricMotorOverload", true);
+
     public static final ModConfigSpec.BooleanValue ALTERNATOR_IDLE_DRAIN = BUILDER
             .comment("D 板块 D5：CCA 交流发电机无有效转速输入（本 tick 不产电：停转 0rpm /"
                     + " 过载·冻结网络读数归零 / 最低转速门未满足）时内部储存 FE 自行流失"
@@ -81,6 +89,10 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue COUPLER_REDSTONE = BUILDER
             .comment("E 板块 E5：取消自动车钩的红石信号解锁（true=红石信号不再断开车钩；贯通框不受影响）")
             .define("couplerRedstone", true);
+
+    public static final ModConfigSpec.BooleanValue ALLOW_SURVIVAL_COUPLER_INTERACTION = BUILDER
+            .comment("Allow Survival players to right-click automatic couplers; default false. Other block protections remain active.")
+            .define("allowSurvivalCouplerInteraction", false);
 
     public static final ModConfigSpec.BooleanValue ASSEMBLER_GUARD = BUILDER
             .comment("F 板块 F1：simulated 物理组装器禁止摆放（生存模式禁、创造模式放行；"
@@ -110,9 +122,17 @@ public final class Config {
             .define("offStructureTeleport", true);
 
     public static final ModConfigSpec.BooleanValue TRAIN_LATERAL_FORCE = BUILDER
-            .comment("E 板块 E8：车架速度大于 4 m/s 时每固定 2 秒以 速度/20 的概率对该车架施加 1200 pN 横向力"
+            .comment("E 板块 E8：车架速度大于 4 m/s 时以 速度/20 的概率施加横向力；默认每 2 秒抽签、1200 pN，可分别调节"
                     + "（垂直车架朝向、左右随机、持续 10 tick，作用于车架位置）。全维度；需要 Simurail 在场")
             .define("trainLateralForce", true);
+
+    public static final ModConfigSpec.DoubleValue TRAIN_SHAKE_INTERVAL_SECONDS = BUILDER
+            .comment("Random train shaking draw interval in seconds; default 2.0. 0 disables draws, otherwise 0.1-60.0 in steps of 0.1.")
+            .defineInRange("trainShakeIntervalSeconds", 2.0D, 0.0D, 60.0D);
+
+    public static final ModConfigSpec.IntValue TRAIN_SHAKE_FORCE_PN = BUILDER
+            .comment("Additional lateral force per random train shaking in pN; default 1200. Range 0-10000, step 1.")
+            .defineInRange("trainShakeForcePn", 1200, 0, 10000);
 
     public static final ModConfigSpec.BooleanValue VILLAGER_MASTER = BUILDER
             .comment("G 板块 G1：旋转维度内村民首次获得职业时定大师并补全全部交易，每条只能成交一次、不补货，掉工作站点不掉职业；"
@@ -203,6 +223,10 @@ public final class Config {
      */
     public static boolean isLoaded() {
         return SPEC.isLoaded();
+    }
+
+    public static void save() {
+        SPEC.save();
     }
 
     private Config() {

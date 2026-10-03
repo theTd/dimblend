@@ -5,6 +5,7 @@ import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.jesz.createdieselgenerators.content.diesel_engine.modular.ModularDieselEngineBlockEntity;
 import com.jesz.createdieselgenerators.content.diesel_engine.normal.DieselEngineBlockEntity;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
+import com.simibubi.create.content.kinetics.base.GeneratingKineticBlockEntity;
 import dimblend.experience.Config;
 import dimblend.experience.compat.cdg.CdgAttachments;
 import dimblend.experience.compat.cdg.CdgEngineState;
@@ -89,7 +90,7 @@ public abstract class DieselEngineRampMixin {
         }
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
         float vanilla = cir.getReturnValueF();
-        if (state.overloadLatched) {
+        if (Config.DIESEL_ENGINE_OVERLOAD.get() && state.overloadLatched) {
             cir.setReturnValue(0.0F);
             return;
         }
@@ -153,6 +154,10 @@ public abstract class DieselEngineRampMixin {
         }
         IEngine engine = (IEngine) (Object) this;
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
+        if (!Config.DIESEL_ENGINE_OVERLOAD.get() && state.clearOverload()) {
+            self.setChanged();
+            ((GeneratingKineticBlockEntity) self).updateGeneratedRotation();
+        }
         boolean wasLatched = state.overloadLatched;
         CdgOverloadProbe.touch(self);
         boolean loadGrace = CdgLoadGrace.active(level);
@@ -199,7 +204,7 @@ public abstract class DieselEngineRampMixin {
 
         boolean enabled = engine.enabled();
         boolean overloaded = CdgKineticOverload.refreshedOverstressed(self);
-        if (enabled && overloaded) {
+        if (Config.DIESEL_ENGINE_OVERLOAD.get() && enabled && overloaded) {
             // B6：实时过载连续 40 tick（2 秒，见 CdgOverloadMath）才点引信——
             // 确认前爬梯/波动计时冻结（本 tick 直接 return，不断也不复位），燃油
             // 照常扣除（门控仅闩锁/引信后生效）。确认后警告音 1 次、出力立即归零

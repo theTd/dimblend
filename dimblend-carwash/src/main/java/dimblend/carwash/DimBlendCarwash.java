@@ -12,6 +12,8 @@ import dimblend.carwash.server.ChassisTravelGrime;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModList;
+import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
 
@@ -27,7 +29,8 @@ public class DimBlendCarwash {
     /** Create: FireFighting Additions 的 mod id（可选依赖）。 */
     private static final String FIREFIGHTING_MODID = "createfirefightingadd";
 
-    public DimBlendCarwash(IEventBus modEventBus) {
+    public DimBlendCarwash(IEventBus modEventBus, ModContainer modContainer) {
+        modContainer.registerConfig(ModConfig.Type.SERVER, Config.SPEC);
         NeoForge.EVENT_BUS.register(ChassisBehaviourBinding.class);
         NeoForge.EVENT_BUS.register(ChassisTravelGrime.class);
         NeoForge.EVENT_BUS.register(ChassisHandInteractions.class);

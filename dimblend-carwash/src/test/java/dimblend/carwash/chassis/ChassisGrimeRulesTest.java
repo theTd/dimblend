@@ -54,6 +54,16 @@ class ChassisGrimeRulesTest {
     }
 
     @Test
+    void configurableMultiplierChangesChanceAndZeroDisablesSoiling() {
+        assertEquals(0.0D, ChassisGrimeRules.soilingChance(100.0D, 0.0D));
+        assertEquals(0.0D, ChassisGrimeRules.soilingChance(4.0D, 1.0D));
+        assertEquals(0.01D, ChassisGrimeRules.soilingChance(12.0D, 0.01D), 1.0E-9D);
+        assertEquals(0.5D, ChassisGrimeRules.soilingChance(12.0D, 0.5D), 1.0E-9D);
+        assertEquals(1.0D, ChassisGrimeRules.soilingChance(12.0D, 1.0D));
+        assertEquals(1.0D, ChassisGrimeRules.soilingChance(30.0D, 1.0D));
+    }
+
+    @Test
     void variantByteSplitsIntoDirtAndGravel() {
         ChassisGrimeVisual visual = ChassisGrimeVisual.of(400, 0xAB);
         assertEquals(6, visual.level());

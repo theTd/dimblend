@@ -6,6 +6,7 @@ import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.plot.PlotChunkHolder;
 import dimblend.carwash.chassis.ChassisBlocks;
+import dimblend.carwash.api.CarwashTuning;
 import dimblend.carwash.chassis.ChassisGrimeBehaviour;
 import dimblend.carwash.chassis.ChassisGrimeRules;
 import net.minecraft.server.level.ServerLevel;
@@ -44,7 +45,8 @@ public final class ChassisTravelGrime {
             if (subLevel == null || subLevel.isRemoved() || subLevel.getPlot() == null) {
                 continue;
             }
-            double chance = ChassisGrimeRules.soilingChance(subLevel.latestLinearVelocity.length());
+            double chance = ChassisGrimeRules.soilingChance(subLevel.latestLinearVelocity.length(),
+                    CarwashTuning.soilingProbabilityMultiplier());
             if (chance > 0.0 || raining) {
                 updateCar(subLevel, chance, raining, random);
             }

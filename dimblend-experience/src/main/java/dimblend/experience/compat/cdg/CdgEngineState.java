@@ -46,6 +46,15 @@ public class CdgEngineState {
      */
     public int overloadTicks;
 
+    public boolean clearOverload() {
+        boolean changed = overloadLatched || fuseActive || fuseTicksLeft != 0 || overloadTicks != 0;
+        overloadLatched = false;
+        fuseActive = false;
+        fuseTicksLeft = 0;
+        overloadTicks = 0;
+        return changed;
+    }
+
     public static final Codec<CdgEngineState> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Codec.INT.fieldOf("rampTicks").forGetter(s -> s.rampTicks),
             Codec.BOOL.fieldOf("overloadLatched").forGetter(s -> s.overloadLatched),

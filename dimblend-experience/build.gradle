@@ -105,6 +105,8 @@ configurations {
 }
 
 dependencies {
+    // Optional panel bridge: experience only imports carwash's api package.
+    compileOnly project(":dimblend-carwash")
     // Cross-mod compat: compile against the exact versions running in the TrainTripWorld
     // instance. Create comes from maven.createmod.net (same 6.0.10 upstream); the addons are
     // the runtime jars copied into ./libs (provenance & restore steps: docs/requirements-spec.md「libs jar 清单」).
@@ -158,6 +160,8 @@ dependencies {
         localRuntime files("libs/fluid-2.0.1.jar")
     }
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'com.google.code.gson:gson:2.10.1'
+    testRuntimeOnly 'com.mojang:datafixerupper:8.0.16'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 

@@ -28,6 +28,10 @@ final class SimurailBlocksHolder {
         return false;
     }
 
+    static boolean isCoupler(BlockState state) {
+        return state.is(SimurailBlocks.AUTOMATIC_COUPLER.get());
+    }
+
     private SimurailBlocksHolder() {
     }
 }
