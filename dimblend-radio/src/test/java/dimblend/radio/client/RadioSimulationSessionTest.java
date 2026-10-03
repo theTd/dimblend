@@ -247,7 +247,7 @@ class RadioSimulationSessionTest {
         } finally { session.close(); }
     }
 
-    private static java.nio.ByteBuffer constant(int value) {
+    static java.nio.ByteBuffer constant(int value) {
         var input=java.nio.ByteBuffer.allocateDirect(SteamRenderer.FRAME*2).order(java.nio.ByteOrder.LITTLE_ENDIAN);
         while(input.hasRemaining()) input.putShort((short)value);
         return input.flip();
@@ -263,7 +263,7 @@ class RadioSimulationSessionTest {
         return left;
     }
 
-    private static void drainReflectionWorker() throws Exception {
+    static void drainReflectionWorker() throws Exception {
         SharedReflectionSimulator.WORKER.submit(() -> { }).get(10, TimeUnit.SECONDS);
     }
 
@@ -274,7 +274,7 @@ class RadioSimulationSessionTest {
         worker.submit(() -> { }).get(10, TimeUnit.SECONDS);
     }
 
-    private static SharedReflectionSimulator.Membership awaitMembership(RadioSimulationSession session) throws Exception {
+    static SharedReflectionSimulator.Membership awaitMembership(RadioSimulationSession session) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (System.nanoTime() < deadline) {
             synchronized (session) {
@@ -288,7 +288,7 @@ class RadioSimulationSessionTest {
     }
 
     /** A closed 16-block room around the origin, nothing moving in it. */
-    private static final class Room implements ReflectionGeometry {
+    static final class Room implements ReflectionGeometry {
         @Override public long terrainSection(long key) { return UNCAPTURED; }
         @Override public int minSection() { return -4; }
         @Override public int maxSection() { return 20; }

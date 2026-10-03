@@ -104,6 +104,7 @@ public abstract class RadioStreamingChannelMixin {
             int queued = AL10.alGetSourcei(source, AL10.AL_BUFFERS_QUEUED);
             // Restarting with the same shallow queue can cause an endless play/starve/play cycle.
             if (queued < target) pumpBuffers(target - queued);
+            radio.starved(target);
             int count = ++dimblend$starvations;
             if (count <= 3 || (count & (count - 1)) == 0) {
                 dimblend.radio.DimBlendRadio.LOGGER.warn("[radio] audio starvation #{}; recovered with {} buffers ({} ms)",

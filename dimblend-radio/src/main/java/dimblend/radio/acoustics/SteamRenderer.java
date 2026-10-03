@@ -74,6 +74,20 @@ public final class SteamRenderer implements AutoCloseable {
     private final float limiterRelease;
     private volatile boolean closed;
 
+    /** What the reflection convolution did for one block. */
+    public enum ReflectionState {
+        /** No IR to convolve with. */
+        NONE,
+        /** The effect was reset and waits for a fresh simulation; the block has no reflections. */
+        AWAITING,
+        /** The input was convolved with the current IR. */
+        CONVOLVED,
+        /** The input has ended: the convolution's tail played out. */
+        TAIL,
+        /** The convolution produced non-finite samples; they were dropped and the effect reset. */
+        INVALID
+    }
+
     /** One block after propagation, occlusion and convolution: everything but the listener's orientation. */
     public static final class Prepared {
         private final float[] dry = new float[FRAME];
@@ -82,8 +96,36 @@ public final class SteamRenderer implements AutoCloseable {
         private float[][] path;
         /** The spatial stage restarts here: its effects and limiter hold state from before a pause. */
         private final boolean resetSpatial;
+        private double delaySamples;
+        private float directGain;
+        private final float[] directEq = {1, 1, 1};
+        private ReflectionState reflections = ReflectionState.NONE;
 
         private Prepared(boolean resetSpatial) { this.resetSpatial = resetSpatial; }
+
+        /** The propagation delay the block left the delay line with, in samples. */
+        public double delaySamples() { return delaySamples; }
+
+        /** The direct sound's broadband gain the block ramps to: distance times the loudest shaded band. */
+        public float directGain() { return directGain; }
+
+        /** The direct sound's band shape (low, mid, high) relative to {@link #directGain()}. */
+        public float[] directEq() { return directEq.clone(); }
+
+        public ReflectionState reflections() { return reflections; }
+    }
+
+    /**
+     * A spatialized block's parts before the limiter, filled in when passed to
+     * {@link #spatialize(Prepared, Vec3, SteamAudio.Space, float, Stems)}: the direct sound, and the
+     * reflections with the diffracted path as decoded together.
+     */
+    public static final class Stems {
+        public final float[][] direct = new float[2][FRAME], echo = new float[2][FRAME];
+        /** Energy of the scaled reflections and of the diffracted path before decoding, over all four channels. */
+        public double reflectedEnergy, pathEnergy;
+        /** The block's peak before the limiter, and the limiter's gain at its end. */
+        public float peak, limiterGain;
     }
 
     public SteamRenderer(Pointer context, int rate) {
@@ -151,16 +193,22 @@ public final class SteamRenderer implements AutoCloseable {
         // takes the same delayed PCM: reflections follow the direct sound, never precede it.
         System.arraycopy(samples, 0, directSamples, 0, FRAME);
         delay(directSamples, relativeSource, tail);
+        block.delaySamples = propagation.delaySamples();
         System.arraycopy(directSamples, 0, delayed, 0, FRAME);
         delayedInput.memory(0).write(0, directSamples, 0, FRAME);
         float targetGain = directGain.prepare(directParams);
+        block.directGain = targetGain;
+        System.arraycopy(directGain.equalization().air, 0, block.directEq, 0, 3);
         api.iplDirectEffectApply(direct.getValue(), directGain.equalization(), delayedInput, dry);
         dry.memory(0).read(0, block.dry, 0, FRAME);
         directGain.apply(block.dry, targetGain, rate);
         for (int c = 0; c < 4; c++) wet.memory(c).clear();
         if (!awaitingReflections && impulse != null && impulse.ir != null) {
+            block.reflections = drained ? ReflectionState.TAIL : ReflectionState.CONVOLVED;
             if (drained) api.iplReflectionEffectGetTail(reflections.getValue(), wet, null);
             else api.iplReflectionEffectApply(reflections.getValue(), impulse, delayedInput, wet, null);
+        } else if (awaitingReflections) {
+            block.reflections = ReflectionState.AWAITING;
         }
         // Non-finite wet (a NaN/Inf IR, whatever its source) must never reach the mix: it would
         // poison the limiter and silence the dry path too. Suppress and reset the effect.
@@ -173,6 +221,7 @@ public final class SteamRenderer implements AutoCloseable {
         }
         if (poisoned) {
             for (float[] channel : block.wet) java.util.Arrays.fill(channel, 0);
+            block.reflections = ReflectionState.INVALID;
             resetReflections();
             DimBlendRadio.LOGGER.warn("[radio] non-finite reflection field #{}; requesting fresh simulation", ++invalidFields);
         }
@@ -227,6 +276,16 @@ public final class SteamRenderer implements AutoCloseable {
      * @return stereo output, or {@code null} once the renderer is closed
      */
     public float[][] spatialize(Prepared block, Vec3 relativeSource, SteamAudio.Space orientation, float wetGain) {
+        return spatialize(block, relativeSource, orientation, wetGain, null);
+    }
+
+    /**
+     * As {@link #spatialize(Prepared, Vec3, SteamAudio.Space, float)}, also filling in the block's
+     * parts before the limiter.
+     *
+     * @param stems receives the parts, or null; left untouched when the renderer is closed
+     */
+    public float[][] spatialize(Prepared block, Vec3 relativeSource, SteamAudio.Space orientation, float wetGain, Stems stems) {
         synchronized (spatialLock) {
             if (closed) return null;
             if (block.resetSpatial) {
@@ -242,13 +301,21 @@ public final class SteamRenderer implements AutoCloseable {
             pan.direction.set(dot(direction, orientation.right), dot(direction, orientation.up), -dot(direction, orientation.ahead));
             if (!BinauralSpatializer.direct(this, pan.direction, drySpatial, dryStereo))
                 api.iplPanningEffectApply(panning.getValue(), pan, drySpatial, dryStereo);
-            double wetPre = 0;
+            double wetPre = 0, reflectedEnergy = 0, pathEnergy = 0;
             // Reflections and the diffracted path share one decode; both are world-space ambisonics.
             for (int c = 0; c < 4; c++) {
                 float[] reflected = block.wet[c], diffracted = block.path == null ? null : block.path[c];
                 for (int i = 0; i < FRAME; i++) mixScratch[i] = reflected[i] * wetGain + (diffracted == null ? 0 : diffracted[i]);
                 wetSpatial.memory(c).write(0, mixScratch, 0, FRAME);
                 if (meter) for (float sample : reflected) wetPre += sample * (double) sample;
+                if (stems != null) {
+                    for (float sample : reflected) reflectedEnergy += sample * (double) sample;
+                    if (diffracted != null) for (float sample : diffracted) pathEnergy += sample * (double) sample;
+                }
+            }
+            if (stems != null) {
+                stems.reflectedEnergy = reflectedEnergy * wetGain * wetGain;
+                stems.pathEnergy = pathEnergy;
             }
             if (meter) WET_PRE_DECODE.add(wetPre);
             decode.orientation.set(orientation);
@@ -261,6 +328,10 @@ public final class SteamRenderer implements AutoCloseable {
                 float[] d = dryScratch, w = wetScratch;
                 dryStereo.memory(c).read(0, d, 0, FRAME);
                 wetStereo.memory(c).read(0, w, 0, FRAME);
+                if (stems != null) {
+                    System.arraycopy(d, 0, stems.direct[c], 0, FRAME);
+                    System.arraycopy(w, 0, stems.echo[c], 0, FRAME);
+                }
                 for (int i = 0; i < FRAME; i++) {
                     if (meter) { wetEnergy += w[i] * (double) w[i]; dryEnergy += d[i] * (double) d[i]; }
                     output[c][i] = d[i] + w[i];
@@ -273,6 +344,10 @@ public final class SteamRenderer implements AutoCloseable {
                 METER_SAMPLES.add(FRAME * 2L);
             }
             limit(output, peak);
+            if (stems != null) {
+                stems.peak = peak;
+                stems.limiterGain = limiterGain;
+            }
             return output;
         }
     }

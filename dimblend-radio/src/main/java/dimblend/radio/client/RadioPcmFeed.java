@@ -96,6 +96,12 @@ public final class RadioPcmFeed {
 
         public boolean simulated() { return handle.processor != null; }
 
+        /** The audio device ran dry; tells the processor, if there is one. */
+        public void starved(int buffers) {
+            RadioPcmProcessor processor = handle.processor;
+            if (processor != null) processor.starved(buffers);
+        }
+
         public ByteBuffer read(int bytes) {
             int inputBytes = handle.processor == null ? bytes : bytes / 2;
             int frameSize = this.handle.format.getFrameSize();

@@ -30,6 +30,9 @@ public final class RadioAudioStream implements FiniteAudioStream {
 
     public boolean simulated() { return stream.simulated(); }
 
+    /** The audio device ran dry and playback restarts with {@code buffers} queued. */
+    public void starved(int buffers) { stream.starved(buffers); }
+
     @Override
     public ByteBuffer read(int bytes) {
         return this.stream.read(bytes);

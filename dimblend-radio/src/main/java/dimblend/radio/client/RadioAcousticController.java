@@ -10,6 +10,7 @@ import dimblend.radio.acoustics.ReflectionMeshCache;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.Set;
@@ -47,9 +48,10 @@ public final class RadioAcousticController {
     /** Radios that cannot be simulated here are left unbound and play as vanilla positional sound. */
     public static void bind(Minecraft mc, RadioInstance instance, RadioPcmFeed.Handle feed) {
         if (!AcousticAvailability.possible()) return;
-        var session = new RadioSimulationSession(feed.format());
+        var session = new RadioSimulationSession(feed.format(), "radio at " + instance.pos().toShortString());
         feed.setProcessor(session);
         SESSIONS.put(instance, new Entry(session));
+        session.record("bound", session::label);
         // Panned until the next tick decides whether it is among the simulated radios.
         updateView(mc, instance, session, false);
         DimBlendRadio.LOGGER.info("[radio] Steam Audio simulation bound to {}", instance.pos());
@@ -89,7 +91,16 @@ public final class RadioAcousticController {
         }
         Set<RadioInstance> selected = RadioSimulationSelection.select(distances, previous, AUDIBLE_RANGE);
         for (var entry : SESSIONS.entrySet()) {
-            if (playing.contains(entry.getKey())) entry.getValue().selected = selected.contains(entry.getKey());
+            if (playing.contains(entry.getKey())) {
+                Entry state = entry.getValue();
+                boolean next = selected.contains(entry.getKey());
+                if (next != state.selected) {
+                    double distance = distances.get(entry.getKey());
+                    state.session.record(next ? "selected" : "released",
+                            () -> String.format(Locale.ROOT, "distance=%.1f simulated=%d", distance, selected.size()));
+                }
+                state.selected = next;
+            }
             // Otherwise only the post-mouse camera hook publishes poses and schedules ray jobs:
             // a client tick must not overwrite it with last frame's OpenAL listener transform.
             if (mc.isPaused()) updateView(mc, entry.getKey(), entry.getValue().session, false);
@@ -137,7 +148,13 @@ public final class RadioAcousticController {
         if (simulated.isEmpty()) return;
         if (AcousticSceneChanges.needsCapture(snapshot == null || !snapshot.covers(required), capturedRevision, captured, now)) {
             long revision = AcousticSceneChanges.revision();
+            long started = System.nanoTime();
             snapshot = AcousticSnapshot.capture(mc.level, required.inflate(CAPTURE_SLACK), simulated.get(0).pos());
+            AcousticRecording recording = AcousticRecording.active();
+            if (recording != null) {
+                recording.event(null, "scene_capture", String.format(Locale.ROOT, "ms=%.1f revision=%d region=%.0fx%.0fx%.0f",
+                        (System.nanoTime() - started) / 1e6, revision, required.getXsize(), required.getYsize(), required.getZsize()));
+            }
             captured = now;
             // A mesh arriving during capture must still wake the following frame.
             capturedRevision = revision;

@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -178,6 +179,7 @@ final class SharedReflectionSimulator {
             }
             if (runners.isEmpty()) return;
             var geometry = engine.meshes.get(scene.geometry, listener, region);
+            long uploads = engine.simulation.uploads();
             List<SteamAudio.SimulationOutputs> outputs;
             try {
                 // Engines are long-lived: re-run in place; simulateGpu re-uploads the scene mesh in
@@ -189,6 +191,17 @@ final class SharedReflectionSimulator {
                 engine.broken = true;
                 for (RadioSimulationSession member : List.copyOf(engine.members)) member.fail(error);
                 return;
+            }
+            AcousticRecording recording = AcousticRecording.active();
+            if (recording != null) {
+                StringBuilder radios = new StringBuilder();
+                for (RadioSimulationSession runner : runners) {
+                    radios.append(radios.isEmpty() ? "" : "+").append(runner.track(recording).number());
+                }
+                recording.event(null, "reflection_run", String.format(Locale.ROOT,
+                        "ms=%.1f radios=%s of %d triangles=%d uploaded=%s rate=%d scene_revision=%d",
+                        (System.nanoTime() - start) / 1e6, radios, wanted.size(), geometry.triangleCount(),
+                        engine.simulation.uploads() != uploads, engine.rate, scene.revision));
             }
             for (int i = 0; i < runners.size(); i++) runners.get(i).publishReflections(outputs.get(i), scene.revision, start);
             DimBlendRadio.LOGGER.debug("[radio] GPU acoustic IR in {} ms ({} tris, {} of {} radios)",

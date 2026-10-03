@@ -45,6 +45,8 @@ public final class SteamSimulation implements AutoCloseable {
     private SteamStaticMesh mesh;
     /** The parts the uploaded scene mesh was combined from. */
     private AcousticMesh.Data uploadedTerrain, uploadedStructures;
+    /** Scene meshes uploaded so far. */
+    private long uploads;
     private BiFunction<Vec3, Vec3, AcousticRay> tracer;
     private Vec3 offset = Vec3.ZERO;
     private Throwable callbackFailure;
@@ -163,6 +165,9 @@ public final class SteamSimulation implements AutoCloseable {
 
     public boolean gpu() { return gpu; }
 
+    /** How many times a changed scene mesh was uploaded; by the thread that runs simulations. */
+    public long uploads() { return uploads; }
+
     private static boolean sameGeometry(AcousticMesh.Data a, AcousticMesh.Data b) {
         return a == b || a != null && b != null && a.origin().equals(b.origin())
                 && java.util.Arrays.equals(a.vertices(), b.vertices())
@@ -276,6 +281,7 @@ public final class SteamSimulation implements AutoCloseable {
     }
 
     private void upload(AcousticMesh.Data data) {
+        uploads++;
         if (mesh != null) {
             mesh.close();
             mesh = null;
