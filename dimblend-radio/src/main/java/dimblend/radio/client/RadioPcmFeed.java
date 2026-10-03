@@ -18,6 +18,7 @@ public final class RadioPcmFeed {
         private final byte[] data;
         private final int start;
         private volatile boolean exhausted;
+        private volatile boolean ending;
         private volatile RadioPcmProcessor processor;
 
         private Handle(String id, AudioFormat format, byte[] data, double offsetSec) {
@@ -41,6 +42,20 @@ public final class RadioPcmFeed {
             PCM.remove(this.id, this);
         }
 
+        /**
+         * Stops the input early, with a short fade instead of a click, and lets the processor play
+         * out what is still sounding (delayed direct sound, reverb); the stream then ends by itself.
+         *
+         * @return false without a processor: nothing to play out, stop the channel instead
+         */
+        public boolean endInput() {
+            if (this.processor == null) {
+                return false;
+            }
+            this.ending = true;
+            return true;
+        }
+
         public void setProcessor(RadioPcmProcessor processor) {
             this.processor = processor;
         }
@@ -61,12 +76,18 @@ public final class RadioPcmFeed {
     }
 
     public static final class FeedStream implements AutoCloseable {
+        /** Fade at a resumed start and at an early end. */
+        private static final float FADE_SECONDS = 0.010f;
         private final Handle handle;
         private int cursor;
+        /** Where the input ends: the data's end, or the end of the fade once {@link Handle#endInput} was called. */
+        private int end;
+        private int fadeOutStart = -1;
 
         FeedStream(Handle handle) {
             this.handle = handle;
             this.cursor = handle.start;
+            this.end = handle.data.length;
         }
 
         public AudioFormat getFormat() {
@@ -77,33 +98,46 @@ public final class RadioPcmFeed {
 
         public ByteBuffer read(int bytes) {
             int inputBytes = handle.processor == null ? bytes : bytes / 2;
-            int n = Math.min(inputBytes, this.handle.data.length - this.cursor);
+            int frameSize = this.handle.format.getFrameSize();
+            int fadeFrames = Math.round(this.handle.format.getSampleRate() * FADE_SECONDS);
+            if (this.handle.ending && this.fadeOutStart < 0) {
+                this.fadeOutStart = this.cursor;
+                this.end = Math.min(this.end, this.cursor + fadeFrames * frameSize);
+            }
+            int n = Math.max(0, Math.min(inputBytes, this.end - this.cursor));
             ByteBuffer buf = ByteBuffer.allocateDirect(n).order(ByteOrder.LITTLE_ENDIAN);
             buf.put(this.handle.data, this.cursor, n);
             buf.flip();
             // Fade the first 10ms of resumed audio without modifying the shared cache.
-            int frameSize = this.handle.format.getFrameSize();
-            int fadeFrames = Math.min((this.handle.data.length - this.handle.start) / frameSize,
-                    Math.round(this.handle.format.getSampleRate() * 0.010f));
-            if (this.handle.start > 0 && fadeFrames > 0) {
+            int fadeInFrames = Math.min((this.handle.data.length - this.handle.start) / frameSize, fadeFrames);
+            if (this.handle.start > 0 && fadeInFrames > 0) {
                 int firstFrame = (this.cursor - this.handle.start) / frameSize;
-                for (int f = 0; f < n / frameSize && firstFrame + f < fadeFrames; f++) {
+                for (int f = 0; f < n / frameSize && firstFrame + f < fadeInFrames; f++) {
                     for (int c = 0; c < this.handle.format.getChannels(); c++) {
                         int i = f * frameSize + c * 2;
-                        buf.putShort(i, (short) (buf.getShort(i) * (firstFrame + f) / fadeFrames));
+                        buf.putShort(i, (short) (buf.getShort(i) * (firstFrame + f) / fadeInFrames));
+                    }
+                }
+            }
+            if (this.fadeOutStart >= 0 && fadeFrames > 0) {
+                int firstFrame = (this.cursor - this.fadeOutStart) / frameSize;
+                for (int f = 0; f < n / frameSize; f++) {
+                    for (int c = 0; c < this.handle.format.getChannels(); c++) {
+                        int i = f * frameSize + c * 2;
+                        buf.putShort(i, (short) (buf.getShort(i) * (fadeFrames - 1 - firstFrame - f) / fadeFrames));
                     }
                 }
             }
             this.cursor += n;
-            boolean end = this.cursor >= this.handle.data.length;
+            boolean ended = this.cursor >= this.end;
             RadioPcmProcessor processor = handle.processor;
-            ByteBuffer result = processor == null ? buf : processor.process(buf, end);
-            this.handle.exhausted = end && (processor == null || !processor.hasTail());
+            ByteBuffer result = processor == null ? buf : processor.process(buf, ended);
+            this.handle.exhausted = ended && (processor == null || !processor.hasTail());
             return result;
         }
 
         public ByteBuffer readAll() {
-            return read((this.handle.data.length - this.cursor) * (handle.processor == null ? 1 : 2));
+            return read((this.end - this.cursor) * (handle.processor == null ? 1 : 2));
         }
 
         @Override

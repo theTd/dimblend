@@ -63,11 +63,16 @@ public final class RadioAcousticController {
         level = null;
     }
 
-    public static void tick(Minecraft mc, List<RadioInstance> radios) {
+    /**
+     * @param playing radios playing their track
+     * @param releasing stopped radios whose reverb is still ringing out: they keep the path they
+     *        had (switching would cut the reverb) and take no slot from a playing radio
+     */
+    public static void tick(Minecraft mc, List<RadioInstance> playing, List<RadioInstance> releasing) {
         if (level != null && level != mc.level) reset();
         level = mc.level;
         SESSIONS.entrySet().removeIf(entry -> {
-            if (radios.contains(entry.getKey())) return false;
+            if (playing.contains(entry.getKey()) || releasing.contains(entry.getKey())) return false;
             entry.getValue().session.close();
             return true;
         });
@@ -75,12 +80,13 @@ public final class RadioAcousticController {
         Map<RadioInstance, Double> distances = new IdentityHashMap<>();
         Set<RadioInstance> previous = Collections.newSetFromMap(new IdentityHashMap<>());
         for (var entry : SESSIONS.entrySet()) {
+            if (!playing.contains(entry.getKey())) continue;
             distances.put(entry.getKey(), listener.distanceTo(SubLevelProjection.worldCenter(mc.level, entry.getKey().pos())));
             if (entry.getValue().selected) previous.add(entry.getKey());
         }
         Set<RadioInstance> selected = RadioSimulationSelection.select(distances, previous, AUDIBLE_RANGE);
         for (var entry : SESSIONS.entrySet()) {
-            entry.getValue().selected = selected.contains(entry.getKey());
+            if (playing.contains(entry.getKey())) entry.getValue().selected = selected.contains(entry.getKey());
             // Otherwise only the post-mouse camera hook publishes poses and schedules ray jobs:
             // a client tick must not overwrite it with last frame's OpenAL listener transform.
             if (mc.isPaused()) updateView(mc, entry.getKey(), entry.getValue().session, false);

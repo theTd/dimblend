@@ -18,7 +18,9 @@ import net.neoforged.neoforge.event.TagsUpdatedEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import dimblend.radio.DimBlendRadio;
@@ -43,8 +45,24 @@ public final class RadioController {
     private record CachedPcm(javax.sound.sampled.AudioFormat format, byte[] pcm, float boost) {
     }
 
+    /** A radio that stopped or changed track; its channel still plays out the reverb and delayed direct sound. */
+    private static final class Releasing {
+        final RadioInstance instance;
+        final RadioPcmFeed.Handle feed;
+        int ticksLeft = RELEASE_TICKS;
+
+        Releasing(RadioInstance instance, RadioPcmFeed.Handle feed) {
+            this.instance = instance;
+            this.feed = feed;
+        }
+    }
+
+    /** Longest play-out: the 6 s reflection response plus the propagation delay, with margin. */
+    private static final int RELEASE_TICKS = 7 * 20;
+
     private static final Map<LiveKey, Live> LIVE = new HashMap<>();
     private static final Map<LiveKey, RadioPlayback> PLAYBACKS = new HashMap<>();
+    private static final List<Releasing> RELEASING = new ArrayList<>();
     // Held until the main-thread completion runs, not merely until IO finishes.
     private static final Map<LiveKey, Object> REQUESTS = new HashMap<>();
     private static final java.util.LinkedHashMap<String, CachedPcm> PCM_CACHE =
@@ -71,6 +89,8 @@ public final class RadioController {
         RadioAcousticController.reset();
         LIVE.values().forEach(live -> live.feed().release());
         LIVE.clear();
+        RELEASING.forEach(releasing -> releasing.feed.release());
+        RELEASING.clear();
         REQUESTS.clear();
         // PLAYBACKS survives so the replacement channels resume without consulting gameTime.
     }
@@ -106,7 +126,8 @@ public final class RadioController {
         if (!mc.isPaused()) {
             reconcile(mc);
         }
-        RadioAcousticController.tick(mc, LIVE.values().stream().map(Live::instance).toList());
+        RadioAcousticController.tick(mc, LIVE.values().stream().map(Live::instance).toList(),
+                RELEASING.stream().map(releasing -> releasing.instance).toList());
     }
 
     private static void sendHello() {
@@ -139,6 +160,7 @@ public final class RadioController {
             stopAll(); // Keep the local clock: mute must not rewind a lagging server's track.
             return;
         }
+        tickReleasing(mc);
         String dim = mc.level.dimension().location().toString();
         var it = LIVE.entrySet().iterator();
         while (it.hasNext()) {
@@ -159,6 +181,12 @@ public final class RadioController {
                                 "[radio] local finished, waiting for server advance: pos={} hash={} nonce={} start={}",
                                 key.pos(), shortHash(state.trackHash()), state.nonce(), state.startMillis());
                     }
+                } else if (key.dimension().equals(dim) && !live.instance().isStopped() && live.feed().endInput()) {
+                    // Stopped or switched by the server: what still sounds in the room rings out,
+                    // alongside the next track if one starts.
+                    RELEASING.add(new Releasing(live.instance(), live.feed()));
+                    it.remove();
+                    continue;
                 }
                 mc.getSoundManager().stop(live.instance());
                 live.feed().release();
@@ -384,9 +412,26 @@ public final class RadioController {
         return hash.length() <= 8 ? hash : hash.substring(0, 8);
     }
 
+    /** Ends play-outs whose channel finished, or that ran past {@link #RELEASE_TICKS}. */
+    private static void tickReleasing(Minecraft mc) {
+        RELEASING.removeIf(releasing -> {
+            if (mc.getSoundManager().isActive(releasing.instance) && --releasing.ticksLeft > 0) {
+                return false;
+            }
+            mc.getSoundManager().stop(releasing.instance);
+            releasing.feed.release();
+            return true;
+        });
+    }
+
     private static void stopAll() {
         RadioAcousticController.reset();
         Minecraft mc = Minecraft.getInstance();
+        for (Releasing releasing : RELEASING) {
+            mc.getSoundManager().stop(releasing.instance);
+            releasing.feed.release();
+        }
+        RELEASING.clear();
         for (Live live : LIVE.values()) {
             try {
                 if (!mc.getSoundManager().isActive(live.instance())) {

@@ -123,6 +123,11 @@
   that are simulated. Changes between simulated, panned and silent playback crossfade
   over one block; panning keeps the propagation delay running, so switching neither
   skips nor repeats audio, and audio from before a silent gap is never replayed.
+  A radio that is switched off, loses its signal or changes track does not cut its channel:
+  the input fades out over 10 ms and the channel plays out the propagation delay and the
+  reverb tail (at most seven seconds, alongside the next track if one starts), keeping the
+  simulated or panned path it had without taking a slot from a playing radio. Muting, a
+  dimension change and leaving the world still stop at once.
   Reflection simulation uses 1024 GPU rays,
   up to 128 bounces, first-order Ambisonics, and a six-second IR limit. Direct results
   update on camera frames (at most 125 times/second); reflections update up to twenty
