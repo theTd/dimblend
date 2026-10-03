@@ -6,6 +6,7 @@ import dimblend.radio.acoustics.AcousticSnapshot;
 import dimblend.radio.acoustics.AcousticTuningProperty;
 import dimblend.radio.acoustics.AcousticUpdateGate;
 import dimblend.radio.acoustics.PathingField;
+import dimblend.radio.acoustics.PhononNotReadyException;
 import dimblend.radio.acoustics.SteamAudio;
 import dimblend.radio.acoustics.SteamRenderer;
 import dimblend.radio.acoustics.SteamSimulation;
@@ -103,6 +104,8 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     private long lastPathing;
     private volatile boolean closed;
     private volatile boolean failed;
+    /** Rejected joins while phonon.dll downloads retry here, at most every 30 s per radio. */
+    private volatile long joinRetryAfter;
     private SteamRenderer renderer;
     private long lastDirect;
     private int invalidFields;
@@ -195,6 +198,11 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
             installReflections(SharedReflectionSimulator.join(this, rate));
             // Direct CPU rays are part of the GPU acoustic session, never a fallback.
             if (!closed && !failed) DIRECT.execute(this::initializeDirect);
+        } catch (PhononNotReadyException notReady) {
+            // The download runs in the background; stay panned and try again later.
+            initialized.set(false);
+            joinRetryAfter = System.nanoTime() + 30_000_000_000L;
+            DimBlendRadio.LOGGER.info("[radio] {} (this radio plays stereo-panned meanwhile)", notReady.getMessage());
         } catch (RuntimeException | Error error) { fail(error); }
     }
 
@@ -317,7 +325,8 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         if (closed) return;
         view = new View(source, listener, ahead, up, audible, audible && simulated);
         // Native state is created once a radio is first simulated, never for panned-only radios.
-        if (audible && simulated && initialized.compareAndSet(false, true)) {
+        // A join refused while phonon.dll downloads rearms below, throttled per radio.
+        if (audible && simulated && System.nanoTime() >= joinRetryAfter && initialized.compareAndSet(false, true)) {
             SharedReflectionSimulator.WORKER.execute(this::joinReflections);
         }
     }

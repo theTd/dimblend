@@ -5,6 +5,7 @@ import dimblend.radio.acoustics.AcousticAvailability;
 import dimblend.radio.acoustics.AcousticUpdateGate;
 import dimblend.radio.acoustics.ReflectionGeometry;
 import dimblend.radio.acoustics.ReflectionMeshCache;
+import dimblend.radio.acoustics.PhononNotReadyException;
 import dimblend.radio.acoustics.SteamAudio;
 import dimblend.radio.acoustics.SteamSimulation;
 import java.util.ArrayList;
@@ -106,8 +107,8 @@ final class SharedReflectionSimulator {
                 simulation = new SteamSimulation(rate, SteamSimulation.REFLECTIONS, true,
                         RadioSimulationSelection.LIMIT * ECHO_SLOTS);
             } catch (RuntimeException | Error error) {
-                // The first GPU engine tells whether this machine can run the pipeline at all.
-                AcousticAvailability.gpuUnavailable(error);
+                // A download in progress is retried, not a broken machine: leave AcousticAvailability alone.
+                if (!(error instanceof PhononNotReadyException)) AcousticAvailability.gpuUnavailable(error);
                 throw error;
             }
             AcousticAvailability.gpuAvailable();

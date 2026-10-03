@@ -285,7 +285,7 @@ public final class SteamAudio {
         return api;
     }
 
-    /** The extracted phonon.dll every Steam Audio binding loads. */
+    /** The runtime-downloaded phonon.dll every Steam Audio binding loads. */
     static Path library() {
         return SteamNativeLibraries.library("phonon.dll");
     }

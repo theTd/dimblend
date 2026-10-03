@@ -1,6 +1,8 @@
 package dimblend.radio.acoustics;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -23,20 +25,21 @@ class RadeonRaysHistogramFixTest {
                 "an ambiguous match is not patched");
     }
 
-    /** The library actually loaded: the bundled phonon.dll with only the bound rewritten. */
+    /** The runtime wiring: a local phonon.dll override is installed with only the bound rewritten. */
     @Test void theInstalledPhononCarriesTheFix() throws Exception {
-        byte[] bundled;
-        try (var input = SteamNativeLibraries.class.getResourceAsStream("/native/steamaudio/windows-x64/phonon.dll")) {
-            bundled = input.readAllBytes();
+        Path raw = Files.createTempFile("phonon-raw", ".dll");
+        String previous = System.getProperty("dimblend.radio.phononDll");
+        System.setProperty("dimblend.radio.phononDll", raw.toString());
+        try {
+            Files.write(raw, bytes(KERNEL));
+            byte[] installed = SteamNativeLibraries.image("phonon.dll");
+            assertEquals(KERNEL.replace("if (bin < NUM_BINS)", "if (bin<2*NUM_BINS)"),
+                    new String(installed, StandardCharsets.US_ASCII));
+        } finally {
+            if (previous == null) System.clearProperty("dimblend.radio.phononDll");
+            else System.setProperty("dimblend.radio.phononDll", previous);
+            Files.deleteIfExists(raw);
         }
-        byte[] installed = SteamNativeLibraries.image("phonon.dll");
-        assertEquals(bundled.length, installed.length);
-        int changed = 0;
-        for (int i = 0; i < bundled.length; i++) if (bundled[i] != installed[i]) changed++;
-        assertTrue(changed > 0 && changed <= 19, "only the bound differs: " + changed + " bytes");
-        String kernel = new String(installed, StandardCharsets.ISO_8859_1);
-        assertTrue(kernel.contains("if (bin<2*NUM_BINS)"));
-        assertFalse(kernel.contains("if (bin < NUM_BINS)"));
     }
 
     private static byte[] bytes(String text) {

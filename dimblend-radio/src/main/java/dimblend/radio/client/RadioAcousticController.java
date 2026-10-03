@@ -47,6 +47,7 @@ public final class RadioAcousticController {
 
     /** Radios that cannot be simulated here are left unbound and play as vanilla positional sound. */
     public static void bind(Minecraft mc, RadioInstance instance, RadioPcmFeed.Handle feed) {
+        AcousticDownloadNotice.ensureRegistered();
         if (!AcousticAvailability.possible()) return;
         var session = new RadioSimulationSession(feed.format(), "radio at " + instance.pos().toShortString());
         feed.setProcessor(session);

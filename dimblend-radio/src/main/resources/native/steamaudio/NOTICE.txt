@@ -2,6 +2,12 @@ Steam Audio 4.8.1
 Copyright Valve Corporation, 2017-2026.
 https://github.com/ValveSoftware/steam-audio
 
-The unmodified Windows x64 phonon.dll and GPUUtilities.dll are redistributed from the official
-steamaudio_4.8.1.zip SDK release under the Apache License, Version 2.0.
-See LICENSE.md in this directory.
+No Steam Audio binary is shipped in this repository or in the mod jar: at runtime
+the mod downloads the official steamaudio_4.8.1.zip SDK release
+(https://github.com/ValveSoftware/steam-audio/releases/download/v4.8.1/steamaudio_4.8.1.zip,
+SHA-256 4a0aa5ec1176f38f0b0993a37c2259d9e86f27e22d5e24f83ec4c3cb9a1d5449) and
+extracts steamaudio/lib/windows-x64/phonon.dll (SHA-256
+ca3dbc01dbc24492717011e80f6a51404ca143ae344ca660971d2c983f1e058d) and
+steamaudio/lib/windows-x64/GPUUtilities.dll (SHA-256
+956acfec2e9b53fb17f161b91a1e4d5172276ce3c45446e81568d40055a0f317), under the
+Apache License, Version 2.0. See LICENSE.md in this directory.

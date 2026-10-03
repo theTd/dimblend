@@ -38,3 +38,7 @@ run/
 **/src/generated/**/.cache/
 repo/
 !**/src/**/repo/
+
+### Steam Audio ###
+# Native binaries (~53 MB) are downloaded at runtime, never committed.
+/dimblend-radio/src/main/resources/native/steamaudio/windows-x64/

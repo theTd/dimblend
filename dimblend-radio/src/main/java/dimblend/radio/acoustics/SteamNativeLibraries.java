@@ -5,75 +5,44 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
- * Extracts the bundled Steam Audio DLLs once per process, phonon.dll with its GPU reflection kernel
- * fixed ({@link RadeonRaysHistogramFix}). An existing copy is used only if it is byte-identical to
- * what would be written, so a truncated or stale file is repaired instead of failing every launch;
- * a new copy is written beside it and moved into place atomically, so concurrent game instances
- * never load a partially written library.
+ * Resolves the Steam Audio native libraries. Both arrive over the network
+ * ({@link SteamAudioDownload}), never in the jar: an existing copy is used only if it is
+ * byte-identical to what would be written, so a truncated or stale file is repaired instead of
+ * failing every launch.
  */
 final class SteamNativeLibraries {
-    private static final String RESOURCES = "/native/steamaudio/windows-x64/";
     /** Named for the fixed build, so a game still running the unfixed copy does not hold this one. */
     private static final String DIRECTORY = "dimblend-steamaudio-4.8.1-histogram-fix";
-    private static final Map<String, Path> EXTRACTED = new HashMap<>();
+
+    static Path cacheDirectory() {
+        return Path.of(System.getProperty("java.io.tmpdir"), DIRECTORY);
+    }
+
+    static Path cacheFile(String name) {
+        return cacheDirectory().resolve(name);
+    }
 
     static synchronized Path library(String name) {
-        Path path = EXTRACTED.get(name);
-        if (path == null) {
-            try {
-                path = extract(name);
-            } catch (IOException error) {
-                throw new IllegalStateException("Cannot extract Steam Audio " + name, error);
-            }
-            EXTRACTED.put(name, path);
-        }
-        return path;
+        return switch (name) {
+            case "phonon.dll" -> SteamAudioDownload.phononLibrary();
+            case "GPUUtilities.dll" -> SteamAudioDownload.gpuLibrary();
+            default -> throw new IllegalArgumentException("Unknown Steam Audio library: " + name);
+        };
     }
 
-    private static Path extract(String name) throws IOException {
-        Path directory = Path.of(System.getProperty("java.io.tmpdir"), DIRECTORY);
-        Files.createDirectories(directory);
-        Path target = directory.resolve(name);
-        byte[] image = image(name);
-        if (Files.isRegularFile(target) && matches(image, target)) {
-            return target;
-        }
-        Path partial = Files.createTempFile(directory, name, ".part");
-        try {
-            Files.write(partial, image);
-            try {
-                Files.move(partial, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (IOException replaceFailed) {
-                // Another instance won the race, or holds the library loaded (Windows cannot replace it).
-                if (!Files.isRegularFile(target) || !matches(image, target)) {
-                    throw replaceFailed;
-                }
-            }
-        } finally {
-            Files.deleteIfExists(partial);
-        }
-        return target;
-    }
-
-    /** The library as installed: the bundled bytes, phonon.dll with {@link RadeonRaysHistogramFix} applied. */
+    /** The library as installed: phonon.dll with {@link RadeonRaysHistogramFix} applied, GPUUtilities.dll verbatim. */
     static byte[] image(String name) throws IOException {
-        byte[] bundled;
-        try (InputStream input = SteamNativeLibraries.class.getResourceAsStream(RESOURCES + name)) {
-            if (input == null) {
-                throw new IOException("Missing bundled " + name);
-            }
-            bundled = input.readAllBytes();
-        }
-        return name.equals("phonon.dll") ? RadeonRaysHistogramFix.apply(bundled) : bundled;
+        return switch (name) {
+            case "phonon.dll" -> SteamAudioDownload.phononImage();
+            case "GPUUtilities.dll" -> SteamAudioDownload.gpuImage();
+            default -> throw new IllegalArgumentException("Unknown Steam Audio library: " + name);
+        };
     }
 
-    private static boolean matches(byte[] image, Path file) throws IOException {
+    static boolean matches(byte[] image, Path file) throws IOException {
         if (Files.size(file) != image.length) {
             return false;
         }
