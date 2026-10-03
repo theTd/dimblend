@@ -29,6 +29,28 @@ public interface ReflectionGeometry {
     /** Exclusive upper bound of the world's section rows. */
     int maxSection();
 
+    /** Every section {@code box} spans within the world's rows ({@code SectionPos.asLong}), by x, then z, then y. */
+    default long[] sectionKeys(AABB box) {
+        int minX = (int) Math.floor(box.minX) >> 4, maxX = (int) Math.floor(box.maxX) >> 4;
+        int minY = Math.max(minSection(), (int) Math.floor(box.minY) >> 4);
+        int maxY = Math.min(maxSection() - 1, (int) Math.floor(box.maxY) >> 4);
+        int minZ = (int) Math.floor(box.minZ) >> 4, maxZ = (int) Math.floor(box.maxZ) >> 4;
+        int count = maxY < minY ? 0 : (maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1);
+        long[] keys = new long[count];
+        int i = 0;
+        for (int x = minX; x <= maxX && count > 0; x++) for (int z = minZ; z <= maxZ; z++) for (int y = minY; y <= maxY; y++) {
+            keys[i++] = net.minecraft.core.SectionPos.asLong(x, y, z);
+        }
+        return keys;
+    }
+
+    /** {@link #terrainSection} of each key. */
+    default long[] terrainSections(long[] keys) {
+        long[] states = new long[keys.length];
+        for (int i = 0; i < keys.length; i++) states[i] = terrainSection(keys[i]);
+        return states;
+    }
+
     /** Version of the rendered terrain geometry used over {@code bounds}; constant when none is used. */
     long renderGeometryVersion(AABB bounds);
 

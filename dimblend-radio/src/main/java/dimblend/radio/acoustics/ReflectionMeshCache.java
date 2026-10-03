@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import net.minecraft.core.SectionPos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -79,19 +78,8 @@ public final class ReflectionMeshCache {
     }
 
     private void recordSections(ReflectionGeometry geometry, AABB box) {
-        int minX = (int) Math.floor(box.minX) >> 4, maxX = (int) Math.floor(box.maxX) >> 4;
-        int minY = Math.max(geometry.minSection(), (int) Math.floor(box.minY) >> 4);
-        int maxY = Math.min(geometry.maxSection() - 1, (int) Math.floor(box.maxY) >> 4);
-        int minZ = (int) Math.floor(box.minZ) >> 4, maxZ = (int) Math.floor(box.maxZ) >> 4;
-        int count = maxY < minY ? 0 : (maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1);
-        sectionKeys = new long[count];
-        sectionStates = new long[count];
-        int i = 0;
-        for (int x = minX; x <= maxX && count > 0; x++) for (int z = minZ; z <= maxZ; z++) for (int y = minY; y <= maxY; y++) {
-            long key = SectionPos.asLong(x, y, z);
-            sectionKeys[i] = key;
-            sectionStates[i++] = geometry.terrainSection(key);
-        }
+        sectionKeys = geometry.sectionKeys(box);
+        sectionStates = geometry.terrainSections(sectionKeys);
     }
 
     /**

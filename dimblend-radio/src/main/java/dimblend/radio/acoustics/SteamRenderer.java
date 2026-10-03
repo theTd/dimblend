@@ -6,7 +6,8 @@ import dimblend.radio.DimBlendRadio;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Native convolution of simulated IRs, plus direct occlusion/transmission and spatial decoding.
+ * Native convolution of simulated IRs, plus direct occlusion/transmission, the baked diffracted
+ * path ({@link PathingField}) and spatial decoding.
  * <p>
  * A block runs in two stages. {@link #prepare} (propagation delay, occlusion filter, reflection
  * convolution) depends on the source position only and may run ahead on a DSP thread;
@@ -39,10 +40,16 @@ public final class SteamRenderer implements AutoCloseable {
     private final SteamAudio.Api api = SteamAudio.api();
     private final PointerByReference direct = new PointerByReference(), reflections = new PointerByReference();
     private final PointerByReference panning = new PointerByReference(), decoding = new PointerByReference();
+    private final PointerByReference pathing = new PointerByReference();
     // Prepare stage: buffers and scratch are reused, one block at a time.
     private final SteamAudio.AudioBuffer delayedInput = new SteamAudio.AudioBuffer();
     private final SteamAudio.AudioBuffer dry = new SteamAudio.AudioBuffer();
     private final SteamAudio.AudioBuffer wet = new SteamAudio.AudioBuffer(4);
+    private final SteamAudio.AudioBuffer path = new SteamAudio.AudioBuffer(4);
+    private final SteamAudio.PathParams pathParams = new SteamAudio.PathParams();
+    private final com.sun.jna.Memory pathCoefficients = new com.sun.jna.Memory(4 * 4);
+    /** The path rendered in the previous block; null when the path effect is silent and reset. */
+    private PathingField lastPath;
     private final float[] directSamples = new float[FRAME];
     private final float[] delayed = new float[FRAME];
     private final PropagationDelayLine propagation;
@@ -61,7 +68,7 @@ public final class SteamRenderer implements AutoCloseable {
     private final SteamAudio.AudioBuffer dryStereo = new SteamAudio.AudioBuffer(2), wetStereo = new SteamAudio.AudioBuffer(2);
     private final SteamAudio.PanningParams pan = new SteamAudio.PanningParams();
     private final SteamAudio.DecodeParams decode = new SteamAudio.DecodeParams();
-    private final float[] dryScratch = new float[FRAME], wetScratch = new float[FRAME];
+    private final float[] dryScratch = new float[FRAME], wetScratch = new float[FRAME], mixScratch = new float[FRAME];
     private float limiterGain = 1;
     private final int rate;
     private final float limiterRelease;
@@ -71,6 +78,8 @@ public final class SteamRenderer implements AutoCloseable {
     public static final class Prepared {
         private final float[] dry = new float[FRAME];
         private final float[][] wet = new float[4][FRAME];
+        /** The diffracted path in world-space ambisonics, or null when there is none. */
+        private float[][] path;
         /** The spatial stage restarts here: its effects and limiter hold state from before a pause. */
         private final boolean resetSpatial;
 
@@ -97,6 +106,10 @@ public final class SteamRenderer implements AutoCloseable {
             SteamAudio.check(api.iplReflectionEffectCreate(context, audio, settings, reflections), "convolution effect");
             SteamAudio.check(api.iplPanningEffectCreate(context, audio, new SteamAudio.PanningSettings(), panning), "direct spatializer");
             SteamAudio.check(api.iplAmbisonicsDecodeEffectCreate(context, audio, new SteamAudio.DecodeSettings(), decoding), "reflection decoder");
+            // World-space ambisonics out: decoded with the reflections, so head turns need no re-run.
+            SteamAudio.check(api.iplPathEffectCreate(context, audio, new SteamAudio.PathEffectSettings(), pathing), "path effect");
+            pathParams.order = 1;
+            pathParams.coefficients = pathCoefficients;
             BinauralSpatializer.attach(this, context, rate);
         } catch (RuntimeException | Error error) { close(); throw error; }
     }
@@ -114,6 +127,17 @@ public final class SteamRenderer implements AutoCloseable {
      */
     public Prepared prepare(float[] samples, SteamAudio.DirectParams directParams,
             SteamAudio.ReflectionParams impulse, Vec3 relativeSource, boolean tail) {
+        return prepare(samples, directParams, impulse, relativeSource, tail, null);
+    }
+
+    /**
+     * As {@link #prepare(float[], SteamAudio.DirectParams, SteamAudio.ReflectionParams, Vec3, boolean)}
+     * with the diffracted path rendered from the same delayed input.
+     *
+     * @param pathField the path to the listener now, or null when there is none
+     */
+    public Prepared prepare(float[] samples, SteamAudio.DirectParams directParams,
+            SteamAudio.ReflectionParams impulse, Vec3 relativeSource, boolean tail, PathingField pathField) {
         if (samples.length != FRAME) throw new IllegalArgumentException("Expected one native audio frame");
         Prepared block = new Prepared(resetSpatial);
         resetSpatial = false;
@@ -152,7 +176,50 @@ public final class SteamRenderer implements AutoCloseable {
             resetReflections();
             DimBlendRadio.LOGGER.warn("[radio] non-finite reflection field #{}; requesting fresh simulation", ++invalidFields);
         }
+        block.path = renderPath(pathField);
         return block;
+    }
+
+    /**
+     * One block of the path effect on the delayed input. A path that appears fades in over the
+     * block and one that disappears fades out over the next (rendered with its last values), so
+     * neither steps; the effect is then reset and costs nothing until a path returns.
+     */
+    private float[][] renderPath(PathingField field) {
+        if (field == null && lastPath == null) return null;
+        boolean fadeIn = lastPath == null, fadeOut = field == null;
+        PathingField current = fadeOut ? lastPath : field;
+        System.arraycopy(current.eq(), 0, pathParams.eq, 0, 3);
+        pathCoefficients.write(0, current.sh(), 0, 4);
+        api.iplPathEffectApply(pathing.getValue(), pathParams, delayedInput, path);
+        float[][] output = new float[4][FRAME];
+        boolean poisoned = false;
+        for (int c = 0; c < 4; c++) {
+            path.memory(c).read(0, output[c], 0, FRAME);
+            for (float sample : output[c]) {
+                if (!Float.isFinite(sample)) { poisoned = true; break; }
+            }
+        }
+        if (poisoned) {
+            api.iplPathEffectReset(pathing.getValue());
+            lastPath = null;
+            DimBlendRadio.LOGGER.warn("[radio] non-finite path field; path effect reset");
+            return null;
+        }
+        if (fadeIn || fadeOut) {
+            for (int i = 0; i < FRAME; i++) {
+                float ramp = (i + 1f) / FRAME;
+                float gain = fadeIn ? ramp : 1 - ramp;
+                for (int c = 0; c < 4; c++) output[c][i] *= gain;
+            }
+        }
+        if (fadeOut) {
+            api.iplPathEffectReset(pathing.getValue());
+            lastPath = null;
+        } else {
+            lastPath = field;
+        }
+        return output;
     }
 
     /**
@@ -176,9 +243,12 @@ public final class SteamRenderer implements AutoCloseable {
             if (!BinauralSpatializer.direct(this, pan.direction, drySpatial, dryStereo))
                 api.iplPanningEffectApply(panning.getValue(), pan, drySpatial, dryStereo);
             double wetPre = 0;
+            // Reflections and the diffracted path share one decode; both are world-space ambisonics.
             for (int c = 0; c < 4; c++) {
-                wetSpatial.memory(c).write(0, block.wet[c], 0, FRAME);
-                if (meter) for (float sample : block.wet[c]) wetPre += sample * (double) sample;
+                float[] reflected = block.wet[c], diffracted = block.path == null ? null : block.path[c];
+                for (int i = 0; i < FRAME; i++) mixScratch[i] = reflected[i] * wetGain + (diffracted == null ? 0 : diffracted[i]);
+                wetSpatial.memory(c).write(0, mixScratch, 0, FRAME);
+                if (meter) for (float sample : reflected) wetPre += sample * (double) sample;
             }
             if (meter) WET_PRE_DECODE.add(wetPre);
             decode.orientation.set(orientation);
@@ -193,7 +263,7 @@ public final class SteamRenderer implements AutoCloseable {
                 wetStereo.memory(c).read(0, w, 0, FRAME);
                 for (int i = 0; i < FRAME; i++) {
                     if (meter) { wetEnergy += w[i] * (double) w[i]; dryEnergy += d[i] * (double) d[i]; }
-                    output[c][i] = d[i] + w[i] * wetGain;
+                    output[c][i] = d[i] + w[i];
                     peak = Math.max(peak, Math.abs(output[c][i]));
                 }
             }
@@ -277,6 +347,8 @@ public final class SteamRenderer implements AutoCloseable {
         effectsUsed = false;
         api.iplDirectEffectReset(direct.getValue());
         api.iplReflectionEffectReset(reflections.getValue());
+        api.iplPathEffectReset(pathing.getValue());
+        lastPath = null;
         awaitingReflections = true;
         directGain.reset();
         resetSpatial = true;
@@ -300,6 +372,7 @@ public final class SteamRenderer implements AutoCloseable {
             BinauralSpatializer.detach(this);
             if (decoding.getValue() != null) api.iplAmbisonicsDecodeEffectRelease(decoding);
             if (panning.getValue() != null) api.iplPanningEffectRelease(panning);
+            if (pathing.getValue() != null) api.iplPathEffectRelease(pathing);
             if (reflections.getValue() != null) api.iplReflectionEffectRelease(reflections);
             if (direct.getValue() != null) api.iplDirectEffectRelease(direct);
         }

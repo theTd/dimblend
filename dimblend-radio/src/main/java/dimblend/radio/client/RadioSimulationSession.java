@@ -2,13 +2,16 @@ package dimblend.radio.client;
 
 import dimblend.radio.DimBlendRadio;
 import dimblend.radio.acoustics.AcousticAvailability;
+import dimblend.radio.acoustics.AcousticPathing;
 import dimblend.radio.acoustics.AcousticSnapshot;
 import dimblend.radio.acoustics.AcousticTuningProperty;
 import dimblend.radio.acoustics.AcousticUpdateGate;
+import dimblend.radio.acoustics.PathingField;
 import dimblend.radio.acoustics.ReflectionMeshCache;
 import dimblend.radio.acoustics.SteamAudio;
 import dimblend.radio.acoustics.SteamRenderer;
 import dimblend.radio.acoustics.SteamSimulation;
+import dimblend.radio.acoustics.bake.PathingBake;
 import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -35,6 +38,8 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     static final int LOOKAHEAD_BLOCKS = 2;
     private static final AcousticTuningProperty WET_GAIN =
             new AcousticTuningProperty("dimblend.radio.acoustic.wetgain", 3, Float.MAX_VALUE);
+    /** Pathing cadence (1 to 3.5 ms a run); slower while a stale bake's routes are re-traced. */
+    private static final long PATHING_INTERVAL = 50_000_000L, STALE_PATHING_INTERVAL = 200_000_000L;
     /**
      * @param audible the radio is heard at all (in range, game not paused)
      * @param simulated Steam Audio renders it; other audible radios are stereo-panned
@@ -67,6 +72,16 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     private volatile SteamAudio.SimulationOutputs directOutputs, reflectionOutputs;
     private volatile long directRevision = -1, reflectionRevision = -1;
     private volatile View view = new View(Vec3.ZERO, Vec3.ZERO, new Vec3(0, 0, -1), new Vec3(0, 1, 0), false, false);
+    /** The radio's baked pathing as last handed over (client thread), or null. */
+    private volatile AcousticBakeScheduler.Pathing pathing;
+    /** A pathing run is owed (new bake, or skipped by the cadence) and may run from this time on. */
+    private volatile boolean pathingOwed;
+    private volatile long pathingDueAt;
+    /** The diffracted path for the renderer, shaped on the direct worker; null when there is none. */
+    private volatile PathingField pathingField;
+    /** Direct-worker state: the bake attached to the direct engine and when pathing last ran. */
+    private PathingBake attachedBake;
+    private long lastPathing;
     private volatile boolean closed;
     private volatile boolean failed;
     private SteamRenderer renderer;
@@ -126,7 +141,8 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
             if (!gpuEnabled) throw new IllegalStateException("GPU acoustics disabled");
             SteamSimulation engine;
             try {
-                engine = new SteamSimulation(rate, reflections ? 2 : 1, reflections);
+                engine = new SteamSimulation(rate, reflections ? SteamSimulation.REFLECTIONS
+                        : SteamSimulation.DIRECT | SteamSimulation.PATHING, reflections);
             } catch (RuntimeException | Error error) {
                 // The first GPU engine tells whether this machine can run the pipeline at all.
                 if (reflections) AcousticAvailability.gpuUnavailable(error);
@@ -190,6 +206,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         failed = true;
         directOutputs = null;
         reflectionOutputs = null;
+        pathingField = null;
         AcousticUpdateGate.forget(this);
         DimBlendRadio.LOGGER.warn("[radio] acoustics disabled for this radio; using stereo panning (no CPU fallback)", error);
         DIRECT.execute(() -> { if (directEngine != null) { directEngine.close(); directEngine = null; } });
@@ -219,7 +236,9 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         if (directEngine != null && (now - lastDirect >= 8_000_000
                 || AcousticUpdateGate.geometryChanged(this, snapshot, false)) && directBusy.compareAndSet(false, true)) {
             lastDirect = now;
-            if (!AcousticUpdateGate.shouldSimulate(this, snapshot, captured.source, captured.listener, false)) {
+            // Pathing rides on the direct job: it needs the direct path's occlusion of the same pose.
+            if (!AcousticUpdateGate.shouldSimulate(this, snapshot, captured.source, captured.listener, false)
+                    && !(pathingOwed && now - pathingDueAt >= 0)) {
                 directBusy.set(false);
             } else {
                 DIRECT.execute(() -> {
@@ -237,6 +256,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
                                 directOutputs = outputs;
                                 directRevision = scene.revision();
                             }
+                            updatePathing(scene, latest, outputs.direct.occlusion);
                         }
                     } catch (RuntimeException | Error error) { fail(error); }
                     finally { directBusy.set(false); }
@@ -300,6 +320,52 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     /** Motion updates are scheduled from the latest camera pose, independently of client ticks. */
     private long reflectionInterval() {
         return 50_000_000L;
+    }
+
+    /**
+     * Client thread: the radio's baked pathing, or null. A stale bake predates an edit in its
+     * region: its routes are re-traced (and dropped where blocked) at a slower cadence.
+     */
+    public void setPathing(PathingBake bake, boolean stale) {
+        var next = bake == null ? null : new AcousticBakeScheduler.Pathing(bake, stale);
+        var current = pathing;
+        if (current == null ? next == null : next != null && current.bake() == next.bake() && current.stale() == next.stale()) return;
+        pathing = next;
+        pathingDueAt = System.nanoTime();
+        pathingOwed = true;
+    }
+
+    /**
+     * Direct worker, after a direct run: swaps in a changed bake, then runs pathing at most every
+     * {@link #PATHING_INTERVAL} ({@link #STALE_PATHING_INTERVAL} while validating) and publishes
+     * the shaped path. A run skipped by the cadence is owed and comes with the next direct job.
+     */
+    private void updatePathing(AcousticSnapshot scene, View latest, float occlusion) {
+        var wanted = pathing;
+        PathingBake bake = wanted == null ? null : wanted.bake();
+        if (bake != attachedBake) {
+            directEngine.attachPathing(bake == null ? null : bake.batch());
+            attachedBake = bake;
+            lastPathing = System.nanoTime() - STALE_PATHING_INTERVAL;
+        }
+        if (bake == null) {
+            pathingField = null;
+            pathingOwed = false;
+            return;
+        }
+        long now = System.nanoTime();
+        long interval = wanted.stale() ? STALE_PATHING_INTERVAL : PATHING_INTERVAL;
+        if (now - lastPathing < interval) {
+            pathingDueAt = lastPathing + interval;
+            pathingOwed = true;
+            return;
+        }
+        lastPathing = now;
+        pathingOwed = false;
+        var raw = directEngine.runPathing(scene::cast, bake.origin(), latest.listener, latest.source, wanted.stale());
+        float coverage = AcousticPathing.coverage(latest.listener.distanceTo(Vec3.atCenterOf(bake.radio())));
+        PathingField field = AcousticPathing.shape(raw.eq(), raw.sh(), occlusion, coverage, RadioSimulationSession::distanceGain);
+        if (!closed && !failed) pathingField = field;
     }
 
     /** Linear-to-zero loudness out to the acoustic audibility range (vanilla jukebox feel, longer reach). */
@@ -510,7 +576,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         // Distance follows the current pose, not a completed ray job.
         direct.distance = distanceGain(relative.length());
         try {
-            return renderer.prepare(input, direct, impulse, relative, tail);
+            return renderer.prepare(input, direct, impulse, relative, tail, pathingField);
         } finally {
             // The params sub-structures share their parents' backing store.
             Reference.reachabilityFence(directOut);
@@ -543,6 +609,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         AcousticUpdateGate.forget(this);
         directOutputs = null;
         reflectionOutputs = null;
+        pathingField = null;
         pending.clear();
         staged.clear();
         DIRECT.execute(() -> { if (directEngine != null) directEngine.close(); });

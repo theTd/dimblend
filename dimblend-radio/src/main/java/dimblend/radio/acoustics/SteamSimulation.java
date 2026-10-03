@@ -16,6 +16,10 @@ public final class SteamSimulation implements AutoCloseable {
     // Allocate AND trace whole workgroups (a multiple of 256); other counts read
     // uninitialized/OOB data. One workgroup left the field too sparse to converge.
     public static final int GPU_RAYS = 1024;
+    /** {@code IPLSimulationFlags}. */
+    public static final int DIRECT = 1, REFLECTIONS = 2, PATHING = 4;
+    /** Steam Audio's diffracted path, before {@link AcousticPathing#shape}: band gains and world-space SH (W, Y, Z, X). */
+    public record RawPath(float[] eq, float[] sh) { }
     /** A hit's material and its run's transmission per band, in {@link #TRANSMISSION_STEP_DB} steps. */
     private record MaterialKey(int material, int low, int mid, int high) { }
     /** Inaudible (about 1% amplitude) and keeps the native material records few and reusable. */
@@ -31,14 +35,17 @@ public final class SteamSimulation implements AutoCloseable {
     private final Map<MaterialKey, SteamAudio.Material> materials = new HashMap<>();
     private final int flags;
     private final boolean gpu;
-    private final PointerByReference openCL = new PointerByReference(), radeon = new PointerByReference(), mesh = new PointerByReference();
-    private Memory vertexData, triangleData, materialIndices;
-    private SteamAudio.Material[] gpuMaterials;
+    private final PointerByReference openCL = new PointerByReference(), radeon = new PointerByReference();
+    private SteamStaticMesh mesh;
     /** The parts the uploaded scene mesh was combined from. */
     private AcousticMesh.Data uploadedTerrain, uploadedStructures;
     private BiFunction<Vec3, Vec3, AcousticRay> tracer;
     private Vec3 offset = Vec3.ZERO;
     private Throwable callbackFailure;
+    /** The attached pathing bake (see {@link #attachPathing}); its probes are relative to its frame origin. */
+    private final PointerByReference pathingBatch = new PointerByReference();
+    /** Uniform theory of diffraction; passed by pointer, so kept for the simulator's lifetime. */
+    private final SteamAudio.DeviationModel deviation = new SteamAudio.DeviationModel();
 
     public SteamSimulation(int rate, int flags) {
         this(rate, flags, false);
@@ -72,6 +79,11 @@ public final class SteamSimulation implements AutoCloseable {
             settings.order = 1;
             // Volumetric occlusion (AcousticDiffraction) on the CPU direct path.
             if ((flags & 1) != 0 && !gpu) settings.occlusionSamples = AcousticDiffraction.MAX_SAMPLES;
+            if ((flags & PATHING) != 0) {
+                if (gpu) throw new IllegalArgumentException("Pathing runs on the CPU scene");
+                settings.visSamples = AcousticPathing.VISIBILITY_SAMPLES;
+                deviation.write();
+            }
             if (gpu) {
                 settings.maxRays = GPU_RAYS;
                 settings.sceneType = 2;
@@ -140,44 +152,12 @@ public final class SteamSimulation implements AutoCloseable {
     }
 
     private void upload(AcousticMesh.Data data) {
-        var gpuApi = SteamGpu.api();
-        if (mesh.getValue() != null) {
-            gpuApi.iplStaticMeshRemove(mesh.getValue(), scene.getValue());
-            gpuApi.iplStaticMeshRelease(mesh);
-            mesh.setValue(null);
-            vertexData = null;
-            triangleData = null;
-            materialIndices = null;
-            gpuMaterials = null;
+        if (mesh != null) {
+            mesh.close();
+            mesh = null;
         }
         offset = data.origin();
-        if (data.triangles().length > 0) {
-            vertexData = new Memory(data.vertices().length * 4L);
-            triangleData = new Memory(data.triangles().length * 4L);
-            materialIndices = new Memory(data.materials().length * 4L);
-            vertexData.write(0, data.vertices(), 0, data.vertices().length);
-            triangleData.write(0, data.triangles(), 0, data.triangles().length);
-            materialIndices.write(0, data.materials(), 0, data.materials().length);
-            gpuMaterials = (SteamAudio.Material[]) new SteamAudio.Material().toArray(AcousticMaterials.COUNT);
-            for (int i = 0; i < AcousticMaterials.COUNT; i++) {
-                // JNA toArray reads the contiguous native backing memory into new elements;
-                // field initializers on Material are not retained for every array element.
-                gpuMaterials[i].absorption = AcousticMaterials.absorption(i);
-                gpuMaterials[i].scattering = AcousticMaterials.GPU_SCATTERING;
-                gpuMaterials[i].transmission = AcousticMaterials.transmission(i, 1);
-                gpuMaterials[i].write();
-            }
-            var settings = new SteamGpu.MeshSettings();
-            settings.vertices = data.vertices().length / 3;
-            settings.triangles = data.triangles().length / 3;
-            settings.materials = AcousticMaterials.COUNT;
-            settings.vertexData = vertexData;
-            settings.triangleData = triangleData;
-            settings.materialIndices = materialIndices;
-            settings.materialData = gpuMaterials[0].getPointer();
-            SteamAudio.check(gpuApi.iplStaticMeshCreate(scene.getValue(), settings, mesh), "GPU mesh upload");
-            gpuApi.iplStaticMeshAdd(mesh.getValue(), scene.getValue());
-        }
+        if (data.triangleCount() > 0) mesh = new SteamStaticMesh(scene.getValue(), data, AcousticMaterials.GPU_SCATTERING);
         api.iplSceneCommit(scene.getValue());
         api.iplSimulatorCommit(simulator.getValue());
     }
@@ -191,31 +171,107 @@ public final class SteamSimulation implements AutoCloseable {
         return run(listenerWorld, sourceWorld, rays, bounces);
     }
 
+    /**
+     * Swaps in a baked pathing probe batch (the bytes {@code iplProbeBatchSave} wrote, in any
+     * context), or detaches the current one when {@code serialized} is null.
+     */
+    public void attachPathing(byte[] serialized) {
+        if ((flags & PATHING) == 0) throw new IllegalStateException("Not a pathing simulator");
+        if (pathingBatch.getValue() != null) {
+            api.iplSimulatorRemoveProbeBatch(simulator.getValue(), pathingBatch.getValue());
+            api.iplSimulatorCommit(simulator.getValue());
+            api.iplProbeBatchRelease(pathingBatch);
+            pathingBatch.setValue(null);
+        }
+        if (serialized == null) return;
+        var data = new Memory(Math.max(1, serialized.length));
+        data.write(0, serialized, 0, serialized.length);
+        var settings = new SteamAudio.SerializedObjectSettings();
+        settings.data = data;
+        settings.size = serialized.length;
+        var object = new PointerByReference();
+        SteamAudio.check(api.iplSerializedObjectCreate(context.getValue(), settings, object), "serialized pathing");
+        try {
+            SteamAudio.check(api.iplProbeBatchLoad(context.getValue(), object.getValue(), pathingBatch), "pathing probes");
+        } finally {
+            api.iplSerializedObjectRelease(object);
+            java.lang.ref.Reference.reachabilityFence(data);
+        }
+        api.iplProbeBatchCommit(pathingBatch.getValue());
+        api.iplSimulatorAddProbeBatch(simulator.getValue(), pathingBatch.getValue());
+        api.iplSimulatorCommit(simulator.getValue());
+    }
+
+    public boolean hasPathing() { return pathingBatch.getValue() != null; }
+
+    /**
+     * Finds the diffracted path through the attached probes. The voxel scene is traced in the
+     * bake's frame (its probes are stored relative to {@code frameOrigin}).
+     *
+     * @param validate also re-trace the baked route and look for alternatives where it is blocked
+     *     now: for a bake older than the last edit near it
+     */
+    public RawPath runPathing(BiFunction<Vec3, Vec3, AcousticRay> tracer, Vec3 frameOrigin,
+            Vec3 listenerWorld, Vec3 sourceWorld, boolean validate) {
+        if (pathingBatch.getValue() == null) throw new IllegalStateException("No pathing attached");
+        this.tracer = tracer;
+        offset = frameOrigin;
+        callbackFailure = null;
+        if (materials.size() > MAX_CACHED_MATERIALS) materials.clear();
+        var inputs = new SteamAudio.SimulationInputs();
+        inputs.flags = PATHING;
+        Vec3 sourceLocal = sourceWorld.subtract(frameOrigin);
+        inputs.source.origin.set(sourceLocal.x, sourceLocal.y, sourceLocal.z);
+        inputs.probes = pathingBatch.getValue();
+        inputs.visRadius = AcousticPathing.SAMPLE_RADIUS;
+        inputs.visThreshold = AcousticPathing.VISIBILITY_THRESHOLD;
+        inputs.visRange = AcousticPathing.VISIBILITY_RANGE;
+        inputs.pathOrder = 1;
+        inputs.validation = validate ? 1 : 0;
+        inputs.alternate = validate ? 1 : 0;
+        inputs.deviation = deviation.getPointer();
+        api.iplSourceSetInputs(source.getValue(), PATHING, inputs);
+        var shared = new SteamAudio.SharedInputs();
+        Vec3 listenerLocal = listenerWorld.subtract(frameOrigin);
+        shared.listener.origin.set(listenerLocal.x, listenerLocal.y, listenerLocal.z);
+        api.iplSimulatorSetSharedInputs(simulator.getValue(), PATHING, shared);
+        api.iplSimulatorRunPathing(simulator.getValue());
+        if (callbackFailure != null) throw new IllegalStateException("Acoustic geometry callback failed", callbackFailure);
+        var outputs = new SteamAudio.SimulationOutputs();
+        api.iplSourceGetOutputs(source.getValue(), PATHING, outputs);
+        // Simulator memory: the next run overwrites it.
+        Pointer coefficients = outputs.pathing.coefficients;
+        float[] sh = coefficients == null ? new float[4] : coefficients.getFloatArray(0, 4);
+        return new RawPath(outputs.pathing.eq.clone(), sh);
+    }
+
     private SteamAudio.SimulationOutputs run(Vec3 listenerWorld, Vec3 sourceWorld, int rays, int bounces) {
         callbackFailure = null;
+        // Pathing runs on its own (runPathing): it has its own frame and cadence.
+        int active = flags & (DIRECT | REFLECTIONS);
         var inputs = new SteamAudio.SimulationInputs();
-        inputs.flags = flags;
+        inputs.flags = active;
         Vec3 relative = sourceWorld.subtract(offset);
         inputs.source.origin = new SteamAudio.Vector(relative.x, relative.y, relative.z);
         boolean volumetric = (flags & 1) != 0 && occludeVolumetrically(inputs);
         // The voxel scene traces its own transmission (AcousticDirectTransmission).
         boolean traced = (flags & 1) != 0 && !gpu && tracer != null;
         if (traced) inputs.directFlags &= ~16;
-        api.iplSourceSetInputs(source.getValue(), flags, inputs);
+        api.iplSourceSetInputs(source.getValue(), active, inputs);
         var shared = new SteamAudio.SharedInputs();
         shared.rays = gpu ? GPU_RAYS : rays;
         shared.bounces = bounces;
         shared.order = 1;
         Vec3 listener = listenerWorld.subtract(offset);
         shared.listener.origin = new SteamAudio.Vector(listener.x, listener.y, listener.z);
-        api.iplSimulatorSetSharedInputs(simulator.getValue(), flags, shared);
+        api.iplSimulatorSetSharedInputs(simulator.getValue(), active, shared);
         if ((flags & 1) != 0) api.iplSimulatorRunDirect(simulator.getValue());
         // Radeon Rays cannot trace an empty acceleration structure. Open air has no wet response.
-        boolean reflect = (flags & 2) != 0 && (!gpu || mesh.getValue() != null);
+        boolean reflect = (flags & 2) != 0 && (!gpu || mesh != null);
         if (reflect) api.iplSimulatorRunReflections(simulator.getValue());
         if (callbackFailure != null) throw new IllegalStateException("Acoustic geometry callback failed", callbackFailure);
         var outputs = new SteamAudio.SimulationOutputs();
-        api.iplSourceGetOutputs(source.getValue(), flags, outputs);
+        api.iplSourceGetOutputs(source.getValue(), active, outputs);
         if (!reflect) outputs.reflections.ir = null;
         if (traced) {
             float[] transmission = AcousticDirectTransmission.between(listenerWorld, sourceWorld, tracer);
@@ -342,8 +398,12 @@ public final class SteamSimulation implements AutoCloseable {
             api.iplSourceRemove(source.getValue(), simulator.getValue());
             api.iplSourceRelease(source);
         }
+        if (pathingBatch.getValue() != null) {
+            if (simulator.getValue() != null) api.iplSimulatorRemoveProbeBatch(simulator.getValue(), pathingBatch.getValue());
+            api.iplProbeBatchRelease(pathingBatch);
+        }
         if (simulator.getValue() != null) api.iplSimulatorRelease(simulator);
-        if (mesh.getValue() != null) SteamGpu.api().iplStaticMeshRelease(mesh);
+        if (mesh != null) mesh.close();
         if (scene.getValue() != null) api.iplSceneRelease(scene);
         if (radeon.getValue() != null) SteamGpu.api().iplRadeonRaysDeviceRelease(radeon);
         if (openCL.getValue() != null) SteamGpu.api().iplOpenCLDeviceRelease(openCL);

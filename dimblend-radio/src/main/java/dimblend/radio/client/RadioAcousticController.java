@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.ArrayList;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -56,6 +57,7 @@ public final class RadioAcousticController {
     public static void reset() {
         SESSIONS.values().forEach(entry -> entry.session.close());
         SESSIONS.clear();
+        AcousticBakeScheduler.reset();
         snapshot = null;
         captured = 0;
         AcousticSnapshot.clearCache();
@@ -90,6 +92,13 @@ public final class RadioAcousticController {
             // Otherwise only the post-mouse camera hook publishes poses and schedules ray jobs:
             // a client tick must not overwrite it with last frame's OpenAL listener transform.
             if (mc.isPaused()) updateView(mc, entry.getKey(), entry.getValue().session, false);
+        }
+        List<BlockPos> radios = new ArrayList<>(distances.size());
+        for (RadioInstance radio : distances.keySet()) radios.add(radio.pos());
+        AcousticBakeScheduler.tick(mc, radios, listener, System.nanoTime());
+        for (var entry : SESSIONS.entrySet()) {
+            var pathing = AcousticBakeScheduler.pathing(entry.getKey().pos());
+            entry.getValue().session.setPathing(pathing == null ? null : pathing.bake(), pathing != null && pathing.stale());
         }
     }
 

@@ -24,7 +24,22 @@ public final class SteamAudio {
         void iplSimulatorCommit(Pointer simulator);
         void iplSimulatorRunDirect(Pointer simulator);
         void iplSimulatorRunReflections(Pointer simulator);
+        void iplSimulatorRunPathing(Pointer simulator);
+        void iplSimulatorAddProbeBatch(Pointer simulator, Pointer probeBatch);
+        void iplSimulatorRemoveProbeBatch(Pointer simulator, Pointer probeBatch);
         void iplSimulatorRelease(PointerByReference simulator);
+        int iplSerializedObjectCreate(Pointer context, SerializedObjectSettings settings, PointerByReference object);
+        long iplSerializedObjectGetSize(Pointer object);
+        Pointer iplSerializedObjectGetData(Pointer object);
+        void iplSerializedObjectRelease(PointerByReference object);
+        int iplProbeBatchLoad(Pointer context, Pointer object, PointerByReference probeBatch);
+        void iplProbeBatchCommit(Pointer probeBatch);
+        int iplProbeBatchGetNumProbes(Pointer probeBatch);
+        void iplProbeBatchRelease(PointerByReference probeBatch);
+        int iplPathEffectCreate(Pointer context, AudioSettings audio, PathEffectSettings settings, PointerByReference effect);
+        int iplPathEffectApply(Pointer effect, PathParams params, AudioBuffer in, AudioBuffer out);
+        void iplPathEffectReset(Pointer effect);
+        void iplPathEffectRelease(PointerByReference effect);
         int iplSourceCreate(Pointer simulator, SourceSettings settings, PointerByReference source);
         void iplSourceAdd(Pointer source, Pointer simulator);
         void iplSourceSetInputs(Pointer source, int flags, SimulationInputs inputs);
@@ -228,6 +243,19 @@ public final class SteamAudio {
     }
     @FieldOrder({"type", "speakers", "positions"})
     public static class SpeakerLayout extends Structure { public int type = 1, speakers; public Pointer positions; }
+    /** {@code spatialize} 0 renders world-aligned Ambisonics, to be mixed and decoded with the reflections. */
+    @FieldOrder({"maxOrder", "spatialize", "layout", "hrtf"})
+    public static class PathEffectSettings extends Structure {
+        public int maxOrder = 1, spatialize;
+        public SpeakerLayout layout = new SpeakerLayout();
+        public Pointer hrtf;
+    }
+    /** Type 0: Steam Audio's UTD attenuation for the angle a path bends by. */
+    @FieldOrder({"type", "callback", "user"})
+    public static class DeviationModel extends Structure { public int type; public Pointer callback, user; }
+    /** Empty ({@code data} null) to save into; filled to load from. */
+    @FieldOrder({"data", "size"})
+    public static class SerializedObjectSettings extends Structure { public Pointer data; public long size; }
     @FieldOrder({"layout"})
     public static class PanningSettings extends Structure { public SpeakerLayout layout = new SpeakerLayout(); }
     @FieldOrder({"direction"})

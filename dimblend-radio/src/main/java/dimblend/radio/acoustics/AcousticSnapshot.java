@@ -121,6 +121,38 @@ public final class AcousticSnapshot implements ReflectionGeometry {
         return snapshot;
     }
 
+    /**
+     * Freezes the terrain of {@code bounds} for a bake on another thread: no structures (they move;
+     * the live direct path still occludes them), and without taking over the frame loop's palette
+     * watch, which follows only the latest frame capture.
+     */
+    public static AcousticSnapshot captureTerrain(Level level, AABB bounds, BlockPos emitter) {
+        FrozenBlocks terrain = FrozenBlocks.capture(level, bounds, null, 0);
+        return new AcousticSnapshot(terrain, List.of(), emitter.immutable(), AcousticSceneChanges.revision(), bounds);
+    }
+
+    /** How a block cell lets sound and listeners through, for flood fills over captured terrain. */
+    public enum Openness { OPEN, SOLID, UNKNOWN }
+
+    /**
+     * A block whose collision shape fills less than half the cell (doors, fences, panes, carpets,
+     * plants, fluids) is open; the world below its floor is solid and above its ceiling open.
+     * Cells outside the capture or in unloaded chunks are unknown.
+     */
+    public Openness terrainOpenness(int x, int y, int z) {
+        if (y < terrain.minimum) return Openness.SOLID;
+        if (y >= terrain.minimum + terrain.height) return Openness.OPEN;
+        if (!terrain.captured(x, y, z)) return Openness.UNKNOWN;
+        BlockPos pos = new BlockPos(x, y, z);
+        BlockState state = terrain.getBlockState(pos);
+        if (state.isAir()) return Openness.OPEN;
+        double volume = 0;
+        for (AABB box : AcousticVoxelTrace.cell(state, terrain, pos).shape().toAabbs()) {
+            volume += box.getXsize() * box.getYsize() * box.getZsize();
+        }
+        return volume >= 0.5 ? Openness.SOLID : Openness.OPEN;
+    }
+
     /** Called on the client thread: refresh moving poses without copying terrain palettes again. */
     public AcousticSnapshot currentPoses() {
         List<Frame> frames = new ArrayList<>();
@@ -326,6 +358,11 @@ public final class AcousticSnapshot implements ReflectionGeometry {
         }
         boolean known(BlockPos pos) {
             return plot || chunks.contains(ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4));
+        }
+        /** Inside the captured section rows of a loaded chunk. */
+        boolean captured(int x, int y, int z) {
+            int row = y >> 4;
+            return row >= minY && row <= maxY && chunks.contains(ChunkPos.asLong(x >> 4, z >> 4));
         }
         @Override public PalettedContainer<BlockState> section(int x, int y, int z) {
             return sections.get(SectionPos.asLong(x, y, z));
