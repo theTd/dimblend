@@ -51,9 +51,6 @@ public interface ReflectionGeometry {
         return states;
     }
 
-    /** Version of the rendered terrain geometry used over {@code bounds}; constant when none is used. */
-    long renderGeometryVersion(AABB bounds);
-
     /** Terrain surfaces inside {@code bounds}, relative to {@code origin}. */
     AcousticMesh.Data terrainMesh(AABB bounds, Vec3 origin, AcousticMesh.Workspace workspace);
 

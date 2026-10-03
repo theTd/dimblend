@@ -1,10 +1,10 @@
 package dimblend.radio.acoustics;
 
 /**
- * Acoustic material table shared by the voxel mesher, the Sodium mesh tee and both Steam Audio
- * scenes. {@link AcousticBlockMaterials} maps block states to these indices; the indices are the
- * per-triangle material IDs of the GPU mesh and the material bytes of section quads, so keep them
- * stable (0–4 match the original five classes and the recorded validation meshes).
+ * Acoustic material table shared by the voxel mesher and both Steam Audio scenes.
+ * {@link AcousticBlockMaterials} maps block states to these indices; the indices are the
+ * per-triangle material IDs of the GPU mesh, so keep them stable (0–4 match the original five
+ * classes and the recorded validation meshes).
  * <p>
  * Absorption is per band. Transmission is the low/mid/high amplitude through one block and falls
  * off with the path length by the material's thickness law; a run of mixed blocks combines its

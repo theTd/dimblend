@@ -1,12 +1,8 @@
 package dimblend.radio.acoustics;
 
 import java.util.Arrays;
-import java.util.List;
-import dimblend.radio.acoustics.terrain.SectionQuads;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
-import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.PalettedContainer;
@@ -80,25 +76,14 @@ public final class AcousticMesh {
         this.workspace = workspace;
     }
 
+    /** Voxel surfaces of {@code bounds}; the {@code emitter} cell (may be null) reads as air. */
     public void append(BlockGetter blocks, AABB bounds, BlockPos emitter) {
-        append(blocks, bounds, emitter, null);
-    }
-
-    /**
-     * @param skipSections render-mesh-covered section keys; their cells read as air so the voxel
-     *                     filler only patches sections the mirror lacks. Boundary faces toward a
-     *                     covered section are still generated, keeping the gaps sealed. Where both
-     *                     sides of a section border are solid this creates phantom faces buried
-     *                     inside solid volume — unreachable by nearest-hit rays, so acoustically
-     *                     inert, at the price of a few extra triangles per section border.
-     */
-    public void append(BlockGetter blocks, AABB bounds, BlockPos emitter, LongSet skipSections) {
         int[] min = {(int) Math.floor(bounds.minX), Math.max(blocks.getMinBuildHeight(), (int) Math.floor(bounds.minY)), (int) Math.floor(bounds.minZ)};
         int[] size = {(int) Math.ceil(bounds.maxX) - min[0], Math.min(blocks.getMaxBuildHeight(), (int) Math.ceil(bounds.maxY)) - min[1], (int) Math.ceil(bounds.maxZ) - min[2]};
         if (size[0] <= 0 || size[1] <= 0 || size[2] <= 0) return;
         byte[] cells = workspace.cells(Math.multiplyExact(Math.multiplyExact(size[0], size[1]), size[2]));
-        if (blocks instanceof SectionSource sections) fillSections(sections, cells, min, size, skipSections);
-        else fillCells(blocks, cells, min, size, skipSections);
+        if (blocks instanceof SectionSource sections) fillSections(sections, cells, min, size);
+        else fillCells(blocks, cells, min, size);
         if (emitter != null) {
             int x = emitter.getX() - min[0], y = emitter.getY() - min[1], z = emitter.getZ() - min[2];
             if (x >= 0 && y >= 0 && z >= 0 && x < size[0] && y < size[1] && z < size[2]) cells[index(x, y, z, size)] = 0;
@@ -107,16 +92,12 @@ public final class AcousticMesh {
     }
 
     /** Live blocks (any getter): one lookup per cell. */
-    private static void fillCells(BlockGetter blocks, byte[] cells, int[] min, int[] size, LongSet skipSections) {
+    private static void fillCells(BlockGetter blocks, byte[] cells, int[] min, int[] size) {
         var pos = new BlockPos.MutableBlockPos();
         BlockState last = null;
         byte kind = 0;
         for (int z = 0; z < size[2]; z++) for (int y = 0; y < size[1]; y++) for (int x = 0; x < size[0]; x++) {
             pos.set(min[0] + x, min[1] + y, min[2] + z);
-            if (skipSections != null
-                    && skipSections.contains(SectionPos.asLong(pos.getX() >> 4, pos.getY() >> 4, pos.getZ() >> 4))) {
-                continue;
-            }
             BlockState state = blocks.getBlockState(pos);
             if (state != last) {
                 last = state;
@@ -127,14 +108,13 @@ public final class AcousticMesh {
     }
 
     /** Frozen palettes: each section is looked up once, then read cell by cell; air sections are skipped. */
-    private static void fillSections(SectionSource blocks, byte[] cells, int[] min, int[] size, LongSet skipSections) {
+    private static void fillSections(SectionSource blocks, byte[] cells, int[] min, int[] size) {
         var pos = new BlockPos.MutableBlockPos();
         int maxX = min[0] + size[0] - 1, maxY = min[1] + size[1] - 1, maxZ = min[2] + size[2] - 1;
         BlockState last = null;
         byte kind = 0;
         for (int sz = min[2] >> 4; sz <= maxZ >> 4; sz++) for (int sy = min[1] >> 4; sy <= maxY >> 4; sy++) {
             for (int sx = min[0] >> 4; sx <= maxX >> 4; sx++) {
-                if (skipSections != null && skipSections.contains(SectionPos.asLong(sx, sy, sz))) continue;
                 PalettedContainer<BlockState> states = blocks.section(sx, sy, sz);
                 if (states == null) continue;
                 int x0 = Math.max(min[0], sx << 4), x1 = Math.min(maxX, (sx << 4) + 15);
@@ -188,39 +168,6 @@ public final class AcousticMesh {
     }
 
     /**
-     * Appends decoded render-section geometry: exact model surfaces instead of voxel cells.
-     * Quads owned by the emitter's own block are dropped — the same block-level exclusion as the
-     * voxel path and the CPU raycaster (neighbouring faces touching the emitter are kept).
-     * Section-local vertices are rebased to this mesh's origin; the section origin and the mesh
-     * origin are both 16-aligned, so the rebase is exact integer arithmetic on top of the
-     * quantized floats.
-     */
-    public void appendSections(List<SectionQuads> sections, BlockPos emitter) {
-        for (SectionQuads section : sections) {
-            float[] decoded = section.vertices();
-            for (int q = 0; q < section.quadCount(); q++) {
-                if (emitter != null && section.ownerX(q) == emitter.getX()
-                        && section.ownerY(q) == emitter.getY() && section.ownerZ(q) == emitter.getZ()) {
-                    continue;
-                }
-                int base = q * 12;
-                boolean first = validTriangle(decoded, base, base + 3, base + 6);
-                boolean second = validTriangle(decoded, base, base + 6, base + 9);
-                if (!first && !second) continue;
-                ensure(12, 6, 2);
-                int baseVertex = vertexCount / 3;
-                for (int corner = 0; corner < 4; corner++) {
-                    vertices[vertexCount++] = (float) (decoded[base + corner * 3] + section.originX() - origin.x);
-                    vertices[vertexCount++] = (float) (decoded[base + corner * 3 + 1] + section.originY() - origin.y);
-                    vertices[vertexCount++] = (float) (decoded[base + corner * 3 + 2] + section.originZ() - origin.z);
-                }
-                if (first) appendTriangle(baseVertex, baseVertex + 1, baseVertex + 2, section.materials()[q]);
-                if (second) appendTriangle(baseVertex, baseVertex + 2, baseVertex + 3, section.materials()[q]);
-            }
-        }
-    }
-
-    /**
      * Appends a mesh built in a moving structure's own frame where {@code pose} places it now, so
      * a structure is voxelized once and only its vertices follow its motion.
      */
@@ -239,25 +186,6 @@ public final class AcousticMesh {
         }
         System.arraycopy(local.materials(), 0, materials, triangleCount / 3, local.materials().length);
         for (int index : local.triangles()) triangles[triangleCount++] = baseVertex + index;
-    }
-
-    /** Validate the actual GPU triangles, including collapsed corners of triangle-shaped quads. */
-    public static boolean validTriangle(float[] vertices, int a, int b, int c) {
-        for (int axis = 0; axis < 3; axis++) {
-            if (!Float.isFinite(vertices[a + axis]) || !Float.isFinite(vertices[b + axis])
-                    || !Float.isFinite(vertices[c + axis])) return false;
-        }
-        double ux = vertices[b] - (double) vertices[a], uy = vertices[b+1] - (double) vertices[a+1], uz = vertices[b+2] - (double) vertices[a+2];
-        double vx = vertices[c] - (double) vertices[a], vy = vertices[c+1] - (double) vertices[a+1], vz = vertices[c+2] - (double) vertices[a+2];
-        double nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-        return nx * nx + ny * ny + nz * nz >= 1e-6;
-    }
-
-    private void appendTriangle(int a, int b, int c, int material) {
-        materials[triangleCount / 3] = material;
-        triangles[triangleCount++] = a;
-        triangles[triangleCount++] = b;
-        triangles[triangleCount++] = c;
     }
 
     private static int index(int x, int y, int z, int[] size) { return (z * size[1] + y) * size[0] + x; }

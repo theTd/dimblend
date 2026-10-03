@@ -247,7 +247,7 @@ thread count is the throttle.
 - One daemon thread for the whole client, with its own Steam Audio context and Embree device
   (one bake per process is an SDK rule), created on first use.
 - Per job: build the mesh for the bake region from a frozen capture and the same
-  `ReflectionGeometry.terrainMesh` the real-time reflections use (Sodium surfaces with voxel fill),
+  `ReflectionGeometry.terrainMesh` the real-time reflections use (merged voxel surfaces),
   leaving the radio's own block out as the live scene does; place probes from the same capture.
 - Pathing jobs come first (cheap, and the largest audible change), nearest radio first; reflection
   tiles after them, nearest the listener first.
@@ -298,8 +298,7 @@ thread count is the throttle.
 - Reflection tiles: a block edit in a tile, or within 16 blocks of it, or within 16 blocks of the
   radio → not usable (immediate fallback to live); any other edit inside a tile's mesh region →
   `STALE` (kept, rebaked first when idle).
-- Validity keys are palette fingerprints, not mesh bytes, so Sodium meshing an extra section does
-  not count as a change.
+- Validity keys are palette fingerprints, not mesh bytes.
 
 ### Persistence
 

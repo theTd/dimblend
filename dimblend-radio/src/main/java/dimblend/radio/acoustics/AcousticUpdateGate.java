@@ -30,27 +30,15 @@ public final class AcousticUpdateGate {
     private static final Map<Object, State> STATES = new WeakHashMap<>();
 
     public static void registerTerrain(Object token, Long2ObjectMap<PalettedContainer<BlockState>> sections, LongSet chunks) {
-        registerTerrain(token, sections, chunks, 0L);
-    }
-
-    /**
-     * {@code geometryVersion} folds the render-mesh mirror's content version into the terrain
-     * identity. Sodium rebuilds land asynchronously a frame or two after a block change, so the
-     * palette hash alone would re-simulate once against stale mirror geometry and then settle;
-     * the version fold fires the gate again when the rebuilt section actually arrives.
-     */
-    public static void registerTerrain(Object token, Long2ObjectMap<PalettedContainer<BlockState>> sections,
-            LongSet chunks, long geometryVersion) {
         Long2LongOpenHashMap fingerprints = new Long2LongOpenHashMap(sections.size());
         for (var entry : sections.long2ObjectEntrySet()) {
             fingerprints.put(entry.getLongKey(), AcousticPaletteCache.fingerprint(entry.getValue()));
         }
-        registerTerrainIdentity(token, fingerprints, chunks, geometryVersion);
+        registerTerrainIdentity(token, fingerprints, chunks);
     }
 
-    public static void registerTerrainIdentity(Object token, Long2LongMap fingerprints,
-            LongSet chunks, long geometryVersion) {
-        long identity = contentHash(fingerprints, chunks) ^ geometryVersion;
+    public static void registerTerrainIdentity(Object token, Long2LongMap fingerprints, LongSet chunks) {
+        long identity = contentHash(fingerprints, chunks);
         synchronized (AcousticUpdateGate.class) { TERRAIN.put(token, identity); }
     }
 

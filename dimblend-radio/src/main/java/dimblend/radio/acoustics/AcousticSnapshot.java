@@ -1,9 +1,5 @@
 package dimblend.radio.acoustics;
 
-import dimblend.radio.DimBlendRadio;
-import dimblend.radio.acoustics.terrain.SectionGeometryCache;
-import dimblend.radio.acoustics.terrain.TerrainGeometryMode;
-import dimblend.radio.acoustics.terrain.SectionBlockFingerprint;
 import dev.ryanhcode.sable.companion.SableCompanion;
 import dev.ryanhcode.sable.companion.SubLevelAccess;
 import dev.ryanhcode.sable.companion.math.BoundingBox3d;
@@ -172,45 +168,15 @@ public final class AcousticSnapshot implements ReflectionGeometry {
         Vec3 origin = new Vec3(Math.floor(listener.x / 16) * 16, Math.floor(listener.y / 16) * 16, Math.floor(listener.z / 16) * 16);
         var workspace = new AcousticMesh.Workspace();
         AcousticMesh mesh = new AcousticMesh(origin, workspace);
-        appendTerrain(mesh, new AABB(listener, source).inflate(ReflectionMeshCache.MARGIN));
+        mesh.append(terrain, new AABB(listener, source).inflate(ReflectionMeshCache.MARGIN), emitter);
         for (ReflectionGeometry.Body body : bodies()) mesh.appendPlaced(body.localMesh(workspace), body.pose());
         return mesh.data();
     }
 
     @Override public AcousticMesh.Data terrainMesh(AABB bounds, Vec3 origin, AcousticMesh.Workspace workspace) {
         AcousticMesh mesh = new AcousticMesh(origin, workspace);
-        appendTerrain(mesh, bounds);
+        mesh.append(terrain, bounds, emitter);
         return mesh.data();
-    }
-
-    private void appendTerrain(AcousticMesh mesh, AABB bounds) {
-        if (!renderMirror()) {
-            mesh.append(terrain, bounds, emitter);
-            logGeometrySource("voxel");
-            return;
-        }
-        SectionGeometryCache.Coverage coverage = SectionGeometryCache.presentSections(bounds,
-                terrain.minSection(), terrain.maxSection(), TerrainGeometryMode.CURRENT == TerrainGeometryMode.SODIUM);
-        mesh.appendSections(coverage.sections(), emitter);
-        if (TerrainGeometryMode.CURRENT == TerrainGeometryMode.AUTO) {
-            mesh.append(terrain, bounds, emitter, coverage.covered());
-            logGeometrySource("render-mesh(" + coverage.sections().size() + " sections)+voxel");
-        } else {
-            logGeometrySource("render-mesh(" + coverage.sections().size() + " sections)");
-        }
-    }
-
-    /**
-     * Sodium only meshes sections its visibility traversal visits, so the mirror's coverage is
-     * always partial: AUTO mixes exact render geometry with a voxel fill of the gaps.
-     */
-    private static boolean renderMirror() {
-        return TerrainGeometryMode.CURRENT != TerrainGeometryMode.VOXEL && SectionGeometryCache.active();
-    }
-
-    /** The mirror's fold, complemented so an empty mirror still differs from pure voxel terrain. */
-    @Override public long renderGeometryVersion(AABB bounds) {
-        return renderMirror() ? ~SectionGeometryCache.foldHash(bounds, terrain.minSection(), terrain.maxSection()) : 0;
     }
 
     @Override public long terrainSection(long key) { return terrain.sectionState(key); }
@@ -223,16 +189,6 @@ public final class AcousticSnapshot implements ReflectionGeometry {
         List<Structure> bodies = new ArrayList<>(structures.size());
         for (Frame frame : structures) bodies.add(new Structure(frame, emitter));
         return bodies;
-    }
-
-    /** One INFO line per source switch: proves which geometry feeds the reflection GPU upload. */
-    private static volatile String lastGeometrySource;
-
-    private static void logGeometrySource(String source) {
-        if (!source.equals(lastGeometrySource)) {
-            lastGeometrySource = source;
-            DimBlendRadio.LOGGER.info("[radio] reflection geometry: {}", source);
-        }
     }
 
     public AcousticRay cast(Vec3 from, Vec3 to) {
@@ -301,26 +257,19 @@ public final class AcousticSnapshot implements ReflectionGeometry {
                         var section = chunk.getSection(level.getSectionIndexFromSectionY(y));
                         long key = SectionPos.asLong(x, y, z);
                         if (generation != 0 && section.getStates() instanceof AcousticPaletteVersion versioned) {
-                            versioned.dimblend$observeAcoustics(generation, key);
-                            AcousticSceneChanges.observe(generation, key);
+                            versioned.dimblend$observeAcoustics(generation);
                         }
-                        // Fingerprint an edited section once; the next edit re-arms it.
-                        boolean validateMesh = SectionGeometryCache.awaitingFingerprint(key);
-                        if (!section.hasOnlyAir() || validateMesh) {
+                        if (!section.hasOnlyAir()) {
                             var copy = PALETTES.freeze(section.getStates());
-                            if (!section.hasOnlyAir()) {
-                                frozen.sections.put(key, copy.blocks());
-                                frozen.fingerprints.put(key, copy.fingerprint());
-                            }
-                            if (validateMesh) SectionGeometryCache.expectBlocks(key, SectionBlockFingerprint.of(copy.blocks()::get));
+                            frozen.sections.put(key, copy.blocks());
+                            frozen.fingerprints.put(key, copy.fingerprint());
                         }
                     }
                 }
             }
             if (structure != null) frozen.summarizeContent();
             // Terrain identity includes which chunks were loaded; a structure's only its blocks (see summarizeContent).
-            AcousticUpdateGate.registerTerrainIdentity(frozen, frozen.fingerprints, structure != null ? LongSet.of() : frozen.chunks,
-                    SectionGeometryCache.foldHash(box, frozen.minSection(), frozen.maxSection()));
+            AcousticUpdateGate.registerTerrainIdentity(frozen, frozen.fingerprints, structure != null ? LongSet.of() : frozen.chunks);
             return frozen;
         }
         /**

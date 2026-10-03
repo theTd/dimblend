@@ -14,7 +14,7 @@ import net.neoforged.neoforge.common.Tags;
 
 /**
  * Hardcoded block-to-material mapping ({@link AcousticMaterials} indices) shared by every geometry
- * path: the voxel tracer, the voxel mesher and the Sodium mesh tee. Tags come first so datapacks
+ * path: the voxel tracer and the voxel mesher. Tags come first so datapacks
  * and mods can opt blocks in; then the block's sound type, which modded blocks usually set
  * sensibly. A modded block that both leave as stone gets a material guessed from its name
  * ({@link AcousticBlockNames}); everything else is stone. Vanilla blocks never go by name.

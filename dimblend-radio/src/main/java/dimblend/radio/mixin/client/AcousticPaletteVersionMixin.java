@@ -14,11 +14,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(PalettedContainer.class)
 public abstract class AcousticPaletteVersionMixin implements AcousticPaletteVersion {
     @Unique private long dimblend$acousticVersion;
-    @Unique private long dimblend$watchGeneration, dimblend$watchSection;
+    @Unique private long dimblend$watchGeneration;
 
     @Unique private void dimblend$invalidateAcoustics() {
         dimblend$acousticVersion++;
-        if (dimblend$watchGeneration != 0) AcousticSceneChanges.paletteChanged(dimblend$watchGeneration, dimblend$watchSection);
+        if (dimblend$watchGeneration != 0) AcousticSceneChanges.paletteChanged(dimblend$watchGeneration);
     }
 
     // Both public getAndSet variants delegate to this indexed overload in 1.21.1.
@@ -35,8 +35,7 @@ public abstract class AcousticPaletteVersionMixin implements AcousticPaletteVers
 
     @Override public long dimblend$acousticVersion() { return dimblend$acousticVersion; }
 
-    @Override public void dimblend$observeAcoustics(long generation, long section) {
+    @Override public void dimblend$observeAcoustics(long generation) {
         dimblend$watchGeneration = generation;
-        dimblend$watchSection = section;
     }
 }

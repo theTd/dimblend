@@ -79,35 +79,6 @@ public final class RadioAcousticsGameTests {
         });
     }
 
-    @GameTest(template = "radio_signal_input", templateNamespace = "dimblend_radio")
-    public static void voxelFillerHonorsSkippedSections(GameTestHelper helper) {
-        BlockPos source = buildRoom(helper);
-        Vec3 origin = SubLevelProjection.worldCenter(helper.getLevel(), source);
-        AABB bounds = new AABB(origin, origin).inflate(8);
-        var full = new dimblend.radio.acoustics.AcousticMesh(Vec3.ZERO);
-        full.append(helper.getLevel(), bounds, source);
-        helper.assertTrue(full.data().triangles().length > 0, "room must mesh");
-        // Skipping every section the room touches leaves no voxel faces at all.
-        var all = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
-        for (int x = (int) Math.floor(bounds.minX) >> 4; x <= ((int) Math.floor(bounds.maxX) >> 4); x++)
-            for (int y = (int) Math.floor(bounds.minY) >> 4; y <= ((int) Math.floor(bounds.maxY) >> 4); y++)
-                for (int z = (int) Math.floor(bounds.minZ) >> 4; z <= ((int) Math.floor(bounds.maxZ) >> 4); z++)
-                    all.add(net.minecraft.core.SectionPos.asLong(x, y, z));
-        var skipped = new dimblend.radio.acoustics.AcousticMesh(Vec3.ZERO);
-        skipped.append(helper.getLevel(), bounds, source, all);
-        helper.assertTrue(skipped.data().triangles().length == 0,
-                "skipped sections must contribute no voxel faces");
-        // A skip key outside the bounds must not change anything.
-        var unrelated = new dimblend.radio.acoustics.AcousticMesh(Vec3.ZERO);
-        unrelated.append(helper.getLevel(), bounds, source,
-                it.unimi.dsi.fastutil.longs.LongSet.of(net.minecraft.core.SectionPos.asLong(
-                        (int) Math.floor(bounds.minX) >> 4, ((int) Math.floor(bounds.minY) >> 4) + 16,
-                        (int) Math.floor(bounds.minZ) >> 4)));
-        helper.assertTrue(unrelated.data().triangles().length == full.data().triangles().length,
-                "unrelated skip key must not change voxel geometry");
-        helper.succeed();
-    }
-
     /** Frozen palettes are read section by section; the result must equal the live per-cell fill. */
     @GameTest(template = "radio_signal_input", templateNamespace = "dimblend_radio")
     public static void frozenSectionFillMatchesLiveCells(GameTestHelper helper) {

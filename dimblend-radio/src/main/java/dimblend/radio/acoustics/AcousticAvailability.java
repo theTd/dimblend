@@ -1,7 +1,6 @@
 package dimblend.radio.acoustics;
 
 import dimblend.radio.DimBlendRadio;
-import dimblend.radio.acoustics.terrain.SectionGeometryCache;
 import net.neoforged.fml.ModList;
 
 /**
@@ -40,8 +39,6 @@ public final class AcousticAvailability {
             return;
         }
         gpu = Boolean.FALSE;
-        // The Sodium mirror has no consumer any more; release it and stop the tee.
-        SectionGeometryCache.clear();
         DimBlendRadio.LOGGER.warn("[radio] Steam Audio GPU acoustics unavailable; new radios use vanilla positional sound", error);
     }
 

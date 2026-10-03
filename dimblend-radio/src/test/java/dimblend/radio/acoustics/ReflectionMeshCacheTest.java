@@ -2,7 +2,6 @@ package dimblend.radio.acoustics;
 
 import dev.ryanhcode.sable.companion.math.Pose3d;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
-import dimblend.radio.acoustics.terrain.TerrainGeometryMode;
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,7 +17,6 @@ class ReflectionMeshCacheTest {
     private static final class FakeGeometry implements ReflectionGeometry {
         final Long2LongOpenHashMap sections = new Long2LongOpenHashMap();
         final List<FakeBody> bodies = new ArrayList<>();
-        long renderVersion;
         int terrainBuilds;
         AABB built;
 
@@ -27,7 +25,6 @@ class ReflectionMeshCacheTest {
         @Override public long terrainSection(long key) { return sections.get(key); }
         @Override public int minSection() { return -4; }
         @Override public int maxSection() { return 20; }
-        @Override public long renderGeometryVersion(AABB bounds) { return renderVersion; }
         @Override public AcousticMesh.Data terrainMesh(AABB bounds, Vec3 origin, AcousticMesh.Workspace workspace) {
             terrainBuilds++;
             built = bounds;
@@ -129,19 +126,5 @@ class ReflectionMeshCacheTest {
         geometry.sections.put(neighbour, ReflectionGeometry.AIR);
         cache.get(geometry, Vec3.ZERO, SOURCE);
         assertEquals(3, geometry.terrainBuilds, "a section first captured after the build is meshed");
-    }
-
-    @Test void renderGeometryAndModeChangesRebuildTerrainWhileStationary() {
-        var cache = new ReflectionMeshCache();
-        var geometry = new FakeGeometry();
-        var first = cache.get(geometry, Vec3.ZERO, Vec3.ZERO);
-        geometry.renderVersion = 2;
-        var rebuilt = cache.get(geometry, Vec3.ZERO, Vec3.ZERO);
-        assertNotSame(first.terrain(), rebuilt.terrain());
-        var previous = TerrainGeometryMode.CURRENT;
-        try {
-            TerrainGeometryMode.CURRENT = previous == TerrainGeometryMode.VOXEL ? TerrainGeometryMode.AUTO : TerrainGeometryMode.VOXEL;
-            assertNotSame(rebuilt.terrain(), cache.get(geometry, Vec3.ZERO, Vec3.ZERO).terrain());
-        } finally { TerrainGeometryMode.CURRENT = previous; }
     }
 }

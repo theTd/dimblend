@@ -60,6 +60,19 @@ class AcousticUpdateGateTest {
         assertTrue(AcousticUpdateGate.geometryChanged(owner, edited, true), "an edited structure is a geometry change");
     }
 
+    /** A terrain edit jumps both queues; an equivalent re-capture of unchanged terrain does not. */
+    @Test
+    void terrainEditsBypassTheMotionCadenceWhileIdenticalScenesDoNot() {
+        Object owner = new Object();
+        Object first = scene(LongSet.of(1L));
+        AcousticUpdateGate.shouldSimulate(owner, first, Vec3.ZERO, Vec3.ZERO, false);
+        AcousticUpdateGate.shouldSimulate(owner, first, Vec3.ZERO, Vec3.ZERO, true);
+        assertFalse(AcousticUpdateGate.geometryChanged(owner, scene(LongSet.of(1L)), true));
+        Object edited = scene(LongSet.of(2L));
+        assertTrue(AcousticUpdateGate.geometryChanged(owner, edited, false));
+        assertTrue(AcousticUpdateGate.geometryChanged(owner, edited, true));
+    }
+
     private static Object scene(LongSet chunks) {
         Object terrain = new Object(), scene = new Object();
         AcousticUpdateGate.registerTerrain(terrain, new Long2ObjectOpenHashMap<>(), chunks);

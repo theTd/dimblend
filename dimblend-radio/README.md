@@ -87,8 +87,8 @@
   its registry name (`AcousticBlockNames`): material words decide and the last one wins
   (`iron_framed_glass` is glass, `deepslate_tin_ore` stone, `locometal` metal), form words
   (`bricks`, `casing`, `sofa`, `table`) only without one. Vanilla blocks never go by name. Common terrain stays in a few materials on purpose:
-  the reflection mesh merges only faces of one material. Every geometry path — the direct
-  path's voxel tracer, the voxel mesher and the Sodium tee — reads the same table.
+  the reflection mesh merges only faces of one material. Both geometry paths — the direct
+  path's voxel tracer and the reflection voxel mesher — read the same table.
 - Approximate diffraction: direct occlusion is Steam Audio's volumetric mode rather than
   one ray. 16 fixed points in a 2-block sphere around the radio are tested against the
   listener (points the radio cannot see are dropped); when that sphere is partly hidden, a second
@@ -112,12 +112,9 @@
   ray (native benchmark in `SteamDirectDiffractionTest`), and runs only while something moves.
 - Reflections use Steam Audio's OpenCL/Radeon Rays GPU backend
   with the same per-triangle materials and float coordinates relative to a nearby origin.
-  Terrain geometry mixes exact surfaces teed from Sodium's chunk-build pipeline with
-  a one-metre voxel fill for sections Sodium has not fully meshed (its build queue is
-  visibility-driven, so occluded sections stay unmeshed); without Sodium it is
-  merged one-metre voxel surfaces throughout. Sections containing omitted translucent
-  or block-entity solids use whole-section voxel fallback, avoiding gaps and duplicate faces.
-  Each submitted triangle is checked for finite vertices and nonzero area.
+  Terrain geometry is merged one-metre voxel surfaces built from the captured block
+  palettes, independent of the renderer (vanilla or Sodium): every block with a collision
+  shape is a full cell, so faces are whole-block rectangles and never degenerate.
   Sable vertices are transformed in double precision
   before conversion, preserving positioning even at distant plot coordinates.
 - GPU devices and triangle scenes live as long as the radio session; scene meshes are
@@ -127,10 +124,8 @@
   A failed GPU session disables its acoustic simulation, including its direct-ray
   worker and effects; that radio continues with equal-power stereo panning. There is
   no CPU reflection fallback. If the first GPU engine of the game session cannot be
-  created, radios bound afterwards play as vanilla positional sound and the Sodium
-  mesh tee stops. `-Ddimblend.radio.acoustic.gpu=false` disables acoustics;
-  `-Ddimblend.radio.acoustic.geometry=auto|sodium|voxel` selects the terrain
-  geometry source.
+  created, radios bound afterwards play as vanilla positional sound.
+  `-Ddimblend.radio.acoustic.gpu=false` disables acoustics.
 - Up to four nearby radios simulate acoustics; a simulated radio keeps its slot until
   another is four blocks closer. Other radios in range are stereo-panned with the same
   distance curve rather than muted, and native engines are only created for radios
@@ -161,11 +156,8 @@
   source/listener bounds; nearby captured Sable structures are included. Snapshots cover
   the union of all simulated radios' mesh regions plus 16 blocks, and are recaptured
   when movement leaves that coverage.
-- A block edit immediately withdraws that section's old Sodium mesh. Fresh voxel data
-  fills the section until a render mesh with matching block contents arrives; stale
-  asynchronous builds cannot restore the old wall. Identical lighting-only rebuilds
-  do not invalidate acoustics. Geometry changes bypass the motion cadence, and queued
-  simulations take the newest snapshot when their worker actually starts.
+- Geometry changes bypass the motion cadence, and queued simulations take the newest
+  snapshot when their worker actually starts.
 - Equivalent geometry snapshots and stationary source/listener positions reuse the
   same response. Block/chunk changes, meaningful movement, or Sable pose changes
   invalidate it. CPU materials are specular, so CPU responses stay repeatable. GPU
@@ -203,10 +195,8 @@
 - The bundled native SDK currently supports Windows x64. Other platforms keep
   vanilla mono playback. Sound Physics Remastered or `-Ddimblend.radio.reverb=false`
   disables the local simulation backend.
-- Limits: finite loaded geometry (the Sodium mesh mirror only covers the current
-  render distance, and exact surfaces only for visibility-visited sections — the
-  rest is voxel-approximated), block-entity and translucent sections approximated as voxels,
-  water surfaces of waterlogged blocks counted as reflectors,
+- Limits: finite loaded geometry, block shapes approximated as whole voxels (slabs,
+  stairs, fences and panes reflect as full cells), water surfaces of waterlogged blocks counted as reflectors,
   residual reflection noise, snapshot/update latency, approximate block
   materials, and diffraction approximated by volumetric occlusion (no path search around
   obstacles, no change of apparent direction). Musical listening and performance

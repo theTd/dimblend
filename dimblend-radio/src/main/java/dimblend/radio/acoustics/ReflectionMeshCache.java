@@ -1,7 +1,6 @@
 package dimblend.radio.acoustics;
 
 import dev.ryanhcode.sable.companion.math.Pose3d;
-import dimblend.radio.acoustics.terrain.TerrainGeometryMode;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -31,12 +30,10 @@ public final class ReflectionMeshCache {
 
     private final AcousticMesh.Workspace workspace = new AcousticMesh.Workspace();
     private final Map<UUID, LocalMesh> localMeshes = new HashMap<>();
-    private TerrainGeometryMode mode;
     private AABB bounds;
     private AcousticMesh.Data terrain;
     /** Every terrain section the mesh region spans, with its state when the mesh was built. */
     private long[] sectionKeys = new long[0], sectionStates = new long[0];
-    private long renderVersion;
     private List<Placement> placements = List.of();
     private AcousticMesh.Data structures;
     private Scene scene;
@@ -48,16 +45,13 @@ public final class ReflectionMeshCache {
 
     public Scene get(ReflectionGeometry geometry, Vec3 listener, Vec3 source) {
         AABB required = new AABB(listener, source).inflate(MARGIN);
-        if (terrain == null || mode != TerrainGeometryMode.CURRENT
-                || !AcousticSnapshot.contains(bounds, required) || terrainChanged(geometry)) {
+        if (terrain == null || !AcousticSnapshot.contains(bounds, required) || terrainChanged(geometry)) {
             AABB expanded = required.inflate(PADDING);
             Vec3 center = expanded.getCenter();
             Vec3 origin = new Vec3(Math.floor(center.x / 16) * 16, Math.floor(center.y / 16) * 16, Math.floor(center.z / 16) * 16);
             terrain = geometry.terrainMesh(expanded, origin, workspace);
             bounds = expanded;
-            mode = TerrainGeometryMode.CURRENT;
             recordSections(geometry, expanded);
-            renderVersion = geometry.renderGeometryVersion(expanded);
         }
         AcousticMesh.Data placed = place(geometry.bodies());
         if (scene == null || scene.terrain != terrain || scene.structures != placed) scene = new Scene(terrain, placed);
@@ -69,7 +63,6 @@ public final class ReflectionMeshCache {
      * one captured now but not when the mesh was built reads as a change, so it gets meshed.
      */
     private boolean terrainChanged(ReflectionGeometry geometry) {
-        if (geometry.renderGeometryVersion(bounds) != renderVersion) return true;
         for (int i = 0; i < sectionKeys.length; i++) {
             long state = geometry.terrainSection(sectionKeys[i]);
             if (state != ReflectionGeometry.UNCAPTURED && state != sectionStates[i]) return true;

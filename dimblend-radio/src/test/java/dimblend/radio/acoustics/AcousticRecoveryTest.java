@@ -1,9 +1,5 @@
 package dimblend.radio.acoustics;
 
-import dimblend.radio.acoustics.terrain.SectionMeshDecoder;
-import dimblend.radio.acoustics.terrain.SectionQuads;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.List;
 import net.minecraft.world.phys.Vec3;
@@ -12,32 +8,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Regressions reproduced during the acoustics stability review. */
 class AcousticRecoveryTest {
-    @Test void partiallyDegenerateQuadMustNotReachGpu() {
-        float[] corners = {0,0,0, 1,0,0, 1,0,0, 0,1,0};
-        ByteBuffer packed = ByteBuffer.allocate(80).order(ByteOrder.nativeOrder());
-        for (int i = 0; i < 4; i++) {
-            int hi = 0, lo = 0;
-            for (int axis = 0; axis < 3; axis++) {
-                int q = (int) ((8 + corners[i * 3 + axis]) / 32 * (1 << 20));
-                hi |= ((q >>> 10) & 1023) << (axis * 10);
-                lo |= (q & 1023) << (axis * 10);
-            }
-            packed.putInt(hi).putInt(lo).putInt(0).putInt(0).putInt(0);
-        }
-        float[] vertices = new float[12];
-        byte[] materials = new byte[1], owners = new byte[3];
-        int count = SectionMeshDecoder.decode(0, 0, 0, packed.flip(),
-                (x,y,z,nx,ny,nz,owner) -> 4, vertices, materials, owners, 0);
-        AcousticMesh mesh = new AcousticMesh(Vec3.ZERO);
-        if (count > 0) mesh.appendSections(List.of(new SectionQuads(0,0,0,vertices,materials,owners,1)), null);
-        var data = mesh.data();
-        for (int i = 0; i < data.triangles().length; i += 3) {
-            Vec3 a = vertex(data, i), b = vertex(data, i+1), c = vertex(data, i+2);
-            assertTrue(b.subtract(a).cross(c.subtract(a)).lengthSqr() > 1e-12,
-                    "Zero-area triangle passed decoder and GPU mesh assembly");
-        }
-    }
-
     @Test void nonFiniteRecoveryMustRestoreWetWithoutPlayerMovement() {
         org.junit.jupiter.api.Assumptions.assumeTrue(Boolean.getBoolean("dimblend.radio.testAudio"));
         float[] vertices = {-8,-8,-8,8,-8,-8,8,8,-8,-8,8,-8,-8,-8,8,8,-8,8,8,8,8,-8,8,8};
@@ -84,9 +54,5 @@ class AcousticRecoveryTest {
                 for (float sample : channel) sum += sample * (double) sample;
         }
         return sum;
-    }
-    private static Vec3 vertex(AcousticMesh.Data data, int index) {
-        int v = data.triangles()[index] * 3;
-        return new Vec3(data.vertices()[v], data.vertices()[v+1], data.vertices()[v+2]);
     }
 }
