@@ -46,9 +46,11 @@ class RadioSimulationSessionTest {
             replacement.get(10, TimeUnit.SECONDS);
             drainReflectionWorker();
             drainWorker("DIRECT");
-            assertTrue(membership.source().closed(), "The failed radio's source must leave the shared simulator");
+            for (SteamSimulation.Source source : membership.sources()) {
+                assertTrue(source.closed(), "The failed radio's sources must leave the shared simulator");
+            }
             assertNull(old.context(), "The last radio leaving must release the shared native context");
-            assertNull(read(session, "reflectionOutputs"));
+            assertNull(read(session, "echoOutputs"));
             assertNull(session.reflections(), "GPU failure must not install a CPU simulator");
             assertNull(read(session, "directEngine"), "GPU failure must stop direct simulation too");
             assertNull(read(session, "renderer"));
@@ -115,27 +117,32 @@ class RadioSimulationSessionTest {
             var b = awaitMembership(second);
             var c = awaitMembership(other);
             assertSame(a.simulation(), b.simulation(), "radios of one sampling rate share one simulator");
-            assertNotSame(a.source(), b.source());
-            assertEquals(2, a.simulation().sourceCount());
+            assertEquals(SharedReflectionSimulator.ECHO_SLOTS, a.sources().size(), "a source per echo slot");
+            for (SteamSimulation.Source source : a.sources()) assertFalse(b.sources().contains(source));
+            assertEquals(2 * SharedReflectionSimulator.ECHO_SLOTS, a.simulation().sourceCount());
             assertNotSame(a.simulation(), c.simulation(), "the simulator runs at its radios' rate");
             assertNotSame(read(first, "renderer"), read(second, "renderer"));
 
             SharedReflectionSimulator.simulate(List.of(first, second, other), new Room(), 1, System.nanoTime());
             drainReflectionWorker();
-            var heardFirst = (SteamAudio.SimulationOutputs) read(first, "reflectionOutputs");
-            var heardSecond = (SteamAudio.SimulationOutputs) read(second, "reflectionOutputs");
+            var heardFirst = (SteamAudio.SimulationOutputs[]) read(first, "echoOutputs");
+            var heardSecond = (SteamAudio.SimulationOutputs[]) read(second, "echoOutputs");
             assertNotNull(heardFirst, "one shared run answers every radio in it");
             assertNotNull(heardSecond);
-            assertNotNull(read(other, "reflectionOutputs"));
-            assertNotNull(heardFirst.reflections.ir);
-            assertNotEquals(heardFirst.reflections.ir, heardSecond.reflections.ir, "each radio has its own IR");
+            assertNotNull(read(other, "echoOutputs"));
+            for (int slot = 0; slot < SharedReflectionSimulator.ECHO_SLOTS; slot++) {
+                assertNotNull(heardFirst[slot], "a new radio fills every echo slot in its first run");
+                assertNotNull(heardFirst[slot].reflections.ir);
+                assertNotEquals(heardFirst[slot].reflections.ir, heardSecond[slot].reflections.ir, "each radio has its own IRs");
+            }
+            assertNotEquals(heardFirst[0].reflections.ir, heardFirst[1].reflections.ir, "each slot has its own IR");
             assertEquals(1L, read(first, "reflectionRevision"));
 
             first.close();
             drainReflectionWorker();
-            assertTrue(a.source().closed());
+            for (SteamSimulation.Source source : a.sources()) assertTrue(source.closed());
             assertNotNull(b.simulation().context(), "the simulator stays while another radio uses it");
-            assertEquals(1, b.simulation().sourceCount());
+            assertEquals(SharedReflectionSimulator.ECHO_SLOTS, b.simulation().sourceCount());
             second.close();
             drainReflectionWorker();
             assertNull(b.simulation().context(), "the last radio to leave closes it");
@@ -144,6 +151,36 @@ class RadioSimulationSessionTest {
             first.close();
             second.close();
             other.close();
+            drainReflectionWorker();
+        }
+    }
+
+    @Test void laterRunsTakeTurnsAmongTheEchoSlots() throws Exception {
+        assumeTrue(Boolean.getBoolean("dimblend.radio.testAudio"));
+        Vec3 ahead = new Vec3(0,0,-1), up = new Vec3(0,1,0);
+        var session = new RadioSimulationSession(new AudioFormat(44100,16,1,true,false));
+        try {
+            session.setView(new Vec3(4,0,0), Vec3.ZERO, ahead, up, true);
+            awaitMembership(session);
+            long now = System.nanoTime();
+            SharedReflectionSimulator.simulate(List.of(session), new Room(), 1, now);
+            drainReflectionWorker();
+            var previous = (SteamAudio.SimulationOutputs[]) read(session, "echoOutputs");
+            for (int run = 1; run <= 2 * SharedReflectionSimulator.ECHO_SLOTS; run++) {
+                // Moving the radio makes it due; the cadence has passed.
+                session.setView(new Vec3(4 + 0.5 * run, 0, 0), Vec3.ZERO, ahead, up, true);
+                SharedReflectionSimulator.simulate(List.of(session), new Room(), 1, now + run * 100_000_000L);
+                drainReflectionWorker();
+                var current = (SteamAudio.SimulationOutputs[]) read(session, "echoOutputs");
+                int turn = (run - 1) % SharedReflectionSimulator.ECHO_SLOTS;
+                for (int slot = 0; slot < current.length; slot++) {
+                    if (slot == turn) assertNotSame(previous[slot], current[slot], "run " + run + " updates slot " + turn);
+                    else assertSame(previous[slot], current[slot], "run " + run + " keeps slot " + slot);
+                }
+                previous = current;
+            }
+        } finally {
+            session.close();
             drainReflectionWorker();
         }
     }

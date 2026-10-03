@@ -38,8 +38,11 @@ public final class SteamRenderer implements AutoCloseable {
         return new double[] {Math.sqrt(wet / samples), Math.sqrt(dry / samples), Math.sqrt(wetPre / (samples * 2))};
     }
     private final SteamAudio.Api api = SteamAudio.api();
-    private final PointerByReference direct = new PointerByReference(), reflections = new PointerByReference();
+    private final PointerByReference direct = new PointerByReference();
+    /** One convolution per echo slot: each holds its own IR, fed by its own simulator source. */
+    private final PointerByReference[] reflections;
     private final PointerByReference panning = new PointerByReference(), decoding = new PointerByReference();
+    private final PointerByReference pathDecoding = new PointerByReference();
     private final PointerByReference pathing = new PointerByReference();
     // Prepare stage: buffers and scratch are reused, one block at a time.
     private final SteamAudio.AudioBuffer delayedInput = new SteamAudio.AudioBuffer();
@@ -52,6 +55,7 @@ public final class SteamRenderer implements AutoCloseable {
     private PathingField lastPath;
     private final float[] directSamples = new float[FRAME];
     private final float[] delayed = new float[FRAME];
+    private final float[] slotScratch = new float[FRAME];
     private final PropagationDelayLine propagation;
     private final DirectSoundGain directGain;
     /** Samples of received input still inside the propagation delay line. */
@@ -64,11 +68,14 @@ public final class SteamRenderer implements AutoCloseable {
     // Embedded Structures receive copied values; assigning one would re-point its memory.
     private final Object spatialLock = new Object();
     private final SteamAudio.AudioBuffer drySpatial = new SteamAudio.AudioBuffer();
-    private final SteamAudio.AudioBuffer wetSpatial = new SteamAudio.AudioBuffer(4);
+    private final SteamAudio.AudioBuffer wetSpatial = new SteamAudio.AudioBuffer(4), pathSpatial = new SteamAudio.AudioBuffer(4);
     private final SteamAudio.AudioBuffer dryStereo = new SteamAudio.AudioBuffer(2), wetStereo = new SteamAudio.AudioBuffer(2);
+    private final SteamAudio.AudioBuffer pathStereo = new SteamAudio.AudioBuffer(2);
     private final SteamAudio.PanningParams pan = new SteamAudio.PanningParams();
     private final SteamAudio.DecodeParams decode = new SteamAudio.DecodeParams();
-    private final float[] dryScratch = new float[FRAME], wetScratch = new float[FRAME], mixScratch = new float[FRAME];
+    private final float[] dryScratch = new float[FRAME], mixScratch = new float[FRAME], pathScratch = new float[FRAME];
+    private final float[][] echoScratch = new float[2][FRAME];
+    private final EchoDecorrelator decorrelator;
     private float limiterGain = 1;
     private final int rate;
     private final float limiterRelease;
@@ -118,7 +125,7 @@ public final class SteamRenderer implements AutoCloseable {
     /**
      * A spatialized block's parts before the limiter, filled in when passed to
      * {@link #spatialize(Prepared, Vec3, SteamAudio.Space, float, Stems)}: the direct sound, and the
-     * reflections with the diffracted path as decoded together.
+     * echo: the decoded reflections (decorrelated between the ears) plus the decoded diffracted path.
      */
     public static final class Stems {
         public final float[][] direct = new float[2][FRAME], echo = new float[2][FRAME];
@@ -133,11 +140,23 @@ public final class SteamRenderer implements AutoCloseable {
     }
 
     public SteamRenderer(Pointer context, int rate, Runnable requestReflections) {
+        this(context, rate, 1, requestReflections);
+    }
+
+    /**
+     * @param echoSlots reflection responses {@link #prepareAveraged averaged} per block, each with
+     *     its own convolution (and its own native IR, about 8.5 MB at 6 s and first order)
+     */
+    public SteamRenderer(Pointer context, int rate, int echoSlots, Runnable requestReflections) {
+        if (echoSlots < 1) throw new IllegalArgumentException("At least one echo slot");
         this.requestReflections = requestReflections;
         this.rate = rate;
         propagation = new PropagationDelayLine(rate);
         directGain = new DirectSoundGain((double) FRAME / rate);
+        decorrelator = new EchoDecorrelator(rate);
         limiterRelease = (float) (1 - Math.exp(-1.0 / rate)); // ~1 s time constant, applied per sample
+        reflections = new PointerByReference[echoSlots];
+        for (int slot = 0; slot < echoSlots; slot++) reflections[slot] = new PointerByReference();
         var audio = new SteamAudio.AudioSettings();
         audio.samplingRate = rate;
         try {
@@ -145,9 +164,12 @@ public final class SteamRenderer implements AutoCloseable {
             var settings = new SteamAudio.ReflectionSettings();
             settings.irSize = rate * 6;
             settings.channels = 4;
-            SteamAudio.check(api.iplReflectionEffectCreate(context, audio, settings, reflections), "convolution effect");
+            for (PointerByReference convolution : reflections) {
+                SteamAudio.check(api.iplReflectionEffectCreate(context, audio, settings, convolution), "convolution effect");
+            }
             SteamAudio.check(api.iplPanningEffectCreate(context, audio, new SteamAudio.PanningSettings(), panning), "direct spatializer");
             SteamAudio.check(api.iplAmbisonicsDecodeEffectCreate(context, audio, new SteamAudio.DecodeSettings(), decoding), "reflection decoder");
+            SteamAudio.check(api.iplAmbisonicsDecodeEffectCreate(context, audio, new SteamAudio.DecodeSettings(), pathDecoding), "path decoder");
             // World-space ambisonics out: decoded with the reflections, so head turns need no re-run.
             SteamAudio.check(api.iplPathEffectCreate(context, audio, new SteamAudio.PathEffectSettings(), pathing), "path effect");
             pathParams.order = 1;
@@ -180,7 +202,21 @@ public final class SteamRenderer implements AutoCloseable {
      */
     public Prepared prepare(float[] samples, SteamAudio.DirectParams directParams,
             SteamAudio.ReflectionParams impulse, Vec3 relativeSource, boolean tail, PathingField pathField) {
+        return prepareAveraged(samples, directParams, new SteamAudio.ReflectionParams[] {impulse}, relativeSource, tail, pathField);
+    }
+
+    /**
+     * As {@link #prepare(float[], SteamAudio.DirectParams, SteamAudio.ReflectionParams, Vec3, boolean, PathingField)}
+     * with one reflection response per echo slot, each convolved by its own effect. The reflections
+     * are the average of the slots' (a slot without an IR adds silence): convolution is linear, so
+     * this is the input convolved with the average of the responses.
+     *
+     * @param impulses one per echo slot, in slot order; an entry may be null
+     */
+    public Prepared prepareAveraged(float[] samples, SteamAudio.DirectParams directParams,
+            SteamAudio.ReflectionParams[] impulses, Vec3 relativeSource, boolean tail, PathingField pathField) {
         if (samples.length != FRAME) throw new IllegalArgumentException("Expected one native audio frame");
+        if (impulses.length != reflections.length) throw new IllegalArgumentException("Expected one response per echo slot");
         Prepared block = new Prepared(resetSpatial);
         resetSpatial = false;
         if (closed) return block;
@@ -202,19 +238,28 @@ public final class SteamRenderer implements AutoCloseable {
         api.iplDirectEffectApply(direct.getValue(), directGain.equalization(), delayedInput, dry);
         dry.memory(0).read(0, block.dry, 0, FRAME);
         directGain.apply(block.dry, targetGain, rate);
-        for (int c = 0; c < 4; c++) wet.memory(c).clear();
-        if (!awaitingReflections && impulse != null && impulse.ir != null) {
-            block.reflections = drained ? ReflectionState.TAIL : ReflectionState.CONVOLVED;
-            if (drained) api.iplReflectionEffectGetTail(reflections.getValue(), wet, null);
-            else api.iplReflectionEffectApply(reflections.getValue(), impulse, delayedInput, wet, null);
-        } else if (awaitingReflections) {
+        if (awaitingReflections) {
             block.reflections = ReflectionState.AWAITING;
+        } else {
+            float weight = 1f / reflections.length;
+            for (int slot = 0; slot < reflections.length; slot++) {
+                SteamAudio.ReflectionParams impulse = impulses[slot];
+                if (impulse == null || impulse.ir == null) continue;
+                block.reflections = drained ? ReflectionState.TAIL : ReflectionState.CONVOLVED;
+                for (int c = 0; c < 4; c++) wet.memory(c).clear();
+                if (drained) api.iplReflectionEffectGetTail(reflections[slot].getValue(), wet, null);
+                else api.iplReflectionEffectApply(reflections[slot].getValue(), impulse, delayedInput, wet, null);
+                for (int c = 0; c < 4; c++) {
+                    wet.memory(c).read(0, slotScratch, 0, FRAME);
+                    float[] channel = block.wet[c];
+                    for (int i = 0; i < FRAME; i++) channel[i] += weight * slotScratch[i];
+                }
+            }
         }
         // Non-finite wet (a NaN/Inf IR, whatever its source) must never reach the mix: it would
-        // poison the limiter and silence the dry path too. Suppress and reset the effect.
+        // poison the limiter and silence the dry path too. Suppress and reset the effects.
         boolean poisoned = false;
-        for (int c = 0; c < 4; c++) {
-            wet.memory(c).read(0, block.wet[c], 0, FRAME);
+        for (int c = 0; c < 4 && !poisoned; c++) {
             for (float sample : block.wet[c]) {
                 if (!Float.isFinite(sample)) { poisoned = true; break; }
             }
@@ -292,6 +337,8 @@ public final class SteamRenderer implements AutoCloseable {
                 BinauralSpatializer.reset(this);
                 api.iplPanningEffectReset(panning.getValue());
                 api.iplAmbisonicsDecodeEffectReset(decoding.getValue());
+                api.iplAmbisonicsDecodeEffectReset(pathDecoding.getValue());
+                decorrelator.reset();
                 limiterGain = 1;
             }
             boolean meter = Boolean.getBoolean("dimblend.radio.acoustic.debug");
@@ -301,33 +348,44 @@ public final class SteamRenderer implements AutoCloseable {
             pan.direction.set(dot(direction, orientation.right), dot(direction, orientation.up), -dot(direction, orientation.ahead));
             if (!BinauralSpatializer.direct(this, pan.direction, drySpatial, dryStereo))
                 api.iplPanningEffectApply(panning.getValue(), pan, drySpatial, dryStereo);
-            double wetPre = 0, reflectedEnergy = 0, pathEnergy = 0;
-            // Reflections and the diffracted path share one decode; both are world-space ambisonics.
+            double reflectedEnergy = 0, pathEnergy = 0;
+            // Both are world-space ambisonics, decoded apart: only the reflections are decorrelated.
             for (int c = 0; c < 4; c++) {
-                float[] reflected = block.wet[c], diffracted = block.path == null ? null : block.path[c];
-                for (int i = 0; i < FRAME; i++) mixScratch[i] = reflected[i] * wetGain + (diffracted == null ? 0 : diffracted[i]);
+                float[] reflected = block.wet[c];
+                for (int i = 0; i < FRAME; i++) mixScratch[i] = reflected[i] * wetGain;
                 wetSpatial.memory(c).write(0, mixScratch, 0, FRAME);
-                if (meter) for (float sample : reflected) wetPre += sample * (double) sample;
-                if (stems != null) {
-                    for (float sample : reflected) reflectedEnergy += sample * (double) sample;
-                    if (diffracted != null) for (float sample : diffracted) pathEnergy += sample * (double) sample;
+                if (meter || stems != null) for (float sample : reflected) reflectedEnergy += sample * (double) sample;
+                if (block.path != null) {
+                    pathSpatial.memory(c).write(0, block.path[c], 0, FRAME);
+                    if (stems != null) for (float sample : block.path[c]) pathEnergy += sample * (double) sample;
                 }
             }
             if (stems != null) {
                 stems.reflectedEnergy = reflectedEnergy * wetGain * wetGain;
                 stems.pathEnergy = pathEnergy;
             }
-            if (meter) WET_PRE_DECODE.add(wetPre);
+            if (meter) WET_PRE_DECODE.add(reflectedEnergy);
             decode.orientation.set(orientation);
             if (!BinauralSpatializer.reflections(this, orientation, wetSpatial, wetStereo))
                 api.iplAmbisonicsDecodeEffectApply(decoding.getValue(), decode, wetSpatial, wetStereo);
+            float[][] echo = echoScratch;
+            for (int c = 0; c < 2; c++) wetStereo.memory(c).read(0, echo[c], 0, FRAME);
+            decorrelator.process(echo[0], echo[1]);
+            if (block.path != null) {
+                // A path that just ended faded out over its last block, so the idle decoder holds silence.
+                if (!BinauralSpatializer.paths(this, orientation, pathSpatial, pathStereo))
+                    api.iplAmbisonicsDecodeEffectApply(pathDecoding.getValue(), decode, pathSpatial, pathStereo);
+                for (int c = 0; c < 2; c++) {
+                    pathStereo.memory(c).read(0, pathScratch, 0, FRAME);
+                    for (int i = 0; i < FRAME; i++) echo[c][i] += pathScratch[i];
+                }
+            }
             float[][] output = new float[2][FRAME];
             float peak = 0;
             double wetEnergy = 0, dryEnergy = 0;
             for (int c = 0; c < 2; c++) {
-                float[] d = dryScratch, w = wetScratch;
+                float[] d = dryScratch, w = echo[c];
                 dryStereo.memory(c).read(0, d, 0, FRAME);
-                wetStereo.memory(c).read(0, w, 0, FRAME);
                 if (stems != null) {
                     System.arraycopy(d, 0, stems.direct[c], 0, FRAME);
                     System.arraycopy(w, 0, stems.echo[c], 0, FRAME);
@@ -399,7 +457,15 @@ public final class SteamRenderer implements AutoCloseable {
     /** The last rendered block after the propagation delay, before occlusion; reused per block. */
     public float[] delayedInput() { return delayed; }
 
-    public int tailSamples() { return api.iplReflectionEffectGetTailSize(reflections.getValue()); }
+    /** The longest reverb tail still to play out of any echo slot's convolution. */
+    public int tailSamples() {
+        int longest = 0;
+        for (PointerByReference convolution : reflections) longest = Math.max(longest, api.iplReflectionEffectGetTailSize(convolution.getValue()));
+        return longest;
+    }
+
+    /** How many reflection responses {@link #prepareAveraged} averages. */
+    public int echoSlots() { return reflections.length; }
 
     /** Samples of already-received input still inside the propagation delay line. */
     public int directTailSamples() { return delayUsed ? pendingInput : 0; }
@@ -421,7 +487,7 @@ public final class SteamRenderer implements AutoCloseable {
         if (!effectsUsed) return false;
         effectsUsed = false;
         api.iplDirectEffectReset(direct.getValue());
-        api.iplReflectionEffectReset(reflections.getValue());
+        for (PointerByReference convolution : reflections) api.iplReflectionEffectReset(convolution.getValue());
         api.iplPathEffectReset(pathing.getValue());
         lastPath = null;
         awaitingReflections = true;
@@ -430,9 +496,9 @@ public final class SteamRenderer implements AutoCloseable {
         return true;
     }
 
-    /** A reset discards the active native IR; reusing its old parameters cannot restore it. */
+    /** A reset discards the active native IRs; reusing their old parameters cannot restore them. */
     public void resetReflections() {
-        api.iplReflectionEffectReset(reflections.getValue());
+        for (PointerByReference convolution : reflections) api.iplReflectionEffectReset(convolution.getValue());
         awaitingReflections = true;
         requestReflections.run();
     }
@@ -445,10 +511,13 @@ public final class SteamRenderer implements AutoCloseable {
         synchronized (spatialLock) {
             closed = true;
             BinauralSpatializer.detach(this);
+            if (pathDecoding.getValue() != null) api.iplAmbisonicsDecodeEffectRelease(pathDecoding);
             if (decoding.getValue() != null) api.iplAmbisonicsDecodeEffectRelease(decoding);
             if (panning.getValue() != null) api.iplPanningEffectRelease(panning);
             if (pathing.getValue() != null) api.iplPathEffectRelease(pathing);
-            if (reflections.getValue() != null) api.iplReflectionEffectRelease(reflections);
+            for (PointerByReference convolution : reflections) {
+                if (convolution.getValue() != null) api.iplReflectionEffectRelease(convolution);
+            }
             if (direct.getValue() != null) api.iplDirectEffectRelease(direct);
         }
     }

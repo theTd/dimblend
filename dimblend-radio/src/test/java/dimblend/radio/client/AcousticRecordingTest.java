@@ -109,7 +109,7 @@ class AcousticRecordingTest {
         for (Map<String, String> row : rows) {
             assertEquals("rendered", row.get("mode"));
             assertEquals("convolved", row.get("reflections"));
-            assertEquals("1", row.get("ir_count"));
+            assertEquals(Integer.toString(SharedReflectionSimulator.ECHO_SLOTS), row.get("ir_count"), "the first run fills every echo slot");
             assertFalse(row.get("delay_ms").isEmpty());
             assertEquals(3, Double.parseDouble(row.get("wet_scale")), 0.2);
         }
@@ -138,8 +138,9 @@ class AcousticRecordingTest {
         assertTrue(energy > 0, "the echo stem carries the reflections");
         String events = Files.readString(directory.resolve("events.csv"));
         assertTrue(events.contains(",,reflection_run,\"ms="), events);
-        assertTrue(events.contains("radios=1 of 1"), events);
-        assertTrue(events.contains(",1,ir_ready,\"ir_count=1 "), events);
+        assertTrue(events.contains("radios=1:0+1:1+1:2 of 1"), "radio:slot per source: " + events);
+        assertTrue(events.contains(",1,ir_ready,\"ir_count=1 slot=0 "), events);
+        assertTrue(events.contains(",1,ir_ready,\"ir_count=3 slot=2 "), events);
     }
 
     private static byte[] bytes(ByteBuffer buffer) {

@@ -37,8 +37,11 @@ public final class BinauralSpatializer {
     }
     // Params are reused per owner (each owner renders on one thread at a time); values are copied
     // in, never assigned as embedded Structures.
+    // The diffracted path has its own decode: the reflections are decorrelated between the ears
+    // after decoding (EchoDecorrelator), the path keeps its direction.
     private static final class State {
-        final PointerByReference hrtf = new PointerByReference(), direct = new PointerByReference(), reflections = new PointerByReference();
+        final PointerByReference hrtf = new PointerByReference(), direct = new PointerByReference(),
+                reflections = new PointerByReference(), paths = new PointerByReference();
         final Params directParams = new Params();
         final SteamAudio.DecodeParams decodeParams = new SteamAudio.DecodeParams();
     }
@@ -64,6 +67,7 @@ public final class BinauralSpatializer {
             var decode = new SteamAudio.DecodeSettings();
             decode.hrtf = state.hrtf.getValue();
             SteamAudio.check(api.iplAmbisonicsDecodeEffectCreate(context, audio, decode, state.reflections), "binaural reflection effect");
+            SteamAudio.check(api.iplAmbisonicsDecodeEffectCreate(context, audio, decode, state.paths), "binaural path effect");
             state.directParams.hrtf = state.hrtf.getValue();
             state.decodeParams.binaural = 1;
             state.decodeParams.hrtf = state.hrtf.getValue();
@@ -89,6 +93,16 @@ public final class BinauralSpatializer {
         return true;
     }
 
+    /** The diffracted path's Ambisonic field, decoded apart from the reflections. */
+    public static boolean paths(Object owner, SteamAudio.Space orientation,
+            SteamAudio.AudioBuffer input, SteamAudio.AudioBuffer output) {
+        State state = STATES.get(owner);
+        if (state == null) return false;
+        state.decodeParams.orientation.set(orientation);
+        api.iplAmbisonicsDecodeEffectApply(state.paths.getValue(), state.decodeParams, input, output);
+        return true;
+    }
+
     public static void detach(Object owner) {
         State state = STATES.remove(owner);
         if (state != null) release(state);
@@ -100,9 +114,11 @@ public final class BinauralSpatializer {
         if (state == null) return;
         api.iplBinauralEffectReset(state.direct.getValue());
         api.iplAmbisonicsDecodeEffectReset(state.reflections.getValue());
+        api.iplAmbisonicsDecodeEffectReset(state.paths.getValue());
     }
 
     private static void release(State state) {
+        if (state.paths.getValue() != null) api.iplAmbisonicsDecodeEffectRelease(state.paths);
         if (state.reflections.getValue() != null) api.iplAmbisonicsDecodeEffectRelease(state.reflections);
         if (state.direct.getValue() != null) api.iplBinauralEffectRelease(state.direct);
         if (state.hrtf.getValue() != null) api.iplHRTFRelease(state.hrtf);

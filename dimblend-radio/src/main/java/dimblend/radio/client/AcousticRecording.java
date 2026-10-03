@@ -399,7 +399,8 @@ final class AcousticRecording {
         lines.add("  delay_ms: propagation delay. direct_gain: the direct sound's level, direct_eq_*: its band shape.");
         lines.add("  occlusion, transmission_*, air_*: Steam Audio's direct simulation; direct_age_ms: how old it was.");
         lines.add("  reflections: none, awaiting (reset, waiting for a fresh IR), convolved, tail, invalid.");
-        lines.add("  ir_count: IRs received so far (a change is a new IR); ir_age_ms: age of the IR in use. wet_scale: echo gain.");
+        lines.add("  ir_count: IRs received so far, one per echo slot a run refreshed (a change is a new IR); the echo is the");
+        lines.add("    mean of the slots' latest IRs. ir_age_ms: age of the newest IR in use. wet_scale: echo gain.");
         lines.add("  pathing_*: the diffracted path's band gains, its omni level (w) and length in blocks; empty without one.");
         lines.add("  *_db: block level in dB full scale: direct and echo after decoding, reflections and pathing before it.");
         lines.add("  peak / limiter_gain: level before the limiter and its gain after the block. output_*: what was played.");

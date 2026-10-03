@@ -21,13 +21,23 @@ import net.minecraft.world.phys.Vec3;
  * GPU reflections of every simulated radio at once. Radios whose streams share a sampling rate
  * share one Steam Audio simulator: one Radeon Rays scene around the listener and all of them,
  * meshed and uploaded once, and one listener-centric trace per run in which each radio's own
- * source gathers its own response (its IR). Every native call happens on {@link #WORKER}.
+ * sources gather its own responses (its IRs). Every native call happens on {@link #WORKER}.
  */
 final class SharedReflectionSimulator {
     static final ExecutorService WORKER = RadioSimulationSession.worker("Radio acoustic reflections");
     /** Motion updates are scheduled from the latest camera pose, independently of client ticks. */
     private static final long INTERVAL = 50_000_000L;
     private static final int BOUNCES = 128;
+    /**
+     * Responses each radio averages (its renderer's echo slots): the radio has a source per slot,
+     * and its runs take turns among them, so it hears the mean of its last few runs. One run's
+     * response is a Monte Carlo estimate from {@link SteamSimulation#GPU_RAYS} listener rays; where
+     * few of them reach the radio (a closed train car far below the listener) it swings by a few dB
+     * from run to run and now and then drops by 20 dB, heard as flutter and dropouts in the echo.
+     * Steam Audio's own averaging restarts whenever the source, the listener or the scene moved,
+     * which on a moving train is every run.
+     */
+    static final int ECHO_SLOTS = 3;
 
     /** One simulator, the scene its radios share and who they are. */
     static final class Engine {
@@ -50,9 +60,29 @@ final class SharedReflectionSimulator {
         }
     }
 
-    /** A radio's part of an engine: its source, whose outputs (and IR) are that radio's alone. */
-    record Membership(Engine engine, SteamSimulation.Source source) {
+    /** A radio's part of an engine: a source per echo slot, whose outputs (and IRs) are that radio's alone. */
+    static final class Membership {
+        private final Engine engine;
+        private final List<SteamSimulation.Source> sources;
+        /** Worker: the slot the next run that takes turns simulates. */
+        private int next;
+
+        private Membership(Engine engine, List<SteamSimulation.Source> sources) {
+            this.engine = engine;
+            this.sources = sources;
+        }
+
         SteamSimulation simulation() { return engine.simulation; }
+
+        /** In slot order. */
+        List<SteamSimulation.Source> sources() { return sources; }
+
+        /** Worker: the slot whose turn it is; the following run takes the next one. */
+        private int takeTurn() {
+            int slot = next;
+            next = (next + 1) % sources.size();
+            return slot;
+        }
     }
 
     /** The radios' shared scene as of one frame, and the scene revision it was captured at. */
@@ -63,7 +93,7 @@ final class SharedReflectionSimulator {
     private static volatile Scene latestScene;
 
     /**
-     * Worker: adds a source for {@code session} to the engine for {@code rate}, creating the engine
+     * Worker: adds {@code session}'s sources to the engine for {@code rate}, creating the engine
      * first if there is none (or only a broken one).
      */
     static Membership join(RadioSimulationSession session, int rate) {
@@ -71,8 +101,10 @@ final class SharedReflectionSimulator {
         if (engine == null || engine.broken) {
             SteamSimulation simulation;
             try {
-                // As many radios as are selected at once share a trace; releasing ones beyond them take another.
-                simulation = new SteamSimulation(rate, SteamSimulation.REFLECTIONS, true, RadioSimulationSelection.LIMIT);
+                // As many radios as are selected at once share a trace, even when each fills all its
+                // slots; releasing ones beyond them take another.
+                simulation = new SteamSimulation(rate, SteamSimulation.REFLECTIONS, true,
+                        RadioSimulationSelection.LIMIT * ECHO_SLOTS);
             } catch (RuntimeException | Error error) {
                 // The first GPU engine tells whether this machine can run the pipeline at all.
                 AcousticAvailability.gpuUnavailable(error);
@@ -82,26 +114,27 @@ final class SharedReflectionSimulator {
             engine = new Engine(rate, simulation);
             ENGINES.put(rate, engine);
         }
-        SteamSimulation.Source source;
+        List<SteamSimulation.Source> sources = new ArrayList<>(ECHO_SLOTS);
         try {
-            source = engine.simulation.addSource();
+            for (int slot = 0; slot < ECHO_SLOTS; slot++) sources.add(engine.simulation.addSource());
         } catch (RuntimeException | Error error) {
+            for (SteamSimulation.Source added : sources) added.close();
             if (engine.members.isEmpty()) close(engine);
             throw error;
         }
         engine.members.add(session);
-        return new Membership(engine, source);
+        return new Membership(engine, List.copyOf(sources));
     }
 
     /**
-     * Worker: removes {@code session}'s source once its renderer no longer reads the source's IR;
-     * the last radio to leave an engine closes it.
+     * Worker: removes {@code session}'s sources once its renderer no longer reads their IRs; the
+     * last radio to leave an engine closes it.
      */
     static void leave(RadioSimulationSession session, Membership membership) {
         Engine engine = membership.engine;
         engine.members.remove(session);
         try {
-            membership.source.close();
+            for (SteamSimulation.Source source : membership.sources) source.close();
         } finally {
             if (engine.members.isEmpty()) close(engine);
         }
@@ -150,6 +183,8 @@ final class SharedReflectionSimulator {
     /**
      * Worker: one run for the radios that are due, and any other member that moved meanwhile. The
      * mesh region spans every simulated member, due or not, so it does not change with who runs.
+     * Each runner simulates the source of the slot whose turn it is, or every slot while it lacks
+     * a response in any (it just joined, or its renderer was reset).
      */
     private static void run(Engine engine, List<RadioSimulationSession> due) {
         long start = System.nanoTime();
@@ -157,7 +192,9 @@ final class SharedReflectionSimulator {
         try {
             if (engine.broken) return;
             Scene scene = latestScene;
+            // One entry per simulated source: its radio and the radio's slot.
             List<RadioSimulationSession> runners = new ArrayList<>();
+            List<Integer> slots = new ArrayList<>();
             List<SteamSimulation.Source> sources = new ArrayList<>();
             List<Vec3> positions = new ArrayList<>(), region = new ArrayList<>();
             Vec3 listener = null;
@@ -172,9 +209,15 @@ final class SharedReflectionSimulator {
                 // Records this pose as simulated for the due ones too.
                 boolean moved = AcousticUpdateGate.shouldSimulate(member, scene.geometry, view.source(), view.listener(), true);
                 if (moved || due.contains(member)) {
-                    runners.add(member);
-                    sources.add(membership.source);
-                    positions.add(view.source());
+                    boolean refill = !member.echoFilled();
+                    int first = refill ? 0 : membership.takeTurn();
+                    int end = refill ? membership.sources.size() : first + 1;
+                    for (int slot = first; slot < end; slot++) {
+                        runners.add(member);
+                        slots.add(slot);
+                        sources.add(membership.sources.get(slot));
+                        positions.add(view.source());
+                    }
                 }
             }
             if (runners.isEmpty()) return;
@@ -194,17 +237,21 @@ final class SharedReflectionSimulator {
             }
             AcousticRecording recording = AcousticRecording.active();
             if (recording != null) {
+                // radio:slot per simulated source
                 StringBuilder radios = new StringBuilder();
-                for (RadioSimulationSession runner : runners) {
-                    radios.append(radios.isEmpty() ? "" : "+").append(runner.track(recording).number());
+                for (int i = 0; i < runners.size(); i++) {
+                    radios.append(radios.isEmpty() ? "" : "+").append(runners.get(i).track(recording).number())
+                            .append(':').append(slots.get(i));
                 }
                 recording.event(null, "reflection_run", String.format(Locale.ROOT,
                         "ms=%.1f radios=%s of %d triangles=%d uploaded=%s rate=%d scene_revision=%d",
                         (System.nanoTime() - start) / 1e6, radios, wanted.size(), geometry.triangleCount(),
                         engine.simulation.uploads() != uploads, engine.rate, scene.revision));
             }
-            for (int i = 0; i < runners.size(); i++) runners.get(i).publishReflections(outputs.get(i), scene.revision, start);
-            DimBlendRadio.LOGGER.debug("[radio] GPU acoustic IR in {} ms ({} tris, {} of {} radios)",
+            for (int i = 0; i < runners.size(); i++) {
+                runners.get(i).publishReflections(slots.get(i), outputs.get(i), scene.revision, start);
+            }
+            DimBlendRadio.LOGGER.debug("[radio] GPU acoustic IR in {} ms ({} tris, {} sources, {} radios)",
                     (System.nanoTime() - start) / 1_000_000, geometry.triangleCount(), runners.size(), wanted.size());
         } catch (RuntimeException | Error error) {
             // Not the native run (meshing, scheduling): every radio of the run would meet it again.

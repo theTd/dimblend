@@ -31,7 +31,7 @@ import net.minecraft.world.phys.Vec3;
  * turns keep the vanilla buffer latency while the convolution leaves the sound thread.
  * <p>
  * Direct sound and pathing are simulated per radio; reflections by the {@link SharedReflectionSimulator},
- * in which this radio has its own source.
+ * in which this radio has its own sources, one per echo slot of its renderer.
  */
 public final class RadioSimulationSession implements RadioPcmProcessor {
     private static final ExecutorService DIRECT = worker("Radio acoustic direct");
@@ -76,12 +76,17 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     private final AtomicBoolean initialized = new AtomicBoolean();
     private volatile AcousticSnapshot latestSnapshot;
     private volatile SteamSimulation directEngine;
-    /** This radio's source in the shared reflection simulator; set with {@link #renderer}. */
+    /** This radio's sources in the shared reflection simulator; set with {@link #renderer}. */
     private volatile SharedReflectionSimulator.Membership reflections;
     // JNA embedded sub-structures share the owning SimulationOutputs' native backing store.
     // Pin the owner: if it is collected, the params structs become garbage silently
     // (wet dies, dry params jump around). Consumers pin the holder until the native call returns.
-    private volatile SteamAudio.SimulationOutputs directOutputs, reflectionOutputs;
+    private volatile SteamAudio.SimulationOutputs directOutputs;
+    /**
+     * The latest reflection outputs of each echo slot (an entry is null until its slot is
+     * simulated), or null while there are none. Replaced, never changed in place.
+     */
+    private volatile SteamAudio.SimulationOutputs[] echoOutputs;
     private volatile long directRevision = -1, reflectionRevision = -1;
     /** When the direct outputs and the IR were last published, and how many IRs were; for recordings. */
     private volatile long directPublishedAt, reflectionPublishedAt, reflectionsPublished;
@@ -207,12 +212,14 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     // blocks already prepared get null from a closed renderer's spatial stage.
     private void installReflections(SharedReflectionSimulator.Membership membership) {
         SteamRenderer prepared;
-        try { prepared = new SteamRenderer(membership.simulation().context(), rate, this::reflectionReset); }
-        catch (RuntimeException | Error error) { SharedReflectionSimulator.leave(this, membership); throw error; }
+        try {
+            prepared = new SteamRenderer(membership.simulation().context(), rate, membership.sources().size(),
+                    this::reflectionReset);
+        } catch (RuntimeException | Error error) { SharedReflectionSimulator.leave(this, membership); throw error; }
         synchronized (this) {
             if (!closed && !failed) {
                 renderer = prepared;
-                reflectionOutputs = null;
+                echoOutputs = null;
                 reflections = membership;
                 return;
             }
@@ -221,7 +228,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         SharedReflectionSimulator.leave(this, membership);
     }
 
-    /** Reflection worker: the renderer goes first, so the source's IR is unused when the source leaves. */
+    /** Reflection worker: the renderer goes first, so the sources' IRs are unused when the sources leave. */
     private void retireReflections() {
         SteamRenderer oldRenderer;
         SharedReflectionSimulator.Membership old;
@@ -230,13 +237,13 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
             old = reflections;
             renderer = null;
             reflections = null;
-            reflectionOutputs = null;
+            echoOutputs = null;
         }
         try { if (oldRenderer != null) oldRenderer.close(); }
         finally { if (old != null) SharedReflectionSimulator.leave(this, old); }
     }
 
-    /** This radio's source in the shared reflection simulator, or null before it joined or after it left. */
+    /** This radio's sources in the shared reflection simulator, or null before it joined or after it left. */
     SharedReflectionSimulator.Membership reflections() { return reflections; }
 
     /** Where the radio and listener are now, or null while this radio takes no part in reflection runs. */
@@ -245,19 +252,23 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         return closed || failed || !current.simulated || reflections == null ? null : current;
     }
 
-    /** Reflection worker: a shared run's outputs for this radio's source. */
-    void publishReflections(SteamAudio.SimulationOutputs outputs, long revision, long started) {
+    /** Reflection worker: a shared run's outputs for this radio's source of echo slot {@code slot}. */
+    void publishReflections(int slot, SteamAudio.SimulationOutputs outputs, long revision, long started) {
         long count;
         synchronized (this) {
             if (closed || failed || renderer == null) return;
-            reflectionOutputs = outputs;
+            SteamAudio.SimulationOutputs[] current = echoOutputs;
+            SteamAudio.SimulationOutputs[] next = current == null
+                    ? new SteamAudio.SimulationOutputs[renderer.echoSlots()] : current.clone();
+            next[slot] = outputs;
+            echoOutputs = next;
             reflectionRevision = revision;
             reflectionPublishedAt = System.nanoTime();
             count = ++reflectionsPublished;
             renderer.reflectionsReady();
         }
-        record("ir_ready", () -> String.format(Locale.ROOT, "ir_count=%d run_ms=%.1f scene_revision=%d",
-                count, (System.nanoTime() - started) / 1e6, revision));
+        record("ir_ready", () -> String.format(Locale.ROOT, "ir_count=%d slot=%d run_ms=%.1f scene_revision=%d",
+                count, slot, (System.nanoTime() - started) / 1e6, revision));
         if (!firstIrLogged) {
             firstIrLogged = true;
             DimBlendRadio.LOGGER.info("[radio] GPU convolution IR ready: {} channels, {} samples, {} ms",
@@ -265,8 +276,16 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         }
     }
 
+    /** Reflection worker: every echo slot holds a response, so runs may take turns among the slots. */
+    boolean echoFilled() {
+        SteamAudio.SimulationOutputs[] current = echoOutputs;
+        if (current == null) return false;
+        for (SteamAudio.SimulationOutputs outputs : current) if (outputs == null) return false;
+        return true;
+    }
+
     private synchronized void reflectionReset() {
-        reflectionOutputs = null;
+        echoOutputs = null;
         record("ir_invalid", () -> "non-finite reflections; effect reset, fresh simulation requested");
         AcousticUpdateGate.invalidateReflections(this);
         if (++invalidFields >= 3) {
@@ -278,7 +297,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         if (failed) return;
         failed = true;
         directOutputs = null;
-        reflectionOutputs = null;
+        echoOutputs = null;
         pathingField = null;
         AcousticUpdateGate.forget(this);
         record("failed", error::toString);
@@ -518,8 +537,12 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     }
 
     private boolean reflectionTail() {
-        var out = reflectionOutputs;
-        return out != null && out.reflections.ir != null && renderer.tailSamples() > 0;
+        SteamAudio.SimulationOutputs[] current = echoOutputs;
+        if (current == null) return false;
+        for (SteamAudio.SimulationOutputs outputs : current) {
+            if (outputs != null && outputs.reflections.ir != null) return renderer.tailSamples() > 0;
+        }
+        return false;
     }
 
     private boolean rendererUsable() {
@@ -618,7 +641,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     private void restart(boolean keepDelay) {
         boolean reset = renderer.resume(keepDelay);
         if (reset) {
-            reflectionOutputs = null;
+            echoOutputs = null;
             AcousticUpdateGate.invalidateReflections(this);
         }
         record("restart", () -> (keepDelay ? "from panning, delay kept" : "from silence, delay cleared")
@@ -629,9 +652,12 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     private SteamRenderer.Prepared prepare(float[] input, Vec3 relative, boolean tail, boolean recording) {
         long started = recording ? System.nanoTime() : 0;
         var directOut = directOutputs;
-        var reflectionOut = reflectionOutputs;
+        SteamAudio.SimulationOutputs[] echoes = echoOutputs;
         var direct = directOut == null ? null : directOut.direct;
-        var impulse = reflectionOut == null ? null : reflectionOut.reflections;
+        var impulses = new SteamAudio.ReflectionParams[renderer.echoSlots()];
+        if (echoes != null) {
+            for (int slot = 0; slot < impulses.length; slot++) impulses[slot] = echoes[slot] == null ? null : echoes[slot].reflections;
+        }
         PathingField path = pathingField;
         long directAt = directPublishedAt, reflectionAt = reflectionPublishedAt, reflectionCount = reflectionsPublished;
         if (direct == null) {
@@ -640,19 +666,19 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         // Distance follows the current pose, not a completed ray job.
         direct.distance = distanceGain(relative.length());
         try {
-            SteamRenderer.Prepared prepared = renderer.prepare(input, direct, impulse, relative, tail, path);
+            SteamRenderer.Prepared prepared = renderer.prepareAveraged(input, direct, impulses, relative, tail, path);
             if (recording) {
                 long now = System.nanoTime();
                 preparedStaging = new AcousticRecording.Staging(prepared.delaySamples(), prepared.directGain(),
                         prepared.directEq(), direct.occlusion, direct.transmission.clone(), direct.air.clone(),
                         directOut == null ? -1 : now - directAt, prepared.reflections(), reflectionCount,
-                        reflectionOut == null ? -1 : now - reflectionAt, path, now - started);
+                        echoes == null ? -1 : now - reflectionAt, path, now - started);
             }
             return prepared;
         } finally {
             // The params sub-structures share their parents' backing store.
             Reference.reachabilityFence(directOut);
-            Reference.reachabilityFence(reflectionOut);
+            Reference.reachabilityFence(echoes);
         }
     }
 
@@ -681,7 +707,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         record("closed", () -> "");
         AcousticUpdateGate.forget(this);
         directOutputs = null;
-        reflectionOutputs = null;
+        echoOutputs = null;
         pathingField = null;
         pending.clear();
         staged.clear();
