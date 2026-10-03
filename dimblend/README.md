@@ -113,8 +113,29 @@ corridor strip around players:
 
 - `enabled`, `xBehind` / `xAhead` — pregen window in chunks along X (default 64/64)
 - `zMin` / `zMax` — fixed strip bounds in Z (default −16…15)
-- `minInFlight` / `maxInFlight` — adaptive budget of chunks driven to FULL at once (4…16)
-- `brakeTickMs` / `okTickMs` / `raiseStreakTicks` — tick-time thresholds that halve/raise the budget
+- `minInFlight` / `maxInFlight` — adaptive budget without online players (4…16)
+- `onlineMaxInFlight` — budget while anyone is online (default 1)
+- `maxSystemCpuLoad` — maximum system CPU fraction for admission (default 0.5);
+  unavailable readings stop pregen
+- `recoverySeconds` — uninterrupted healthy capacity required before admission (default 3 s)
+- `brakeTickMs` / `okTickMs` — average and latest server tick must be below both thresholds;
+  `raiseStreakTicks` controls growth of an already-admitted budget
+
+Integrated servers also require frames to keep up with the configured FPS limit
+(limited by display refresh when VSync is enabled), no pending section rebuilds or
+uploads, and a fresh client signal. Executor saturation or gameplay pressure sets
+the budget to zero and revokes active and held pregen tickets. Cancelling targets
+remain counted until their generation claims drain; Minecraft cannot interrupt a
+generation step already running. `/dimblend pregen on` enables the feature but does
+not bypass these capacity gates.
+
+Targets are rechecked at admission against every player's current view distance
+plus Minecraft's accumulated FULL-generation dependency radius. Foreign demand is checked on player
+chunk/dimension changes and otherwise twice a second while capacity permits work.
+Completed-ticket retention is bounded to four times the active cap, at most 32.
+Legacy `meshGate`, `cancelOnPoolBacklog`, `backlogCancelStreak`, `yieldToForeignGen`,
+`foreignYieldCancelStreak`, and `foreignYieldResumeTicks` keys are retained for config
+compatibility; mandatory admission protection and `recoverySeconds` supersede them.
 
 `serverconfig/dimblend-purge-server.toml` controls **region purge**: since players
 travel steadily along X, region files far from everyone are deleted online, one

@@ -26,15 +26,27 @@ public final class PregenConfig {
             .defineInRange("zMax", 15, -4096, 4096);
 
     public static final ModConfigSpec.IntValue MIN_IN_FLIGHT = BUILDER
-            .comment("Starting in-flight budget. Hard brake may still drop to 1")
+            .comment("Starting in-flight budget when no players are online; pressure always stops admission")
             .defineInRange("minInFlight", 4, 1, 128);
 
     public static final ModConfigSpec.IntValue MAX_IN_FLIGHT = BUILDER
             .comment("Upper bound of chunks simultaneously driven to FULL")
             .defineInRange("maxInFlight", 16, 1, 128);
 
+    public static final ModConfigSpec.IntValue ONLINE_MAX_IN_FLIGHT = BUILDER
+            .comment("Maximum in-flight targets while anyone is playing; cancelling targets remain counted")
+            .defineInRange("onlineMaxInFlight", 1, 1, 4);
+
+    public static final ModConfigSpec.DoubleValue MAX_SYSTEM_CPU_LOAD = BUILDER
+            .comment("Admission requires system CPU load below this fraction; unavailable readings stop pregen")
+            .defineInRange("maxSystemCpuLoad", 0.5, 0.1, 0.75);
+
+    public static final ModConfigSpec.IntValue RECOVERY_SECONDS = BUILDER
+            .comment("All capacity signals must stay healthy this long before pregen resumes")
+            .defineInRange("recoverySeconds", 3, 3, 60);
+
     public static final ModConfigSpec.IntValue BRAKE_TICK_MS = BUILDER
-            .comment("Average tick time above this halves the in-flight budget")
+            .comment("Average or latest tick above this stops pregen immediately")
             .defineInRange("brakeTickMs", 40, 20, 100);
 
     public static final ModConfigSpec.IntValue OK_TICK_MS = BUILDER
@@ -46,19 +58,19 @@ public final class PregenConfig {
             .defineInRange("raiseStreakTicks", 10, 1, 200);
 
     public static final ModConfigSpec.IntValue PLAYER_PROXIMITY_RADIUS = BUILDER
-            .comment("Do not issue pregen tickets within this chunk radius of any player")
+            .comment("Minimum exclusion radius; runtime also excludes player view distance plus the generation dependency margin")
             .defineInRange("playerProximityRadius", 4, 0, 16);
 
     public static final ModConfigSpec.BooleanValue MESH_GATE = BUILDER
-            .comment("Pause issuing pregen tickets while the client mesh rebuild pipeline is starved (integrated server only; no effect on dedicated servers). In-flight tickets are left alone so partial progress is not discarded.")
+            .comment("Retained for config compatibility; integrated pregen always requires healthy frames and an idle mesh pipeline")
             .define("meshGate", true);
 
     public static final ModConfigSpec.BooleanValue CANCEL_ON_POOL_BACKLOG = BUILDER
-            .comment("Cancel in-flight pregen tickets when the worldgen pool stays backlogged")
+            .comment("Retained for config compatibility; capacity pressure always cancels pregen tickets immediately")
             .define("cancelOnPoolBacklog", true);
 
     public static final ModConfigSpec.IntValue BACKLOG_CANCEL_STREAK = BUILDER
-            .comment("Consecutive ticks the pool must be backlogged before cancelling in-flight tickets")
+            .comment("Legacy setting; backlog cancellation is now immediate")
             .defineInRange("backlogCancelStreak", 2, 1, 20);
 
     public static final ModConfigSpec.BooleanValue PREGEN_ONLY_BEHIND = BUILDER
@@ -66,15 +78,15 @@ public final class PregenConfig {
             .define("pregenOnlyBehind", false);
 
     public static final ModConfigSpec.BooleanValue YIELD_TO_FOREIGN_GEN = BUILDER
-            .comment("Pause pregen while any non-pregen ticket or player view-distance demand still needs generation in any level; cancel in-flight when the streak is met")
+            .comment("Retained for config compatibility; player and non-pregen loading demand always takes priority")
             .define("yieldToForeignGen", true);
 
     public static final ModConfigSpec.IntValue FOREIGN_YIELD_CANCEL_STREAK = BUILDER
-            .comment("Consecutive ticks with foreign demand before cancelling in-flight pregen tickets")
+            .comment("Legacy setting; foreign demand cancellation is now immediate when detected")
             .defineInRange("foreignYieldCancelStreak", 2, 1, 20);
 
     public static final ModConfigSpec.IntValue FOREIGN_YIELD_RESUME_TICKS = BUILDER
-            .comment("Consecutive clear ticks required before resuming after yielding")
+            .comment("Legacy setting; recoverySeconds now controls the recovery period")
             .defineInRange("foreignYieldResumeTicks", 20, 1, 200);
 
     public static final ModConfigSpec SPEC = BUILDER.build();
