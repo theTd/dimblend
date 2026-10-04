@@ -18,7 +18,26 @@ class AcousticMaterialsTest {
         // Indices 0-4 and their absorption are what the reverb was tuned with (reflectivity 0.15..0.9).
         assertArrayEquals(new float[] {0.04f, 0.06f, 0.12f}, absorption(STONE), 1e-6f);
         assertArrayEquals(new float[] {0.34f, 0.51f, 0.98f}, absorption(WOOL), 1e-6f);
-        assertArrayEquals(new float[] {0.35f, 0.20f, 0.08f}, transmission(STONE, 1), 1e-6f);
+        assertArrayEquals(new float[] {0.75f, 0.42f, 0.15f}, transmission(STONE, 1), 1e-6f);
+    }
+
+    /** One layer of any block muffles rather than insulates; the highs lose clearly more than the lows. */
+    @Test void aSingleLayerMufflesAndThickWallsInsulate() {
+        for (int material = 0; material < COUNT; material++) {
+            float[] one = transmission(material, 1);
+            assertTrue(decibels(one[0]) >= -4.5, "lows through one block of " + material + ": " + decibels(one[0]));
+            assertTrue(decibels(one[1]) >= -11.5, "mids through one block of " + material + ": " + decibels(one[1]));
+            // Foliage, mostly air, has the gentlest slope (4.6 dB); solid walls lose 9-17 dB more highs than lows.
+            assertTrue(decibels(one[2]) <= decibels(one[0]) - 4, "highs lose more than lows through " + material);
+        }
+        float[] stone = transmission(STONE, 1), wall = transmission(STONE, 3);
+        assertEquals(-2.5, decibels(stone[0]), 0.1);
+        assertEquals(-7.5, decibels(stone[1]), 0.1);
+        assertTrue(decibels(wall[1]) < -16, "three blocks of stone keep the mids out: " + decibels(wall[1]));
+    }
+
+    private static double decibels(float amplitude) {
+        return 20 * Math.log10(amplitude);
     }
 
     @Test void solidWallsFollowTheMassLawAndFoliageLosesLess() {
@@ -56,7 +75,7 @@ class AcousticMaterialsTest {
             assertTrue(mixed[band] >= low - 1e-6 && mixed[band] <= high + 1e-6, "between two blocks of each, band " + band);
             assertTrue(mixed[band] < transmission(STONE, 1)[band], "the lining adds to the wall, band " + band);
         }
-        // Equal one-block highs (0.08): a wool-lined block of stone passes the highs of two stone blocks.
+        // Equal one-block highs (0.15): a wool-lined block of stone passes the highs of two stone blocks.
         assertEquals(stone[2], mixed[2], 1e-6);
 
         Path glazed = new Path();

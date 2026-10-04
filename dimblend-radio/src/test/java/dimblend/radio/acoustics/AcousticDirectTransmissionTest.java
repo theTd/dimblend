@@ -46,13 +46,19 @@ class AcousticDirectTransmissionTest {
         AcousticVoxelTrace.Lookup pillar = pos -> pos.getX() == 0 && pos.getZ() == 0 && Math.abs(pos.getY()) <= 8 ? STONE : null;
         BiFunction<Vec3, Vec3, AcousticRay> tracer = (from, to) -> AcousticVoxelTrace.cast(from, to, pillar);
         Vec3 source = new Vec3(0.5, 0.5, -10.5);
-        float previous = 1, deepest = 1;
-        for (double x = -2; x <= 3; x += 1.0 / 16) {
-            float low = AcousticDirectTransmission.between(new Vec3(x, 0.5, 10.5), source, tracer)[0];
-            assertTrue(Math.abs(low - previous) < 0.12, "no jump at x=" + x + ": " + previous + " -> " + low);
-            deepest = Math.min(deepest, low);
-            previous = low;
+        float[] one = AcousticMaterials.transmission(AcousticMaterials.STONE, 1);
+        for (int band : new int[] {0, 2}) {
+            // No step above a fifth of what the pillar takes away in this band.
+            float previous = 1, deepest = 1, limit = 0.2f * (1 - one[band]);
+            for (double x = -2; x <= 3; x += 1.0 / 16) {
+                float level = AcousticDirectTransmission.between(new Vec3(x, 0.5, 10.5), source, tracer)[band];
+                assertTrue(Math.abs(level - previous) < limit,
+                        "no jump in band " + band + " at x=" + x + ": " + previous + " -> " + level);
+                deepest = Math.min(deepest, level);
+                previous = level;
+            }
+            // Straight behind it the whole bundle crosses the pillar: a full block of stone.
+            assertEquals(one[band], deepest, one[band] * 0.05, "the pillar still shadows band " + band);
         }
-        assertTrue(deepest < 0.6, "the pillar still shadows: " + deepest);
     }
 }

@@ -14,9 +14,8 @@ package dimblend.radio.acoustics;
  * shrinks, instead of cutting off. Before the edge nothing is on the line, and full transmission
  * would cancel the partial occlusion and leave a step at the edge in the highs; so the hidden part
  * of the sphere passes no more than {@link #edgeTransmission()}, a grazing chord of stone
- * ({@link #hiddenTransmission}). The highs already dull a little while an obstacle beside the line
- * hides part of the sphere, every band meets the shadow side's value continuously, and lows and
- * mids stay near full level up to the edge.
+ * ({@link #hiddenTransmission}): every band meets the shadow side's value continuously and stays
+ * near full level up to the edge.
  * <p>
  * This is no path search: the sound keeps its true direction, and an opening further than the
  * radius from both ends does not help. {@code -Ddimblend.radio.acoustic.diffraction=0} restores the

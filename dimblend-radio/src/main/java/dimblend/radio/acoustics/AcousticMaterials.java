@@ -9,6 +9,11 @@ package dimblend.radio.acoustics;
  * Absorption is per band. Transmission is the low/mid/high amplitude through one block and falls
  * off with the path length by the material's thickness law; a run of mixed blocks combines its
  * layers ({@link Path}).
+ * <p>
+ * One block is a wall, not a metre of rock: a single layer muffles (one block of stone passes the
+ * lows at -2.5 dB, the mids at -7.5 dB and the highs at -16.5 dB) and only thick walls insulate
+ * (two blocks of stone -8.5/-13.5/-22.5 dB). The lows pass best and the highs worst, as through
+ * any real wall.
  */
 public final class AcousticMaterials {
     public static final int WOOL = 0, FOLIAGE = 1, SOIL = 2, WOOD = 3, STONE = 4, GLASS = 5, METAL = 6, ICE = 7, SNOW = 8;
@@ -41,20 +46,20 @@ public final class AcousticMaterials {
     private static final Profile[] PROFILES = new Profile[COUNT];
     static {
         // Wool, carpets, beds, hay, moss, sponge: porous, absorbs highs.
-        PROFILES[WOOL] = new Profile(bands(0.34f, 0.51f, 0.98f), bands(0.50f, 0.25f, 0.08f), 1);
+        PROFILES[WOOL] = new Profile(bands(0.34f, 0.51f, 0.98f), bands(0.80f, 0.48f, 0.15f), 1);
         PROFILES[FOLIAGE] = new Profile(bands(0.30f, 0.45f, 0.90f), bands(0.85f, 0.70f, 0.50f), 0.5);
         // Dirt, grass, sand, gravel, mud, soul soil.
-        PROFILES[SOIL] = new Profile(bands(0.22f, 0.33f, 0.66f), bands(0.30f, 0.16f, 0.06f), 1);
-        PROFILES[WOOD] = new Profile(bands(0.14f, 0.21f, 0.42f), bands(0.45f, 0.28f, 0.12f), 1);
+        PROFILES[SOIL] = new Profile(bands(0.22f, 0.33f, 0.66f), bands(0.70f, 0.38f, 0.13f), 1);
+        PROFILES[WOOD] = new Profile(bands(0.14f, 0.21f, 0.42f), bands(0.80f, 0.50f, 0.20f), 1);
         // Every natural rock, ore, brick, concrete and unknown block: one class keeps cave meshes merged.
-        PROFILES[STONE] = new Profile(bands(0.04f, 0.06f, 0.12f), bands(0.35f, 0.20f, 0.08f), 1);
+        PROFILES[STONE] = new Profile(bands(0.04f, 0.06f, 0.12f), bands(0.75f, 0.42f, 0.15f), 1);
         // Light and stiff: reflects almost everything, panes leak mids and lows.
-        PROFILES[GLASS] = new Profile(bands(0.10f, 0.05f, 0.04f), bands(0.55f, 0.40f, 0.20f), 1);
+        PROFILES[GLASS] = new Profile(bands(0.10f, 0.05f, 0.04f), bands(0.85f, 0.60f, 0.30f), 1);
         // Dense: the hardest reflector and the best barrier.
-        PROFILES[METAL] = new Profile(bands(0.08f, 0.05f, 0.05f), bands(0.25f, 0.10f, 0.03f), 1);
-        PROFILES[ICE] = new Profile(bands(0.04f, 0.04f, 0.06f), bands(0.40f, 0.28f, 0.12f), 1);
+        PROFILES[METAL] = new Profile(bands(0.08f, 0.05f, 0.05f), bands(0.60f, 0.28f, 0.08f), 1);
+        PROFILES[ICE] = new Profile(bands(0.04f, 0.04f, 0.06f), bands(0.75f, 0.45f, 0.18f), 1);
         // Fresh snow is mostly air: soaks up highs like wool and blocks them like soil.
-        PROFILES[SNOW] = new Profile(bands(0.25f, 0.50f, 0.80f), bands(0.35f, 0.18f, 0.05f), 1);
+        PROFILES[SNOW] = new Profile(bands(0.25f, 0.50f, 0.80f), bands(0.75f, 0.38f, 0.10f), 1);
     }
 
     private static float[] bands(float low, float mid, float high) {
