@@ -14,7 +14,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Vanilla updates its sound listener before mouse processing; publish the camera actually rendered. */
+/**
+ * Vanilla updates its sound listener before mouse processing; publish the camera actually rendered,
+ * with the partial tick it was placed at (Sable places riders' cameras by that tick's render pose).
+ */
 @Mixin(GameRenderer.class)
 public abstract class RadioCameraMixin {
     @Shadow @Final private Camera mainCamera;
@@ -26,7 +29,7 @@ public abstract class RadioCameraMixin {
         Camera camera = mainCamera;
         if (camera.isInitialized()) {
             RadioAcousticController.frameRefresh(Minecraft.getInstance(), new ListenerTransform(camera.getPosition(),
-                    new Vec3(camera.getLookVector()), new Vec3(camera.getUpVector())));
+                    new Vec3(camera.getLookVector()), new Vec3(camera.getUpVector())), camera.getPartialTickTime());
         }
     }
 }

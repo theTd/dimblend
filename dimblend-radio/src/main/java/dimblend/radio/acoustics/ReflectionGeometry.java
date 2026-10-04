@@ -62,6 +62,12 @@ public interface ReflectionGeometry {
     /** Moving structures in the scene. */
     List<? extends Body> bodies();
 
+    /**
+     * The coordinates the scene is simulated in: the world's, or those of one of its
+     * {@link #bodies()} (the structure the listener rides), which is then the scene's still part.
+     */
+    default AcousticFrame frame() { return AcousticFrame.WORLD; }
+
     /** A moving structure. */
     interface Body {
         UUID id();

@@ -5,7 +5,10 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.brigadier.Command;
+import dev.ryanhcode.sable.companion.math.BoundingBox3d;
+import dev.ryanhcode.sable.companion.math.Pose3dc;
 import dimblend.radio.DimBlendRadio;
+import dimblend.radio.SubLevelProjection;
 import dimblend.radio.acoustics.bake.PathingBake;
 import dimblend.radio.client.AcousticBakeScheduler.Inspection;
 import java.util.BitSet;
@@ -40,7 +43,8 @@ import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
  * in or next to a section whose blocks changed since the bake turn red, and those sections are
  * outlined. Probes behind terrain show faintly through it. A label above each radio and a panel
  * (or the debug screen, when open) give the bake's state, what a due bake waits for, the idle
- * gate's reasoning and the path the radio's session renders now.
+ * gate's reasoning and the path the radio's session renders now. A structure's radio is drawn with
+ * its structure, in whose frame it is baked.
  */
 @EventBusSubscriber(modid = DimBlendRadio.MODID, value = Dist.CLIENT)
 public final class AcousticBakeView {
@@ -102,19 +106,20 @@ public final class AcousticBakeView {
         Vec3 camera = event.getCamera().getPosition();
         List<Inspection> radios = AcousticBakeScheduler.inspect(camera, System.nanoTime());
         if (radios.isEmpty()) return;
+        float partialTick = event.getCamera().getPartialTickTime();
         // At this stage the pose is the identity and the camera's rotation is in the model-view
         // matrix: geometry goes in relative to the camera position.
         PoseStack pose = event.getPoseStack();
         MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
         // One render type at a time: the shared buffer flushes when the type changes.
-        drawLines(pose, buffers.getBuffer(SeeThroughLines.TYPE), radios, camera, HIDDEN_ALPHA);
+        drawLines(pose, buffers.getBuffer(SeeThroughLines.TYPE), radios, camera, partialTick, HIDDEN_ALPHA);
         buffers.endBatch(SeeThroughLines.TYPE);
-        drawLines(pose, buffers.getBuffer(RenderType.lines()), radios, camera, 1);
+        drawLines(pose, buffers.getBuffer(RenderType.lines()), radios, camera, partialTick, 1);
         buffers.endBatch(RenderType.lines());
         var gate = AcousticBakeScheduler.gateStatus();
         boolean baking = AcousticBakeScheduler.baking();
         for (Inspection radio : radios) {
-            Vec3 label = Vec3.atCenterOf(radio.radio()).add(0, 1.4, 0);
+            Vec3 label = toWorld(radio, partialTick, Vec3.atCenterOf(radio.radio())).add(0, 1.4, 0);
             int colour = 0xFF000000 | AcousticBakeReadout.colour(radio.state());
             DebugRenderer.renderFloatingText(pose, buffers, AcousticBakeReadout.headline(radio).replaceAll("§.", ""),
                     label.x, label.y + 0.3, label.z, colour, LABEL_SCALE, true, 0, true);
@@ -124,26 +129,46 @@ public final class AcousticBakeView {
         buffers.endBatch();
     }
 
-    private static void drawLines(PoseStack pose, VertexConsumer lines, List<Inspection> radios, Vec3 camera, float alpha) {
+    private static void drawLines(PoseStack pose, VertexConsumer lines, List<Inspection> radios, Vec3 camera, float partialTick,
+            float alpha) {
         for (Inspection radio : radios) {
+            Pose3dc frame = frame(radio, partialTick);
             int colour = AcousticBakeReadout.colour(radio.state());
-            box(pose, lines, new AABB(radio.radio()).inflate(0.05), camera, colour, alpha);
+            box(pose, lines, toWorld(frame, new AABB(radio.radio()).inflate(0.05)), camera, colour, alpha);
             for (long section : radio.changedSections()) {
                 AABB box = new AABB(SectionPos.sectionToBlockCoord(SectionPos.x(section)),
                         SectionPos.sectionToBlockCoord(SectionPos.y(section)), SectionPos.sectionToBlockCoord(SectionPos.z(section)),
                         SectionPos.sectionToBlockCoord(SectionPos.x(section) + 1), SectionPos.sectionToBlockCoord(SectionPos.y(section) + 1),
                         SectionPos.sectionToBlockCoord(SectionPos.z(section) + 1));
-                box(pose, lines, box, camera, AcousticBakeReadout.CHANGED, alpha);
+                box(pose, lines, toWorld(frame, box), camera, AcousticBakeReadout.CHANGED, alpha);
             }
             PathingBake bake = radio.bake();
             if (bake == null) continue;
             BitSet near = nearChanges(radio);
             for (int i = 0; i < bake.probeCount(); i++) {
-                Vec3 probe = bake.probe(i);
+                Vec3 probe = toWorld(frame, bake.probe(i));
                 box(pose, lines, new AABB(probe, probe).inflate(PROBE_HALF), camera,
                         near.get(i) ? AcousticBakeReadout.CHANGED : colour, alpha);
             }
         }
+    }
+
+    /** Where the radio's structure is drawn this frame, or null for a radio on the ground. */
+    private static Pose3dc frame(Inspection radio, float partialTick) {
+        return radio.structure() == null ? null : SubLevelProjection.framePose(radio.structure(), partialTick);
+    }
+
+    private static Vec3 toWorld(Inspection radio, float partialTick, Vec3 position) {
+        return toWorld(frame(radio, partialTick), position);
+    }
+
+    private static Vec3 toWorld(Pose3dc frame, Vec3 position) {
+        return frame == null ? position : frame.transformPosition(position);
+    }
+
+    /** The world box around {@code box} as its structure is drawn. */
+    private static AABB toWorld(Pose3dc frame, AABB box) {
+        return frame == null ? box : new BoundingBox3d(box).transform(frame).toMojang();
     }
 
     private static void box(PoseStack pose, VertexConsumer lines, AABB box, Vec3 camera, int rgb, float alpha) {

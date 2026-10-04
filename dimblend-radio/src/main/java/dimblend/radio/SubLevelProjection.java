@@ -3,9 +3,11 @@ package dimblend.radio;
 import java.util.ArrayList;
 import java.util.List;
 
+import dev.ryanhcode.sable.companion.ClientSubLevelAccess;
 import dev.ryanhcode.sable.companion.SableCompanion;
 import dev.ryanhcode.sable.companion.SubLevelAccess;
 import dev.ryanhcode.sable.companion.math.BoundingBox3d;
+import dev.ryanhcode.sable.companion.math.Pose3dc;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Position;
 import net.minecraft.world.level.Level;
@@ -29,6 +31,27 @@ public final class SubLevelProjection {
         // 走 Position 重载（Vec3 重载已标 @Deprecated，前者包一层转调后者，行为相同）
         Position center = Vec3.atCenterOf(pos);
         return SableCompanion.INSTANCE.projectOutOfSubLevel(level, center);
+    }
+
+    /**
+     * 唱片机中心在相机那一帧的世界坐标：拿来和本帧相机（听者）比的声源位置。
+     * 结构按 {@link #framePose} 投影，否则原样。
+     */
+    public static Vec3 frameCenter(Level level, BlockPos pos, float partialTick) {
+        Vec3 center = Vec3.atCenterOf(pos);
+        SubLevelAccess subLevel = SableCompanion.INSTANCE.getContaining(level, pos);
+        return subLevel == null ? center : framePose(subLevel, partialTick).transformPosition(center);
+    }
+
+    /**
+     * 结构在相机那一帧的位姿。客户端结构是 {@code renderPose(partialTick)}：Sable 把乘客的相机
+     * 也放在这个位姿上（其 Camera.setup mixin 用同一个 partialTick），而逻辑位姿是下一 tick 的
+     * 目标，结构动起来时领先相机最多一 tick 的位移。服务端结构没有渲染位姿，取逻辑位姿。
+     *
+     * <p>客户端返回的是 Sable 按帧复用的可变对象：要留存须自行拷贝。</p>
+     */
+    public static Pose3dc framePose(SubLevelAccess subLevel, float partialTick) {
+        return subLevel instanceof ClientSubLevelAccess client ? client.renderPose(partialTick) : subLevel.logicalPose();
     }
 
     /**

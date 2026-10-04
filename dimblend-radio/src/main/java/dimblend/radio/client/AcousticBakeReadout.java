@@ -51,11 +51,12 @@ final class AcousticBakeReadout {
         List<String> lines = new ArrayList<>();
         lines.add("§nRadio acoustic bakes§r  (/radioacoustics bakeview off)");
         lines.add(gate(gate, baking));
-        if (radios.isEmpty()) lines.add("§7No playing radio with a bake region here (radios on structures are not baked)");
+        if (radios.isEmpty()) lines.add("§7No playing radio with a bake region here");
         for (Inspection radio : radios) {
             BlockPos pos = radio.radio();
-            lines.add(String.format(Locale.ROOT, "%s %d %d %d, %.0f m: %s§r, %s", code(radio.state()) + "■§r", pos.getX(),
-                    pos.getY(), pos.getZ(), Vec3.atCenterOf(pos).distanceTo(listener), headline(radio), detail(radio, gate, baking)));
+            lines.add(String.format(Locale.ROOT, "%s %d %d %d%s, %.0f m: %s§r, %s", code(radio.state()) + "■§r", pos.getX(),
+                    pos.getY(), pos.getZ(), radio.structure() == null ? "" : " (on " + radio.structure().getName() + ")",
+                    radio.center().distanceTo(listener), headline(radio), detail(radio, gate, baking)));
             if (radio.bake() != null) lines.add("    " + path(paths.apply(pos)));
         }
         lines.add("§7Probes: §agreen§7 valid, §eyellow§7 stale, §cred§7 near a changed section (outlined), §bblue§7 baking");

@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.zip.CRC32C;
@@ -19,10 +20,18 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.phys.Vec3;
 
-/** Cache identity follows geometry and meaningful motion, not snapshot object identity or time. */
+/**
+ * Cache identity follows geometry and meaningful motion, not snapshot object identity or time.
+ * A scene is compared in its own {@link AcousticFrame}: in a structure's, the structure is still and
+ * everything else (terrain included) moves relative to it.
+ */
 public final class AcousticUpdateGate {
     private record Body(UUID id, long geometry, Pose3d pose) { }
-    private record Scene(long terrain, List<Body> bodies) { }
+    /**
+     * @param frame the structure whose frame the scene is in, or null for the world's
+     * @param terrainPose where the terrain sits in that frame; null in the world's
+     */
+    private record Scene(long terrain, List<Body> bodies, UUID frame, Pose3d terrainPose) { }
     private record Input(Scene scene, Vec3 source, Vec3 listener) { }
     private static final class State { Input direct, reflections; }
     private static final Map<Object, Long> TERRAIN = new WeakHashMap<>();
@@ -62,14 +71,21 @@ public final class AcousticUpdateGate {
         return hash.getValue();
     }
 
-    public static synchronized void registerSnapshot(Object snapshot, Object terrain, List<?> blocks,
+    public static void registerSnapshot(Object snapshot, Object terrain, List<?> blocks,
             List<UUID> ids, List<Pose3d> poses) {
+        registerSnapshot(snapshot, terrain, blocks, ids, poses, AcousticFrame.WORLD);
+    }
+
+    /** @param poses world poses of the structures; compared in {@code frame}, where they are placed relative to it */
+    public static synchronized void registerSnapshot(Object snapshot, Object terrain, List<?> blocks,
+            List<UUID> ids, List<Pose3d> poses, AcousticFrame frame) {
         List<Body> bodies = new ArrayList<>();
         for (int i = 0; i < blocks.size(); i++) {
-            bodies.add(new Body(ids.get(i), TERRAIN.getOrDefault(blocks.get(i), -1L), poses.get(i)));
+            bodies.add(new Body(ids.get(i), TERRAIN.getOrDefault(blocks.get(i), -1L), frame.relative(poses.get(i))));
         }
         bodies.sort(Comparator.comparing(Body::id));
-        SCENES.put(snapshot, new Scene(TERRAIN.getOrDefault(terrain, -1L), List.copyOf(bodies)));
+        SCENES.put(snapshot, new Scene(TERRAIN.getOrDefault(terrain, -1L), List.copyOf(bodies), frame.structure(),
+                frame.world() ? null : frame.relative(null)));
     }
 
     public static synchronized void copySnapshot(Object from, Object to) {
@@ -77,6 +93,7 @@ public final class AcousticUpdateGate {
         if (scene != null) SCENES.put(to, scene);
     }
 
+    /** @param source and {@code listener} in the snapshot's frame ({@link ReflectionGeometry#frame()}) */
     public static synchronized boolean shouldSimulate(Object owner, Object snapshot, Vec3 source,
             Vec3 listener, boolean reflections) {
         Scene scene = SCENES.get(snapshot);
@@ -95,15 +112,19 @@ public final class AcousticUpdateGate {
 
     private static boolean sameScene(Scene a, Scene b) {
         if (!sameContent(a, b)) return false;
+        if (a.terrainPose != null && !samePose(a.terrainPose, b.terrainPose)) return false;
         for (int i = 0; i < a.bodies.size(); i++) {
             if (!samePose(a.bodies.get(i).pose, b.bodies.get(i).pose)) return false;
         }
         return true;
     }
 
-    /** Same terrain and the same structures with the same blocks, wherever they are now. */
+    /**
+     * Same terrain and the same structures with the same blocks, wherever they are now, in the same
+     * frame: a scene in another frame is simulated anew.
+     */
     private static boolean sameContent(Scene a, Scene b) {
-        if (a.terrain != b.terrain || a.bodies.size() != b.bodies.size()) return false;
+        if (a.terrain != b.terrain || a.bodies.size() != b.bodies.size() || !Objects.equals(a.frame, b.frame)) return false;
         for (int i = 0; i < a.bodies.size(); i++) {
             Body left = a.bodies.get(i), right = b.bodies.get(i);
             if (!left.id.equals(right.id) || left.geometry != right.geometry) return false;

@@ -1,5 +1,7 @@
 package dimblend.radio.client;
 
+import dev.ryanhcode.sable.companion.math.Pose3d;
+import dimblend.radio.acoustics.AcousticFrame;
 import dimblend.radio.acoustics.AcousticMesh;
 import dimblend.radio.acoustics.ReflectionGeometry;
 import dimblend.radio.acoustics.SteamAudio;
@@ -8,6 +10,7 @@ import dimblend.radio.acoustics.SteamSimulation;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -16,11 +19,39 @@ import javax.sound.sampled.AudioFormat;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Quaterniond;
+import org.joml.Vector3d;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class RadioSimulationSessionTest {
+    /**
+     * The view and the scene may take a moving train's pose a frame apart: by the view's own pose
+     * the rider and the radio on board keep their coordinates in the train's frame.
+     */
+    @Test void aRidersViewIsInTheScenesFrameByItsOwnPose() {
+        UUID train = UUID.randomUUID();
+        Pose3d now = new Pose3d(new Vector3d(100, 70, 100), new Quaterniond().rotateY(0.3),
+                new Vector3d(20_480_008, 64, 20_480_008), new Vector3d(1));
+        Pose3d earlier = new Pose3d(now);
+        earlier.position().add(-0.8, 0, 0);
+        Vec3 seat = new Vec3(20_480_010, 65, 20_480_008), radio = seat.add(3, 0, 0);
+        var riding = AcousticFrame.of(train, now);
+        var view = new RadioSimulationSession.View(riding.toWorld(radio), riding.toWorld(seat), new Vec3(0, 0, -1),
+                new Vec3(0, 1, 0), true, true, riding);
+        Vec3[] at = view.in(AcousticFrame.of(train, earlier));
+        assertTrue(at[0].distanceTo(radio) < 1e-6 && at[1].distanceTo(seat) < 1e-6, at[0] + " " + at[1]);
+        Vec3[] world = view.in(AcousticFrame.WORLD);
+        assertEquals(view.source(), world[0]);
+        assertEquals(view.listener(), world[1]);
+        var ground = new RadioSimulationSession.View(new Vec3(1, 2, 3), new Vec3(4, 5, 6), new Vec3(0, 0, -1),
+                new Vec3(0, 1, 0), true, true, AcousticFrame.WORLD);
+        var scene = AcousticFrame.of(train, earlier);
+        assertTrue(ground.in(scene)[1].distanceTo(scene.toLocal(new Vec3(4, 5, 6))) < 1e-9,
+                "a view from another frame is placed by the scene's pose");
+    }
+
     @Test void gpuFailureWaitsForAudioAndWithdrawsAllNativeState() throws Exception {
         assumeTrue(Boolean.getBoolean("dimblend.radio.testAudio"));
         var session = new RadioSimulationSession(new AudioFormat(44100, 16, 1, true, false));

@@ -215,6 +215,18 @@ public final class SteamRenderer implements AutoCloseable {
      */
     public Prepared prepareAveraged(float[] samples, SteamAudio.DirectParams directParams,
             SteamAudio.ReflectionParams[] impulses, Vec3 relativeSource, boolean tail, PathingField pathField) {
+        return prepareAveraged(samples, directParams, impulses, relativeSource, tail, pathField, null);
+    }
+
+    /**
+     * As {@link #prepareAveraged(float[], SteamAudio.DirectParams, SteamAudio.ReflectionParams[], Vec3, boolean, PathingField)}
+     * for responses simulated in another frame than the world's.
+     *
+     * @param turn turns the responses' Ambisonics into world axes (where their frame is now), or null when they are in them
+     */
+    public Prepared prepareAveraged(float[] samples, SteamAudio.DirectParams directParams,
+            SteamAudio.ReflectionParams[] impulses, Vec3 relativeSource, boolean tail, PathingField pathField,
+            AmbisonicRotation turn) {
         if (samples.length != FRAME) throw new IllegalArgumentException("Expected one native audio frame");
         if (impulses.length != reflections.length) throw new IllegalArgumentException("Expected one response per echo slot");
         Prepared block = new Prepared(resetSpatial);
@@ -255,6 +267,7 @@ public final class SteamRenderer implements AutoCloseable {
                     for (int i = 0; i < FRAME; i++) channel[i] += weight * slotScratch[i];
                 }
             }
+            if (turn != null) turn.apply(block.wet, FRAME);
         }
         // Non-finite wet (a NaN/Inf IR, whatever its source) must never reach the mix: it would
         // poison the limiter and silence the dry path too. Suppress and reset the effects.

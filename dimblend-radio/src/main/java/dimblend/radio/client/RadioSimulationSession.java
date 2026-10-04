@@ -1,10 +1,13 @@
 package dimblend.radio.client;
 
+import dev.ryanhcode.sable.companion.math.Pose3dc;
 import dimblend.radio.DimBlendRadio;
+import dimblend.radio.acoustics.AcousticFrame;
 import dimblend.radio.acoustics.AcousticPathing;
 import dimblend.radio.acoustics.AcousticSnapshot;
 import dimblend.radio.acoustics.AcousticTuningProperty;
 import dimblend.radio.acoustics.AcousticUpdateGate;
+import dimblend.radio.acoustics.AmbisonicRotation;
 import dimblend.radio.acoustics.PathingField;
 import dimblend.radio.acoustics.PhononNotReadyException;
 import dimblend.radio.acoustics.SteamAudio;
@@ -15,6 +18,7 @@ import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -22,6 +26,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import javax.sound.sampled.AudioFormat;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -46,8 +51,18 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     /**
      * @param audible the radio is heard at all (in range, game not paused)
      * @param simulated Steam Audio renders it; other audible radios are stereo-panned
+     * @param frame the frame of the structure the listener rides, where it is this frame; else the world's
      */
-    record View(Vec3 source, Vec3 listener, Vec3 ahead, Vec3 up, boolean audible, boolean simulated) { }
+    record View(Vec3 source, Vec3 listener, Vec3 ahead, Vec3 up, boolean audible, boolean simulated, AcousticFrame frame) {
+        /**
+         * The radio and the listener in {@code scene}'s frame: by this view's own pose of it when it
+         * has one, taken the same frame as the positions, so riders do not jitter by a frame of motion.
+         */
+        Vec3[] in(AcousticFrame scene) {
+            AcousticFrame by = frame.sameAxes(scene) ? frame : scene;
+            return new Vec3[] {by.toLocal(source), by.toLocal(listener)};
+        }
+    }
     /** How an audio block is produced. */
     private enum Path { SILENT, PANNED, RENDERED }
     /** @param tail no input arrived for this block (the stream ended): the delay line and reverb drain */
@@ -88,10 +103,13 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
      * simulated), or null while there are none. Replaced, never changed in place.
      */
     private volatile SteamAudio.SimulationOutputs[] echoOutputs;
+    /** The frame {@link #echoOutputs} were simulated in: their Ambisonics are in its axes. */
+    private volatile AcousticFrame echoFrame = AcousticFrame.WORLD;
     private volatile long directRevision = -1, reflectionRevision = -1;
     /** When the direct outputs and the IR were last published, and how many IRs were; for recordings. */
     private volatile long directPublishedAt, reflectionPublishedAt, reflectionsPublished;
-    private volatile View view = new View(Vec3.ZERO, Vec3.ZERO, new Vec3(0, 0, -1), new Vec3(0, 1, 0), false, false);
+    private volatile View view = new View(Vec3.ZERO, Vec3.ZERO, new Vec3(0, 0, -1), new Vec3(0, 1, 0), false, false,
+            AcousticFrame.WORLD);
     /** The radio's baked pathing as last handed over (client thread), or null. */
     private volatile AcousticBakeScheduler.Pathing pathing;
     /** A pathing run is owed (new bake, or skipped by the cadence) and may run from this time on. */
@@ -260,16 +278,25 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         return closed || failed || !current.simulated || reflections == null ? null : current;
     }
 
-    /** Reflection worker: a shared run's outputs for this radio's source of echo slot {@code slot}. */
-    void publishReflections(int slot, SteamAudio.SimulationOutputs outputs, long revision, long started) {
+    /**
+     * Reflection worker: a shared run's outputs for this radio's source of echo slot {@code slot},
+     * simulated in {@code frame}. Slots of another frame are dropped, as their directions would not
+     * agree with these in the average; the runs then refill every slot.
+     */
+    void publishReflections(int slot, SteamAudio.SimulationOutputs outputs, long revision, long started, AcousticFrame frame) {
         long count;
         synchronized (this) {
             if (closed || failed || renderer == null) return;
             SteamAudio.SimulationOutputs[] current = echoOutputs;
+            if (current != null && !echoFrame.sameAxes(frame)) {
+                current = null;
+                record("ir_frame", () -> "reflections now simulated in the " + frame + " frame");
+            }
             SteamAudio.SimulationOutputs[] next = current == null
                     ? new SteamAudio.SimulationOutputs[renderer.echoSlots()] : current.clone();
             next[slot] = outputs;
             echoOutputs = next;
+            echoFrame = frame;
             reflectionRevision = revision;
             reflectionPublishedAt = System.nanoTime();
             count = ++reflectionsPublished;
@@ -322,8 +349,13 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     }
 
     public void setView(Vec3 source, Vec3 listener, Vec3 ahead, Vec3 up, boolean audible, boolean simulated) {
+        setView(source, listener, ahead, up, audible, simulated, AcousticFrame.WORLD);
+    }
+
+    /** @param frame the frame of the structure the listener rides, as of this frame ({@link View#frame}) */
+    public void setView(Vec3 source, Vec3 listener, Vec3 ahead, Vec3 up, boolean audible, boolean simulated, AcousticFrame frame) {
         if (closed) return;
-        view = new View(source, listener, ahead, up, audible, audible && simulated);
+        view = new View(source, listener, ahead, up, audible, audible && simulated, frame);
         // Native state is created once a radio is first simulated, never for panned-only radios.
         // A join refused while phonon.dll downloads rearms below, throttled per radio.
         if (audible && simulated && System.nanoTime() >= joinRetryAfter && initialized.compareAndSet(false, true)) {
@@ -377,9 +409,14 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
      * region: its routes are re-traced (and dropped where blocked) at a slower cadence.
      */
     public void setPathing(PathingBake bake, boolean stale) {
-        var next = bake == null ? null : new AcousticBakeScheduler.Pathing(bake, stale);
+        setPathing(bake == null ? null : new AcousticBakeScheduler.Pathing(bake, stale, null));
+    }
+
+    /** Client thread: as {@link #setPathing(PathingBake, boolean)}, for a bake in a structure's frame too. */
+    public void setPathing(AcousticBakeScheduler.Pathing next) {
         var current = pathing;
-        if (current == null ? next == null : next != null && current.bake() == next.bake() && current.stale() == next.stale()) return;
+        if (current == null ? next == null : next != null && current.bake() == next.bake() && current.stale() == next.stale()
+                && Objects.equals(current.structure(), next.structure())) return;
         pathing = next;
         pathingDueAt = System.nanoTime();
         pathingOwed = true;
@@ -389,6 +426,11 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
      * Direct worker, after a direct run: swaps in a changed bake, then runs pathing at most every
      * {@link #PATHING_INTERVAL} ({@link #STALE_PATHING_INTERVAL} while validating) and publishes
      * the shaped path. A run skipped by the cadence is owed and comes with the next direct job.
+     * <p>
+     * A bake of a structure's radio is in the structure's frame: the listener is looked up there,
+     * its rays are traced through the whole scene where the structure is now, and the path's
+     * direction is turned back into world axes. Its routes are always validated, as are a world
+     * bake's while a structure reaches into its region: neither bake saw what moves past.
      */
     private void updatePathing(AcousticSnapshot scene, View latest, float occlusion) {
         var wanted = pathing;
@@ -403,8 +445,21 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
             pathingOwed = false;
             return;
         }
+        AcousticFrame frame = AcousticFrame.WORLD;
+        if (wanted.structure() != null) {
+            Pose3dc pose = scene.structurePose(wanted.structure());
+            if (pose == null) {
+                // The structure left the scene: nothing to place its routes by.
+                pathingField = null;
+                pathingOwed = false;
+                return;
+            }
+            frame = AcousticFrame.of(wanted.structure(), pose);
+        }
+        boolean validate = wanted.stale() || !frame.world()
+                || scene.structuresIntersect(new AABB(bake.radio()).inflate(AcousticPathing.REGION_RADIUS));
         long now = System.nanoTime();
-        long interval = wanted.stale() ? STALE_PATHING_INTERVAL : PATHING_INTERVAL;
+        long interval = validate ? STALE_PATHING_INTERVAL : PATHING_INTERVAL;
         if (now - lastPathing < interval) {
             pathingDueAt = lastPathing + interval;
             pathingOwed = true;
@@ -412,9 +467,15 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         }
         lastPathing = now;
         pathingOwed = false;
-        var raw = directEngine.runPathing(scene::cast, bake.origin(), latest.listener, latest.source, wanted.stale());
-        float coverage = AcousticPathing.coverage(latest.listener.distanceTo(Vec3.atCenterOf(bake.radio())));
-        PathingField field = AcousticPathing.shape(raw.eq(), raw.sh(), occlusion, coverage, RadioSimulationSession::distanceGain);
+        AcousticFrame traced = frame;
+        // On board, the radio's own centre: the view's may be a frame of motion off the scene's pose.
+        Vec3 source = frame.world() ? latest.source : Vec3.atCenterOf(bake.radio());
+        Vec3 listener = frame.toLocal(latest.listener);
+        var raw = directEngine.runPathing((from, to) -> scene.castInFrame(traced, from, to), bake.origin(), listener, source,
+                validate);
+        float coverage = AcousticPathing.coverage(listener.distanceTo(Vec3.atCenterOf(bake.radio())));
+        float[] sh = frame.world() ? raw.sh() : AmbisonicRotation.of(frame.orientation()).apply(raw.sh());
+        PathingField field = AcousticPathing.shape(raw.eq(), sh, occlusion, coverage, RadioSimulationSession::distanceGain);
         if (!closed && !failed) pathingField = field;
     }
 
@@ -593,7 +654,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         SteamRenderer.Prepared rendered = null;
         float[] panned = null;
         preparedStaging = null;
-        if (previous == Path.RENDERED || next == Path.RENDERED) rendered = prepare(input, relative, tail, recording);
+        if (previous == Path.RENDERED || next == Path.RENDERED) rendered = prepare(input, captured, relative, tail, recording);
         if (previous == Path.PANNED || next == Path.PANNED) {
             panned = input;
             if (!usable || pannedRaw && previous == Path.PANNED) pannedRaw = true;
@@ -658,10 +719,11 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     }
 
     /** @param recording keep what the block is prepared with in {@link #preparedStaging} */
-    private SteamRenderer.Prepared prepare(float[] input, Vec3 relative, boolean tail, boolean recording) {
+    private SteamRenderer.Prepared prepare(float[] input, View captured, Vec3 relative, boolean tail, boolean recording) {
         long started = recording ? System.nanoTime() : 0;
         var directOut = directOutputs;
         SteamAudio.SimulationOutputs[] echoes = echoOutputs;
+        AmbisonicRotation turn = echoRotation(captured);
         var direct = directOut == null ? null : directOut.direct;
         var impulses = new SteamAudio.ReflectionParams[renderer.echoSlots()];
         if (echoes != null) {
@@ -675,7 +737,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         // Distance follows the current pose, not a completed ray job.
         direct.distance = distanceGain(relative.length());
         try {
-            SteamRenderer.Prepared prepared = renderer.prepareAveraged(input, direct, impulses, relative, tail, path);
+            SteamRenderer.Prepared prepared = renderer.prepareAveraged(input, direct, impulses, relative, tail, path, turn);
             if (recording) {
                 long now = System.nanoTime();
                 preparedStaging = new AcousticRecording.Staging(prepared.delaySamples(), prepared.directGain(),
@@ -689,6 +751,17 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
             Reference.reachabilityFence(directOut);
             Reference.reachabilityFence(echoes);
         }
+    }
+
+    /**
+     * Turns reflections simulated in a structure's frame into world axes by where the structure is
+     * now: the view's pose of it, or the run's once the listener has left it. Null in the world's.
+     * Caller holds this monitor, under which the outputs and their frame are published.
+     */
+    private AmbisonicRotation echoRotation(View captured) {
+        AcousticFrame frame = echoFrame;
+        if (frame.world() || echoOutputs == null) return null;
+        return AmbisonicRotation.of((captured.frame.sameAxes(frame) ? captured.frame : frame).orientation());
     }
 
     private static SteamAudio.Space orientation(View view) {

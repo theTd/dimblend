@@ -1,6 +1,7 @@
 package dimblend.radio.client;
 
 import dev.ryanhcode.sable.companion.SableCompanion;
+import dev.ryanhcode.sable.companion.SubLevelAccess;
 import dimblend.radio.DimBlendRadio;
 import dimblend.radio.acoustics.AcousticMesh;
 import dimblend.radio.acoustics.AcousticPathing;
@@ -21,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -44,6 +46,11 @@ import net.minecraft.world.phys.Vec3;
  * clears the doubt (a reloaded chunk, a door opened and closed again) or calls for a rebake after
  * {@link #STABLE_NANOS}. Captures happen here; placement, meshing, the bake and file access run on
  * one worker thread, whose results come back through {@link #tick}.
+ * <p>
+ * A radio on a structure is baked in the structure's own frame, from the structure's blocks alone
+ * (its plot around the radio; everything else there is open air): the routes round its walls and
+ * through its doors move with it. What it passes is left to the session, which validates such a
+ * bake's routes against the live scene.
  */
 public final class AcousticBakeScheduler {
     /**
@@ -71,8 +78,12 @@ public final class AcousticBakeScheduler {
             AcousticPathing.VISIBILITY_THRESHOLD, AcousticPathing.VISIBILITY_RANGE, AcousticPathing.REGION_RADIUS,
             MAX_PROBES, RadioAcousticController.AUDIBLE_RANGE, 1);
 
-    /** What a radio's session should use. */
-    public record Pathing(PathingBake bake, boolean stale) { }
+    /**
+     * What a radio's session should use.
+     *
+     * @param structure the structure whose frame the bake is in (the radio is on board), or null for the world's
+     */
+    public record Pathing(PathingBake bake, boolean stale, UUID structure) { }
 
     /** Where a radio's bake stands, for the bake view. */
     public enum BakeState {
@@ -106,14 +117,19 @@ public final class AcousticBakeScheduler {
      * @param bakeThreads threads of the running or last bake
      * @param lastBakeSeconds how long the last bake took here; 0 for a bake read from disk
      * @param deferredProbes probes of a placement too large for the allowance it was tried with
+     * @param structure the structure the radio is on, whose frame its region and bake are in; null for the world's
+     * @param center the radio's centre in the world now
      */
     public record Inspection(BlockPos radio, AABB region, BakeState state, PathingBake bake, long[] changedSections,
             boolean regionLoaded, boolean verified, boolean needsBake, double stableIn, double retryIn, double bakingFor,
-            int bakeThreads, double lastBakeSeconds, int deferredProbes, int failures) { }
+            int bakeThreads, double lastBakeSeconds, int deferredProbes, int failures, SubLevelAccess structure, Vec3 center) { }
 
     private static final class RadioBake {
         final BlockPos radio;
+        /** In the frame of {@link #structure}, when there is one. */
         final AABB region;
+        /** The structure the radio is on, as of the last sample; null on the ground. */
+        SubLevelAccess structure;
         AcousticRegionSignature signature;
         long changedAt;
         PathingBake bake;
@@ -196,7 +212,8 @@ public final class AcousticBakeScheduler {
     /** The bake a radio's session should use now, or null. */
     public static Pathing pathing(BlockPos radio) {
         RadioBake state = RADIOS.get(radio);
-        return state == null || state.bake == null ? null : new Pathing(state.bake, state.stale);
+        return state == null || state.bake == null ? null
+                : new Pathing(state.bake, state.stale, state.structure == null ? null : state.structure.getUniqueId());
     }
 
     /** Client thread: while the bake view is open, edits show up within a second instead of once the region settles. */
@@ -211,9 +228,10 @@ public final class AcousticBakeScheduler {
             inspections.add(new Inspection(state.radio, state.region, state.state(), state.bake, state.changedSections,
                     state.signature != null && state.signature.loaded(), state.verified, state.needsBake, stableIn,
                     Math.max(0, state.retryAt - now) / 1e9, running ? (now - state.bakeStartedAt) / 1e9 : 0,
-                    state.bakeThreads, state.lastBakeNanos / 1e9, state.deferredProbes, state.failures));
+                    state.bakeThreads, state.lastBakeNanos / 1e9, state.deferredProbes, state.failures, state.structure,
+                    center(state)));
         }
-        inspections.sort(Comparator.comparingDouble(inspection -> Vec3.atCenterOf(inspection.radio()).distanceToSqr(listener)));
+        inspections.sort(Comparator.comparingDouble(inspection -> inspection.center().distanceToSqr(listener)));
         return inspections;
     }
 
@@ -241,9 +259,11 @@ public final class AcousticBakeScheduler {
         RADIOS.values().removeIf(state -> !state.busy && !radios.contains(state.radio));
         List<RadioBake> candidates = new ArrayList<>();
         for (BlockPos radio : radios) {
-            // Structures move: their radios keep the live direct path only.
-            if (SableCompanion.INSTANCE.getContaining(level, radio.getX() >> 4, radio.getZ() >> 4) != null) continue;
+            SubLevelAccess structure = SableCompanion.INSTANCE.getContaining(level, radio);
+            // In the plot grid with no structure here (yet): nothing to bake it against.
+            if (structure == null && SableCompanion.INSTANCE.isInPlotGrid(level, radio)) continue;
             RadioBake state = RADIOS.computeIfAbsent(radio.immutable(), RadioBake::new);
+            state.structure = structure;
             observe(state, now);
             if (state.needsBake && !state.busy && now >= state.retryAt && now - state.changedAt >= STABLE_NANOS
                     && state.signature.loaded()) {
@@ -251,12 +271,23 @@ public final class AcousticBakeScheduler {
             }
         }
         if (baking || !allowance.open() || candidates.isEmpty()) return;
-        candidates.sort(Comparator.comparingDouble(state -> Vec3.atCenterOf(state.radio).distanceToSqr(listener)));
+        candidates.sort(Comparator.comparingDouble(state -> center(state).distanceToSqr(listener)));
         for (RadioBake state : candidates) {
             if (state.deferredProbes > 0 && estimate(state.deferredProbes, allowance.threads()) > allowance.seconds()) continue;
             startBake(state, allowance, now);
             return;
         }
+    }
+
+    /** The radio's centre in the world now. */
+    private static Vec3 center(RadioBake state) {
+        return state.structure == null ? Vec3.atCenterOf(state.radio) : state.structure.logicalPose().transformPosition(Vec3.atCenterOf(state.radio));
+    }
+
+    /** The radio's region frozen for comparing and baking: the terrain's, or its structure's alone in its frame. */
+    private static AcousticSnapshot capture(RadioBake state) {
+        return state.structure == null ? AcousticSnapshot.captureTerrain(level, state.region, state.radio)
+                : AcousticSnapshot.captureStructure(level, state.region, state.radio, state.structure);
     }
 
     /** Estimated bake seconds for this many probes on this many threads. */
@@ -266,7 +297,7 @@ public final class AcousticBakeScheduler {
     }
 
     private static void observe(RadioBake state, long now) {
-        var signature = AcousticRegionSignature.of(level, state.region);
+        var signature = AcousticRegionSignature.of(level, state.region, state.structure);
         if (!signature.equals(state.signature)) {
             state.signature = signature;
             state.changedAt = now;
@@ -296,7 +327,7 @@ public final class AcousticBakeScheduler {
      * {@code verify}, a complete capture also settles whether the bake is still valid.
      */
     private static void compare(RadioBake state, boolean verify) {
-        var capture = AcousticSnapshot.captureTerrain(level, state.region, state.radio);
+        var capture = capture(state);
         long[] keys = capture.sectionKeys(state.region);
         long[] sections = capture.terrainSections(keys);
         state.changedSections = changedSections(state.bake, keys, sections);
@@ -360,7 +391,7 @@ public final class AcousticBakeScheduler {
     }
 
     private static void startBake(RadioBake state, AcousticIdleGate.Allowance allowance, long now) {
-        var capture = AcousticSnapshot.captureTerrain(level, state.region, state.radio);
+        var capture = capture(state);
         long[] keys = capture.sectionKeys(state.region);
         long[] sections = capture.terrainSections(keys);
         if (!complete(sections)) {

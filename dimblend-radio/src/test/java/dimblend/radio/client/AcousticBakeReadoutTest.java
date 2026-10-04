@@ -25,7 +25,7 @@ class AcousticBakeReadoutTest {
     private static Inspection radio(BakeState state, PathingBake bake, long[] changed, boolean loaded, boolean needsBake,
             double stableIn, double retryIn, int deferred) {
         return new Inspection(RADIO, new AABB(RADIO), state, bake, changed, loaded, true, needsBake, stableIn, retryIn, 0, 1, 0,
-                deferred, 0);
+                deferred, 0, null, Vec3.atCenterOf(RADIO));
     }
 
     private static Inspection waiting(boolean loaded, double stableIn, double retryIn, int deferred) {

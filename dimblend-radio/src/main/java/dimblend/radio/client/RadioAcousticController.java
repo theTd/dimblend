@@ -1,8 +1,11 @@
 package dimblend.radio.client;
 
+import dev.ryanhcode.sable.companion.SableCompanion;
+import dev.ryanhcode.sable.companion.SubLevelAccess;
 import dimblend.radio.DimBlendRadio;
 import dimblend.radio.SubLevelProjection;
 import dimblend.radio.acoustics.AcousticAvailability;
+import dimblend.radio.acoustics.AcousticFrame;
 import dimblend.radio.acoustics.AcousticSnapshot;
 import dimblend.radio.acoustics.AcousticSceneChanges;
 import dimblend.radio.acoustics.PathingField;
@@ -110,8 +113,7 @@ public final class RadioAcousticController {
         for (RadioInstance radio : distances.keySet()) radios.add(radio.pos());
         AcousticBakeScheduler.tick(mc, radios, listener, System.nanoTime());
         for (var entry : SESSIONS.entrySet()) {
-            var pathing = AcousticBakeScheduler.pathing(entry.getKey().pos());
-            entry.getValue().session.setPathing(pathing == null ? null : pathing.bake(), pathing != null && pathing.stale());
+            entry.getValue().session.setPathing(AcousticBakeScheduler.pathing(entry.getKey().pos()));
         }
     }
 
@@ -127,19 +129,23 @@ public final class RadioAcousticController {
      * Per-frame view refresh: the tick loop owns selection, but head-turn and movement must reach
      * the audio pipeline at frame rate, not at 20 Hz. Every bound radio in range stays audible;
      * the selected ones are simulated against one snapshot covering all their mesh regions.
+     *
+     * @param partialTick the camera's own ({@code Camera#getPartialTickTime}): radios and structures
+     *        are placed where this frame draws them, as the listener is, not a tick ahead of it
      */
-    public static void frameRefresh(Minecraft mc, ListenerTransform listener) {
+    public static void frameRefresh(Minecraft mc, ListenerTransform listener, float partialTick) {
         if (mc.level == null || mc.isPaused()) return;
         long now = System.nanoTime();
         Vec3 position = listener.position();
+        AcousticFrame riding = ridingFrame(mc, partialTick);
         List<RadioInstance> simulated = new ArrayList<>();
         AABB required = null;
         for (var entry : SESSIONS.entrySet()) {
             RadioInstance radio = entry.getKey();
             Entry state = entry.getValue();
-            var source = SubLevelProjection.worldCenter(mc.level, radio.pos());
+            var source = SubLevelProjection.frameCenter(mc.level, radio.pos(), partialTick);
             boolean inRange = position.distanceToSqr(source) < AUDIBLE_RANGE * AUDIBLE_RANGE;
-            state.session.setView(source, position, listener.forward(), listener.up(), inRange, state.selected && inRange);
+            state.session.setView(source, position, listener.forward(), listener.up(), inRange, state.selected && inRange, riding);
             if (state.selected && inRange && state.session.active()) {
                 simulated.add(radio);
                 AABB region = ReflectionMeshCache.region(position, source);
@@ -160,7 +166,7 @@ public final class RadioAcousticController {
             // A mesh arriving during capture must still wake the following frame.
             capturedRevision = revision;
         }
-        AcousticSnapshot poses = snapshot.currentPoses();
+        AcousticSnapshot poses = snapshot.currentPoses(partialTick);
         List<RadioSimulationSession> sessions = new ArrayList<>(simulated.size());
         List<BlockPos> emitters = new ArrayList<>(simulated.size());
         for (RadioInstance radio : simulated) {
@@ -170,7 +176,19 @@ public final class RadioAcousticController {
             emitters.add(radio.pos());
         }
         // One reflection scene for all of them: each radio's block is open in it, as in its own direct view.
-        SharedReflectionSimulator.simulate(sessions, poses.forEmitters(emitters), poses.revision(), now);
+        // While the listener rides a structure it is simulated in the structure's frame.
+        SharedReflectionSimulator.simulate(sessions, poses.forEmitters(emitters).inFrameOf(riding.structure()), poses.revision(), now);
+    }
+
+    /**
+     * The frame of the structure the camera entity stands on or rides in, where this frame draws it
+     * (as Sable places the camera); the world's when it is on none.
+     */
+    private static AcousticFrame ridingFrame(Minecraft mc, float partialTick) {
+        var camera = mc.getCameraEntity();
+        SubLevelAccess structure = camera == null ? null : SableCompanion.INSTANCE.getTrackingOrVehicleSubLevel(camera);
+        return structure == null ? AcousticFrame.WORLD
+                : AcousticFrame.of(structure.getUniqueId(), SubLevelProjection.framePose(structure, partialTick));
     }
 
     private static void updateView(Minecraft mc, RadioInstance radio, RadioSimulationSession session, boolean simulated) {
