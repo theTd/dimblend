@@ -48,17 +48,31 @@ public final class RadioAcousticController {
         return SESSIONS.containsKey(radio) ? AUDIBLE_RANGE : RadioInjector.RANGE_BLOCKS;
     }
 
-    /** Radios that cannot be simulated here are left unbound and play as vanilla positional sound. */
-    public static void bind(Minecraft mc, RadioInstance instance, RadioPcmFeed.Handle feed) {
+    /**
+     * Radios that cannot be simulated here are left unbound and play as vanilla positional sound.
+     *
+     * @param volume the radio's volume setting, 1 at 100 % (see {@link #setVolume})
+     */
+    public static void bind(Minecraft mc, RadioInstance instance, RadioPcmFeed.Handle feed, float volume) {
         AcousticDownloadNotice.ensureRegistered();
         if (!AcousticAvailability.possible()) return;
         var session = new RadioSimulationSession(feed.format(), "radio at " + instance.pos().toShortString());
+        session.setVolume(volume);
         feed.setProcessor(session);
         SESSIONS.put(instance, new Entry(session));
         session.record("bound", session::label);
         // Panned until the next tick decides whether it is among the simulated radios.
         updateView(mc, instance, session, false);
         DimBlendRadio.LOGGER.info("[radio] Steam Audio simulation bound to {}", instance.pos());
+    }
+
+    /**
+     * A bound radio's volume setting changed. The channel gain makes it quieter as a whole; the
+     * session also lets its echo fall faster when it is turned down below 100 %.
+     */
+    public static void setVolume(RadioInstance instance, float volume) {
+        Entry entry = SESSIONS.get(instance);
+        if (entry != null) entry.session.setVolume(volume);
     }
 
     public static void reset() {

@@ -46,6 +46,9 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     static final int LOOKAHEAD_BLOCKS = 2;
     private static final AcousticTuningProperty WET_GAIN =
             new AcousticTuningProperty("dimblend.radio.acoustic.wetgain", 3, Float.MAX_VALUE);
+    /** The exponent of a turned-down radio's echo ({@link #wetScale}); 0 keeps the echo's share at any volume. */
+    private static final AcousticTuningProperty QUIET_ECHO =
+            new AcousticTuningProperty("dimblend.radio.acoustic.quietecho", 1, 4);
     /** Pathing cadence (1 to 3.5 ms a run); slower while a stale bake's routes are re-traced. */
     private static final long PATHING_INTERVAL = 50_000_000L, STALE_PATHING_INTERVAL = 200_000_000L;
     /**
@@ -110,6 +113,8 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     private volatile long directPublishedAt, reflectionPublishedAt, reflectionsPublished;
     private volatile View view = new View(Vec3.ZERO, Vec3.ZERO, new Vec3(0, 0, -1), new Vec3(0, 1, 0), false, false,
             AcousticFrame.WORLD);
+    /** The radio's volume setting as last handed over (client thread), 1 at 100 %. */
+    private volatile float volume = 1;
     /** The radio's baked pathing as last handed over (client thread), or null. */
     private volatile AcousticBakeScheduler.Pathing pathing;
     /** A pathing run is owed (new bake, or skipped by the cadence) and may run from this time on. */
@@ -485,13 +490,33 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
     }
 
     /**
-     * Wet level is distance-independent inside rooms (diffuse field), which the simulated IR
-     * already captures — so the wet field only gets a constant base gain (live-tunable via
-     * -Ddimblend.radio.acoustic.wetgain) times a far taper, so orphaned reverb does not outlive
-     * the dry sound past the audible edge. The renderer's limiter handles hot room sums.
+     * The echo's gain. The simulated response is on a physical scale and nearly
+     * distance-independent inside a room (diffuse field); the direct sound is not physical: it stays
+     * near full level close to the radio ({@link #distanceGain} loses under 4 % within 3 blocks),
+     * where a real one halves per doubling of the distance. So the echo gets its base gain
+     * (-Ddimblend.radio.acoustic.wetgain) only from that many blocks out; closer, it scales with
+     * the distance (no less than 1 block), keeping a real room's balance: the echo's share of what
+     * is heard falls 6 dB per halving of the distance, and close to the radio its direct sound stands
+     * out even in a bare stone room.
+     * <p>
+     * A turned-down radio ({@code volume} below 1) also loses its echo faster than its direct sound,
+     * by {@code volume^}(-Ddimblend.radio.acoustic.quietecho, default 1) on top of the volume itself:
+     * a quiet radio's tail sinks under a real room's noise sooner, so it sounds drier and nearer.
+     * Above 100 % the echo keeps its share. A far taper keeps orphaned reverb from outliving the dry
+     * sound past the audible edge. The renderer's limiter handles hot room sums.
+     *
+     * @param volume the radio's volume setting, 1 at 100 %
      */
-    static float wetScale(double distance) {
-        return (float) Math.min(1, Math.max(0, (RadioAcousticController.AUDIBLE_RANGE - distance) / 32)) * WET_GAIN.value();
+    static float wetScale(double distance, float volume) {
+        float far = (float) Math.min(1, Math.max(0, (RadioAcousticController.AUDIBLE_RANGE - distance) / 32));
+        float near = (float) Math.min(WET_GAIN.value(), Math.max(1, distance));
+        float quiet = (float) Math.pow(Math.min(1, Math.max(0, volume)), QUIET_ECHO.value());
+        return far * near * quiet;
+    }
+
+    /** Client thread: the radio's volume setting, 1 at 100 % ({@link #wetScale}). */
+    public void setVolume(float volume) {
+        this.volume = volume;
     }
 
     @Override public AudioFormat format() { return format; }
@@ -675,7 +700,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         long started = track == null ? 0 : System.nanoTime();
         View now = view;
         Vec3 relative = now.source.subtract(now.listener);
-        float wetScale = wetScale(relative.length());
+        float wetScale = wetScale(relative.length(), volume);
         SteamRenderer.Stems stems = track != null && block.rendered != null ? new SteamRenderer.Stems() : null;
         float[][] rendered = null, panned = null;
         if (block.rendered != null) {

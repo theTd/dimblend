@@ -193,11 +193,14 @@ public final class RadioController {
                 it.remove();
                 continue;
             }
-            float gain = PcmHeadroom.channelGain(RadioSignals.volumePercent(state.side()), live.boost());
+            int volume = RadioSignals.volumePercent(state.side());
+            float gain = PcmHeadroom.channelGain(volume, live.boost());
             if (gain != live.gain()) {
                 live.instance().setVolume(gain);
                 entry.setValue(new Live(live.instance(), live.playback(), live.feed(), gain, live.boost()));
             }
+            // Every tick: above the track's headroom the gain stays put while the setting moves.
+            RadioAcousticController.setVolume(live.instance(), volume / 100.0f);
         }
         for (var stateEntry : ClientRadioState.view().entrySet()) {
             var key = stateEntry.getKey();
@@ -348,9 +351,10 @@ public final class RadioController {
                     }
                     double offset = local.position(now);
                     RadioPcmFeed.Handle feed = RadioPcmFeed.register(pcm.format(), pcm.pcm(), offset);
-                    float gain = PcmHeadroom.channelGain(RadioSignals.volumePercent(current.side()), pcm.boost());
+                    int volume = RadioSignals.volumePercent(current.side());
+                    float gain = PcmHeadroom.channelGain(volume, pcm.boost());
                     RadioInstance instance = new RadioInstance(mc.level, key.pos(), feed.id(), gain);
-                    RadioAcousticController.bind(mc, instance, feed);
+                    RadioAcousticController.bind(mc, instance, feed, volume / 100.0f);
                     try {
                         mc.getSoundManager().play(instance);
                     } catch (RuntimeException e) {
