@@ -35,6 +35,19 @@ class TuningOptionTest {
     }
 
     @Test
+    void radioIntensityAcceptsHundredthsUpToDouble() {
+        var option = TuningOption.RADIO_ACOUSTIC_INTENSITY;
+        for (int i = 0; i <= 200; i++) {
+            assertTrue(option.isValid(i / 100.0D));
+        }
+        assertFalse(option.isValid(2.01D));
+        assertFalse(option.isValid(1.005D));
+        assertEquals("1.00", option.format(option.defaultValue()));
+        assertTrue(TuningOption.RADIO_STATIC.isCheckbox());
+        assertEquals(1.0D, TuningOption.RADIO_STATIC.defaultValue());
+    }
+
+    @Test
     void booleanPayloadsCannotSmuggleArbitraryNumericValues() {
         for (var option : TuningOption.values()) {
             assertFalse(option.isValid(Double.NaN));

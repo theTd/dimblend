@@ -8,7 +8,11 @@ public final class TuningSettings {
         if (!Config.isLoaded() || (!option.modId().isEmpty() && !ModList.get().isLoaded(option.modId()))) {
             return false;
         }
-        return option != TuningOption.SOILING_MULTIPLIER || CarwashTuningBridge.isLoaded();
+        return switch (option) {
+            case SOILING_MULTIPLIER -> CarwashTuningBridge.isLoaded();
+            case RADIO_STATIC, RADIO_ACOUSTIC_INTENSITY -> RadioTuningBridge.isLoaded();
+            default -> true;
+        };
     }
 
     public static double get(TuningOption option) {
@@ -19,6 +23,7 @@ public final class TuningSettings {
             case SHAKE_INTERVAL -> Config.TRAIN_SHAKE_INTERVAL_SECONDS.get();
             case SHAKE_FORCE -> Config.TRAIN_SHAKE_FORCE_PN.get();
             case SOILING_MULTIPLIER -> available(option) ? CarwashTuningBridge.get() : option.defaultValue();
+            case RADIO_STATIC, RADIO_ACOUSTIC_INTENSITY -> available(option) ? RadioTuningBridge.get(option) : option.defaultValue();
             case COUPLER_REDSTONE -> Config.COUPLER_REDSTONE.get() ? 0.0D : 1.0D;
             case COUPLER_SURVIVAL -> Config.ALLOW_SURVIVAL_COUPLER_INTERACTION.get() ? 1.0D : 0.0D;
             case LIMITED_WATER -> Config.LIMITED_WATER.get() ? 1.0D : 0.0D;
@@ -35,6 +40,8 @@ public final class TuningSettings {
         }
         if (option == TuningOption.SOILING_MULTIPLIER) {
             CarwashTuningBridge.set(value);
+        } else if (option.radio()) {
+            RadioTuningBridge.set(option, value);
         } else {
             applyExperience(option, value);
             Config.save();
@@ -54,7 +61,21 @@ public final class TuningSettings {
             case STEAM_OVERLOAD -> Config.STEAM_ENGINE_OVERLOAD.set(enabled);
             case DIESEL_OVERLOAD -> Config.DIESEL_ENGINE_OVERLOAD.set(enabled);
             case MOTOR_OVERLOAD -> Config.ELECTRIC_MOTOR_OVERLOAD.set(enabled);
-            case SOILING_MULTIPLIER -> { }
+            case SOILING_MULTIPLIER, RADIO_STATIC, RADIO_ACOUSTIC_INTENSITY -> { }
+        }
+    }
+
+    /**
+     * A remote client's copy of the server's values, in memory only. Radio settings drive each
+     * client's own audio, so they are applied where the server offers them and radio is installed.
+     */
+    public static void applyRemote(TuningOption option, double value, boolean serverAvailable) {
+        if (option.radio()) {
+            if (serverAvailable && ModList.get().isLoaded(option.modId())) {
+                RadioTuningBridge.apply(option, value);
+            }
+        } else if (Config.isLoaded()) {
+            applyExperience(option, value);
         }
     }
 

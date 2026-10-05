@@ -13,7 +13,9 @@ public enum TuningOption {
     PORTABLE_ENGINE_LIMIT("portable_engine_limit", 1.0D, "simulated"),
     STEAM_OVERLOAD("steam_overload", 1.0D, "create"),
     DIESEL_OVERLOAD("diesel_overload", 1.0D, "createdieselgenerators"),
-    MOTOR_OVERLOAD("motor_overload", 1.0D, "createaddition");
+    MOTOR_OVERLOAD("motor_overload", 1.0D, "createaddition"),
+    RADIO_STATIC("radio_static", 1.0D, "dimblend_radio"),
+    RADIO_ACOUSTIC_INTENSITY("radio_acoustic_intensity", 1.0D, 2.0D, 2, "dimblend_radio");
 
     public static final String PREFIX = "screen.dimblend_experience.tuning.";
     private final String id;
@@ -41,6 +43,8 @@ public enum TuningOption {
     public boolean isCheckbox() { return decimals < 0; }
     public double step() { return Math.pow(10.0D, -Math.max(0, decimals)); }
     public double maximum() { return maximum; }
+    /** Settings owned by dimblend_radio, which every client applies to its own audio. */
+    public boolean radio() { return this == RADIO_STATIC || this == RADIO_ACOUSTIC_INTENSITY; }
 
     public boolean isValid(double value) {
         if (!Double.isFinite(value) || value < 0.0D || value > maximum) {

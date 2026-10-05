@@ -107,6 +107,8 @@ configurations {
 dependencies {
     // Optional panel bridge: experience only imports carwash's api package.
     compileOnly project(":dimblend-carwash")
+    // Same for radio: only its api package (reception noise, acoustic intensity).
+    compileOnly project(":dimblend-radio")
     // Cross-mod compat: compile against the exact versions running in the TrainTripWorld
     // instance. Create comes from maven.createmod.net (same 6.0.10 upstream); the addons are
     // the runtime jars copied into ./libs (provenance & restore steps: docs/requirements-spec.md「libs jar 清单」).

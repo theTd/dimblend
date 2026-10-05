@@ -1,7 +1,6 @@
 package dimblend.experience.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import dimblend.experience.Config;
 import dimblend.experience.DimBlend;
 import dimblend.experience.tuning.TuningEditPayload;
 import dimblend.experience.tuning.TuningOption;
@@ -46,10 +45,10 @@ public final class TuningClient {
 
     public static void receive(TuningSnapshotPayload payload) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.getSingleplayerServer() == null && Config.isLoaded()) {
+        if (minecraft.getSingleplayerServer() == null) {
             for (TuningOption option : TuningOption.values()) {
                 if (option.isValid(payload.value(option))) {
-                    TuningSettings.applyExperience(option, payload.value(option));
+                    TuningSettings.applyRemote(option, payload.value(option), payload.available(option));
                 }
             }
         }

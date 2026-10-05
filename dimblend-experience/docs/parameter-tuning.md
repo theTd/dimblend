@@ -24,6 +24,8 @@ Missing optional mods leave their controls disabled.
 | Steam Engine overload penalty | true | Checkbox | experience |
 | Small/Modular/Large Diesel Engine overload penalty | true | Checkbox | experience |
 | Electric Motor overload penalty | true | Checkbox | experience |
+| Radio reception noise | true | Checkbox | radio |
+| Radio acoustic simulation intensity | 1.00 | 0.00-2.00, step 0.01; 0 = no simulated echo | radio |
 
 ## Ownership and Persistence
 
@@ -38,6 +40,12 @@ and `serverconfig/dimblend_carwash-server.toml`. Carwash remains the only source
 of truth for its multiplier. Its next one-second settlement uses the new value:
 `min(1, speed / 12 * multiplier)` above 4 m/s. Rain and other washing continue
 when the multiplier is zero.
+
+Radio follows the same pattern through `dimblend.radio.api.RadioTuning` and its
+own `serverconfig/dimblend_radio-server.toml`. Its settings are heard on each
+client, so remote clients also apply the broadcast radio values in memory
+(NeoForge already sends the config at login). This is why the snapshot
+protocol version is now `2`: the snapshot carries one value per option.
 
 The existing `couplerRedstone` config uses the inverse meaning: true blocks
 redstone effects. The panel displays the positive **allow** meaning. Survival
