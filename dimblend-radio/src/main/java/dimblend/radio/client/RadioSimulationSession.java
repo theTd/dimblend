@@ -2,6 +2,7 @@ package dimblend.radio.client;
 
 import dev.ryanhcode.sable.companion.math.Pose3dc;
 import dimblend.radio.DimBlendRadio;
+import dimblend.radio.RadioLiveSettings;
 import dimblend.radio.acoustics.AcousticFrame;
 import dimblend.radio.acoustics.AcousticPathing;
 import dimblend.radio.acoustics.AcousticSnapshot;
@@ -503,7 +504,8 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
      * by {@code volume^}(-Ddimblend.radio.acoustic.quietecho, default 1) on top of the volume itself:
      * a quiet radio's tail sinks under a real room's noise sooner, so it sounds drier and nearer.
      * Above 100 % the echo keeps its share. A far taper keeps orphaned reverb from outliving the dry
-     * sound past the audible edge. The renderer's limiter handles hot room sums.
+     * sound past the audible edge. The renderer's limiter handles hot room sums. Last, the world's
+     * acoustic intensity setting ({@link RadioLiveSettings#acousticIntensity}, 0 to 2) scales it.
      *
      * @param volume the radio's volume setting, 1 at 100 %
      */
@@ -511,7 +513,7 @@ public final class RadioSimulationSession implements RadioPcmProcessor {
         float far = (float) Math.min(1, Math.max(0, (RadioAcousticController.AUDIBLE_RANGE - distance) / 32));
         float near = (float) Math.min(WET_GAIN.value(), Math.max(1, distance));
         float quiet = (float) Math.pow(Math.min(1, Math.max(0, volume)), QUIET_ECHO.value());
-        return far * near * quiet;
+        return far * near * quiet * RadioLiveSettings.acousticIntensity();
     }
 
     /** Client thread: the radio's volume setting, 1 at 100 % ({@link #wetScale}). */

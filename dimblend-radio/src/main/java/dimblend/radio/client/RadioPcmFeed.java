@@ -7,6 +7,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import javax.sound.sampled.AudioFormat;
 
+import dimblend.radio.RadioLiveSettings;
+
 /** Immutable cached PCM, with a unique feed and cursor for every playback attempt. */
 public final class RadioPcmFeed {
     private static final AtomicLong NEXT_ID = new AtomicLong();
@@ -20,6 +22,7 @@ public final class RadioPcmFeed {
         private volatile boolean exhausted;
         private volatile boolean ending;
         private volatile RadioPcmProcessor processor;
+        private volatile RadioReception reception;
 
         private Handle(String id, AudioFormat format, byte[] data, double offsetSec) {
             this.id = id;
@@ -61,6 +64,19 @@ public final class RadioPcmFeed {
         }
 
         public AudioFormat format() { return format; }
+
+        /** Client thread: where the radio stands now; the stream glides into its noise. */
+        public boolean setReception(RadioReception reception) {
+            boolean changed = this.reception != reception;
+            this.reception = reception;
+            return changed;
+        }
+
+        /** The reception to play: clear while reception noise is switched off. */
+        RadioReception reception() {
+            RadioReception current = reception;
+            return RadioLiveSettings.receptionNoise() && current != null ? current : RadioReception.CLEAR;
+        }
     }
 
     public static Handle register(AudioFormat format, byte[] data, double offsetSec) {
@@ -83,11 +99,14 @@ public final class RadioPcmFeed {
         /** Where the input ends: the data's end, or the end of the fade once {@link Handle#endInput} was called. */
         private int end;
         private int fadeOutStart = -1;
+        private final RadioReceptionNoise noise;
 
         FeedStream(Handle handle) {
             this.handle = handle;
             this.cursor = handle.start;
             this.end = handle.data.length;
+            this.noise = new RadioReceptionNoise(handle.format.getSampleRate(),
+                    System.nanoTime() ^ ((long) handle.id.hashCode() << 32), RadioEnderVoices::clips);
         }
 
         public AudioFormat getFormat() {
@@ -114,6 +133,8 @@ public final class RadioPcmFeed {
             ByteBuffer buf = ByteBuffer.allocateDirect(n).order(ByteOrder.LITTLE_ENDIAN);
             buf.put(this.handle.data, this.cursor, n);
             buf.flip();
+            // Before the fades, so a resumed start and an early end fade the static too.
+            this.noise.process(buf, this.handle.format.getChannels(), this.handle.reception());
             // Fade the first 10ms of resumed audio without modifying the shared cache.
             int fadeInFrames = Math.min((this.handle.data.length - this.handle.start) / frameSize, fadeFrames);
             if (this.handle.start > 0 && fadeInFrames > 0) {

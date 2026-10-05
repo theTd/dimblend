@@ -20,6 +20,20 @@ class RadioDistanceGainTest {
         assertEquals(0f, RadioSimulationSession.wetScale(RadioAcousticController.AUDIBLE_RANGE, 1), 1e-6);
     }
 
+    @Test
+    void acousticIntensityScalesTheEcho() {
+        try {
+            dimblend.radio.RadioServerConfig.apply(true, 0);
+            assertEquals(0f, RadioSimulationSession.wetScale(64, 1), 1e-6);
+            dimblend.radio.RadioServerConfig.apply(true, 2);
+            assertEquals(6f, RadioSimulationSession.wetScale(64, 1), 1e-6);
+            dimblend.radio.RadioServerConfig.apply(true, 0.5);
+            assertEquals(0.75f, RadioSimulationSession.wetScale(1.5, 1), 1e-6);
+        } finally {
+            dimblend.radio.RadioServerConfig.apply(true, 1);
+        }
+    }
+
     /** The direct sound stays near full level close in, so the echo follows the distance there as a real room's share does. */
     @Test
     void closeToTheRadioTheEchoKeepsARealRoomsShare() {

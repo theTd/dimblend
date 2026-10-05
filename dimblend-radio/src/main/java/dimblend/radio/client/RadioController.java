@@ -1,5 +1,6 @@
 package dimblend.radio.client;
 
+import dimblend.radio.RadioLiveSettings;
 import dimblend.radio.RadioSignals;
 import dimblend.radio.acoustics.AcousticSurfaceKinds;
 import dimblend.radio.net.ClientRadioState;
@@ -87,6 +88,7 @@ public final class RadioController {
     /** A device/resource reload is an interruption, even if OpenAL had buffered the final seconds. */
     public static void onSoundReload() {
         RadioAcousticController.reset();
+        RadioEnderVoices.clear();
         LIVE.values().forEach(live -> live.feed().release());
         LIVE.clear();
         RELEASING.forEach(releasing -> releasing.feed.release());
@@ -201,6 +203,8 @@ public final class RadioController {
             }
             // Every tick: above the track's headroom the gain stays put while the setting moves.
             RadioAcousticController.setVolume(live.instance(), volume / 100.0f);
+            // Every tick too: a radio on a structure can carry it into another place.
+            followReception(mc, key.pos(), live.feed());
         }
         for (var stateEntry : ClientRadioState.view().entrySet()) {
             var key = stateEntry.getKey();
@@ -213,6 +217,18 @@ public final class RadioController {
             if (!LIVE.containsKey(liveKey)) {
                 startInstance(mc, liveKey, state);
             }
+        }
+    }
+
+    /** The radio's reception where it stands now; End reception loads its voices on first use. */
+    private static void followReception(Minecraft mc, BlockPos pos, RadioPcmFeed.Handle feed) {
+        RadioReception reception = RadioReception.at(mc.level, pos);
+        if (reception.voices && RadioLiveSettings.receptionNoise()) {
+            RadioEnderVoices.prepare(mc);
+        }
+        if (feed.setReception(reception)) {
+            DimBlendRadio.LOGGER.info("[radio] reception={} pos={} world={} dimension={}", reception, pos,
+                    dimblend.radio.SubLevelProjection.worldCenter(mc.level, pos), mc.level.dimension().location());
         }
     }
 
@@ -351,6 +367,7 @@ public final class RadioController {
                     }
                     double offset = local.position(now);
                     RadioPcmFeed.Handle feed = RadioPcmFeed.register(pcm.format(), pcm.pcm(), offset);
+                    followReception(mc, key.pos(), feed);
                     int volume = RadioSignals.volumePercent(current.side());
                     float gain = PcmHeadroom.channelGain(volume, pcm.boost());
                     RadioInstance instance = new RadioInstance(mc.level, key.pos(), feed.id(), gain);

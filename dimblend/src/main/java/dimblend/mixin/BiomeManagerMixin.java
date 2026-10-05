@@ -57,6 +57,11 @@ public abstract class BiomeManagerMixin implements BiomeCacheHolder {
         if (level.dimension() != DimBlendRegistries.ROTATING_LEVEL) {
             return;
         }
+        // Fuzzy biome lookup can sample either side of a nearby chunk boundary.
+        // Never retain the client's plains fallback while any candidate chunk is missing.
+        if (!level.hasChunksAt(pos.getX() - 2, pos.getZ() - 2, pos.getX() + 2, pos.getZ() + 2)) {
+            return;
+        }
         Holder<Biome> result = cir.getReturnValue();
         if (result != null) {
             this.dimblend$biomeCache.put(pos.asLong(), result);
