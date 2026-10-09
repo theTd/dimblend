@@ -72,10 +72,11 @@ public final class RadioPcmFeed {
             return changed;
         }
 
-        /** The reception to play: clear while reception noise is switched off. */
+        /** The reception to play: clear while the reception noise volume is 0. */
         RadioReception reception() {
             RadioReception current = reception;
-            return RadioLiveSettings.receptionNoise() && current != null ? current : RadioReception.CLEAR;
+            return RadioLiveSettings.receptionNoiseVolume() > 0.0f && current != null
+                    ? current : RadioReception.CLEAR;
         }
     }
 
@@ -134,7 +135,8 @@ public final class RadioPcmFeed {
             buf.put(this.handle.data, this.cursor, n);
             buf.flip();
             // Before the fades, so a resumed start and an early end fade the static too.
-            this.noise.process(buf, this.handle.format.getChannels(), this.handle.reception());
+            this.noise.process(buf, this.handle.format.getChannels(), this.handle.reception(),
+                    RadioLiveSettings.receptionNoiseScale());
             // Fade the first 10ms of resumed audio without modifying the shared cache.
             int fadeInFrames = Math.min((this.handle.data.length - this.handle.start) / frameSize, fadeFrames);
             if (this.handle.start > 0 && fadeInFrames > 0) {

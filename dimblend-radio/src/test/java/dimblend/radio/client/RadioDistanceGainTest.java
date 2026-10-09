@@ -23,14 +23,14 @@ class RadioDistanceGainTest {
     @Test
     void acousticIntensityScalesTheEcho() {
         try {
-            dimblend.radio.RadioServerConfig.apply(true, 0);
+            dimblend.radio.RadioServerConfig.apply(0.5, 0);
             assertEquals(0f, RadioSimulationSession.wetScale(64, 1), 1e-6);
-            dimblend.radio.RadioServerConfig.apply(true, 2);
+            dimblend.radio.RadioServerConfig.apply(0.5, 2);
             assertEquals(6f, RadioSimulationSession.wetScale(64, 1), 1e-6);
-            dimblend.radio.RadioServerConfig.apply(true, 0.5);
+            dimblend.radio.RadioServerConfig.apply(0.5, 0.5);
             assertEquals(0.75f, RadioSimulationSession.wetScale(1.5, 1), 1e-6);
         } finally {
-            dimblend.radio.RadioServerConfig.apply(true, 1);
+            dimblend.radio.RadioServerConfig.apply(0.5, 1);
         }
     }
 

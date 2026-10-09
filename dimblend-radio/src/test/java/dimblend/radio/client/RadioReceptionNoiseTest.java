@@ -29,13 +29,14 @@ class RadioReceptionNoiseTest {
     }
 
     /** Feeds {@code seconds} of a 440 Hz tone through {@code noise}; returns input and output. */
-    private static float[][] run(RadioReceptionNoise noise, RadioReception reception, double seconds, double amplitude) {
+    private static float[][] run(RadioReceptionNoise noise, RadioReception reception,
+            double seconds, double amplitude, float noiseScale) {
         int total = (int) (seconds * RATE) / BLOCK * BLOCK;
         float[] in = new float[total], out = new float[total];
         for (int at = 0; at < total; at += BLOCK) {
             ByteBuffer block = tone(BLOCK, at, amplitude);
             System.arraycopy(samples(block), 0, in, at, BLOCK);
-            noise.process(block, 1, reception);
+            noise.process(block, 1, reception, noiseScale);
             System.arraycopy(samples(block), 0, out, at, BLOCK);
         }
         return new float[][] {in, out};
@@ -66,13 +67,13 @@ class RadioReceptionNoiseTest {
 
     @Test
     void clearReceptionLeavesThePcmUntouched() {
-        float[][] io = run(noise(List.of()), RadioReception.CLEAR, 2, 0.5);
+        float[][] io = run(noise(List.of()), RadioReception.CLEAR, 2, 0.5, 1.0f);
         assertArrayEquals(io[0], io[1]);
     }
 
     @Test
     void faintStaticKeepsTheTrackAndAddsQuietNoise() {
-        float[][] io = run(noise(List.of()), RadioReception.FAINT_STATIC, 10, 0.5);
+        float[][] io = run(noise(List.of()), RadioReception.FAINT_STATIC, 10, 0.5, 1.0f);
         double residual = rms(io[1], io[0]);
         assertTrue(residual > 0.003, "static is audible: " + residual);
         assertTrue(residual < 0.1, "static stays faint against a -9 dBFS tone: " + residual);
@@ -81,7 +82,7 @@ class RadioReceptionNoiseTest {
 
     @Test
     void staticOnlyDropsTheTrackForNoise() {
-        float[][] io = run(noise(List.of()), RadioReception.STATIC_ONLY, 10, 0.5);
+        float[][] io = run(noise(List.of()), RadioReception.STATIC_ONLY, 10, 0.5, 1.0f);
         double level = rms(io[1], null);
         assertTrue(level > 0.01 && level < 0.25, "static level: " + level);
         assertTrue(Math.abs(correlation(io[0], io[1])) < 0.05, "no trace of the track");
@@ -91,15 +92,15 @@ class RadioReceptionNoiseTest {
     void voidscapeIsNoisyFromTheFirstAudioBlockEvenForASilentTrack() {
         RadioReceptionNoise noise = noise(List.of());
         ByteBuffer first = tone(BLOCK, 0, 0);
-        noise.process(first, 1, RadioReception.STATIC_ONLY);
+        noise.process(first, 1, RadioReception.STATIC_ONLY, 1.0f);
         assertTrue(rms(samples(first), null) > 0.01, "static must not wait for warmup or a pathing bake");
     }
 
     @Test
     void leavingStaticGlidesAndThenPassesThroughExactlyAgain() {
         RadioReceptionNoise noise = noise(List.of());
-        float[][] before = run(noise, RadioReception.STATIC_ONLY, 2, 0.5);
-        float[][] after = run(noise, RadioReception.CLEAR, 6, 0.5);
+        float[][] before = run(noise, RadioReception.STATIC_ONLY, 2, 0.5, 1.0f);
+        float[][] after = run(noise, RadioReception.CLEAR, 6, 0.5, 1.0f);
         // The first blocks back still carry the static they leave, and little of the track.
         float[] firstIn = Arrays.copyOf(after[0], BLOCK), firstOut = Arrays.copyOf(after[1], BLOCK);
         assertTrue(rms(firstOut, firstIn) > 0.1, "no step back to the clean track");
@@ -114,7 +115,7 @@ class RadioReceptionNoiseTest {
         float[] voice = new float[RATE];
         for (int i = 0; i < voice.length; i++) voice[i] = (float) Math.sin(2 * Math.PI * 1000 * i / RATE);
         float[][] io = run(noise(List.of(RadioEnderVoices.prepareClip(voice, RATE))),
-                RadioReception.ENDER_VOICES, 40, 0);
+                RadioReception.ENDER_VOICES, 40, 0, 1.0f);
         double peak = 0;
         for (float sample : io[1]) peak = Math.max(peak, Math.abs(sample));
         assertTrue(peak > 0.02, "a voice came through within 40 s: " + peak);
@@ -125,23 +126,27 @@ class RadioReceptionNoiseTest {
 
     @Test
     void endReceptionStaysSilentWhileVoicesLoad() {
-        float[][] io = run(noise(List.of()), RadioReception.ENDER_VOICES, 40, 0);
+        float[][] io = run(noise(List.of()), RadioReception.ENDER_VOICES, 40, 0, 1.0f);
         assertEquals(0, rms(io[1], null), 1e-9);
     }
 
     @Test
-    void switchingNoiseOffPlaysEveryRadioClean() {
+    void zeroNoiseVolumePlaysEveryRadioClean() {
         AudioFormat format = new AudioFormat(RATE, 16, 1, true, false);
         byte[] silence = new byte[RATE * 2];
         try {
-            RadioServerConfig.apply(false, RadioLiveSettings.DEFAULT_ACOUSTIC_INTENSITY);
+            RadioServerConfig.apply(0.0, RadioLiveSettings.DEFAULT_ACOUSTIC_INTENSITY);
+            assertEquals(0.0f, RadioLiveSettings.receptionNoiseVolume(), 1e-9);
             var feed = RadioPcmFeed.register(format, silence, 0);
             feed.setReception(RadioReception.STATIC_ONLY);
             try (var stream = RadioPcmFeed.open(feed.id())) {
                 ByteBuffer out = stream.readAll();
                 while (out.hasRemaining()) assertEquals(0, out.get());
             }
-            RadioServerConfig.apply(true, RadioLiveSettings.DEFAULT_ACOUSTIC_INTENSITY);
+            RadioServerConfig.apply(RadioLiveSettings.DEFAULT_RECEPTION_NOISE_VOLUME,
+                    RadioLiveSettings.DEFAULT_ACOUSTIC_INTENSITY);
+            assertEquals(1.0f, RadioLiveSettings.receptionNoiseScale(), 1e-9,
+                    "the default volume is the former always-on level");
             var noisy = RadioPcmFeed.register(format, silence, 0);
             noisy.setReception(RadioReception.STATIC_ONLY);
             try (var stream = RadioPcmFeed.open(noisy.id())) {
@@ -151,8 +156,18 @@ class RadioReceptionNoiseTest {
                 assertTrue(heard);
             }
         } finally {
-            RadioServerConfig.apply(RadioLiveSettings.DEFAULT_RECEPTION_NOISE, RadioLiveSettings.DEFAULT_ACOUSTIC_INTENSITY);
+            RadioServerConfig.apply(RadioLiveSettings.DEFAULT_RECEPTION_NOISE_VOLUME,
+                    RadioLiveSettings.DEFAULT_ACOUSTIC_INTENSITY);
         }
+    }
+
+    @Test
+    void fullVolumeDoublesTheStaticAroundTheFormerLevel() {
+        float[][] former = run(noise(List.of()), RadioReception.STATIC_ONLY, 10, 0.5, 1.0f);
+        float[][] full = run(noise(List.of()), RadioReception.STATIC_ONLY, 10, 0.5, 2.0f);
+        double formerLevel = rms(former[1], null);
+        assertEquals(2 * formerLevel, rms(full[1], null), formerLevel * 0.05,
+                "volume 1.00 is twice the static of the former on level");
     }
 
     @Test
@@ -170,7 +185,7 @@ class RadioReceptionNoiseTest {
             quiet[i] = 0.04f * (float) Math.sin(2 * Math.PI * 1000 * i / RATE);
         }
         float[] prepared = RadioEnderVoices.prepareClip(quiet, RATE);
-        float[][] io = run(noise(List.of(prepared)), RadioReception.ENDER_VOICES, 35, 0.5);
+        float[][] io = run(noise(List.of(prepared)), RadioReception.ENDER_VOICES, 35, 0.5, 1.0f);
         double voicePeak = 0;
         int voicedStart = -1;
         for (int i = 10 * RATE; i < io[1].length; i++) {

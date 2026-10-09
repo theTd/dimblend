@@ -70,8 +70,9 @@ final class RadioReceptionNoise {
      * Mixes this block's noise into {@code pcm} (positions 0 to its limit, absolute access).
      *
      * @param channels interleaved channels; each gets the same noise
+     * @param noiseScale the static, crackle and voice amplitude: 1 at the former always-on volume
      */
-    void process(ByteBuffer pcm, int channels, RadioReception reception) {
+    void process(ByteBuffer pcm, int channels, RadioReception reception, float noiseScale) {
         int frames = pcm.limit() / (2 * channels);
         if (frames == 0) return;
         if (!started) {
@@ -97,8 +98,8 @@ final class RadioReceptionNoise {
             float voiceSample = voiceSample(reception.voices);
             voiceDuck += ((clip != null ? voice : 0) - voiceDuck) * duckFollow;
             float musicGain = (float) (music * (1 - fading * lost) * (1 - VOICE_DUCK * voiceDuck));
-            float noise = (float) (hissSample() * hiss * (1 + fading * (2 * lost - 1))
-                    + crackleSample(crackleChance) * crackle + voiceSample * VOICE_GAIN * voice);
+            float noise = (float) ((hissSample() * hiss * (1 + fading * (2 * lost - 1))
+                    + crackleSample(crackleChance) * crackle + voiceSample * VOICE_GAIN * voice) * noiseScale);
 
             for (int channel = 0; channel < channels; channel++) {
                 int index = (frame * channels + channel) * 2;

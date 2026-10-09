@@ -223,7 +223,7 @@ public final class RadioController {
     /** The radio's reception where it stands now; End reception loads its voices on first use. */
     private static void followReception(Minecraft mc, BlockPos pos, RadioPcmFeed.Handle feed) {
         RadioReception reception = RadioReception.at(mc.level, pos);
-        if (reception.voices && RadioLiveSettings.receptionNoise()) {
+        if (reception.voices && RadioLiveSettings.receptionNoiseVolume() > 0.0f) {
             RadioEnderVoices.prepare(mc);
         }
         if (feed.setReception(reception)) {

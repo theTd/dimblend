@@ -11,11 +11,13 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 public final class RadioServerConfig {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
-    public static final ModConfigSpec.BooleanValue RECEPTION_NOISE = BUILDER
-            .comment("Radio reception noise; default true. Overworld and underground play clean; the Nether and"
-                    + " modded areas add faint static; the End adds faint enderman voices now and then; Voidscape"
-                    + " plays static only. False plays every radio clean.")
-            .define("receptionNoise", RadioLiveSettings.DEFAULT_RECEPTION_NOISE);
+    public static final ModConfigSpec.DoubleValue RECEPTION_NOISE = BUILDER
+            .comment("Radio reception noise volume: 0 plays every radio clean, 0.5 the former always-on"
+                    + " level, up to 1. Overworld and underground play clean; the Nether and modded areas add"
+                    + " faint static; the End lets faint enderman voices through now and then; Voidscape plays"
+                    + " static only. A stored boolean from older versions resets to the default.")
+            .defineInRange("receptionNoise", (double) RadioLiveSettings.DEFAULT_RECEPTION_NOISE_VOLUME,
+                    0.0D, (double) RadioLiveSettings.MAX_RECEPTION_NOISE_VOLUME);
 
     public static final ModConfigSpec.DoubleValue ACOUSTIC_INTENSITY = BUILDER
             .comment("Acoustic simulation intensity: scales the simulated echo (reflections and reverb); default 1.0."
@@ -39,12 +41,12 @@ public final class RadioServerConfig {
      * Changes the values in memory (the loaded config when there is one) and the audio threads'
      * copies; saving is the caller's choice.
      */
-    public static void apply(boolean receptionNoise, double acousticIntensity) {
+    public static void apply(double receptionNoiseVolume, double acousticIntensity) {
         if (SPEC.isLoaded()) {
-            RECEPTION_NOISE.set(receptionNoise);
+            RECEPTION_NOISE.set(receptionNoiseVolume);
             ACOUSTIC_INTENSITY.set(acousticIntensity);
         }
-        RadioLiveSettings.set(receptionNoise, acousticIntensity);
+        RadioLiveSettings.set(receptionNoiseVolume, acousticIntensity);
     }
 
     static void onLoading(ModConfigEvent.Loading event) {

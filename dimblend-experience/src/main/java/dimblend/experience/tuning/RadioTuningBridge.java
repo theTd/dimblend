@@ -8,14 +8,14 @@ final class RadioTuningBridge {
 
     static double get(TuningOption option) {
         return option == TuningOption.RADIO_STATIC
-                ? (RadioTuning.receptionNoise() ? 1.0D : 0.0D)
+                ? RadioTuning.receptionNoiseVolume()
                 : RadioTuning.acousticIntensity();
     }
 
     /** Server thread: saves the world's radio config. */
     static void set(TuningOption option, double value) {
         if (option == TuningOption.RADIO_STATIC) {
-            RadioTuning.setReceptionNoise(value == 1.0D);
+            RadioTuning.setReceptionNoiseVolume(value);
         } else {
             RadioTuning.setAcousticIntensity(value);
         }
@@ -24,7 +24,7 @@ final class RadioTuningBridge {
     /** Remote client: memory only. */
     static void apply(TuningOption option, double value) {
         if (option == TuningOption.RADIO_STATIC) {
-            RadioTuning.applyReceptionNoise(value == 1.0D);
+            RadioTuning.applyReceptionNoiseVolume(value);
         } else {
             RadioTuning.applyAcousticIntensity(value);
         }

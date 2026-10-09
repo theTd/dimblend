@@ -45,16 +45,16 @@ class TuningOptionTest {
     }
 
     @Test
-    void radioIntensityAcceptsHundredthsUpToDouble() {
-        var option = TuningOption.RADIO_ACOUSTIC_INTENSITY;
-        for (int i = 0; i <= 200; i++) {
+    void radioNoiseVolumeAcceptsHundredthsAroundTheFormerOnLevel() {
+        var option = TuningOption.RADIO_STATIC;
+        assertFalse(option.isCheckbox());
+        assertEquals(0.5D, option.defaultValue());
+        for (int i = 0; i <= 100; i++) {
             assertTrue(option.isValid(i / 100.0D));
         }
-        assertFalse(option.isValid(2.01D));
-        assertFalse(option.isValid(1.005D));
-        assertEquals("1.00", option.format(option.defaultValue()));
-        assertTrue(TuningOption.RADIO_STATIC.isCheckbox());
-        assertEquals(1.0D, TuningOption.RADIO_STATIC.defaultValue());
+        assertFalse(option.isValid(0.005D));
+        assertFalse(option.isValid(1.01D));
+        assertEquals("0.50", option.format(option.defaultValue()));
     }
 
     @Test
