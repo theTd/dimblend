@@ -9,6 +9,9 @@ import net.minecraft.resources.ResourceLocation;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 
 /**
  * 配方编辑规则表：与 docs/配方修改需求.md 第 3 节修改总表逐行对应。
@@ -35,6 +38,17 @@ import com.google.common.collect.ImmutableSet;
  *       两种类型；</li>
  *   <li>Propulsion 的固体燃烧器、液体燃烧器、斯特林引擎（2026-09-22 修订）
  *       均为 {@code minecraft:crafting_shaped}，按产物精确删除其合成台配方。</li>
+ *   <li>铂系（2026-10-05 修订）：全整合包产出铂锭的烧炼/高炉配方只有
+ *       Propulsion 的 4 条 smelting + 2 条 blasting（已逐 jar 枚举核实），
+ *       Create 风扇批量熔炼走同一组配方；粉碎粗铂洗涤配方的输入物品
+ *       {@code create:crushed_raw_platinum} 由 Create 本体注册；</li>
+ *   <li>下界合金（2026-10-05 修订）：原版合成配方 ID 为 {@code minecraft:netherite_ingot}；
+ *       合金炉（Eternal Starlight {@code eternal_starlight:alloy}）配方输入列表
+ *       经其 Serializer 校验上限为 9 个，4 金锭 + 4 碎片共 8 个输入可行。</li>
+ *   <li>黄铜超热/加热共存（2026-10-05 修订）：Create 热度校验中 heated 配方在超热火下
+ *       同样可匹配；工作盆候选按材料数降序稳定排序、并列保持 RecipeManager 遍历序
+ *       （Create 源码 BasinOperatingBlockEntity/RecipeTrie 核实），故经
+ *       {@link RecipeEdit.MoveRecipeBefore} 把超热版排在加热版之前，保证超热火稳定产 x2。</li>
  * </ul>
  */
 public final class RecipeEditRules {
@@ -110,11 +124,124 @@ public final class RecipeEditRules {
         edits.add(new RecipeEdit.DeleteByRecipeId("弹药装配台",
                 Set.of(ResourceLocation.parse("tacz:ammo_workbench"))));
 
+        // —— 3.9 Create 机器配方（2026-10-05 修订） ——
+        // 黄铜锭搅拌产物 2 -> 1（超热版本由随包配方 dimblend_craft:brass_ingot_from_superheated_mixing 提供）
+        edits.add(modifyFields("黄铜锭混合搅拌产量", "create:mixing/brass_ingot")
+                .set("results.0.count", 1)
+                .build());
+        // 超热/加热黄铜同材料共存：Create 热度校验下 heated 配方在超热火同样可匹配，
+        // 并列时按 RecipeManager 遍历序命中，故将超热版移到加热版之前保证超热火稳定产 x2
+        edits.add(new RecipeEdit.MoveRecipeBefore("超热黄铜搅拌优先",
+                ResourceLocation.parse("dimblend_craft:brass_ingot_from_superheated_mixing"),
+                ResourceLocation.parse("create:mixing/brass_ingot")));
+        // 安山合金搅拌 无需加热 -> 加热（铁粒版与锌粒版）
+        edits.add(modifyFields("安山合金混合搅拌需加热",
+                "create:mixing/andesite_alloy", "create:mixing/andesite_alloy_from_zinc")
+                .set("heat_requirement", "heated")
+                .build());
+
+        // —— 3.10 Create: Propulsion 铂系（2026-10-05 修订） ——
+        // 铂锭/铂粒的合成台互转删除（自动压缩、自动合成随之一并失效），
+        // 改由随包配方提供 塑形（超热 9 -> 1）与 混合搅拌（加热 1 -> 8）
+        edits.add(new RecipeEdit.DeleteByRecipeId("铂锭与铂粒的合成互转",
+                Set.of(ResourceLocation.parse("createpropulsion:crafting/platinum_ingot_from_nugget"),
+                        ResourceLocation.parse("createpropulsion:crafting/platinum_nugget_from_ingot"))));
+        // 粉碎粗铂洗涤：铂粒 9 -> 1，金粒概率 50% -> 25%（经验颗粒 x4 50% 不变）
+        edits.add(modifyFields("粉碎粗铂洗涤产物", "createpropulsion:splashing/crushed_raw_platinum")
+                .set("results.0.count", 1)
+                .set("results.2.chance", 0.25)
+                .build());
+        // 铂矿及其变种、粗铂、粉碎粗铂的烧炼/高炉产物 铂锭 -> 铂粒（批量熔炼走同一配方）
+        edits.add(modifyFields("铂烧炼产物改铂粒",
+                "createpropulsion:blasting/platinum_ingot_from_deepslate_platinum_ore",
+                "createpropulsion:blasting/platinum_ingot_from_platinum_ore",
+                "createpropulsion:smelting/platinum_ingot_from_crushed_raw_platinum",
+                "createpropulsion:smelting/platinum_ingot_from_deepslate_platinum_ore",
+                "createpropulsion:smelting/platinum_ingot_from_platinum_ore",
+                "createpropulsion:smelting/platinum_ingot_from_raw_platinum")
+                .set("result.id", "createpropulsion:platinum_nugget")
+                .build());
+
+        // —— 3.11 Create Diesel Generators 分馏（2026-10-05 修订） ——
+        // 删除加热档（原油 100 -> 汽油 50 + 柴油 50）；超级加热档改为 柴油 75 -> 60、汽油 75 -> 40
+        edits.add(new RecipeEdit.DeleteByRecipeId("原油分馏（加热）",
+                Set.of(ResourceLocation.parse("createdieselgenerators:distillation/crude_oil"))));
+        edits.add(modifyFields("原油分馏（超级加热）产物量",
+                "createdieselgenerators:distillation/superheated_crude_oil")
+                .set("results.0.amount", 60)
+                .set("results.1.amount", 40)
+                .build());
+
+        // —— 3.12 下界合金获取（2026-10-05 修订） ——
+        // 删除原版 碎片 x4 + 金锭 x4 合成（自动搅拌随之一并失效），
+        // 改由随包配方提供 混合搅拌（超级加热）；合金炉配方碎片 2 -> 4
+        edits.add(new RecipeEdit.DeleteByRecipeId("下界合金锭原版合成",
+                Set.of(ResourceLocation.parse("minecraft:netherite_ingot"))));
+        edits.add(modifyFields("下界合金合金炉配方", "eternal_starlight:alloy/netherite")
+                .setJson("ingredients", "["
+                        + "{\"tag\": \"c:ingots/gold\"},"
+                        + "{\"tag\": \"c:ingots/gold\"},"
+                        + "{\"tag\": \"c:ingots/gold\"},"
+                        + "{\"tag\": \"c:ingots/gold\"},"
+                        + "{\"item\": \"minecraft:netherite_scrap\"},"
+                        + "{\"item\": \"minecraft:netherite_scrap\"},"
+                        + "{\"item\": \"minecraft:netherite_scrap\"},"
+                        + "{\"item\": \"minecraft:netherite_scrap\"}"
+                        + "]")
+                .build());
+
         return edits.build();
     }
 
     private static GridRuleBuilder modify(String label, String... resultTargets) {
         return new GridRuleBuilder(label, resultTargets);
+    }
+
+    private static FieldRuleBuilder modifyFields(String label, String... recipeIds) {
+        return new FieldRuleBuilder(label, recipeIds);
+    }
+
+    /** 机器配方字段修改规则的可读构造器。 */
+    private static final class FieldRuleBuilder {
+        private final String label;
+        private final ImmutableSet.Builder<ResourceLocation> recipeIds = ImmutableSet.builder();
+        private final ImmutableMap.Builder<String, JsonElement> fieldEdits = ImmutableMap.builder();
+
+        private FieldRuleBuilder(String label, String... recipeIds) {
+            this.label = label;
+            for (String recipeId : recipeIds) {
+                this.recipeIds.add(ResourceLocation.parse(recipeId));
+            }
+        }
+
+        private FieldRuleBuilder set(String path, int value) {
+            fieldEdits.put(path, new JsonPrimitive(value));
+            return this;
+        }
+
+        private FieldRuleBuilder set(String path, double value) {
+            fieldEdits.put(path, new JsonPrimitive(value));
+            return this;
+        }
+
+        private FieldRuleBuilder set(String path, String value) {
+            fieldEdits.put(path, new JsonPrimitive(value));
+            return this;
+        }
+
+        /** 写入数组/对象等复合值，以原始 JSON 文本声明（如合金炉配方整段材料表）。 */
+        private FieldRuleBuilder setJson(String path, String rawJson) {
+            fieldEdits.put(path, JsonParser.parseString(rawJson));
+            return this;
+        }
+
+        private RecipeEdit build() {
+            Map<String, JsonElement> edits = fieldEdits.build();
+            if (edits.isEmpty()) {
+                throw new IllegalStateException("规则[" + label + "]无任何字段编辑");
+            }
+            return new RecipeEdit.ModifyRecipeFields(label, recipeIds.build(), edits);
+        }
     }
 
     /** 网格修改规则的可读构造器。 */

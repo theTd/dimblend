@@ -5,6 +5,8 @@ import java.util.Set;
 
 import net.minecraft.resources.ResourceLocation;
 
+import com.google.gson.JsonElement;
+
 /**
  * 单条运行时配方编辑规则。
  *
@@ -54,5 +56,42 @@ public sealed interface RecipeEdit {
      */
     record ModifyShapedGrid(String label, Set<ResourceLocation> resultTargets,
             Map<Integer, RecipeIngredient> slotEdits, Integer newResultCount) implements RecipeEdit {
+    }
+
+    /**
+     * 按配方 ID 修改任意类型配方的 JSON 字段（机器配方：搅拌、洗涤、烧炼、分馏、合金炉等）。
+     *
+     * <p>实现上经配方自身序列化器的 Codec 做「编码 → 写入字段 → 解码」往返，
+     * 与配方类型无关，编译期仍不依赖上游 mod 类。字段路径为点号分隔：
+     * 每段是对象键或十进制数组下标（如 {@code results.0.count}）；末段为写入语义
+     * （键存在则覆盖、不存在则新增，与网格规则的替换/添加一致），中间段必须已存在。
+     * 编码失败、路径结构不符或解码失败时保留原配方并输出错误日志。</p>
+     *
+     * @param recipeIds  精确配方 ID 集合（已按整合包配方文件核实）
+     * @param fieldEdits 字段路径 → 写入值
+     */
+    record ModifyRecipeFields(String label, Set<ResourceLocation> recipeIds,
+            Map<String, JsonElement> fieldEdits) implements RecipeEdit {
+    }
+
+    /**
+     * 调整配方在 {@code RecipeManager} 最终列表中的先后：把 {@code recipeId} 移到 {@code anchorId} 之前。
+     *
+     * <p>用于同材料、不同热度的 Create 工作盆配方共存时决定命中优先级：
+     * {@code BasinOperatingBlockEntity#getMatchingRecipes} 对候选按材料数降序<b>稳定</b>排序后取首个，
+     * 材料数并列时保持 RecipeManager 遍历序（同材料集合的配方在 RecipeTrie 同一节点，
+     * 其 values 按 RecipeFinder 遍历序插入）；热度较低（heated）的配方在超热火下同样通过热度校验，
+     * 因此并列顺序即命中顺序。执行器 {@code replaceRecipes} 的列表顺序就是最终的
+     * {@code byName}/{@code byType} 顺序，把超热配方移到加热配方之前，可保证超热火下
+     * 稳定命中超热版本（2026-10-05 修订，黄铜锭超热/加热共存）。</p>
+     */
+    record MoveRecipeBefore(String label, ResourceLocation recipeId, ResourceLocation anchorId)
+            implements RecipeEdit {
+
+        public MoveRecipeBefore {
+            if (recipeId.equals(anchorId)) {
+                throw new IllegalArgumentException("规则[" + label + "]排序目标与锚点相同: " + recipeId);
+            }
+        }
     }
 }

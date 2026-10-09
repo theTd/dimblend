@@ -11,9 +11,13 @@ TACZ** 的配方做批量修改与删除。规则明细见 `docs/配方修改需
 
 - 入口 `DimblendCraft` 监听 NeoForge `AddReloadListenerEvent`，追加一个重载监听器；
   该监听器排在 vanilla 监听器之后，apply 阶段对 `RecipeManager` 做单趟
-  「删除 / 有序合成网格修改」，最后经原版 `RecipeManager#replaceRecipes` 原子生效。
+  「删除 / 有序合成网格修改 / 机器配方字段修改 / 排序」，最后经原版 `RecipeManager#replaceRecipes` 原子生效
+  （replaceRecipes 的列表顺序即最终配方顺序，排序规则借此决定同材料机器配方的命中优先级）。
 - 规则全部声明在 `RecipeEditRules`（纯数据，与需求文档逐行对应），编辑逻辑在
-  `ShapedGridEditor`（3×3 网格居中语义，与 JEI 显示一致），执行与日志在 `RecipeEditApplicator`。
+  `ShapedGridEditor`（3×3 网格居中语义，与 JEI 显示一致）与
+  `RecipeJsonEditor`（机器配方的 Codec JSON 往返字段编辑），执行与日志在 `RecipeEditApplicator`。
+- 「新增」类需求（如超热黄铜搅拌、铂粒塑形）以随包数据包配方 JSON 提供
+  （`data/dimblend_craft/recipe/`，带 `neoforge:mod_loaded` 条件），不经过运行时编辑。
 - 目标 mod 缺失的规则自然空转，仅输出「未命中」告警；规则按产物 ID / 配方 ID 匹配，
   不依赖任何 mod 类，编译期只有 vanilla + NeoForge 依赖。
 
@@ -47,15 +51,17 @@ src/main/java/dimblend/craft/
   DimblendCraft.java              # @Mod 主类：注册数据包重载监听器（唯一的入口逻辑）
   recipe/
     RecipeEditRules.java          # 配方编辑规则表（与 docs/配方修改需求.md 逐行对应）
-    RecipeEdit.java               # 规则类型：按配方 ID 删除 / 按产物删除（合成+规则指定类型） / 有序网格修改
+    RecipeEdit.java               # 规则类型：按配方 ID 删除 / 按产物删除（合成+规则指定类型） / 有序网格修改 / 机器配方字段修改 / 排序
     ResultIdFilter.java           # 产物 ID 匹配器（精确 + 前缀）
     RecipeIngredient.java         # 材料描述（物品 ID / 标签 ID），重载期才解析成 Ingredient
     ShapedGridEditor.java         # 3×3 网格编辑与 ShapedRecipe 重建
+    RecipeJsonEditor.java         # 机器配方字段编辑（Codec 编码 → 写入 → 解码往返）
     RecipeEditApplicator.java     # 单趟执行器：删除/修改 + 日志 + 未命中告警
     RecipeEditReloadListener.java # AddReloadListenerEvent → apply 阶段执行规则
 src/main/resources/
   META-INF/neoforge.mods.toml     # 由 gradle.properties 变量展开，切勿手写版本号
   data/c/tags/item/shulker_boxes.json  # 本 mod 提供的 c:shulker_boxes 标签（17 种潜影盒）
+  data/dimblend_craft/recipe/     # 随包新增配方（机器配方，带 neoforge:mod_loaded 条件）
 gradle.properties                # mod 坐标；MC/Neo/Parchment 共享键以根为准
 build.gradle                     # ModDevGradle 配置、run、资源展开
 docs/配方修改需求.md              # 需求冻结文档（规则表的唯一依据）

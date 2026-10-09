@@ -63,6 +63,17 @@ public final class RecipeEditApplicator {
                 continue;
             }
 
+            RecipeEdit.ModifyRecipeFields fieldModify = matchingFieldModify(holder.id(), edits);
+            if (fieldModify != null) {
+                Stats stats = statsByIdentity.get(fieldModify);
+                RecipeHolder<?> edited = applyFieldModify(holder, recipe, fieldModify, registries, stats);
+                if (edited != null) {
+                    modifiedCount++;
+                    keptRecipes.add(edited);
+                    continue;
+                }
+            }
+
             if (recipe instanceof ShapedRecipe shaped) {
                 RecipeEdit.ModifyShapedGrid modify = matchingModify(resultId, edits);
                 if (modify != null) {
@@ -79,11 +90,53 @@ public final class RecipeEditApplicator {
             keptRecipes.add(holder);
         }
 
-        if (removedCount > 0 || modifiedCount > 0) {
+        int movedCount = 0;
+        for (RecipeEdit edit : edits) {
+            if (edit instanceof RecipeEdit.MoveRecipeBefore move
+                    && applyMove(keptRecipes, move, statsByIdentity.get(move))) {
+                movedCount++;
+            }
+        }
+
+        if (removedCount > 0 || modifiedCount > 0 || movedCount > 0) {
             recipeManager.replaceRecipes(keptRecipes);
-            DimblendCraft.LOGGER.info("[配方] 本轮编辑完成：删除 {} 条，修改 {} 条", removedCount, modifiedCount);
+            DimblendCraft.LOGGER.info("[配方] 本轮编辑完成：删除 {} 条，修改 {} 条，排序 {} 条",
+                    removedCount, modifiedCount, movedCount);
         }
         warnUnmatched(edits, statsByIdentity);
+    }
+
+    /**
+     * 应用排序规则：把目标配方移到锚点配方之前。目标或锚点缺失时输出告警并保持原序
+     * （目标 mod 缺失属预期空转，不升级为错误）。
+     */
+    private static boolean applyMove(List<RecipeHolder<?>> keptRecipes, RecipeEdit.MoveRecipeBefore move,
+            Stats stats) {
+        int recipeIndex = indexOfRecipe(keptRecipes, move.recipeId());
+        int anchorIndex = indexOfRecipe(keptRecipes, move.anchorId());
+        if (recipeIndex < 0 || anchorIndex < 0) {
+            DimblendCraft.LOGGER.warn("[配方] 规则「{}」无法应用：配方 {} 或锚点 {} 未加载", move.label(),
+                    move.recipeId(), move.anchorId());
+            return false;
+        }
+        RecipeHolder<?> holder = keptRecipes.remove(recipeIndex);
+        if (recipeIndex < anchorIndex) {
+            anchorIndex--;
+        }
+        keptRecipes.add(anchorIndex, holder);
+        stats.matchedIds.add(move.recipeId());
+        DimblendCraft.LOGGER.info("[配方] 排序 {} 移至 {} 之前（规则：{}）",
+                move.recipeId(), move.anchorId(), move.label());
+        return true;
+    }
+
+    private static int indexOfRecipe(List<RecipeHolder<?>> recipes, ResourceLocation recipeId) {
+        for (int i = 0; i < recipes.size(); i++) {
+            if (recipes.get(i).id().equals(recipeId)) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /** 规则删除命中判定：按配方 ID（任意类型）→ 按产物 ID（合成台配方 + 规则额外指定的配方类型）。 */
@@ -116,6 +169,16 @@ public final class RecipeEditApplicator {
         }
         ResourceLocation typeKey = BuiltInRegistries.RECIPE_TYPE.getKey(recipe.getType());
         return typeKey != null && recipeTypeIds.contains(typeKey);
+    }
+
+    private static RecipeEdit.ModifyRecipeFields matchingFieldModify(ResourceLocation recipeId,
+            List<RecipeEdit> edits) {
+        for (RecipeEdit edit : edits) {
+            if (edit instanceof RecipeEdit.ModifyRecipeFields modify && modify.recipeIds().contains(recipeId)) {
+                return modify;
+            }
+        }
+        return null;
     }
 
     private static RecipeEdit.ModifyShapedGrid matchingModify(ResourceLocation resultId,
@@ -151,6 +214,33 @@ public final class RecipeEditApplicator {
         DimblendCraft.LOGGER.info("[配方] 修改 {}：{}（规则：{}）",
                 holder.id(), describeSlotEdits(modify), modify.label());
         return new RecipeHolder<>(holder.id(), edited.get());
+    }
+
+    private static RecipeHolder<?> applyFieldModify(RecipeHolder<?> holder, Recipe<?> recipe,
+            RecipeEdit.ModifyRecipeFields modify, HolderLookup.Provider registries, Stats stats) {
+        Optional<Recipe<?>> edited = RecipeJsonEditor.edit(recipe, modify.fieldEdits(), registries);
+        if (edited.isEmpty()) {
+            DimblendCraft.LOGGER.error("[配方] 规则「{}」无法应用于配方 {}（JSON 往返编辑失败："
+                    + "序列化编码失败、字段路径与结构不符或解码失败），配方保持原样", modify.label(), holder.id());
+            return null;
+        }
+        stats.matchedIds.add(holder.id());
+        DimblendCraft.LOGGER.info("[配方] 修改 {}：{}（规则：{}）",
+                holder.id(), describeFieldEdits(modify), modify.label());
+        return new RecipeHolder<>(holder.id(), edited.get());
+    }
+
+    private static String describeFieldEdits(RecipeEdit.ModifyRecipeFields modify) {
+        StringBuilder description = new StringBuilder();
+        modify.fieldEdits().entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> {
+                    if (description.length() > 0) {
+                        description.append("，");
+                    }
+                    description.append(entry.getKey()).append(" -> ").append(entry.getValue());
+                });
+        return description.toString();
     }
 
     private static String describeSlotEdits(RecipeEdit.ModifyShapedGrid modify) {
