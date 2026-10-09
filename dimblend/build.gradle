@@ -47,9 +47,13 @@ neoForge {
             jvmArgument '-Xmx8G'
         }
 
+        // Isolated from run/: run/mods is shared with runClient and holds client-only
+        // mods (Sodium etc.) that crash a dedicated server at ModDir discovery.
+        // A dedicated server must see only Gradle's declared runtime mods.
         server {
             server()
             programArgument '--nogui'
+            gameDirectory = project.file('run-server')
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
 
@@ -117,6 +121,8 @@ dependencies {
     implementation "maven.modrinth:create-steam-n-rails-1.21.1:0.2.0-beta.2+neoforge-mc1.21.1"
     // 本机 dev 运行补位（TrainTripWorld 实例里的对应 jar）：绝对路径仅本机有效，
     // 缺失不影响编译与 jar 产出，只影响本地 runClient/runServer 的模组齐套度。
+    localRuntime files("E:/misc/TrainTripWorld/mods/BiomesOPlenty-neoforge-1.21.1-21.1.0.13.jar")
+    localRuntime files("E:/misc/TrainTripWorld/mods/GlitchCore-neoforge-1.21.1-2.1.0.0.jar")
     localRuntime files("D:/Downloads/deeperdarker-neoforge-1.21.1-1.4.1.jar")
     localRuntime files("D:/Downloads/aether-1.21.1-1.5.10-neoforge.jar")
     localRuntime files("D:/Downloads/owo-lib-neoforge-0.12.15.1-beta.6+1.21.jar")
