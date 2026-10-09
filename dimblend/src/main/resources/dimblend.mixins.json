@@ -19,6 +19,7 @@
     "BlockBehaviourMixin",
     "ConfiguredFeatureMixin",
     "EndGatewayBlockMixin",
+    "EndIslandDensityFunctionMixin",
     "JigsawStructureMixin",
     "DecorationClearanceMixin",
     "FlowingFluidTickMixin",

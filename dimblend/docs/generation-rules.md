@@ -103,6 +103,7 @@
 - [x] 天气锁定晴
 - [x] 恢复末地天空（`RotatingDimensionEffects`：玩家 `endSky` 纬度（end / deeperdarker）时 `SkyType.END`，原版画 `end_sky.png`，无主世界日月星；雾色/无云/forceBrightLightmap 对齐 `EndEffects`。地下/下界改走 `netherSky` → `NetherEffects`。18000 锁只管昼夜读数，不管天空盒。voidscape 走自己的 shader，见下）
 - [x] 服务端刷怪按纬度锁夜（`NaturalSpawner` 推 `ServerBandTime`，`getSkyDarken` 按 18000 计算；末影人不会因全局白天补不上而消失。岛面仍有 skylight，密度接近主世界夜晚而非原版末地无天空光）
+- [x] 远端末地带恢复生成岛屿（原版 `DensityFunctions$EndIslandDensityFunction.getHeightValue` 用 **int** 计算 `(blockX/8)² + (blockZ/8)²`，平方和在欧氏距离 **370,728** 格处溢出为负 → `Mth.sqrt(NaN)` → NaN 穿过 clamp/max 进最终密度 → `density > 0` 恒假，整列全空气。rotating 的末地 delegate 用维度绝对 X 采样，走廊 Z≈0 处 **region ≥ 181（X ≥ 370,728）** 的末地带整带纯虚空（群系照常是 end_midlands），即「420k 末地带没有岛」。修复：`EndIslandHeight`（long 平方和的逐行复刻）+ `EndIslandDensityFunctionMixin` 头部接管 `compute`。安全范围内与原版逐位一致（dev server 同种子前后采样 region 32 完全相同），溢出阈值之外岛屿按原噪声单元照常出现（region 190：min/mean/max 0/0/0 → 0/16/63；region 207：0/0/0 → 0/26/65，chunk 实测 y30-50 全末地石 + 走廊幻纱轨正常）。副作用声明：原版 `minecraft:the_end` 自身 370k 外也从虚空恢复为岛屿——数学上同样正确。**已生成过的虚空 chunk 不会自我修复**：旧世界远端末地带需删 region 文件重生成（purge 会自然清掉远端）或只探索新末地带。回归测试 `EndIslandHeightTest`）
 
 ### 暮色（Twilight Forest）
 
