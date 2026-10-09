@@ -31,6 +31,7 @@ public final class TuningSettings {
             case STEAM_OVERLOAD -> Config.STEAM_ENGINE_OVERLOAD.get() ? 1.0D : 0.0D;
             case DIESEL_OVERLOAD -> Config.DIESEL_ENGINE_OVERLOAD.get() ? 1.0D : 0.0D;
             case MOTOR_OVERLOAD -> Config.ELECTRIC_MOTOR_OVERLOAD.get() ? 1.0D : 0.0D;
+            case EXP_CLEAR_RATIO -> Config.DEATH_EXP_CLEAR_RATIO.get();
         };
     }
 
@@ -61,6 +62,7 @@ public final class TuningSettings {
             case STEAM_OVERLOAD -> Config.STEAM_ENGINE_OVERLOAD.set(enabled);
             case DIESEL_OVERLOAD -> Config.DIESEL_ENGINE_OVERLOAD.set(enabled);
             case MOTOR_OVERLOAD -> Config.ELECTRIC_MOTOR_OVERLOAD.set(enabled);
+            case EXP_CLEAR_RATIO -> Config.DEATH_EXP_CLEAR_RATIO.set(value);
             case SOILING_MULTIPLIER, RADIO_STATIC, RADIO_ACOUSTIC_INTENSITY -> { }
         }
     }

@@ -35,6 +35,16 @@ class TuningOptionTest {
     }
 
     @Test
+    void expClearRatioAcceptsEveryHundredthAndCapsAtOne() {
+        var option = TuningOption.EXP_CLEAR_RATIO;
+        for (int i = 0; i <= 100; i++) {
+            assertTrue(option.isValid(i / 100.0D));
+        }
+        assertFalse(option.isValid(0.505D));
+        assertFalse(option.isValid(1.01D));
+    }
+
+    @Test
     void radioIntensityAcceptsHundredthsUpToDouble() {
         var option = TuningOption.RADIO_ACOUSTIC_INTENSITY;
         for (int i = 0; i <= 200; i++) {
@@ -68,5 +78,6 @@ class TuningOptionTest {
         assertEquals("2.0", TuningOption.SHAKE_INTERVAL.format(2.0D));
         assertEquals("1200", TuningOption.SHAKE_FORCE.format(1200.0D));
         assertEquals("0.50", TuningOption.SOILING_MULTIPLIER.format(0.5D));
+        assertEquals("1.00", TuningOption.EXP_CLEAR_RATIO.format(1.0D));
     }
 }

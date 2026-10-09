@@ -2,76 +2,33 @@ package dimblend.experience.exploration;
 
 import dimblend.experience.Config;
 import dimblend.experience.DimBlend;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.level.portal.DimensionTransition;
-import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.entity.living.LivingDropsEvent;
-import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.living.LivingExperienceDropEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.event.entity.player.PlayerRespawnPositionEvent;
 
 /**
- * A1/A2 探索限制死亡规则（仅 rotating 维度生效）：
+ * A1 死亡经验规则（v1.13 重写，仅 rotating 维度生效）：
  * <ul>
- * <li>死亡时对整栏位做快照，取消地面掉落；重生克隆时按原槽位还原物品。</li>
- * <li>经验无条件清零——包括 keepInventory gamerule 开启时（原版会把经验一并复制给
- * 新玩家，见 {@code ServerPlayer#restoreFrom} 的 1458 行分支）。</li>
- * <li>床遗失的重生改道走 {@link PlayerRespawnPositionEvent}（NeoForge 原生事件），
- * 不用 mixin。</li>
+ * <li>重生克隆时按 {@code deathExpClearRatio} 比率清除经验：新玩家经验 =
+ * 死亡前（等级+进度）× (1 − 比率)，总量同比缩放。无视 keepInventory 游戏规则——
+ * 开启时覆盖原版 {@code ServerPlayer#restoreFrom} 的经验复制，关闭时按比率回补，
+ * 两种 gamerule 下结果一致。</li>
+ * <li>经验球掉落同步取消（不能找回）：比率是唯一的经验损失规则，不掉球防止
+ * 比率外找回/复制（比率 0 时若掉球会白嫖一份）。</li>
  * </ul>
- * 快照生命周期：捕获（死亡时，规则开启+维度命中）→ 使用一次（Clone 还原）→
- * 立即清空。三个环节都以"快照非空"为唯一事实来源，保证快照绝不跨越
- * 一次死亡周期存活，从而不污染其他维度/规则关闭时的死亡行为。
+ * 维度判据取死亡瞬间原实体所在维度（{@code getOriginal().level()}），重生落点在
+ * 哪个维度不影响规则命中。物品栏不再由本模组处理（v1.13 起死亡保留/床遗失改道
+ * 重生已取消，掉落交给 gamerule 与其他 mod）。
  */
 @EventBusSubscriber(modid = DimBlend.MODID)
 public final class DeathRules {
 
     @SubscribeEvent
-    public static void onDeath(LivingDeathEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)) {
-            return;
-        }
-        if (Config.DEATH_RULES.get() && RotatingDimension.is(player)) {
-            player.setData(ExplorationAttachments.DEATH_INVENTORY.get(), DeathInventorySnapshot.capture(player));
-        } else {
-            // 归一化：未被本规则接管的死亡一律清空快照，堵住"第三方 mod 取消死亡
-            // 后残留陈旧快照"的窄路径（下次非 rotating 死亡不会被旧快照误还原）
-            player.setData(ExplorationAttachments.DEATH_INVENTORY.get(), DeathInventorySnapshot.EMPTY);
-        }
-    }
-
-    @SubscribeEvent
-    public static void onDrops(LivingDropsEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)
-                || !Config.DEATH_RULES.get()
-                || !RotatingDimension.is(player)) {
-            return;
-        }
-        if (player.getData(ExplorationAttachments.DEATH_INVENTORY.get()).isEmpty()) {
-            return;
-        }
-        event.setCanceled(true);
-    }
-
-    /**
-     * A1"不能找回"：经验球掉落走独立的 {@code LivingExperienceDropEvent}（原版
-     * die() 内与物品掉落分开触发），只拦 LivingDropsEvent 的话经验球照掉、可捡回。
-     * 守卫与 onDrops 同型。
-     */
-    @SubscribeEvent
     public static void onExperienceDrop(LivingExperienceDropEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)
-                || !Config.DEATH_RULES.get()
-                || !RotatingDimension.is(player)) {
-            return;
-        }
-        if (player.getData(ExplorationAttachments.DEATH_INVENTORY.get()).isEmpty()) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || !RotatingDimension.is(player)) {
             return;
         }
         event.setCanceled(true);
@@ -79,54 +36,16 @@ public final class DeathRules {
 
     @SubscribeEvent
     public static void onClone(PlayerEvent.Clone event) {
-        if (!event.isWasDeath()) {
+        if (!event.isWasDeath() || !RotatingDimension.is(event.getOriginal().level())) {
             return;
         }
-        DeathInventorySnapshot snapshot = event.getOriginal().getData(ExplorationAttachments.DEATH_INVENTORY.get());
-        if (snapshot.isEmpty()) {
-            return;
-        }
-        // 快照只在死亡时刻（规则开启+维度命中）被捕获，还原不再看当前配置
-        snapshot.restore(event.getEntity());
-        clearExperience(event.getEntity());
-        // 用完即清：快照绝不跨死亡周期存活（否则会污染后续其他维度的死亡）
-        event.getEntity().setData(ExplorationAttachments.DEATH_INVENTORY.get(), DeathInventorySnapshot.EMPTY);
-    }
-
-    /**
-     * A2 床遗失重生改道：原版在床失效/缺失/重生维度不存在时弹回世界出生点；
-     * 本处理器在"rotating 维度内死亡 + 床不可用"时把落点替换为
-     * (死亡x, 66, 5) 附近。有效床/重生锚与末地折返不受影响。
-     */
-    @SubscribeEvent
-    public static void onRespawnPosition(PlayerRespawnPositionEvent event) {
-        if (event.isFromEndFight()) {
-            return;
-        }
-        ServerPlayer player = (ServerPlayer) event.getEntity();
-        if (!Config.DEATH_RULES.get() || !RotatingDimension.is(player)) {
-            return;
-        }
-        DimensionTransition vanilla = event.getOriginalDimensionTransition();
-        MinecraftServer server = player.level().getServer();
-        boolean fellBackToWorldSpawn = vanilla.missingRespawnBlock()
-                || player.getRespawnPosition() == null
-                || server.getLevel(player.getRespawnDimension()) == null;
-        if (!fellBackToWorldSpawn) {
-            return;
-        }
-        ServerLevel rotating = server.getLevel(RotatingDimension.key());
-        if (rotating == null) {
-            return;
-        }
-        Vec3 spot = CorridorRespawnLocator.findRespawnPosition(rotating, player.getX());
-        event.setDimensionTransition(new DimensionTransition(rotating, spot, Vec3.ZERO, 0.0F, 0.0F, DimensionTransition.DO_NOTHING));
-    }
-
-    private static void clearExperience(Player player) {
-        player.experienceLevel = 0;
-        player.experienceProgress = 0.0F;
-        player.totalExperience = 0;
+        Player original = event.getOriginal();
+        var scaled = DeathExperienceMath.scale(original.experienceLevel, original.experienceProgress,
+                original.totalExperience, Config.DEATH_EXP_CLEAR_RATIO.get());
+        Player player = event.getEntity();
+        player.experienceLevel = scaled.level();
+        player.experienceProgress = scaled.progress();
+        player.totalExperience = scaled.total();
     }
 
     private DeathRules() {

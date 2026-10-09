@@ -47,7 +47,7 @@ public class DimBlend {
         // 音效事件注册（无条件，播放侧由条件 mixin + Config 门控）
         ModSounds.SOUNDS.register(modEventBus);
 
-        // 探索限制板块的数据附件（死亡栏位快照等）
+        // 探索限制板块的数据附件（远行诅咒层级、村民职业记录等）
         ExplorationAttachments.ATTACHMENTS.register(modEventBus);
 
         // B 板块：CDG 发动机运行态附件，仅 CDG 在场时注册

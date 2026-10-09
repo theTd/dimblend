@@ -9,9 +9,13 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 public final class Config {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
-    public static final ModConfigSpec.BooleanValue DEATH_RULES = BUILDER
-            .comment("探索限制 A1/A2：旋转维度内死亡保留物品、清空经验；床遗失时改在走廊旁重生")
-            .define("deathRules", true);
+    // 键名由 deathRules（旧布尔开关，v1.13 前的 A1/A2：死亡保留物品+床遗失改道重生）改为
+    // deathExpClearRatio：保留物品/改道重生已取消，旧键被自动清除、新键取默认 1.0
+    public static final ModConfigSpec.DoubleValue DEATH_EXP_CLEAR_RATIO = BUILDER
+            .comment("探索限制 A1（v1.13 重写）：旋转维度内死亡重生按比率清空经验——重生后经验 = 死亡前(等级+进度) × (1−比率)，"
+                    + "0=全保留、1=全清；无视 keepInventory 游戏规则；经验球不掉落（不能找回）。"
+                    + "物品不再由本模组保留，死亡掉落交给 gamerule 与其他 mod")
+            .defineInRange("deathExpClearRatio", 1.0D, 0.0D, 1.0D);
 
     public static final ModConfigSpec.BooleanValue DEPTH_CURSE = BUILDER
             .comment("探索限制 A3/A4：|z| 每跨过 256 生命上限 ×0.75（下限 1 点），回到 |z|≤128 完全恢复；关闭只停扣上限，层级计数照常（进度条用）")

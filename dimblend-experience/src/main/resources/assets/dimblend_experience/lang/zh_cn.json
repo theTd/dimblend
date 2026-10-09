@@ -45,6 +45,8 @@
 	"screen.dimblend_experience.tuning.radio_static.description": "默认：开启。主世界与地下清晰；下界与模组区域叠加微弱静电噪声；末地不时混入微弱的末影人低语；虚空（Voidscape）只剩静电噪声。关闭时所有电台都清晰播放。",
 	"screen.dimblend_experience.tuning.radio_acoustic_intensity": "电台声学模拟强度",
 	"screen.dimblend_experience.tuning.radio_acoustic_intensity.description": "默认：1.00。范围：0.00-2.00，精度：0.01。缩放模拟回声（反射与混响）。设为 0 时只保留直达声，遮挡与 3D 方位仍然生效。",
+	"screen.dimblend_experience.tuning.exp_clear_ratio": "死亡重生清空经验比率",
+	"screen.dimblend_experience.tuning.exp_clear_ratio.description": "默认：1.00（全清）。范围：0.00-1.00，精度：0.01。仅旋转维度生效：重生后经验 = 死亡前 × (1 − 比率)，无视 keepInventory 游戏规则；经验球不掉落。",
 	"screen.dimblend_experience.tuning.decrease": "减小",
 	"screen.dimblend_experience.tuning.increase": "增大",
 	"screen.dimblend_experience.tuning.reset_default": "恢复默认值",

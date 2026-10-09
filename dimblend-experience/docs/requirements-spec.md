@@ -33,6 +33,10 @@
 > v1.12（2026-09-30 用户口径，A5 计数器方案）：z256 进度条改读远行诅咒层级，
 > 进度 `(|z| − 256×层级)/256`、负数 0%、`|z|≤128` 清零；方向判定（回程瞬时归零/锁存）作废；
 > 层级经 `FarCurseTierPayload` S2C 同步；层级计数常开，`depthCurse` 只管扣上限与粒子。
+> v1.13（2026-10-05 用户拍板，A1/A2 重写）：旧「死亡保留物品」实机会丢失饰品栏物品
+> （快照只覆盖原版栏位，饰品随掉落取消蒸发）——死亡保留物品、床遗失改道走廊重生（A2）
+> 整体取消，死亡掉落/重生落点回归 gamerule 与原版逻辑；A1 改为按比率清空经验
+> （`deathExpClearRatio`，默认 1.00，无视 keepInventory，经验球不掉落），比率经 /dbx 面板可调。
 > 本文件是开发依据；原始清单仅作需求索引，两者冲突时以本文件为准。
 
 ## 0. 环境基线
@@ -54,18 +58,22 @@
 
 **生效范围（用户拍板）**：A1–A6 全部仅在 `dimblend:rotating` 维度生效；其他维度走原版逻辑。A7/A8 为全局功能，不受此限。
 
-### A1 死亡保留物品、清空经验
-- 在 rotating 维度死亡：主背包 + 盔甲 + 副手全部保留（等同强制 keepInventory，无视 gamerule）
-- 经验等级、进度、总量全部清零；**经验球掉落同步取消**（v1.2"不能找回"：原版经验球走
-  `LivingExperienceDropEvent`，与物品掉落的 `LivingDropsEvent` 是两条路径，只拦后者
-  经验照掉不误——字节码语义核实后的补漏）
+### A1 死亡清空经验（v1.13 重写为比率制）
+- 在 rotating 维度死亡：重生后经验 = 死亡前（等级+进度）× (1 − 比率)，经验总量同比缩放
+- 比率 = `deathExpClearRatio`（0.00–1.00，精度 0.01，默认 1.00 全清、0.00 全保留），
+  经 /dbx 面板「死亡重生清空经验比率」实时可调
+- **无视 keepInventory 游戏规则**：true 时覆盖原版 `restoreFrom` 的经验复制，false 时按比率
+  回补，两种 gamerule 下结果一致；比率是唯一的经验损失规则
+- **经验球掉落同步取消**（不能找回；比率 0 时若掉球会白嫖一份，故无条件取消）
+- 物品栏不再由本模组处理：死亡掉落/墓碑交还 gamerule 与其他 mod
+  （重写根因：旧快照只覆盖原版栏位，饰品栏物品随掉落取消一并蒸发）
+- 维度判据取死亡瞬间原实体所在维度，重生落点维度不影响命中
 - A4（v1.2 备注）：用户标"未实现"，但开发侧已实现（tier 0 摘修饰符 + happy 粒子），
   记"已实现待实测"，以实机为准
 
-### A2 重生点规则
-- 有床（且可使用）→ 正常床重生
-- 床遗失/被挡/失效 → 绝不落在世界出生点；改为在 `(死亡x不变, y=66, z=5)` 附近寻找安全落点重生
-- 设计语境：dimblend 旋转维度的铁路走廊位于 Z=0、Y=64，该规则 = 回到走廊旁但保留 X 向进度
+### A2 重生点规则（v1.13 作废）
+- v1.13 起整体取消：床遗失/被挡/失效时不再改道 `(死亡x, 66, 5)` 走廊旁，重生落点完全走原版逻辑
+- 走廊旁落点算法 `CorridorRespawnLocator` 保留，仅供 E7 离结构传送的回送落点使用
 
 ### A3 远行诅咒（z 轴生命上限递减）
 - `|z|` 每跨过一个 256 整数倍边界（256/512/768/…），生命**上限 ×0.75 乘算叠加**（20→15→11.25→…）
@@ -303,7 +311,8 @@
   （`Sable.HELPER.getAllIntersecting` + 点到 AABB 欧氏距离 ≤32；先
   `projectOutOfSubLevel`）。都无则传送回重生位置——有效床/锚点且落在 rotating
   内走原版站立点（`findRespawnPositionAndUseSpawnBlock(keepInventory=true)`
-  不耗锚点充能）；缺失/被挡/其他维度改走 A2 走廊旁，绝不弹世界出生点。
+  不耗锚点充能）；缺失/被挡/其他维度改走走廊旁（`CorridorRespawnLocator`，
+  原 A2 落点算法，A2 死亡规则 v1.13 作废后仍供本条目使用），绝不弹世界出生点。
   **走廊条带 |z|≤16 视为安全落点**（dimblend 预生成 z ∈ [-16, 15]，无床落点
   z=5）：闸门仍开且附近无 sable 时下一周期不再 `teleportTo`，避免无床玩家
   每 10 秒抽搐/下坐骑。创造/旁观豁免；simurail 或 sable 缺席 fail-open。
@@ -353,7 +362,7 @@
 - **版本差注意**：clone 到的 CCA（1.21.1 分支 HEAD=1.7.1）新于运行 jar（1.5.10），且无对应 tag。写 mixin 前必须以运行 jar 的实际字节码为准（必要时反编译核对），clone 源码仅作结构导览；**CDG 例外**——B 板块已整体对齐到最新版 1.3.15（同级源码构建 jar，mixins 按源码口径编写，mods.toml 下限 `[1.3.15,)`），不再以旧运行 jar（1.3.11）字节码为准
 - **构建环境**：本机默认 JAVA_HOME 为 JDK 11，每条 gradle 命令需显式 `$env:JAVA_HOME='C:\Program Files\Java\jdk-21'`
 - 音效素材由**用户提供**（用户拍板），我负责接入；素材到位前相关功能用占位实现，代码先行
-- **已知接受风险（A1/A2 L4）**：第三方 mod 在本规则捕获后取消死亡事件会残留快照（onDeath 归一化已缓解大部分）；取消 LivingDropsEvent 会连带取消其他 mod 在该事件追加的掉落（墓碑类需组合实测）；附件序列化失败时掉落已取消，物品蒸发概率与原版存档损坏同级且有 ERROR 日志
+- **已知接受风险（A1/A2 L4）**：v1.13 起作废——快照捕获、LivingDropsEvent 拦截、重生改道均已删除，原三条风险（快照残留、连带取消、附件序列化）随之消失；现 A1 仅剩经验比率（克隆时覆盖经验字段 + 取消经验球事件），无新增在案风险
 
 ### 需用户提供的音效素材（OGG Vorbis，建议单声道 44100Hz）
 
@@ -499,7 +508,7 @@
 
 | 开关 | 板块 | 默认 |
 |---|---|---|
-| deathRules | A1/A2 | true |
+| deathExpClearRatio | A1（v1.13 重写：重生清经验比率 0.00–1.00，无视 keepInventory，经验球不掉落） | 1.0 |
 | depthCurse | A3/A4 | true |
 | curseBossbar | A5 | true |
 | safeZone | A6 | true |
@@ -563,7 +572,7 @@
 | compat.fluid.SmartGutterOutletBiomeProjectionMixin | Create: Fluid 智能集水器 BE（同上，目标方法 `handlePrecipitationCollectionFiltered`） | Sable 结构群系投影 | fluid 在场 |
 | client.ItemStackNicknameMixin | 原版 ItemStack | A8 | 无条件（原版目标，客户端侧） |
 
-事件处理器（非 mixin）：DeathRules（A1/A2，含 PlayerRespawnPositionEvent）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainOffStructureRules（E7）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、EnderStorageStructureGuard（G5）。
+事件处理器（非 mixin）：DeathRules（A1，LivingExperienceDropEvent + PlayerEvent.Clone）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainOffStructureRules（E7）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、EnderStorageStructureGuard（G5）。
 
 ### 依赖接线（C 板块例外为版本级对齐）
 
@@ -589,7 +598,7 @@
 
 ### 游戏内运行验证清单（待实机，当前仅构建通过）
 
-- A 板块：A3-A5 冒烟 ①-⑨；A1/A2 三条 H1 场景 + A2 落点实测（窗口 61~71）+ 墓碑类 mod 组合；A6 worldgen 实测（含 tag 补强——钻头/锯/机械臂拦截实测）；A8 tooltip/命令实跑
+- A 板块：A3-A5 冒烟 ①-⑨；A1 比率矩阵实测（比率 1.00/0.50/0.00 × keepInventory 开/关：重生经验一致、经验球不掉落）+ 饰品栏/墓碑类 mod 组合（物品不再经本模组，确认不丢不复制）；A6 worldgen 实测（含 tag 补强——钻头/锯/机械臂拦截实测）；A8 tooltip/命令实跑
 - B：点火爬梯实测（16→+2/4s→额定→波动 76.8~96）；过载闩锁与重新加油触发；双开关矩阵（depthCurse 关 + curseBossbar 开）
 - C：粱蓝图打印、物品栏显示、生存不可破坏、扳手只撕材质
 - D：红石 1/8/15 档转速映射实测、能耗纯线性（4~7rpm 不再按 8 计）、无红石停转、负面板对称映射、CC setRPM 路径

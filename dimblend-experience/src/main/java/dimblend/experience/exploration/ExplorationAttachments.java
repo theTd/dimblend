@@ -7,20 +7,13 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 
 /**
- * 探索限制板块的实体数据附件。快照刻意**不**使用 copyOnDeath：重生克隆时由
- * {@link DeathRules#onClone} 直接从旧玩家实体读取，避免依赖 NeoForge 内部
- * Clone 监听器与本模组监听器之间的触发顺序。
+ * 探索限制板块的实体数据附件。附件刻意**不**使用 copyOnDeath：需要跨死亡持有的
+ * 状态（如 A3/A4 僵持区层级）由各自规则在重生后按新位置重算。
  */
 public final class ExplorationAttachments {
 
     public static final DeferredRegister<AttachmentType<?>> ATTACHMENTS =
             DeferredRegister.create(NeoForgeRegistries.ATTACHMENT_TYPES, DimBlend.MODID);
-
-    public static final DeferredHolder<AttachmentType<?>, AttachmentType<DeathInventorySnapshot>> DEATH_INVENTORY =
-            ATTACHMENTS.register("death_inventory", () -> AttachmentType
-                    .builder(() -> DeathInventorySnapshot.EMPTY)
-                    .serialize(DeathInventorySnapshot.CODEC)
-                    .build());
 
     /** A3/A4 远行诅咒当前层级。持久化以便死亡中登出重登仍持有僵持区层级。 */
     public static final DeferredHolder<AttachmentType<?>, AttachmentType<Integer>> FAR_CURSE_TIER =

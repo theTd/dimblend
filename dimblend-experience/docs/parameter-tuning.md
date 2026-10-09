@@ -26,6 +26,7 @@ Missing optional mods leave their controls disabled.
 | Electric Motor overload penalty | true | Checkbox | experience |
 | Radio reception noise | true | Checkbox | radio |
 | Radio acoustic simulation intensity | 1.00 | 0.00-2.00, step 0.01; 0 = no simulated echo | radio |
+| Experience clear ratio on respawn | 1.00 | 0.00-1.00, step 0.01; rotating dimension only, ignores keepInventory, no experience orb drops | experience |
 
 ## Ownership and Persistence
 

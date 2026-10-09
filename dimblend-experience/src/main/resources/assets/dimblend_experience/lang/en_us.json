@@ -45,6 +45,8 @@
   "screen.dimblend_experience.tuning.radio_static.description": "Default: on. Overworld and underground play clean; the Nether and modded areas add faint static; the End lets faint enderman voices through now and then; Voidscape plays static only. Off plays every radio clean.",
   "screen.dimblend_experience.tuning.radio_acoustic_intensity": "Radio acoustic simulation intensity",
   "screen.dimblend_experience.tuning.radio_acoustic_intensity.description": "Default: 1.00. Range: 0.00-2.00, step: 0.01. Scales the simulated echo (reflections and reverb). 0 leaves only the direct sound, which keeps its occlusion and 3D direction.",
+  "screen.dimblend_experience.tuning.exp_clear_ratio": "Experience clear ratio on respawn",
+  "screen.dimblend_experience.tuning.exp_clear_ratio.description": "Default: 1.00 (clears all). Range: 0.00-1.00, step: 0.01. Rotating dimension only: respawn experience = pre-death x (1 - ratio), ignoring the keepInventory game rule; experience orbs never drop.",
   "screen.dimblend_experience.tuning.decrease": "Decrease",
   "screen.dimblend_experience.tuning.increase": "Increase",
   "screen.dimblend_experience.tuning.reset_default": "Reset to default",
