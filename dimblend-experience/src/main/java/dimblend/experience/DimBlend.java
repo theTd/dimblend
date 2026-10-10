@@ -22,6 +22,7 @@ import dimblend.experience.gametest.SableVoidFitGameTests;
 import dimblend.experience.gametest.CopycatObsidianHardnessGameTests;
 import dimblend.experience.gametest.DeployerIcePlacementGameTests;
 import dimblend.experience.gametest.LimitedWaterGameTests;
+import dimblend.experience.gametest.LootMapFilterGameTests;
 import dimblend.experience.gametest.ItemDrainPipeRefillGameTests;
 import dimblend.experience.gametest.ItemDrainHudSyncGameTests;
 import dimblend.experience.gametest.KineticComponentScanGameTests;
@@ -83,6 +84,8 @@ public class DimBlend {
     private static void onRegisterGameTests(RegisterGameTestsEvent event) {
         // G3 有限水/冰放置禁令（玩家半边）只用原版类型，无条件注册
         event.register(LimitedWaterGameTests.class);
+        // A10 战利品地图过滤只碰原版战利品类型，无条件注册
+        event.register(LootMapFilterGameTests.class);
         // GameTest 引用 Create 的 CopycatPanel/BE/机械手假玩家，仅 Create 在场时注册，避免无 Create 环境类加载失败
         if (ModList.get().isLoaded("create")) {
             event.register(CopycatObsidianHardnessGameTests.class);

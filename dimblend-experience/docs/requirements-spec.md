@@ -39,6 +39,8 @@
 > （`deathExpClearRatio`，默认 1.00，无视 keepInventory，经验球不掉落），比率经 /dbx 面板可调。
 > v1.14（2026-10-10 用户口径，E9 刹车信号视为 1 级）：转向架收到任意强度红石信号一律按
 > 1 级信号处理（原行为为刹车力度随信号强度线性）；新开关 `trainFixedBrakeSignal`。
+> v1.15（2026-10-11 用户拍板，A10 战利品探索地图过滤，全局功能）：任何战利品箱不再产出
+> Dungeons Arise（含七海）探险地图与原版藏宝图；新开关 `lootMapFilter`。
 > 本文件是开发依据；原始清单仅作需求索引，两者冲突时以本文件为准。
 
 ## 0. 环境基线
@@ -58,7 +60,7 @@
 
 ## 1. 板块 A：探索限制（核心，无需第三方依赖）
 
-**生效范围（用户拍板）**：A1–A6 全部仅在 `dimblend:rotating` 维度生效；其他维度走原版逻辑。A7/A8 为全局功能，不受此限。
+**生效范围（用户拍板）**：A1–A6 全部仅在 `dimblend:rotating` 维度生效；其他维度走原版逻辑。A7/A8/A10 为全局功能，不受此限。
 
 ### A1 死亡清空经验（v1.13 重写为比率制）
 - 在 rotating 维度死亡：重生后经验 = 死亡前（等级+进度）× (1 − 比率)，经验总量同比缩放
@@ -122,6 +124,21 @@
 - `/dbx nickname clear`：清除（主手物品优先，注视方块次之）
 - 昵称与**物品 id** 绑定：本世界内该 id 的所有实例替换显示名
 - 纯显示层：不改 NBT、不动任何属性；数据存世界 SavedData，同步客户端渲染
+
+### A10 战利品探索地图过滤（全局功能，用户拍板）
+- 任何战利品箱不再产出两类探索地图：Dungeons Arise（含七海 `dungeons_arise_seven_seas`）
+  的探险地图，以及原版藏宝图（`#minecraft:on_treasure_maps`，沉船 `shipwreck_map` /
+  水下废墟的 buried_treasure 地图）
+- 判据是 exploration_map 战利品函数的 destination 结构 tag（JSON 省略 destination 时
+  codec 缺省即藏宝图 tag，同样命中），不看地图图标
+- 双层实现：`LootTableLoadEvent` 在每张表加载时移除直挂 pool 下的禁出条目
+  （`/reload` 后重新生效，JEI/JER 展示同步干净；pool entries 是 ImmutableList，
+  经 accessor 整体换引用）；复合条目嵌套与程序化战利品表由
+  `ExplorationMapFunctionBanMixin` 运行时兜底，命中产空堆（箱子少一件物品，地图绝不出现）。
+  兜底拦的是 exploration_map 函数的执行：GLM 经该函数产图同样在覆盖内；
+  直接产出成品地图 ItemStack 的 GLM 不在覆盖内（在案 mod 无此用法）
+- 制图师村民交易不走战利品表，不受影响；空地图（无 exploration_map 函数）不动
+- 新开关 `lootMapFilter`（默认开）
 
 ## 2. 板块 B：CDG 柴油机行为
 
@@ -543,6 +560,7 @@
 | safeZone | A6 | true |
 | globalBeacon | A7（全局功能） | true |
 | nickname / nicknamePermission | A8（全局功能）/ 命令权限等级 | true / 0 |
+| lootMapFilter | A10（全局功能：战利品箱禁出 DA/七海探险地图与原版藏宝图） | true |
 | dieselEngineBehavior | B | true |
 | dieselLoadGraceSeconds | B6 读档宽限秒数（开服后这段时间内柴油机不判爆，0=关闭） | 5 |
 | dieselOverloadProbe | B 诊断探针（只读，输出 `[CDG-PROBE]` 日志，定位完毕可关） | true |
@@ -602,8 +620,12 @@
 | compat.fluid.GutterOutletBiomeProjectionMixin | Create: Fluid 集水器 BE（`handlePrecipitationCollection` 内 `getBiome`/`getPrecipitationAt` 的位置参数 WrapOperation，经 `SableWorldPosition.projectBlock` 投影到世界坐标） | Sable 结构群系投影 | fluid 在场 |
 | compat.fluid.SmartGutterOutletBiomeProjectionMixin | Create: Fluid 智能集水器 BE（同上，目标方法 `handlePrecipitationCollectionFiltered`） | Sable 结构群系投影 | fluid 在场 |
 | client.ItemStackNicknameMixin | 原版 ItemStack | A8 | 无条件（原版目标，客户端侧） |
+| ExplorationMapFunctionBanMixin | 原版 ExplorationMapFunction（run HEAD 产空堆，运行时兜底） | A10 | 无条件（原版目标） |
+| ExplorationMapFunctionAccessor | 原版 ExplorationMapFunction（destination 读取） | A10 | 无条件（原版目标） |
+| LootTableAccessor / LootPoolAccessor | 原版 LootTable/LootPool（pools 遍历、entries 整体换引用） | A10 | 无条件（原版目标） |
+| LootPoolSingletonContainerAccessor / LootItemAccessor | 原版条目类（functions/item 读取） | A10 | 无条件（原版目标） |
 
-事件处理器（非 mixin）：DeathRules（A1，LivingExperienceDropEvent + PlayerEvent.Clone）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainOffStructureRules（E7）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、EnderStorageStructureGuard（G5）。
+事件处理器（非 mixin）：DeathRules（A1，LivingExperienceDropEvent + PlayerEvent.Clone）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainOffStructureRules（E7）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、EnderStorageStructureGuard（G5）、ExplorationMapLootFilter（A10，LootTableLoadEvent 战利品表加载时移除禁出地图条目）。
 
 ### 依赖接线（C 板块例外为版本级对齐）
 

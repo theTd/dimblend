@@ -43,6 +43,13 @@ public final class Config {
             .comment("使用物品昵称（按键对话框与 /dbx nickname）所需的权限等级（0=所有人，2=管理员）")
             .defineInRange("nicknamePermission", 0, 0, 4);
 
+    public static final ModConfigSpec.BooleanValue LOOT_MAP_FILTER = BUILDER
+            .comment("A10 战利品探索地图过滤（全局功能，不限维度）：任何战利品箱不再产出 Dungeons Arise"
+                    + "（含七海）的探险地图与原版藏宝图（沉船/水下废墟的 buried_treasure 地图）；"
+                    + "战利品表加载时移除条目 + 运行时兜底拦截（复合嵌套/GLM 路径产空堆），"
+                    + "制图师村民交易不走战利品表、不受影响")
+            .define("lootMapFilter", true);
+
     public static final ModConfigSpec.BooleanValue DIESEL_ENGINE_BEHAVIOR = BUILDER
             .comment("B 板块：CDG 柴油机转速行为（点火爬梯 16rpm→每4秒+2→额定；额定后 80%~100% 随机波动，应力容量随转速同比缩放；运转中过载持续2秒确认后爆机掉落）")
             .define("dieselEngineBehavior", true);
