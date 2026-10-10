@@ -50,6 +50,13 @@ public final class Config {
                     + "制图师村民交易不走战利品表、不受影响")
             .define("lootMapFilter", true);
 
+    public static final ModConfigSpec.BooleanValue TREASURE_SHELL_X = BUILDER
+            .comment("A11 藏宝箱贝壳 X 标记（全局功能，A10 藏宝图过滤的替代发现机制）：埋藏的宝藏生成时，"
+                    + "用 dimblend_blocks:shell_marker 替换宝箱正上方沙滩表层的沙块摆成 X（中心+四对角，"
+                    + "每臂独立找落点、只替换沙子，残臂跳过；宝箱裸露则整标放弃）；"
+                    + "dimblend-blocks 缺席时静默跳过")
+            .define("treasureShellX", true);
+
     public static final ModConfigSpec.BooleanValue DIESEL_ENGINE_BEHAVIOR = BUILDER
             .comment("B 板块：CDG 柴油机转速行为（点火爬梯 16rpm→每4秒+2→额定；额定后 80%~100% 随机波动，应力容量随转速同比缩放；运转中过载持续2秒确认后爆机掉落）")
             .define("dieselEngineBehavior", true);

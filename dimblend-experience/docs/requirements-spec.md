@@ -41,6 +41,8 @@
 > 1 级信号处理（原行为为刹车力度随信号强度线性）；新开关 `trainFixedBrakeSignal`。
 > v1.15（2026-10-11 用户拍板，A10 战利品探索地图过滤，全局功能）：任何战利品箱不再产出
 > Dungeons Arise（含七海）探险地图与原版藏宝图；新开关 `lootMapFilter`。
+> v1.16（2026-10-11 用户拍板，A11 藏宝箱贝壳 X 标记，全局功能）：埋藏的宝藏生成时在其
+> 正上方沙滩表层用贝壳标记方块摆 X（A10 禁藏宝图后的替代发现机制）；新开关 `treasureShellX`。
 > 本文件是开发依据；原始清单仅作需求索引，两者冲突时以本文件为准。
 
 ## 0. 环境基线
@@ -139,6 +141,21 @@
   直接产出成品地图 ItemStack 的 GLM 不在覆盖内（在案 mod 无此用法）
 - 制图师村民交易不走战利品表，不受影响；空地图（无 exploration_map 函数）不动
 - 新开关 `lootMapFilter`（默认开）
+
+### A11 藏宝箱贝壳 X 标记（全局功能，用户拍板）
+- 埋藏的宝藏（buried_treasure）生成时，在宝箱正上方的沙滩表层用贝壳标记方块
+  （`dimblend_blocks:shell_marker`）摆一个 X：中心列 = 宝箱列，加四对角共 5 格，
+  替换式（换掉表层沙块、与地面齐平），不是在表面上堆方块
+- 实现：`BuriedTreasureShellMarkerMixin` 注入原版 `BuriedTreasurePiece.postProcess` 内
+  `createChest` 调用之后（该处 boundingBox 已被原版重设为宝箱单格坐标，且只在宝箱成功
+  生成的路径执行），`TreasureShellMarker.mark` 从宝箱列向上找地表（头顶实心方块才上移，
+  雪层/草/水不算地表，上限 32 格防呆），再对 X 五格各自从中心地表 Y+2 向下找落点
+- 只替换 `BlockTags.SAND` 的方块：某臂落点找不到合格沙子就跳过该臂（残缺 X 可接受）；
+  宝箱裸露（头顶即非实心，如洞穴穿入）时整标放弃，绝不替换宝箱自身
+- 方块在 dimblend-blocks（常驻注册、自身掉落、入建筑方块栏）；experience 侧按注册名
+  运行时查找、零编译依赖，dimblend-blocks 缺席时静默跳过
+- 仅对新探索区块生效：旧存档已生成的藏宝箱不补标记
+- 新开关 `treasureShellX`（默认开）
 
 ## 2. 板块 B：CDG 柴油机行为
 
@@ -561,6 +578,7 @@
 | globalBeacon | A7（全局功能） | true |
 | nickname / nicknamePermission | A8（全局功能）/ 命令权限等级 | true / 0 |
 | lootMapFilter | A10（全局功能：战利品箱禁出 DA/七海探险地图与原版藏宝图） | true |
+| treasureShellX | A11（全局功能：藏宝箱上方沙滩摆贝壳 X 标记，需要 dimblend-blocks 在场） | true |
 | dieselEngineBehavior | B | true |
 | dieselLoadGraceSeconds | B6 读档宽限秒数（开服后这段时间内柴油机不判爆，0=关闭） | 5 |
 | dieselOverloadProbe | B 诊断探针（只读，输出 `[CDG-PROBE]` 日志，定位完毕可关） | true |
@@ -624,6 +642,7 @@
 | ExplorationMapFunctionAccessor | 原版 ExplorationMapFunction（destination 读取） | A10 | 无条件（原版目标） |
 | LootTableAccessor / LootPoolAccessor | 原版 LootTable/LootPool（pools 遍历、entries 整体换引用） | A10 | 无条件（原版目标） |
 | LootPoolSingletonContainerAccessor / LootItemAccessor | 原版条目类（functions/item 读取） | A10 | 无条件（原版目标） |
+| BuriedTreasureShellMarkerMixin | 原版 BuriedTreasurePiece（postProcess 内 createChest 之后读 boundingBox 拿宝箱坐标，调 TreasureShellMarker.mark） | A11 | 无条件（原版目标） |
 
 事件处理器（非 mixin）：DeathRules（A1，LivingExperienceDropEvent + PlayerEvent.Clone）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainOffStructureRules（E7）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、EnderStorageStructureGuard（G5）、ExplorationMapLootFilter（A10，LootTableLoadEvent 战利品表加载时移除禁出地图条目）。
 

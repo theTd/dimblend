@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "dimblend_blocks:block/shell_marker"
+    }
+  }
+}

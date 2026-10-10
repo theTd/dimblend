@@ -109,6 +109,9 @@ dependencies {
     compileOnly project(":dimblend-carwash")
     // Same for radio: only its api package (reception noise, acoustic intensity).
     compileOnly project(":dimblend-radio")
+    // A11 贝壳 X 标记：编译期零依赖（TreasureShellMarker 按注册名运行时查
+    // dimblend_blocks:shell_marker），dev run / GameTest 需要方块真的在场
+    localRuntime project(":dimblend-blocks")
     // Cross-mod compat: compile against the exact versions running in the TrainTripWorld
     // instance. Create comes from maven.createmod.net (same 6.0.10 upstream); the addons are
     // the runtime jars copied into ./libs (provenance & restore steps: docs/requirements-spec.md「libs jar 清单」).

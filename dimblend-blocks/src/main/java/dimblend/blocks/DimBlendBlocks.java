@@ -13,6 +13,7 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import dimblend.blocks.compat.copycats.CreativeCopycats;
 import dimblend.blocks.compat.create.CreativeKinetics;
 import dimblend.blocks.fragile.FragileStones;
+import dimblend.blocks.treasure.ShellMarker;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(DimBlendBlocks.MODID)
@@ -39,6 +40,9 @@ public class DimBlendBlocks {
 
         // 易碎石头家族：无外部依赖，常驻注册
         FragileStones.init();
+
+        // 贝壳标记：无外部依赖，常驻注册（藏宝箱 X 标记由 dimblend-experience 摆）
+        ShellMarker.init();
 
         // C 板块：创造模式伪装方块，仅 Copycats+ 在场时注册
         // （CreativeCopycats 类内硬引用其类型，必须经 isLoaded 守卫触达）
