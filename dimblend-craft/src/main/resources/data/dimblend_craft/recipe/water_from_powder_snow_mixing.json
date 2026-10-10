@@ -1,0 +1,33 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "create"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "fluid"
+    }
+  ],
+  "type": "create:mixing",
+  "ingredients": [
+    {
+      "type": "fluid_stack",
+      "amount": 1000,
+      "fluid": "fluid:powder_snow"
+    },
+    {
+      "item": "minecraft:blaze_powder"
+    }
+  ],
+  "results": [
+    {
+      "amount": 1000,
+      "id": "minecraft:water"
+    },
+    {
+      "count": 1,
+      "id": "minecraft:blaze_powder"
+    }
+  ]
+}

@@ -49,6 +49,14 @@ import com.google.gson.JsonPrimitive;
  *       同样可匹配；工作盆候选按材料数降序稳定排序、并列保持 RecipeManager 遍历序
  *       （Create 源码 BasinOperatingBlockEntity/RecipeTrie 核实），故经
  *       {@link RecipeEdit.MoveRecipeBefore} 把超热版排在加热版之前，保证超热火稳定产 x2。</li>
+ *   <li>细雪熔水与火药（2026-10-10 修订）：细雪熔水配方实为 Create Fluid 的
+ *       {@code fluid:mixing/powder_snow_melt}（细雪流体 {@code fluid:powder_snow}
+ *       1000mB 加热 =&gt; 水 1000mB，整合包配方文件核实，Create 本体无此配方）；
+ *       TACZ 火药无序合成配方 ID 为 {@code tacz:gunpowder}。新搅拌配方的硝石粉来自
+ *       Eternal Starlight（{@code eternal_starlight:saltpeter_powder}）、硫磺石来自
+ *       Biomes O' Plenty（{@code biomesoplenty:brimstone}，中文名「硫磺石」）；
+ *       Create 搅拌配方的材料/产物列表经其 Codec 均支持物品与流体混排
+ *       （ProcessingRecipeParams 核实）。</li>
  * </ul>
  */
 public final class RecipeEditRules {
@@ -146,12 +154,12 @@ public final class RecipeEditRules {
         edits.add(new RecipeEdit.DeleteByRecipeId("铂锭与铂粒的合成互转",
                 Set.of(ResourceLocation.parse("createpropulsion:crafting/platinum_ingot_from_nugget"),
                         ResourceLocation.parse("createpropulsion:crafting/platinum_nugget_from_ingot"))));
-        // 粉碎粗铂洗涤：铂粒 9 -> 1，金粒概率 50% -> 25%（经验颗粒 x4 50% 不变）
+        // 粉碎粗铂洗涤：铂粒 9 -> 2，金粒概率 50% -> 25%（经验颗粒 x4 50% 不变）
         edits.add(modifyFields("粉碎粗铂洗涤产物", "createpropulsion:splashing/crushed_raw_platinum")
-                .set("results.0.count", 1)
+                .set("results.0.count", 2)
                 .set("results.2.chance", 0.25)
                 .build());
-        // 铂矿及其变种、粗铂、粉碎粗铂的烧炼/高炉产物 铂锭 -> 铂粒（批量熔炼走同一配方）
+        // 铂矿及其变种、粗铂、粉碎粗铂的烧炼/高炉产物 铂锭 x1 -> 铂粒 x2（批量熔炼走同一配方）
         edits.add(modifyFields("铂烧炼产物改铂粒",
                 "createpropulsion:blasting/platinum_ingot_from_deepslate_platinum_ore",
                 "createpropulsion:blasting/platinum_ingot_from_platinum_ore",
@@ -160,6 +168,7 @@ public final class RecipeEditRules {
                 "createpropulsion:smelting/platinum_ingot_from_platinum_ore",
                 "createpropulsion:smelting/platinum_ingot_from_raw_platinum")
                 .set("result.id", "createpropulsion:platinum_nugget")
+                .set("result.count", 2)
                 .build());
 
         // —— 3.11 Create Diesel Generators 分馏（2026-10-05 修订） ——
@@ -189,6 +198,16 @@ public final class RecipeEditRules {
                         + "{\"item\": \"minecraft:netherite_scrap\"}"
                         + "]")
                 .build());
+
+        // —— 3.13 细雪熔水与 TACZ 火药（2026-10-10 修订） ——
+        // 删除 Create Fluid 的加热细雪熔水，改由随包配方提供 混合搅拌（无需加热）：
+        // 细雪 1000mB + 烈焰粉 x1 => 水 1000mB + 烈焰粉 x1（烈焰粉作催化剂返还）
+        edits.add(new RecipeEdit.DeleteByRecipeId("细雪熔水（加热）",
+                Set.of(ResourceLocation.parse("fluid:mixing/powder_snow_melt"))));
+        // 删除 TACZ 火药无序合成（合成台 / 自动搅拌一并失效），
+        // 改由随包配方提供 混合搅拌（加热）：木炭 x3 + 硝石粉 x1 + 硫磺石 x2 => 火药 x3
+        edits.add(new RecipeEdit.DeleteByRecipeId("TACZ 火药合成",
+                Set.of(ResourceLocation.parse("tacz:gunpowder"))));
 
         return edits.build();
     }

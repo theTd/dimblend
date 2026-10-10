@@ -1,0 +1,48 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "create"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "tacz"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "eternal_starlight"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "biomesoplenty"
+    }
+  ],
+  "type": "create:mixing",
+  "heat_requirement": "heated",
+  "ingredients": [
+    {
+      "item": "minecraft:charcoal"
+    },
+    {
+      "item": "minecraft:charcoal"
+    },
+    {
+      "item": "minecraft:charcoal"
+    },
+    {
+      "item": "eternal_starlight:saltpeter_powder"
+    },
+    {
+      "item": "biomesoplenty:brimstone"
+    },
+    {
+      "item": "biomesoplenty:brimstone"
+    }
+  ],
+  "results": [
+    {
+      "count": 3,
+      "id": "minecraft:gunpowder"
+    }
+  ]
+}
