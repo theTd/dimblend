@@ -136,7 +136,7 @@
 ### 深渊（Voidscape）
 
 - [x] 生成轨道：**无枕木宽轨**，无路基（`CorridorTrackProfile.VOIDSCAPE`）
-- [x] 恢复 Voidscape shader（`RotatingDimensionEffects` 在 voidscape lane 委托 `voidscape:void` 的 `DimensionSpecialEffects` / `VoidSkyRenderer`）；时间锁定 18000 只管昼夜读数。`isInVoidDimension` 经 mixin 把 rotating 深渊 lane 视作虚空（光照/雾/灌注/死亡/刷怪）
+- [x] 恢复 Voidscape shader（`RotatingDimensionEffects` 在 voidscape lane 委托 `voidscape:void` 的 `DimensionSpecialEffects` / `VoidSkyRenderer`）；时间锁定 18000 只管昼夜读数。`isInVoidDimension` 经 mixin 把 rotating 深渊 lane 视作虚空（光照/雾/灌注/刷怪/生物死亡掉落）；玩家死亡旁路 Voidscape 的虚空救援（取消死亡+10% 血传送回重生点），掉虚空与原版维度一致正常死亡
 - [x] 天空光恒为 0（真维度 `has_skylight: false`：光引擎没有天空层，读恒 0、也没有天光数据可存。rotating 必须给其它 lane 保留天空层，故按 X 列屏蔽：深渊 lane 内 `SkyLightSectionStorage.getLightValue` 读 0，`LayerLightSectionStorage.getDataLayerData` 交回全 0 空天光层——存档不写 `SkyLight`、光照包按「空层」发（客户端排队全 0 层），Sodium 等直读数据层的消费者同样读 0（返回 null 会被 Sodium 当成天空光 15，反而把洞穴/岛内照亮）；方块光与其它 lane 不受影响。随之与真维度一致：深渊带地表亮度、刷怪暗度、作物不再靠天光生长、岛面不再日晒。末地带仍按「末地」条目显式保留 skylight）
 - [x] 天气锁定晴
 - [x] 下界层疣猪落地刷怪：原版疣猪兽无 SpawnPlacements（NO_RESTRICTIONS），3D 群系柱半空刷出后会被换成疣猪从天上掉；rotating 里 SpawnPlacementCheck 要求 ON_GROUND，对齐 Voidscape 自己维度的 PositionCheck

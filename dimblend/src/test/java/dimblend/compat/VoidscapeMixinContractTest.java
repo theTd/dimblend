@@ -90,6 +90,37 @@ class VoidscapeMixinContractTest {
                 "the bedrock gate must be the rotating dimension itself");
     }
 
+    /**
+     * Rotating bypasses Voidscape's void death rescue ({@code handlePlayerDeath} is
+     * skipped for the whole dimension, so a void fall kills the player like vanilla),
+     * while mobs keep the lane wrap that feeds Ethereal Essence drops. Pins the
+     * asymmetry so a refactor cannot silently resurrect the rescue or drop the wrap.
+     */
+    @Test
+    void rotatingBypassesVoidscapePlayerDeathRescue() throws Exception {
+        String source = Files.readString(
+                TestSourceTree.mainFile("java/dimblend/mixin/voidscape/VoidDimensionDeathHandlerMixin.java"),
+                        StandardCharsets.UTF_8);
+        int player = source.indexOf("method = \"handlePlayerDeath\"");
+        assertTrue(player > 0, "the player death rescue must be patched at handlePlayerDeath");
+        int mob = source.indexOf("method = \"handleMobDeath\"", player);
+        assertTrue(mob > player, "handleMobDeath must keep its own wrap after the player one");
+        String playerWrap = source.substring(player, mob);
+        assertTrue(
+                playerWrap.contains("VoidscapeBand.isRotating"),
+                "rotating must be detected before the rescue can run");
+        assertTrue(
+                playerWrap.indexOf("VoidscapeBand.isRotating") < playerWrap.indexOf("return;")
+                        && playerWrap.indexOf("return;") < playerWrap.indexOf("original.call"),
+                "rotating must return before original.call, so the death stays uncancelled");
+        assertTrue(
+                !playerWrap.contains("VoidscapeBand.run"),
+                "the player wrap must not push a lane position; that would arm the rescue again");
+        assertTrue(
+                source.substring(mob).contains("VoidscapeBand.run"),
+                "the mob wrap keeps the lane position for Ethereal Essence drops");
+    }
+
     /** Source line holding the injector declaration that starts at {@code at}. */
     private static String injectorLine(String source, int at) {
         int start = source.lastIndexOf('\n', at) + 1;

@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Voidscape keys infusion, fog, lightmap, spawn, and death on
+ * Voidscape keys infusion, fog, lightmap, spawn, and mob-death drops on
  * {@code level.dimension() == voidscape:void}. The rotating voidscape lane is
  * still {@code dimblend:rotating}; treat that lane as the void so those checks
  * see the same world they would in Voidscape's own dimension.
