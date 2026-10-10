@@ -1,0 +1,35 @@
+modLoader="javafml" #mandatory
+
+loaderVersion="${loader_version_range}" #mandatory
+
+license="${mod_license}"
+
+[[mods]] #mandatory
+
+modId="${mod_id}" #mandatory
+
+version="${mod_version}" #mandatory
+
+displayName="${mod_name}" #mandatory
+
+description='''
+DimBlend AsyncSave: moves the synchronous file writes of the periodic autosave (level.dat and
+player .dat) off the server thread. Serialization stays on the server thread as a snapshot; a
+single background writer thread performs gzip + disk writes. Manual /save-all, /save-all flush
+and server shutdown keep the vanilla fully-synchronous semantics (pending writes are drained
+first). SavedData is already async+atomic on NeoForge and is left untouched.
+'''
+
+[[dependencies.${mod_id}]]
+    modId="neoforge"
+    type="required"
+    versionRange="[${neo_version},)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"
