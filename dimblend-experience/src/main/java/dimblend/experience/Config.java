@@ -174,6 +174,20 @@ public final class Config {
                     + "其它模式玩家、其它机器/假玩家不拦")
             .define("icePlacementBan", true);
 
+    public static final ModConfigSpec.BooleanValue SABLE_STRUCTURE_VOID_FIT = BUILDER
+            .comment("G 板块 G3 配套：旋转维度内给 Sable 载具的世界投影体积拟合 structure_void，"
+                    + "水不会流进行驶中的载具（原版流体永不占据 structure_void）。"
+                    + "拟合格不入存档（区块序列化时临时剥成空气再还原）；"
+                    + "关闭后调度整体暂停：不再新增拟合、也不再检测载具消失——已加载区块内的"
+                    + "存量空位保留到区块卸载重载（落盘时被剥离）或重新打开开关后由调度清理；"
+                    + "需要 Sable 在场")
+            .define("sableStructureVoidFit", true);
+
+    public static final ModConfigSpec.IntValue SABLE_VOID_FIT_REFIT_TICKS = BUILDER
+            .comment("结构空位拟合的扫描周期（tick）：默认 5 即每秒 4 次位姿检查；"
+                    + "位姿变化超阈值才重算体素，每 20 个周期强制自愈一次")
+            .defineInRange("sableVoidFitRefitTicks", 5, 1, 40);
+
     public static final ModConfigSpec.BooleanValue ENDER_STORAGE_STRUCTURE_ONLY = BUILDER
             .comment("G 板块 G5：旋转维度内末影箱/末影罐（enderstorage:ender_chest / ender_tank）只能放在 sable 结构上；"
                     + "放在结构外则放行放置后本 tick 末破坏返还（真人回背包、机器放置掉落，频率保留）；"

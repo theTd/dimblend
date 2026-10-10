@@ -33,6 +33,8 @@
 	"screen.dimblend_experience.tuning.coupler_survival.description": "默认：关闭。允许生存模式玩家与自动车钩交互。",
 	"screen.dimblend_experience.tuning.limited_water": "有限水检测",
 	"screen.dimblend_experience.tuning.limited_water.description": "默认：开启。检测旋转维度中新写入的源水。冰块放置限制有独立开关。",
+	"screen.dimblend_experience.tuning.sable_void_fit": "载具结构空位拟合",
+	"screen.dimblend_experience.tuning.sable_void_fit.description": "默认：开启。在 Sable 载具的世界投影体积里拟合结构空位，行驶中的载具内部不会进水。拟合格不写入存档。需要 Sable 在场。",
 	"screen.dimblend_experience.tuning.portable_engine_limit": "便携引擎数量限制",
 	"screen.dimblend_experience.tuning.portable_engine_limit.description": "默认：开启。同一连通动力网络仅允许一台便携引擎，静止网络同样生效。",
 	"screen.dimblend_experience.tuning.steam_overload": "蒸汽引擎过载惩罚",

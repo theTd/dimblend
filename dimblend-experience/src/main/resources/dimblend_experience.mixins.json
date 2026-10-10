@@ -12,6 +12,7 @@
 		"VillagerMasterMixin",
 		"LimitedWaterMixin",
 		"IcePlacementBanMixin",
+		"ChunkMapVoidFitStripMixin",
 		"compat.dimblend.WarpGateBlockMixin",
 		"compat.cdg.DieselEngineRampMixin",
 		"compat.cdg.HugeDieselEngineMixin",

@@ -27,6 +27,7 @@ public final class TuningSettings {
             case COUPLER_REDSTONE -> Config.COUPLER_REDSTONE.get() ? 0.0D : 1.0D;
             case COUPLER_SURVIVAL -> Config.ALLOW_SURVIVAL_COUPLER_INTERACTION.get() ? 1.0D : 0.0D;
             case LIMITED_WATER -> Config.LIMITED_WATER.get() ? 1.0D : 0.0D;
+            case SABLE_VOID_FIT -> Config.SABLE_STRUCTURE_VOID_FIT.get() ? 1.0D : 0.0D;
             case PORTABLE_ENGINE_LIMIT -> Config.PORTABLE_ENGINE_EXCLUSIVITY.get() ? 1.0D : 0.0D;
             case STEAM_OVERLOAD -> Config.STEAM_ENGINE_OVERLOAD.get() ? 1.0D : 0.0D;
             case DIESEL_OVERLOAD -> Config.DIESEL_ENGINE_OVERLOAD.get() ? 1.0D : 0.0D;
@@ -58,6 +59,7 @@ public final class TuningSettings {
             case COUPLER_REDSTONE -> Config.COUPLER_REDSTONE.set(!enabled);
             case COUPLER_SURVIVAL -> Config.ALLOW_SURVIVAL_COUPLER_INTERACTION.set(enabled);
             case LIMITED_WATER -> Config.LIMITED_WATER.set(enabled);
+            case SABLE_VOID_FIT -> Config.SABLE_STRUCTURE_VOID_FIT.set(enabled);
             case PORTABLE_ENGINE_LIMIT -> Config.PORTABLE_ENGINE_EXCLUSIVITY.set(enabled);
             case STEAM_OVERLOAD -> Config.STEAM_ENGINE_OVERLOAD.set(enabled);
             case DIESEL_OVERLOAD -> Config.DIESEL_ENGINE_OVERLOAD.set(enabled);

@@ -33,6 +33,8 @@
   "screen.dimblend_experience.tuning.coupler_survival.description": "Default: off. Allows Survival players to interact with automatic couplers.",
   "screen.dimblend_experience.tuning.limited_water": "Limited-water checks",
   "screen.dimblend_experience.tuning.limited_water.description": "Default: on. Checks new source water in the rotating dimension. The ice placement rule has its own setting.",
+  "screen.dimblend_experience.tuning.sable_void_fit": "Structure-void fitting on vehicles",
+  "screen.dimblend_experience.tuning.sable_void_fit.description": "Default: on. Fits the world-space volume of Sable vehicles with structure voids so water cannot flow into a moving vehicle. Fitted cells are never written to the save.",
   "screen.dimblend_experience.tuning.portable_engine_limit": "Portable Engine quantity limit",
   "screen.dimblend_experience.tuning.portable_engine_limit.description": "Default: on. Allows only one Portable Engine per connected kinetic network, including stopped networks.",
   "screen.dimblend_experience.tuning.steam_overload": "Steam Engine overload penalty",
