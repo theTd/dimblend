@@ -44,7 +44,7 @@ public final class Config {
             .defineInRange("nicknamePermission", 0, 0, 4);
 
     public static final ModConfigSpec.BooleanValue DIESEL_ENGINE_BEHAVIOR = BUILDER
-            .comment("B 板块：CDG 柴油机转速行为（点火爬梯 16rpm→每4秒+2→额定；额定后 80%~100% 随机波动，爬梯/波动期间应力容量恒按额定；运转中过载持续2秒确认后爆机掉落）")
+            .comment("B 板块：CDG 柴油机转速行为（点火爬梯 16rpm→每4秒+2→额定；额定后 80%~100% 随机波动，应力容量随转速同比缩放；运转中过载持续2秒确认后爆机掉落）")
             .define("dieselEngineBehavior", true);
 
     public static final ModConfigSpec.BooleanValue DIESEL_ENGINE_OVERLOAD = BUILDER
