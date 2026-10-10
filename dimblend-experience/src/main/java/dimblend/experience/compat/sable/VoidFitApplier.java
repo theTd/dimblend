@@ -172,11 +172,21 @@ public final class VoidFitApplier {
 
     /**
      * 区块加载补放：target 格中可占据（空气/纯流体）的格补上空位并计入 materialized。
-     * 由 {@code ChunkEvent.Load} 驱动；cells 可能分属多个载具，逐格归属回查。
+     * 由 tick 补放队列驱动（加载事件里只登记不写入——在区块任务邮箱上下文内同步
+     * setBlock 会与 Sable 物理钩子的邻块拉取形成嵌套等锁，
+     * 见 docs/sable-void-fit-chunk-deadlock.md）；cells 可能分属多个载具，逐格归属回查。
+     *
+     * @param budget 单次最多写入格数（与 {@link #CELL_BUDGET} 同量级）
+     * @return {@code false} 表示预算耗尽、尚有格子未尝试——调用方需下轮续放
+     *         （target 记账先行、materialized 差分续跑的不变式天然兼容）
      */
-    public static void placeInChunk(ServerLevel level, VoidFitTracker tracker, LongSet cells) {
+    public static boolean placeInChunk(ServerLevel level, VoidFitTracker tracker, LongSet cells, int budget) {
         for (long cell : cells) {
+            if (budget <= 0) {
+                return false;
+            }
             if (placeVoid(level, cell)) {
+                budget--;
                 // 重叠载具的 target 可能同含此格：全数记账，避免一方移走时被误拆
                 for (VoidFitTracker.VehicleFit fit : tracker.vehicles().values()) {
                     if (fit.targetCells.contains(cell)) {
@@ -185,6 +195,7 @@ public final class VoidFitApplier {
                 }
             }
         }
+        return true;
     }
 
     private static boolean placeVoid(ServerLevel level, long cell) {

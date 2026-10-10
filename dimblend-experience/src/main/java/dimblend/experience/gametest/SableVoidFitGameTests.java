@@ -19,12 +19,16 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.storage.ChunkSerializer;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
 /**
@@ -177,6 +181,54 @@ public final class SableVoidFitGameTests {
                 helper.succeed();
             });
         });
+    }
+
+    /**
+     * 结构空位对交互射线透明（玩家侧兜底，StructureVoidBlockPassthroughMixin）：
+     * 开关开 + 旋转维度内，OUTLINE 射线穿过空位格心小盒区域命中其后石块。
+     * 两条负向对照保证正例非空转：开关关、维度拨离旋转维度（均恢复原版 6×6×6
+     * shape）时同一射线必须被空位拦下。
+     * 不经载具：拟合格与普通 structure_void 是同种 BlockState，mixin 按格判定；
+     * 且穿过载具本体的射线会被 Sable 的 sublevel 选取合法拦截，无法构造稳定断言。
+     */
+    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_pass", timeoutTicks = 120)
+    public static void structureVoidTransparentToRaycast(GameTestHelper helper) {
+        SavedConfig saved = enableRules();
+        ServerLevel level = helper.getLevel();
+        BlockPos voidAt = helper.absolutePos(new BlockPos(1, 2, 1));
+        BlockPos startAt = voidAt.west();
+        BlockPos stoneAt = voidAt.east();
+        level.setBlockAndUpdate(voidAt, Blocks.STRUCTURE_VOID.defaultBlockState());
+        level.setBlockAndUpdate(stoneAt, Blocks.STONE.defaultBlockState());
+        ClipContext ray = new ClipContext(Vec3.atCenterOf(startAt), Vec3.atCenterOf(stoneAt),
+                ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, CollisionContext.empty());
+        try {
+            BlockHitResult hit = level.clip(ray);
+            helper.assertTrue(hit.getType() == HitResult.Type.BLOCK && hit.getBlockPos().equals(stoneAt),
+                    "OUTLINE raycast must pass through the void and hit the stone behind but hit "
+                            + hit.getType() + " at " + hit.getBlockPos());
+            Config.SABLE_STRUCTURE_VOID_FIT.set(false);
+            BlockHitResult blockedByToggle = level.clip(ray);
+            helper.assertTrue(blockedByToggle.getType() == HitResult.Type.BLOCK
+                            && blockedByToggle.getBlockPos().equals(voidAt),
+                    "control: with the feature off the ray must be stopped by the void but hit "
+                            + blockedByToggle.getType() + " at " + blockedByToggle.getBlockPos());
+            Config.SABLE_STRUCTURE_VOID_FIT.set(true);
+            Config.ROTATING_DIMENSION_ID.set("dimblend:rotating");
+            BlockHitResult blockedByDimension = level.clip(ray);
+            helper.assertTrue(blockedByDimension.getType() == HitResult.Type.BLOCK
+                            && blockedByDimension.getBlockPos().equals(voidAt),
+                    "control: outside the rotating dimension the ray must be stopped by the void but hit "
+                            + blockedByDimension.getType() + " at " + blockedByDimension.getBlockPos());
+            // 共享覆写口径：临时翻转须自己翻回（GameTestSableRules 中途不改值）
+            Config.ROTATING_DIMENSION_ID.set("minecraft:overworld");
+        } finally {
+            // 断言中途失败也得把临时翻转翻回来（共享覆写中途不改值，泄漏会波及其他用例）
+            Config.ROTATING_DIMENSION_ID.set("minecraft:overworld");
+            Config.SABLE_STRUCTURE_VOID_FIT.set(true);
+            restore(saved);
+        }
+        helper.succeed();
     }
 
     /** 拟合格不落盘：剥成空气后序列化，palette 里不得出现 structure_void。 */

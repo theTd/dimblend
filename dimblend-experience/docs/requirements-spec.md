@@ -532,6 +532,26 @@
   → `LimitedWaterRules` / `LimitedWaterMath`
 - 开关 `limitedWater`（默认开）+ `icePlacementBan`（默认开）
 
+### G3 配套一：载具结构空位拟合（2026-10-10 实施）
+- rotating 内给 Sable 载具的世界投影体积拟合 `structure_void`（原版
+  `FlowingFluid#canHoldFluid` 硬编码排除空位），行驶载具内部不进水；
+  拟合格区块保存时剥成空气再还原（不落盘）；水密要求保守覆盖取格，
+  凸出载具可见几何不可避免（格粒度表达不了亚格表面）
+- 凸出无害化（2026-10-11 拍板方案三）：`StructureVoidBlockPassthroughMixin`
+  在配置+开关+rotating 门控下把 `StructureVoidBlock#getShape` 掏空——交互射线
+  （`ClipContext.Block.OUTLINE`）全穿透，挖/打/右键/桶 POV 不再被隐形空位拦截；
+  挡水、保存剥离、调度器均不动，维度外保留原版可选中语义
+- 区块加载补放不走事件内联写入（2026-10-11 死锁修复，见
+  `docs/sable-void-fit-chunk-deadlock.md`）：`ChunkEvent.Load` 只登记 ChunkPos，
+  tick 扫描按 2 区块/轮 + `CELL_BUDGET` 预算消化，放不完回队尾
+- 空 target 重试（2026-10-11）：refit 后 target 为空（plot 懒加载未就位）则留
+  retry 下轮续试（静置载具不再触发位姿 refit，否则最长等一个自愈周期才拟合）；
+  连续 20 轮仍空（限高外/病态）熔断退回自愈节拍，防挤占预算
+- 实现：`SableVoidFit`（4Hz 扫描、2 载具/轮预算、位姿阈值、20 周期自愈）
+  → `VoidFitVoxelizer`/`VoidFitTracker`/`VoidFitApplier`/`VoidFitStrip`
+  + `ChunkMapVoidFitStripMixin`；GameTest 8 条
+- 开关 `sableStructureVoidFit`（默认开）+ `sableVoidFitRefitTicks`（默认 5）
+
 ### G4 传送门禁令（回家通道不管）
 - 下界门：rotating 内点火生成一律取消（`BlockEvent.PortalSpawnEvent` 取消，
   镜框搭好也点不着）
@@ -598,6 +618,8 @@
 | structureBed | G2 | true |
 | limitedWater | G3（源水检测） | true |
 | icePlacementBan | G3（生存玩家与机械手禁放冰/浮冰/蓝冰） | true |
+| sableStructureVoidFit | G3 配套（载具结构空位拟合挡水） | true |
+| sableVoidFitRefitTicks | G3 配套（拟合扫描周期 1–40 tick） | 5 |
 | portalBan | G4 | true |
 | enderStorageStructureOnly | G5（末影存储仅限 sable 结构放置） | true |
 | steamEngineOverload | H（蒸汽引擎过载两阶段） | true |
@@ -635,6 +657,8 @@
 | MerchantOfferAccessor | 原版交易条目（maxUses 改写） | G1 | 无条件（原版目标） |
 | LimitedWaterMixin | 原版 Level#setBlock 4 参（源水写入改写为 water7） | G3 | 无条件（原版目标） |
 | IcePlacementBanMixin | 原版 BlockItem#place（冰/浮冰/蓝冰放置拦截） | G3 | 无条件（原版目标） |
+| ChunkMapVoidFitStripMixin | 原版 ChunkMap#save（拟合空位序列化前剥成空气再还原，不落盘） | G3 配套 | 无条件（原版目标） |
+| StructureVoidBlockPassthroughMixin | 原版 StructureVoidBlock#getShape（rotating 内掏空，交互射线穿透拟合空位） | G3 配套 | 无条件（原版目标） |
 | compat.dimblend.WarpGateBlockMixin | dimblend 折跃门（字符串目标） | G4 | dimblend 在场 |
 | compat.fluid.GutterOutletBiomeProjectionMixin | Create: Fluid 集水器 BE（`handlePrecipitationCollection` 内 `getBiome`/`getPrecipitationAt` 的位置参数 WrapOperation，经 `SableWorldPosition.projectBlock` 投影到世界坐标） | Sable 结构群系投影 | fluid 在场 |
 | compat.fluid.SmartGutterOutletBiomeProjectionMixin | Create: Fluid 智能集水器 BE（同上，目标方法 `handlePrecipitationCollectionFiltered`） | Sable 结构群系投影 | fluid 在场 |

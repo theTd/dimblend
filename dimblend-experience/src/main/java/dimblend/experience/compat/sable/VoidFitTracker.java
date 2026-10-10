@@ -22,8 +22,9 @@ import javax.annotation.Nullable;
  *
  * <p>两个集合分工：</p>
  * <ul>
- * <li>{@code targetCells}：体素化的全部目标格，驱动区块加载补放（{@code ChunkEvent.Load}）
- *     与保存剥离（{@code ChunkMapVoidFitStripMixin}）——未加载/被占的格也在其中；</li>
+ * <li>{@code targetCells}：体素化的全部目标格，驱动区块加载补放（加载事件只登记、
+ *     tick 补放队列消化，见 {@code SableVoidFit} 类头的事故口径）与保存剥离
+ *     （{@code ChunkMapVoidFitStripMixin}）——未加载/被占的格也在其中；</li>
  * <li>{@code materializedCells}：确认已由我们写入 structure_void 的格，驱动差分。
  *     两者分离后，写入预算耗尽时 tracker 可先记 target，下周期按 materialized diff 续跑，
  *     不会丢失未写入部分。</li>
@@ -45,6 +46,8 @@ public final class VoidFitTracker {
         public final LongOpenHashSet materializedCells = new LongOpenHashSet();
         /** 慢速自愈倒计时（按扫描周期计，归零强制 refit）。 */
         public int verifyCountdown;
+        /** 连续空 target 重试次数（plot 懒加载退避保险丝计数，非空时清零）。 */
+        public int emptyRetries;
     }
 
     private static final Map<ResourceKey<Level>, VoidFitTracker> BY_DIMENSION = new HashMap<>();
