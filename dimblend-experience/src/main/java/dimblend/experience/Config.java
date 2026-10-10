@@ -130,6 +130,11 @@ public final class Config {
                     + "（垂直车架朝向、左右随机、持续 10 tick，作用于车架位置）。全维度；需要 Simurail 在场")
             .define("trainLateralForce", true);
 
+    public static final ModConfigSpec.BooleanValue TRAIN_FIXED_BRAKE_SIGNAL = BUILDER
+            .comment("E 板块 E9：转向架刹车红石信号视为 1 级——收到任意强度信号一律按 1 级信号计"
+                    + "（刹车力度与动力网络应力同按 1 级；原行为为随信号强度线性）。全维度；需要 Simurail 在场")
+            .define("trainFixedBrakeSignal", true);
+
     public static final ModConfigSpec.DoubleValue TRAIN_SHAKE_INTERVAL_SECONDS = BUILDER
             .comment("Random train shaking draw interval in seconds; default 2.0. 0 disables draws, otherwise 0.1-60.0 in steps of 0.1.")
             .defineInRange("trainShakeIntervalSeconds", 2.0D, 0.0D, 60.0D);

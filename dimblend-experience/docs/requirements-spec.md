@@ -37,6 +37,8 @@
 > （快照只覆盖原版栏位，饰品随掉落取消蒸发）——死亡保留物品、床遗失改道走廊重生（A2）
 > 整体取消，死亡掉落/重生落点回归 gamerule 与原版逻辑；A1 改为按比率清空经验
 > （`deathExpClearRatio`，默认 1.00，无视 keepInventory，经验球不掉落），比率经 /dbx 面板可调。
+> v1.14（2026-10-10 用户口径，E9 刹车信号视为 1 级）：转向架收到任意强度红石信号一律按
+> 1 级信号处理（原行为为刹车力度随信号强度线性）；新开关 `trainFixedBrakeSignal`。
 > 本文件是开发依据；原始清单仅作需求索引，两者冲突时以本文件为准。
 
 ## 0. 环境基线
@@ -331,6 +333,15 @@
   pN 为 sable 力单位（`BlockEntityPropeller#getThrust` 同单位）。未组装（不在子层级）不计时。
   实现 `PhysicsBogeyLateralForceMixin` + 纯函数 `TrainLateralForceMath`；
   新开关 `trainLateralForce`（默认开，热关闭下一 tick 清空计时与进行中施力）
+- E9 刹车红石信号视为 1 级（2026-10-10 用户口径，全维度）：转向架收到任意强度红石信号一律按
+  1 级信号处理，原行为为 `getControlStrength()` = 信号/15 随强度线性。实现
+  `PhysicsBogeyFixedBrakeSignalMixin`：`getControlStrength()D` RETURN 处任意正强度压到 1/15、
+  0 保持 0——该方法是信号唯一归一化入口，刹车力度（正控 1/15、反控 14/15）、动力网络应力
+  （`calculateStressApplied` 同按 controlMode 三分支：正控 control×stress、反控 (1−control)×stress、
+  默认恒 1.0×stress 与信号无关，即默认模式本条目零效果）与 E3/E4 沿检测（读 `getBrakeStrength`）
+  自动一致；`getSteerValue` 转向差值直读 `getSignal`，不受影响。
+  反控模式二阶后果（接受项）：刹车恒 ≥14/15 不归零，E3/E4 施闸/松闸沿不再触发。
+  新开关 `trainFixedBrakeSignal`（默认开）
 - A9 虚空共存（用户拍板）：rotating 内 voidscape band 里 Voidscape `Insanity`
   的生命上限修饰符保留；我方 A3 只读写自有 id
   `dimblend_experience:far_curse_max_health`（代码已确认天然共存），叠加效果留实机验证；
@@ -527,6 +538,7 @@
 | wideGaugeParticles | E6（纯客户端视觉） | true |
 | offStructureTeleport | E7（离结构传送，仅 rotating） | true |
 | trainLateralForce | E8（车架随机横向力，全维度） | true |
+| trainFixedBrakeSignal | E9（刹车红石信号视为 1 级，全维度） | true |
 | villagerMaster | G1 | true |
 | structureBed | G2 | true |
 | limitedWater | G3（源水检测） | true |
@@ -555,6 +567,7 @@
 | compat.create.KineticNetworkUnloadedAccessor | Create KineticNetwork（unloadedCapacity/Stress/Members 读写） | B4 读档账本修正 | create 在场 |
 | compat.create.KineticNetworkLedgerTraceMixin | Create KineticNetwork（initFromTE/addSilently/add/remove/sync/updateCapacityFor/updateStressFor HEAD，只读记账本事件环） | B4 误判过载诊断探针（`CdgOverloadProbe`） | create 在场 |
 | compat.simurail.PhysicsBogeyBrakeSoundMixin | Simurail 物理转向架 BE | E3/E4 | simurail 在场（simurail 硬性依赖 sable，蕴含 sable 在场） |
+| compat.simurail.PhysicsBogeyFixedBrakeSignalMixin | Simurail 物理转向架 BE（`getControlStrength` RETURN 压到 1/15） | E9 | simurail 在场 |
 | compat.simurail.PhysicsBogeyLateralForceMixin | Simurail 物理转向架 BE（`tick` + `sable$physicsTick`） | E8 | simurail 在场 |
 | compat.simurail.PhysicsBogeyTrackSoundMixin | Simurail 物理转向架 BE | E2 | simurail 在场（client 数组） |
 | compat.simurail.PhysicsBogeyWideGaugeParticleMixin | Simurail 物理转向架 BE | E6 | simurail 在场（client 数组） |

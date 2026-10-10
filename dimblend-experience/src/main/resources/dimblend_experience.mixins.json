@@ -30,6 +30,7 @@
 		"compat.fluid.SmartGutterOutletBiomeProjectionMixin",
 		"compat.create.SteamEngineOverloadMixin",
 		"compat.simurail.PhysicsBogeyBrakeSoundMixin",
+		"compat.simurail.PhysicsBogeyFixedBrakeSignalMixin",
 		"compat.simurail.PhysicsBogeyLateralForceMixin",
 		"compat.simurail.AutomaticCouplerRedstoneMixin"
 	],

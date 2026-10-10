@@ -30,6 +30,7 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         }
         // simurail 硬性依赖 sable（mods.toml required），在场性蕴含 sable 在场
         if (mixinClassName.endsWith(".compat.simurail.PhysicsBogeyBrakeSoundMixin")
+                || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyFixedBrakeSignalMixin")
                 || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyLateralForceMixin")
                 || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyTrackSoundMixin")
                 || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyWideGaugeParticleMixin")

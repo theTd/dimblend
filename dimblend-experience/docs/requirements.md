@@ -108,6 +108,7 @@
 - [ ] 待实测｜位于幻纱宽轨上面的车架 会在其 y-1 3x3 范围生成下落的末地烛粒子 密度和末地烛相近即可（2026-09-22 口径已实施：`PhysicsBogeyWideGaugeParticleMixin` 纯客户端，见 spec E6；2026-09-23 用户条目：仅 `railways:track_phantom_wide` 精确匹配、其他宽轨不播；待实测）
 - [ ] 待实测｜任意车架速度大于 4 m/s 时每 10 秒以玩家为中心检测半径 32 格内是否有 sable 结构，都无则传送回重生位置（v1.8 已实施：`TrainOffStructureRules`，见 spec E7；待实测）
 - [ ] 待实测｜车架速度大于 4 m/s 时 每固定 2 秒有（速度值/20×100%）的概率对车架施加 1200 pN 的横向力 方向垂直车架方向 随机左右 持续 10 tick（2026-09-24 新条目，用户初稿 5-20 秒后改 2-8 秒、力 12000 pN 后改 1200 pN，间隔后再改为固定 2 秒；拍板：逐车架独立计时/判定、作用点在车架位置、全维度、降速到 ≤4 撤销计时再超速重新开始 2 秒计时；v1.9 已实施：`PhysicsBogeyLateralForceMixin`，新开关 trainLateralForce，见 spec E8；待实测手感）
+- [ ] 待实测｜转向架刹车红石信号视为 1 级：收到任意强度信号一律按 1 级信号处理（2026-10-10 新条目已实施：`PhysicsBogeyFixedBrakeSignalMixin` 在 `getControlStrength()D` RETURN 把任意正强度压到 1/15，刹车力度与应力同按 1 级，新开关 trainFixedBrakeSignal，见 spec E9；待实测刹车手感）
 
 ## enderstorage
 
