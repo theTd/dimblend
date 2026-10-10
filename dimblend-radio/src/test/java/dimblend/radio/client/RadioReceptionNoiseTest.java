@@ -171,6 +171,15 @@ class RadioReceptionNoiseTest {
     }
 
     @Test
+    void maxVolumeNeverExceedsTheSampleBounds() {
+        float[][] io = run(noise(List.of()), RadioReception.STATIC_ONLY, 10, 0.5, 4.0f);
+        for (float sample : io[1]) {
+            assertTrue(sample >= -1.0f && sample <= 32767 / 32768f,
+                    "volume 2.00 (scale 4) output stays within the clamped range: " + sample);
+        }
+    }
+
+    @Test
     void voiceClipsAreResampledToThePlaybackRate() {
         float[] clip = new float[44100];
         assertSame(clip, RadioEnderVoices.resample(clip, 44100, 44100));

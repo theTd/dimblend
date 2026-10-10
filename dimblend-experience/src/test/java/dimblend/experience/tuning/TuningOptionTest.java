@@ -49,11 +49,11 @@ class TuningOptionTest {
         var option = TuningOption.RADIO_STATIC;
         assertFalse(option.isCheckbox());
         assertEquals(0.5D, option.defaultValue());
-        for (int i = 0; i <= 100; i++) {
+        for (int i = 0; i <= 200; i++) {
             assertTrue(option.isValid(i / 100.0D));
         }
         assertFalse(option.isValid(0.005D));
-        assertFalse(option.isValid(1.01D));
+        assertFalse(option.isValid(2.01D));
         assertEquals("0.50", option.format(option.defaultValue()));
     }
 

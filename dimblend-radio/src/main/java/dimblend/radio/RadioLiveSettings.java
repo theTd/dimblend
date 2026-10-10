@@ -8,7 +8,7 @@ package dimblend.radio;
 public final class RadioLiveSettings {
     /** The former always-on noise level, now the volume slider's middle. */
     public static final float DEFAULT_RECEPTION_NOISE_VOLUME = 0.5f;
-    public static final float MAX_RECEPTION_NOISE_VOLUME = 1.0f;
+    public static final float MAX_RECEPTION_NOISE_VOLUME = 2.0f;
     public static final float DEFAULT_ACOUSTIC_INTENSITY = 1.0f;
     public static final float MAX_ACOUSTIC_INTENSITY = 2.0f;
 
@@ -20,7 +20,7 @@ public final class RadioLiveSettings {
         return receptionNoiseVolume;
     }
 
-    /** The static, crackle and voice scale: 1 at the former always-on volume (0.5), up to 2. */
+    /** The static, crackle and voice scale: 1 at the former always-on volume (0.5), up to 4. */
     public static float receptionNoiseScale() {
         return receptionNoiseVolume * 2.0f;
     }

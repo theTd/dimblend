@@ -24,7 +24,7 @@ Missing optional mods leave their controls disabled.
 | Steam Engine overload penalty | true | Checkbox | experience |
 | Small/Modular/Large Diesel Engine overload penalty | true | Checkbox | experience |
 | Electric Motor overload penalty | true | Checkbox | experience |
-| Radio reception noise volume | 0.50 | 0.00-1.00, step 0.01; 0 = every radio clean, 0.50 = former on level | radio |
+| Radio reception noise volume | 0.50 | 0.00-2.00, step 0.01; 0 = every radio clean, 0.50 = former on level | radio |
 | Radio acoustic simulation intensity | 1.00 | 0.00-2.00, step 0.01; 0 = no simulated echo | radio |
 | Experience clear ratio on respawn | 1.00 | 0.00-1.00, step 0.01; rotating dimension only, ignores keepInventory, no experience orb drops | experience |
 

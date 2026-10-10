@@ -14,7 +14,7 @@ public enum TuningOption {
     STEAM_OVERLOAD("steam_overload", 1.0D, "create"),
     DIESEL_OVERLOAD("diesel_overload", 1.0D, "createdieselgenerators"),
     MOTOR_OVERLOAD("motor_overload", 1.0D, "createaddition"),
-    RADIO_STATIC("radio_static", 0.5D, 1.0D, 2, "dimblend_radio"),
+    RADIO_STATIC("radio_static", 0.5D, 2.0D, 2, "dimblend_radio"),
     RADIO_ACOUSTIC_INTENSITY("radio_acoustic_intensity", 1.0D, 2.0D, 2, "dimblend_radio"),
     EXP_CLEAR_RATIO("exp_clear_ratio", 1.0D, 1.0D, 2, "");
 

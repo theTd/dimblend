@@ -42,7 +42,7 @@
   "screen.dimblend_experience.tuning.motor_overload": "Electric Motor overload penalty",
   "screen.dimblend_experience.tuning.motor_overload.description": "Default: on. Overload locks the output and doubles energy use. Disabling clears the overload latch.",
   "screen.dimblend_experience.tuning.radio_static": "Radio reception noise volume",
-  "screen.dimblend_experience.tuning.radio_static.description": "Default: 0.50 (the former on level). Range: 0.00-1.00, step: 0.01. Scales the static, crackle and voices: 0 plays every radio clean, 1.00 is twice the former level. Overworld and underground play clean; the Nether and modded areas add faint static; the End lets faint enderman voices through now and then; Voidscape plays static only.",
+  "screen.dimblend_experience.tuning.radio_static.description": "Default: 0.50 (the former on level). Range: 0.00-2.00, step: 0.01. Scales the static, crackle and voices: 0 plays every radio clean, 2.00 is four times the former level. Overworld and underground play clean; the Nether and modded areas add faint static; the End lets faint enderman voices through now and then; Voidscape plays static only.",
   "screen.dimblend_experience.tuning.radio_acoustic_intensity": "Radio acoustic simulation intensity",
   "screen.dimblend_experience.tuning.radio_acoustic_intensity.description": "Default: 1.00. Range: 0.00-2.00, step: 0.01. Scales the simulated echo (reflections and reverb). 0 leaves only the direct sound, which keeps its occlusion and 3D direction.",
   "screen.dimblend_experience.tuning.exp_clear_ratio": "Experience clear ratio on respawn",

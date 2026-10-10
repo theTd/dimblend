@@ -13,7 +13,7 @@ public final class RadioServerConfig {
 
     public static final ModConfigSpec.DoubleValue RECEPTION_NOISE = BUILDER
             .comment("Radio reception noise volume: 0 plays every radio clean, 0.5 the former always-on"
-                    + " level, up to 1. Overworld and underground play clean; the Nether and modded areas add"
+                    + " level, up to 2. Overworld and underground play clean; the Nether and modded areas add"
                     + " faint static; the End lets faint enderman voices through now and then; Voidscape plays"
                     + " static only. A stored boolean from older versions resets to the default.")
             .defineInRange("receptionNoise", (double) RadioLiveSettings.DEFAULT_RECEPTION_NOISE_VOLUME,

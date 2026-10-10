@@ -33,7 +33,7 @@ public final class RadioTuning {
 
     public static void applyReceptionNoiseVolume(double value) {
         if (!validNoiseVolume(value)) {
-            throw new IllegalArgumentException("Reception noise volume must be 0.00-1.00 in steps of 0.01");
+            throw new IllegalArgumentException("Reception noise volume must be 0.00-2.00 in steps of 0.01");
         }
         RadioServerConfig.apply(value, acousticIntensity());
     }
