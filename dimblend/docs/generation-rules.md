@@ -66,6 +66,7 @@
 - [x] rotating 的生物群系装饰不因特征索引 `-1` 中断区块（`ChunkGeneratorDecorationMixin` → `BiomeDecoration`：3×3 只采样本 band 的群系；`FeatureSorter` 按 equals 去重、原版按引用查表，对不上时 `FeatureIndex` 用 equals 回退，仍没有则跳过该特征。其它维度仍走原版方法）
 - [x] 轨道洞穴大小的区域填充「折越门」方块，覆盖铁轨和地基（`WarpGateBlock` 填充走廊截面，含轨道与路基格）
 - [x] 折越门对未授权实体是墙、对 Sable（含列车）是空气（`WarpGateBlock.getCollisionShape` 按 CollisionContext 分流；生存玩家需站在 Sable 结构上，创造/旁观/Create 车厢放行；`WarpGatePassageGuard` 只处理卡进门板）
+- [x] 走廊拱洞外 1 格壳内流体替换为玻璃（`OakTrackCorridor.sealVaultShell` / `glassForFluid`：与拱洞空气相邻的流体格全部玻璃化，含顶部 dy=maxDy+1；水/岩浆用蓝/红染色玻璃，其余流体用普通玻璃；不替换路基（Y=63）及以下）
 - [x] 左下角物品栏左侧显示当前区域序号 + 以玩家当前位置为准的行进进度（`BandProgressHud`：护甲行上方的进度条，区域序号居中，`BandInfoSync` 推送 band_size；生存/冒险/创造显示，旁观隐藏）
 
 ## 三、分纬度规则
@@ -85,7 +86,6 @@
 - [x] 时间锁定 18000
 - [x] 天空套用下界 Effects（与下界相同：`ClientBandLane.netherSky()` → `NetherEffects`：`SkyType.NONE` / 浓雾 / constantAmbientLight）
 - [x] 天气锁定晴（rotating 使用独立可写的天气数据，保存到主世界 `data/dimblend_rotating_weather.dat`，不修改主世界天气；原版自定义维度的 `DerivedLevelData` 天气 setter 为空，不能直接用来锁天。天气循环开始前与 level-tick 结束后扫全维度玩家，有一人在非地表 band 就全维度转晴，并清零服务端雨雷强度、向本维度客户端同步停雨和零强度。锁定时跳过原版天气循环；空 level 也转晴：无人时没人要雨，且坐车进 sublevel 的玩家不算在主 level 里；多玩家互顶不考虑。回地表后不恢复旧雨，保留 6000 tick 晴天缓冲后由原版循环重起。见 `ServerGlobalWeatherLock` / `RotatingLevelData`）
-- [x] 替换轨道上方 15 格宽内所有流体为玻璃（`OakTrackCorridor.replaceFluidStrip`：地下 lane 在 Z[-7,+7]、Y=64 到切片顶把流体换成玻璃；水/岩浆用蓝/红染色玻璃，其余流体用普通玻璃。八边形 1 格壳 `sealVaultShell` 仍保留，但不替换路基（Y=63）及以下）
 - [x] 将地下全部生物群系显示为「地下」（显示层方案：Biome Notifier 兼容 mixin 给群系名追加「地下」后缀，如 平原 → 平原地下；未装 Biome Notifier 时无此提示，真实 id 不变）
 
 ### 下界（Nether）
