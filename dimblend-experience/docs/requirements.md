@@ -114,3 +114,8 @@
 ## enderstorage
 
 - [ ] 待实测｜enderstorage:ender_chest 与 enderstorage:ender_tank 只能放置在 sable 结构上 仅在 dimblend:rotating 维度生效（2026-09-27 新条目已实施：`EnderStorageStructureGuard` 沿用 F1「放行放置+tick 末拆除返还」，结构外放置即拆、真人回背包/机器放置掉落，返还走方块自身掉落规则保留频率；创造模式豁免，新开关 enderStorageStructureOnly，见 spec G5；待实测）
+
+## sable 结构空位与岩浆（G 板块配套）
+
+- [ ] 待实测｜行驶载具内部不进水（结构空位拟合，G3 配套衍生）：拟合格不落盘、凸出部分对交互射线透明、区块加载补放走 tick 队列（2026-10-10 实施 + 2026-10-11 穿透/死锁修复，见 spec「G3 配套一」与 `docs/sable-void-fit-chunk-deadlock.md`；待实测）
+- [ ] 待实测｜岩浆和岩浆流会按照砖块硬度破坏自身以及周边半径0.25以内的位于sable结构上的砖块 并使其掉落（2026-10-11 新条目已实施：速度=徒手 4 倍（徒手 16 秒的方块浇 4 秒熔毁），硬度只定速度不设阈值、黑曜石级约 62.5 秒等效抗岩浆、硬度负免疫；接触中断进度清零；掉落走方块自身规则、容器内容物并入、投影位置播破坏粒子音效；拟合不再驱逐熔岩，熔穿后投影收缩岩浆推进；`SableLavaMelt`/`LavaMeltMath`，新开关 sableLavaMelt，单测 4 条 + GameTest 4 条，见 spec G6；待实测）

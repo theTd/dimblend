@@ -552,6 +552,26 @@
   + `ChunkMapVoidFitStripMixin`；GameTest 8 条
 - 开关 `sableStructureVoidFit`（默认开）+ `sableVoidFitRefitTicks`（默认 5）
 
+### G6 岩浆熔毁 sable 结构方块（2026-10-11 拍板口径，仅 rotating）
+- 岩浆与岩浆流按 **4 倍徒手速度** 熔毁位于 sable 结构上的方块并使其掉落：
+  熔岩格与方块投影体积（旋转保守半 extent）AABB 距离 ≤0.25 即"被岩浆浇着"
+  ——同格（载具驶入熔岩）与贴壳（熔岩流到空位壳边）都覆盖
+- 硬度只决定速度不设阈值：熔毁耗时 = 徒手耗时/4（需正确工具的方块徒手术
+  divisor=100、否则 30，同原版 `getDigSpeed` 分支）——黑曜石级（50）约 62.5 秒
+  持续浇淋才熔（等效抗岩浆），硬度负（基岩等）免疫，硬度 0 即熔；
+  接触中断进度清零（与徒手停手同型）
+- 掉落：方块自身掉落规则 `Block#getDrops`（无工具/时运/精准），在投影世界位置
+  生成掉落物并播 2001 破坏粒子+音效；容器内容物并入掉落并清空（防撒到 plot 存储区）
+- 与拟合的配合：开关开启时 `VoidFitApplier#placeVoid` 不驱逐熔岩格（熔岩浇穿
+  船体逐步推进：熔穿→投影收缩→空位拆除→熔岩进缺口）；关闭后熔岩与水同被
+  驱逐、本特性停摆
+- 实现：`SableLavaMelt`（5 tick 一轮、2 载具/轮游标轮询；连续接触按真实 tick 差
+  累计、新接触从 0 起算不预支空窗；开关停摆恢复后首扫重置计时不补发停摆期）
+  → `LavaMeltMath` 纯函数；`VoidFitVoxelizer#forEachProjectedBlock` 与体素化共用
+  投影枚举；plot 读写一律 `level` + 全局存储坐标（`EmbeddedPlotLevelAccessor`
+  是中心相对坐标，严禁混用）；单测 4 条 + GameTest 4 条
+- 开关 `sableLavaMelt`（默认开）；需要 Sable 在场
+
 ### G4 传送门禁令（回家通道不管）
 - 下界门：rotating 内点火生成一律取消（`BlockEvent.PortalSpawnEvent` 取消，
   镜框搭好也点不着）
@@ -622,6 +642,7 @@
 | sableVoidFitRefitTicks | G3 配套（拟合扫描周期 1–40 tick） | 5 |
 | portalBan | G4 | true |
 | enderStorageStructureOnly | G5（末影存储仅限 sable 结构放置） | true |
+| sableLavaMelt | G6（岩浆 4 倍徒手速熔毁 sable 结构方块并掉落） | true |
 | steamEngineOverload | H（蒸汽引擎过载两阶段） | true |
 | rotatingDimensionId | A1–A6 作用域维度 id | "dimblend:rotating" |
 

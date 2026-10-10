@@ -202,6 +202,15 @@ public final class Config {
                     + "位姿变化超阈值才重算体素，每 20 个周期强制自愈一次")
             .defineInRange("sableVoidFitRefitTicks", 5, 1, 40);
 
+    public static final ModConfigSpec.BooleanValue SABLE_LAVA_MELT = BUILDER
+            .comment("G 板块 G6（结构空位拟合配对）：旋转维度内岩浆/岩浆流按 4 倍徒手速度"
+                    + "熔毁位于 Sable 结构上的方块并使其掉落（同格及投影体积 0.25 容差内"
+                    + "持续浇淋累计进度，接触中断清零；硬度只决定速度不设阈值——黑曜石级"
+                    + "约 62.5 秒才熔、硬度负免疫；掉落走方块自身规则、容器内容物并入）。"
+                    + "开启时拟合不再驱逐熔岩格（熔岩浇穿船体逐步推进），"
+                    + "关闭后本特性停摆、熔岩与水同被拟合驱逐；需要 Sable 在场")
+            .define("sableLavaMelt", true);
+
     public static final ModConfigSpec.BooleanValue ENDER_STORAGE_STRUCTURE_ONLY = BUILDER
             .comment("G 板块 G5：旋转维度内末影箱/末影罐（enderstorage:ender_chest / ender_tank）只能放在 sable 结构上；"
                     + "放在结构外则放行放置后本 tick 末破坏返还（真人回背包、机器放置掉落，频率保留）；"

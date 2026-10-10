@@ -15,7 +15,7 @@ public final class TuningNetwork {
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
         // The snapshot carries one value per option: adding options changes the protocol.
-        var registrar = event.registrar("4");
+        var registrar = event.registrar("5");
         registrar.playToServer(TuningEditPayload.TYPE, TuningEditPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof ServerPlayer player) {

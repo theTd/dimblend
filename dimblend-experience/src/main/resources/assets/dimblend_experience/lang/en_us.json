@@ -35,6 +35,8 @@
   "screen.dimblend_experience.tuning.limited_water.description": "Default: on. Checks new source water in the rotating dimension. The ice placement rule has its own setting.",
   "screen.dimblend_experience.tuning.sable_void_fit": "Structure-void fitting on vehicles",
   "screen.dimblend_experience.tuning.sable_void_fit.description": "Default: on. Fits the world-space volume of Sable vehicles with structure voids so water cannot flow into a moving vehicle. Fitted cells are never written to the save.",
+  "screen.dimblend_experience.tuning.sable_lava_melt": "Lava melting vehicle blocks",
+  "screen.dimblend_experience.tuning.sable_lava_melt.description": "Default: on. Lava and flowing lava melt blocks on Sable structures at 4x bare-hand breaking speed and drop them as items; hardness only sets the pace, obsidian-grade takes about a minute. While on, structure-void fitting no longer evicts lava. Requires Sable.",
   "screen.dimblend_experience.tuning.portable_engine_limit": "Portable Engine quantity limit",
   "screen.dimblend_experience.tuning.portable_engine_limit.description": "Default: on. Allows only one Portable Engine per connected kinetic network, including stopped networks.",
   "screen.dimblend_experience.tuning.steam_overload": "Steam Engine overload penalty",

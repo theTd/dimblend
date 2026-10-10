@@ -4,11 +4,13 @@ import java.util.Map;
 import java.util.UUID;
 
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
+import dimblend.experience.Config;
 import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LiquidBlock;
@@ -21,11 +23,13 @@ import net.minecraft.world.level.block.state.BlockState;
  * <ul>
  * <li>放置只进空气或纯流体格；顶掉流体时带 {@code UPDATE_CLIENTS}（客户端停止渲染水），
  *     空气格不通知客户端（不可见方块无需发包）；都不带邻接更新——放 structure_void 不需要
- *     触发周围方块响应。</li>
+ *     触发周围方块响应。例外：G6 熔毁开关开启时熔岩格不驱逐（留给 {@code SableLavaMelt}
+ *     持续浇淋熔穿），关闭时熔岩与水同被驱逐。</li>
  * <li>拆除仅当当前格仍是 structure_void（可能被玩家 replaceable 顶掉、被爆炸 DESTROY）；
  *     拆除带邻接更新，让旁侧自然水回流（回流写入走既有 G3 有限水链路）。</li>
- * <li>区块未加载的格跳过写入：target 集合保留该格，{@code ChunkEvent.Load} 时按表补放；
- *     未加载区块里的空位若随卸载保存，由 {@code ChunkMapVoidFitStripMixin} 兜底不入盘。</li>
+ * <li>区块未加载的格跳过写入：target 集合保留该格，区块加载后由 tick 补放队列按表
+ *     补放（加载事件内只登记不写入）；未加载区块里的空位若随卸载保存，由
+ *     {@code ChunkMapVoidFitStripMixin} 兜底不入盘。</li>
  * </ul>
  *
  * <p>预算：单次 {@link #refit} 最多写入 {@link #CELL_BUDGET} 格。差分基于
@@ -212,6 +216,13 @@ public final class VoidFitApplier {
         boolean pureFluid = current.getBlock() instanceof LiquidBlock;
         if (!current.isAir() && !pureFluid) {
             // 真实方块（含含水方块）：本身挡水，不覆盖
+            return false;
+        }
+        // G6 配对：熔岩格在熔毁开关开启时不驱逐——留给 SableLavaMelt 持续浇淋熔穿；
+        // 开关关闭退回旧行为（熔岩与水同被驱逐）。本格不进 materialized，
+        // 后续每轮 refit 重试至此仍跳过（无写入、开销可忽略）
+        if (pureFluid && current.getFluidState().is(FluidTags.LAVA)
+                && Config.isLoaded() && Config.SABLE_LAVA_MELT.get()) {
             return false;
         }
         level.setBlock(pos, VOID, pureFluid ? PLACE_FLAGS_EVICT_FLUID : PLACE_FLAGS);

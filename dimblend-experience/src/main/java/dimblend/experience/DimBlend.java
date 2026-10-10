@@ -18,6 +18,7 @@ import dimblend.experience.gametest.CdgKineticOverloadGameTests;
 import dimblend.experience.gametest.CdgPlacementGuardGameTests;
 import dimblend.experience.gametest.GutterOutletBiomeProjectionGameTests;
 import dimblend.experience.gametest.SableBiomeProjectionGameTests;
+import dimblend.experience.gametest.SableLavaMeltGameTests;
 import dimblend.experience.gametest.SableVoidFitGameTests;
 import dimblend.experience.gametest.CopycatObsidianHardnessGameTests;
 import dimblend.experience.gametest.DeployerIcePlacementGameTests;
@@ -66,6 +67,8 @@ public class DimBlend {
         // G3 配套：Sable 载具世界侧结构空位拟合（引 Sable 类型，仅 Sable 在场时解析注册）
         if (ModList.get().isLoaded("sable")) {
             dimblend.experience.compat.sable.SableVoidFit.register();
+            // G6：岩浆熔毁 Sable 结构方块（同门控同款惰性解析）
+            dimblend.experience.compat.sable.SableLavaMelt.register();
         }
 
         // 分液池管道补水：补齐 UP 面流体接口，仅 Create 在场时注册（避免无 Create 环境类加载失败）
@@ -100,6 +103,7 @@ public class DimBlend {
         if (ModList.get().isLoaded("sable")) {
             event.register(SableBiomeProjectionGameTests.class);
             event.register(SableVoidFitGameTests.class);
+            event.register(SableLavaMeltGameTests.class);
             // 另引用 Create: Fluid 类：dev 下 -PwithFluid
             if (ModList.get().isLoaded("fluid")) {
                 event.register(GutterOutletBiomeProjectionGameTests.class);

@@ -11,6 +11,7 @@ public enum TuningOption {
     COUPLER_SURVIVAL("coupler_survival", 0.0D, "simurail"),
     LIMITED_WATER("limited_water", 1.0D, ""),
     SABLE_VOID_FIT("sable_void_fit", 1.0D, "sable"),
+    SABLE_LAVA_MELT("sable_lava_melt", 1.0D, "sable"),
     PORTABLE_ENGINE_LIMIT("portable_engine_limit", 1.0D, "simulated"),
     STEAM_OVERLOAD("steam_overload", 1.0D, "create"),
     DIESEL_OVERLOAD("diesel_overload", 1.0D, "createdieselgenerators"),
