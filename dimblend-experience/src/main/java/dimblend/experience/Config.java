@@ -47,6 +47,12 @@ public final class Config {
             .comment("B 板块：CDG 柴油机转速行为（点火爬梯 16rpm→每4秒+2→额定；额定后 80%~100% 随机波动，应力容量随转速同比缩放；运转中过载持续2秒确认后爆机掉落）")
             .define("dieselEngineBehavior", true);
 
+    public static final ModConfigSpec.BooleanValue DIESEL_PLACEMENT_GUARD = BUILDER
+            .comment("B8：放置 CDG 柴油机（普通/组合式/巨型）时，所接 Create 动力网络转速必须已静止——"
+                    + "接入运转中网络（含被其他机器带着转）的柴油机放行放置后下一 tick 破坏自身按 loot 掉落；"
+                    + "不豁免创造模式；蓝图炮/setblock 等不经 EntityPlaceEvent 的路径不拦；需要 CDG 在场")
+            .define("dieselEnginePlacementGuard", true);
+
     public static final ModConfigSpec.BooleanValue DIESEL_ENGINE_OVERLOAD = BUILDER
             .comment("Diesel engine overload penalty; default true. Disabling clears pending overload fuses without changing RPM behavior.")
             .define("dieselEngineOverload", true);

@@ -154,6 +154,17 @@
   `dieselEngineBehavior` 关闭即回原版。纯函数 `CdgRatedCapacityMath`（单测 6 条）；GameTest
   `CdgRatedCapacityGameTests` 3 条（爬梯普通机、100%/80% 双机、爬梯巨型机；修前分别 1024/11059.2/1170.3
   对额定 6144/12288/16384），需 `-PwithCdg` 把 CDG 提升进 dev 运行，仅 CDG 在场时注册。
+- B8 放置柴油机时所接网络必须已静止（2026-10-10 用户拍板）：放置三类 CDG 柴油机
+  （普通/组合式/巨型）时，其接入的 Create 动力网络转速必须为 0；放到运转中的网络上
+  （含被其他机器带着转）则放行放置后破坏自身按 loot 掉落，不豁免创造模式。
+  实现 `CdgPlacementGuard`（`EntityPlaceEvent` 登记 + `ServerTickEvent.Post` 判定）：
+  BE 放置当 tick 进 pending 缓冲、首 tick 才 `attachKinetics` 写入网络传导转速，当 tick 读
+  `getSpeed()` 恒 0，故登记后顺延一个完整 tick 再判——普通/组合式读引擎 BE `getSpeed()`
+  （未加油新机自身产出为 0，非零只可能来自所接网络）；巨型机本体非 Kinetic，读 `getShaft()`
+  轴 BE 转速（轴 null = 未接任何网络，放行）。不取消事件只放行后拆（取消会致客户端物品鬼影，
+  同 F1 口径）。已知覆盖边界：蓝图炮/`/setblock`/直接 setBlock 不经 `EntityPlaceEvent`，不拦。
+  开关 `dieselEnginePlacementGuard`（默认开）。GameTest `CdgPlacementGuardGameTests`，需
+  `-PwithCdg`，仅 CDG 在场时注册。
 
 ## 3. 板块 C：创造模式伪装方块（Create + Copycats+ 扩展）
 
