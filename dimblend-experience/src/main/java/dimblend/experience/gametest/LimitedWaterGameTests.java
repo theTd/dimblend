@@ -54,7 +54,7 @@ public final class LimitedWaterGameTests {
     private static final BlockState SOURCE = Blocks.WATER.defaultBlockState();
     private static final BlockState FLOWING_7 = Blocks.WATER.defaultBlockState().setValue(LiquidBlock.LEVEL, 1);
 
-    private record SavedConfig(String rotatingId, boolean limitedWater, boolean iceBan) {
+    private record SavedConfig(boolean limitedWater, boolean iceBan) {
     }
 
     private record Nearby(GameType mode, Vec3 offset) {
@@ -65,18 +65,17 @@ public final class LimitedWaterGameTests {
     }
 
     private static SavedConfig enableRules() {
-        SavedConfig saved = new SavedConfig(Config.ROTATING_DIMENSION_ID.get(),
-                Config.LIMITED_WATER.get(), Config.ICE_PLACEMENT_BAN.get());
-        Config.ROTATING_DIMENSION_ID.set("minecraft:overworld");
+        GameTestSableRules.acquire();
+        SavedConfig saved = new SavedConfig(Config.LIMITED_WATER.get(), Config.ICE_PLACEMENT_BAN.get());
         Config.LIMITED_WATER.set(true);
         Config.ICE_PLACEMENT_BAN.set(true);
         return saved;
     }
 
     private static void restore(SavedConfig saved) {
-        Config.ROTATING_DIMENSION_ID.set(saved.rotatingId());
         Config.LIMITED_WATER.set(saved.limitedWater());
         Config.ICE_PLACEMENT_BAN.set(saved.iceBan());
+        GameTestSableRules.release();
     }
 
     /**

@@ -34,9 +34,11 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
  * <p>载具是物理体：组装后会下落/微沉到静止，落点格与初始格可能不同，且保守覆盖可能
  * 跨格。所有断言一律先经位姿投影求"石块当前的世界格"再核验，不断言初始格。</p>
  *
- * <p>用例把维度门临时指向主世界（GameTest 只能跑在主世界）并打开拟合开关、
- * 把扫描周期压到 1 tick，延迟断言结束时 finally 还原配置。每个用例一个独立 batch：
- * batch 之间顺序执行，避免配置改写与拟合调度互相踩踏（同 batch 内用例并发跑）。
+ * <p>维度门/拟合开关/扫描周期经 {@link GameTestSableRules} 引用计数共享覆写——
+ * vanilla 不同 batch 在同一世界并发执行，私有"保存-设值-还原"会被先结束者的还原
+ * 踩踏（在途用例门控被拨回生产值）；{@code LIMITED_WATER} 取值与 limited_water
+ * 用例互斥，仍按本类私有保存/还原（挡水用例需要水真实存续：G3 会把孤立源水改写为
+ * 流动水，而原版流动水无供养下一流体 tick 即干涸——与本特性无关，关掉避免干扰）。
  * 不加 {@code @GameTestHolder}：引用 Sable 类，只由 DimBlend 在 Sable 在场时显式注册。</p>
  */
 @PrefixGameTestTemplate(false)
@@ -50,27 +52,19 @@ public final class SableVoidFitGameTests {
     /** 等慢速自愈周期（20 扫描 × 1 tick）富余量。 */
     private static final int VERIFY_TICKS = 40;
 
-    private record SavedConfig(String rotatingId, boolean voidFit, int refitTicks, boolean limitedWater) {
+    private record SavedConfig(boolean limitedWater) {
     }
 
     private static SavedConfig enableRules() {
-        SavedConfig saved = new SavedConfig(Config.ROTATING_DIMENSION_ID.get(),
-                Config.SABLE_STRUCTURE_VOID_FIT.get(), Config.SABLE_VOID_FIT_REFIT_TICKS.get(),
-                Config.LIMITED_WATER.get());
-        Config.ROTATING_DIMENSION_ID.set("minecraft:overworld");
-        Config.SABLE_STRUCTURE_VOID_FIT.set(true);
-        Config.SABLE_VOID_FIT_REFIT_TICKS.set(1);
-        // 挡水用例需要水真实存续：G3 会把孤立源水改写为流动水，而原版流动水无供养
-        // 下一流体 tick 即干涸——与本特性无关，关掉避免干扰
+        GameTestSableRules.acquire();
+        SavedConfig saved = new SavedConfig(Config.LIMITED_WATER.get());
         Config.LIMITED_WATER.set(false);
         return saved;
     }
 
     private static void restore(SavedConfig saved) {
-        Config.ROTATING_DIMENSION_ID.set(saved.rotatingId());
-        Config.SABLE_STRUCTURE_VOID_FIT.set(saved.voidFit());
-        Config.SABLE_VOID_FIT_REFIT_TICKS.set(saved.refitTicks());
         Config.LIMITED_WATER.set(saved.limitedWater());
+        GameTestSableRules.release();
     }
 
     /** 组装结果：载具 + 石块在 plot 内的固定坐标（载具移动不改变 plot 内坐标）。 */

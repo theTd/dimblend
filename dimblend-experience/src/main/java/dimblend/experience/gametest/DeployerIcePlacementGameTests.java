@@ -24,9 +24,8 @@ public final class DeployerIcePlacementGameTests {
     @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience",
             timeoutTicks = 100, batch = "limited_water")
     public static void deployerCannotPlaceIce(GameTestHelper helper) {
-        String rotatingId = Config.ROTATING_DIMENSION_ID.get();
+        GameTestSableRules.acquire();
         boolean iceBan = Config.ICE_PLACEMENT_BAN.get();
-        Config.ROTATING_DIMENSION_ID.set("minecraft:overworld");
         Config.ICE_PLACEMENT_BAN.set(true);
         try {
             DeployerFakePlayer deployer = new DeployerFakePlayer(helper.getLevel(), null);
@@ -39,8 +38,8 @@ public final class DeployerIcePlacementGameTests {
             }
             helper.succeed();
         } finally {
-            Config.ROTATING_DIMENSION_ID.set(rotatingId);
             Config.ICE_PLACEMENT_BAN.set(iceBan);
+            GameTestSableRules.release();
         }
     }
 

@@ -426,6 +426,7 @@
 - **构建环境**：本机默认 JAVA_HOME 为 JDK 11，每条 gradle 命令需显式 `$env:JAVA_HOME='C:\Program Files\Java\jdk-21'`
 - 音效素材由**用户提供**（用户拍板），我负责接入；素材到位前相关功能用占位实现，代码先行
 - **已知接受风险（A1/A2 L4）**：v1.13 起作废——快照捕获、LivingDropsEvent 拦截、重生改道均已删除，原三条风险（快照残留、连带取消、附件序列化）随之消失；现 A1 仅剩经验比率（克隆时覆盖经验字段 + 取消经验球事件），无新增在案风险
+- **GameTest 共享配置纪律（2026-10-11 起）**：vanilla GameTest 不同 batch 在同一世界并发执行，各用例私有"保存-设值-还原"会被先结束者的还原踩踏（在途用例门控被拨回生产值而全灭）。取值一致的共享键（维度门、SABLE_STRUCTURE_VOID_FIT、SABLE_VOID_FIT_REFIT_TICKS、SABLE_LAVA_MELT）一律走 `GameTestSableRules` 引用计数覆写（首个 acquire 应用、最后 release 还原、中途不改值）；用例中段的临时翻转必须自己翻回（含 finally 兜底）；取值互斥的键（LIMITED_WATER：limited_water 要开、载具用例要关）仍按各类私有保存/还原，既有低概率互踩按接受处理
 
 ### 需用户提供的音效素材（OGG Vorbis，建议单声道 44100Hz）
 
