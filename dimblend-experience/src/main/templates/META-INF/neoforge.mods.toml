@@ -104,6 +104,14 @@ config="${mod_id}.mixins.json"
     ordering="NONE"
     side="BOTH"
 
+# Jade 提供分液池灌溉/催熟状态的注视 HUD（可选：缺席时 @WailaPlugin("create") 插件类不被加载）
+[[dependencies.${mod_id}]]
+    modId="jade"
+    type="optional"
+    versionRange="[15.10.5,)"
+    ordering="NONE"
+    side="BOTH"
+
 # Simurail 提供列车方块目标（E 板块，可选）
 [[dependencies.${mod_id}]]
     modId="simurail"

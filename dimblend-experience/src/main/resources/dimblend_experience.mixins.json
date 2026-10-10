@@ -13,6 +13,7 @@
 		"LimitedWaterMixin",
 		"IcePlacementBanMixin",
 		"ChunkMapVoidFitStripMixin",
+		"StructureVoidBlockPassthroughMixin",
 		"compat.dimblend.WarpGateBlockMixin",
 		"compat.cdg.DieselEngineRampMixin",
 		"compat.cdg.HugeDieselEngineMixin",
@@ -21,6 +22,7 @@
 		"compat.create.ItemDrainIrrigationMixin",
 		"compat.create.ItemDrainGrowthBoostMixin",
 		"compat.create.ItemDrainPipeRefillMixin",
+		"compat.create.ItemDrainHudSyncMixin",
 		"compat.create.PortableEngineAttachMixin",
 		"compat.create.RotationPropagatorInvoker",
 		"compat.create.KineticNetworkUnloadedAccessor",
@@ -39,6 +41,7 @@
 		"client.ItemStackNicknameMixin",
 		"compat.cca.ElectricMotorSoundClientMixin",
 		"compat.cca.ElectricMotorGoggleMixin",
+		"compat.create.ItemDrainGoggleMixin",
 		"compat.create.ElectricMotorGeneratorStatsMixin",
 		"compat.simurail.PhysicsBogeyTrackSoundMixin",
 		"compat.simurail.PhysicsBogeyWideGaugeParticleMixin"

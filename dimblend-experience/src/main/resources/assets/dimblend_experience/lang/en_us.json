@@ -59,5 +59,10 @@
   "screen.dimblend_experience.tuning.saving": "Saving...",
   "screen.dimblend_experience.tuning.saved": "Saved",
   "screen.dimblend_experience.tuning.save_failed": "Could not save the setting.",
-  "screen.dimblend_experience.tuning.timeout": "The server has not acknowledged the change."
+  "screen.dimblend_experience.tuning.timeout": "The server has not acknowledged the change.",
+  "hud.dimblend_experience.item_drain.irrigating": "Irrigating",
+  "hud.dimblend_experience.item_drain.no_water": "No water",
+  "hud.dimblend_experience.item_drain.next_boost": "Next growth boost: %ss",
+  "hud.dimblend_experience.item_drain.insufficient_water": "Insufficient water (%s/%s mb)",
+  "config.jade.plugin_dimblend_experience.item_drain_hud": "Item Drain Irrigation"
 }

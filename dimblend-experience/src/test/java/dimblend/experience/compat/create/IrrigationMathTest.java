@@ -80,4 +80,14 @@ class IrrigationMathTest {
         assertFalse(IrrigationMath.belowThreshold(200, 200));
         assertFalse(IrrigationMath.belowThreshold(1500, 200));
     }
+
+    @Test
+    void ceilSecondsRoundsUpAndKeepsZero() {
+        // HUD 倒计时口径：读数不短于实际剩余（1 tick 也显示 1 秒，0 才显示 0）
+        assertEquals(0, IrrigationMath.ceilSeconds(0));
+        assertEquals(1, IrrigationMath.ceilSeconds(1));
+        assertEquals(1, IrrigationMath.ceilSeconds(20));
+        assertEquals(2, IrrigationMath.ceilSeconds(21));
+        assertEquals(30, IrrigationMath.ceilSeconds(600));
+    }
 }

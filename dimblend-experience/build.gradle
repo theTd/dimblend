@@ -142,6 +142,9 @@ dependencies {
     // vendor 本地 jar：从运行实例 mods 目录原样复制到 ./libs（2.0.1，与实例一致），
     // compileOnly 编译可见、不进 runtimeClasspath；恢复步骤同 docs/requirements-spec.md「libs jar 清单」。
     compileOnly files("libs/fluid-2.0.1.jar")
+    // Jade HUD 集成（分液池灌溉/催熟状态）：定点 15.10.5 与 TrainTripWorld 实例一致；
+    // compileOnly——Jade 缺席时 @WailaPlugin 类不被加载（注解 value 门控），无类加载风险。
+    compileOnly "maven.modrinth:jade:15.10.5+neoforge"
     // sable 的 companion 类型（ActiveSableCompanion 继承链）在独立 companion jar 中
     compileOnly "dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:${project.sable_companion_version}"
     // runData 需要完整构造 mod：TrainOffStructureRules / StructureBedGuard 是 @EventBusSubscriber，
@@ -160,6 +163,11 @@ dependencies {
     // 用法：./gradlew :dimblend-experience:runGameTestServer -PwithFluid
     if (project.hasProperty('withFluid')) {
         localRuntime files("libs/fluid-2.0.1.jar")
+    }
+    // Jade HUD 的实际观感验证：-PwithJade 时把 Jade 提升进 dev 运行，默认仍 compileOnly。
+    // 用法：./gradlew :dimblend-experience:runClient -PwithJade
+    if (project.hasProperty('withJade')) {
+        localRuntime "maven.modrinth:jade:15.10.5+neoforge"
     }
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
     testImplementation 'com.google.code.gson:gson:2.10.1'

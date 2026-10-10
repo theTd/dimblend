@@ -33,6 +33,11 @@ public final class IrrigationMath {
         return amountMb < minMb;
     }
 
+    /** 剩余 tick 换算 HUD 显示秒数（向上取整，0 → 0，保证读数不短于实际剩余）。 */
+    public static long ceilSeconds(long ticks) {
+        return (ticks + 19) / 20;
+    }
+
     private IrrigationMath() {
     }
 }

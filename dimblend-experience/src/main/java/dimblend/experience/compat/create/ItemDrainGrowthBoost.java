@@ -72,12 +72,18 @@ public final class ItemDrainGrowthBoost {
         int beats = IrrigationMath.intervalBeats(Config.ITEM_DRAIN_GROWTH_INTERVAL_SECONDS.get() * 20);
         if (state.countdown <= 0) {
             state.countdown = beats;
+            // 上弦无流体变化、Create 侧不会自行 sendData，这里主动同步一次，
+            // 让 HUD（护目镜/Jade）拿到下次击发时刻（见 ItemDrainHudSyncMixin）
+            be.sendData();
             return;
         }
         if (--state.countdown > 0) {
             return;
         }
         state.countdown = beats;
+        // 击发点重新上弦后同步一次（无目标/判定未生效等提前 return 的分支也要覆盖），
+        // 否则 HUD 倒计时走到 0 后会停在旧值（见 ItemDrainHudSyncMixin）
+        be.sendData();
         IFluidHandler handler = level.getCapability(Capabilities.FluidHandler.BLOCK, be.getBlockPos(), Direction.DOWN);
         if (handler == null || handler.getTanks() < 1) {
             return;
@@ -112,6 +118,7 @@ public final class ItemDrainGrowthBoost {
             be.sendData();
         } else {
             grow(level, random, target);
+            // 免费催熟无排水、不触发水箱同步；HUD 倒计时已由上方击发点的 sendData 刷新
         }
     }
 

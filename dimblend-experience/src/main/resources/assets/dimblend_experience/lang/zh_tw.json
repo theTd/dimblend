@@ -18,5 +18,10 @@
 	"screen.dimblend_experience.nickname.target": "目標：%s",
 	"screen.dimblend_experience.nickname.no_target": "主手拿物品，或注視一個方塊",
 	"screen.dimblend_experience.nickname.no_item_form": "注視的方塊沒有物品形態",
-	"force_group.dimblend_experience.lateral_force": "橫向力"
+	"force_group.dimblend_experience.lateral_force": "橫向力",
+	"hud.dimblend_experience.item_drain.irrigating": "灌溉中",
+	"hud.dimblend_experience.item_drain.no_water": "無水",
+	"hud.dimblend_experience.item_drain.next_boost": "下次催熟：%s 秒",
+	"hud.dimblend_experience.item_drain.insufficient_water": "水量不足（%s/%s mb）",
+	"config.jade.plugin_dimblend_experience.item_drain_hud": "分液池灌溉狀態"
 }

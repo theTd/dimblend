@@ -39,7 +39,14 @@ public abstract class ItemDrainGrowthBoostMixin implements ItemDrainGrowthBoost.
             return;
         }
         if (!Config.ITEM_DRAIN_GROWTH.get()) {
+            // 热关闭时若曾在计时，补一次 sendData 把客户端 HUD 的下次击发时刻刷成 -1
+            // （客户端 ConfigSync 副本热改不同步，否则倒计时到期后会滞留显示"0 秒"）；
+            // 仅在 计时→复位 转移时发，常态关闭下逐拍 reset 不发包
+            boolean wasArmed = this.dimblend$growth.countdown > 0;
             ItemDrainGrowthBoost.reset(this.dimblend$growth);
+            if (wasArmed) {
+                self.sendData();
+            }
             return;
         }
         if (serverLevel.getGameTime() % 10 != 0) {

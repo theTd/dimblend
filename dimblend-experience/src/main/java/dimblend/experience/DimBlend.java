@@ -23,6 +23,7 @@ import dimblend.experience.gametest.CopycatObsidianHardnessGameTests;
 import dimblend.experience.gametest.DeployerIcePlacementGameTests;
 import dimblend.experience.gametest.LimitedWaterGameTests;
 import dimblend.experience.gametest.ItemDrainPipeRefillGameTests;
+import dimblend.experience.gametest.ItemDrainHudSyncGameTests;
 import dimblend.experience.gametest.KineticComponentScanGameTests;
 import dimblend.experience.gametest.KineticUnloadedShareGameTests;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
@@ -87,6 +88,7 @@ public class DimBlend {
             event.register(CopycatObsidianHardnessGameTests.class);
             event.register(DeployerIcePlacementGameTests.class);
             event.register(ItemDrainPipeRefillGameTests.class);
+            event.register(ItemDrainHudSyncGameTests.class);
             event.register(KineticComponentScanGameTests.class);
             event.register(KineticUnloadedShareGameTests.class);
             event.register(CdgKineticOverloadGameTests.class);
