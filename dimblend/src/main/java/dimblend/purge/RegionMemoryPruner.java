@@ -26,7 +26,10 @@ import net.minecraft.world.level.ChunkPos;
  *       sections on chunk unload, but POI queries reload them afterwards.</li>
  *   <li>POI village distance tracker: NeoForge's unload eviction bypasses it, so a deleted village
  *       center would keep {@code ServerLevel.isVillage} true at the regenerated site (raids,
- *       villager pathing). Every section is re-evaluated, present in the cache or not.</li>
+ *       villager pathing). Every section that still has a village distance is re-evaluated,
+ *       present in the cache or not; the others already sit at the no-village level, so their
+ *       re-evaluation (one distance-graph update each, ~24k per region and ~0.8 s in total) cannot
+ *       change anything.</li>
  *   <li>{@code PoiManager.loadedChunks}: a stale entry makes portal search
  *       ({@code ensureLoadedAndValid}) skip the block rescan of the regenerated chunk.</li>
  *   <li>{@code StructureCheck}: still correct after the delete (deterministic worldgen); pruned
@@ -78,7 +81,11 @@ public final class RegionMemoryPruner {
                         poiRemoved++;
                     }
                     // With the section gone this recomputes a non-village level and drops any stale one.
-                    poiAccess.dimblend$onSectionLoad(section);
+                    // sectionsToVillage first settles the updates queued by earlier sections, so a
+                    // level that only came from a center pruned above is already gone here.
+                    if (poi.sectionsToVillage(SectionPos.of(section)) <= PoiManager.MAX_VILLAGE_DISTANCE) {
+                        poiAccess.dimblend$onSectionLoad(section);
+                    }
                 }
             }
         }
