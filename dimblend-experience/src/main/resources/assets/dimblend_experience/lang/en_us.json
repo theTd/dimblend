@@ -25,6 +25,8 @@
   "screen.dimblend_experience.tuning.shake_interval.description": "Default: 2.0 seconds. Range: 0.1-60.0, step: 0.1. 0 disables random draws.",
   "screen.dimblend_experience.tuning.shake_force": "Train lateral force",
   "screen.dimblend_experience.tuning.shake_force.description": "Default: 1200 pN. Range: 0-10000 pN, step: 1.",
+  "screen.dimblend_experience.tuning.brake_signal_cap": "Bogie redstone signal cap",
+  "screen.dimblend_experience.tuning.brake_signal_cap.description": "Default: 1. Signals at or below the cap pass through unchanged; stronger signals are clamped to the cap (brake strength and kinetic network stress follow the adjusted signal). 15 restores vanilla scaling.",
   "screen.dimblend_experience.tuning.soiling_multiplier": "Dirtiness probability multiplier",
   "screen.dimblend_experience.tuning.soiling_multiplier.description": "Default: 0.5. Range: 0.00-1.00, step: 0.01. Chance = min(1, speed / 12 x multiplier). 0 disables dirtiness draws.",
   "screen.dimblend_experience.tuning.coupler_redstone": "Allow redstone activation of couplers",

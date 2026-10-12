@@ -25,6 +25,17 @@ class TuningOptionTest {
     }
 
     @Test
+    void brakeSignalCapAcceptsWholeLevelsBetweenOneAndFifteenOnly() {
+        var option = TuningOption.BRAKE_SIGNAL_CAP;
+        for (double valid : new double[] {1.0D, 4.0D, 15.0D}) {
+            assertTrue(option.isValid(valid));
+        }
+        for (double invalid : new double[] {0.0D, 0.5D, 4.5D, 15.5D, 16.0D}) {
+            assertFalse(option.isValid(invalid));
+        }
+    }
+
+    @Test
     void multiplierAcceptsEveryHundredthWithoutFloatingPointArtifacts() {
         var option = TuningOption.SOILING_MULTIPLIER;
         for (int i = 0; i <= 100; i++) {

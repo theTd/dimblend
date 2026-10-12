@@ -16,6 +16,7 @@ Missing optional mods leave their controls disabled.
 | --- | --- | --- | --- |
 | Train shaking draw interval | 2.0 seconds | 0 = disabled; 0.1-60.0, step 0.1 | experience |
 | Train additional lateral force | 1200 pN | 0-10000, step 1 | experience |
+| Bogie redstone signal cap | 1 | 1-15, step 1; signals above the cap are clamped to it, 15 restores vanilla scaling | experience |
 | Dirtiness probability multiplier | 0.5 | 0.00-1.00, step 0.01; 0 = no soiling draws | carwash |
 | Allow coupler redstone activation | false | Checkbox | experience |
 | Allow Survival right-click on couplers | false | Checkbox | experience |
@@ -48,7 +49,7 @@ Radio follows the same pattern through `dimblend.radio.api.RadioTuning` and its
 own `serverconfig/dimblend_radio-server.toml`. Its settings are heard on each
 client, so remote clients also apply the broadcast radio values in memory
 (NeoForge already sends the config at login). The snapshot carries one value
-per option, so each added or removed option bumps the protocol version (now `8`; see the
+per option, so each added or removed option bumps the protocol version (now `9`; see the
 performance checklist below).
 
 The existing `couplerRedstone` config uses the inverse meaning: true blocks
@@ -63,6 +64,10 @@ the train interval clears its countdown and active push; changing a nonzero
 interval restarts the countdown. Changing force affects subsequent physics steps.
 Disabling a rule cannot undo damage that has already occurred. Re-enabling the
 Portable Engine limit resumes the existing enforcement on tracked networks.
+
+The bogie redstone signal cap clamps any stronger signal to the cap; brake
+strength and kinetic network stress follow the adjusted signal. 1 keeps every
+signal at level one (the former fixed behavior); 15 is a no-op.
 
 ## Sable Page
 
@@ -115,7 +120,7 @@ server's results are shown (same JVM); a client connected to a remote server
 also lists its own collector, heap and memory. Server steps and the spark fix use
 the same permission gate as the panel (level 2) and travel on two extra payloads
 (`perf_check_request`, `perf_check_report`), which is why the tuning protocol
-version is now `8`. The thresholds live in `PerfRules` and are unit-tested;
+version is now `9`. The thresholds live in `PerfRules` and are unit-tested;
 `PerfChecklistTranslationsTest` checks both languages cover every step, advice
 and fix label.
 

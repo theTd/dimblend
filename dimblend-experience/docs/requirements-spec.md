@@ -43,6 +43,9 @@
 > Dungeons Arise（含七海）探险地图与原版藏宝图；新开关 `lootMapFilter`。
 > v1.16（2026-10-11 用户拍板，A11 藏宝箱贝壳 X 标记，全局功能）：埋藏的宝藏生成时在其
 > 正上方沙滩表层用贝壳标记方块摆 X（A10 禁藏宝图后的替代发现机制）；新开关 `treasureShellX`。
+> v1.17（2026-10-12 用户口径，E9 调整：刹车信号上限可调）：转向架红石信号由「任意强度一律按
+> 1 级计」改为强度上限——1~上限原样生效、超过上限压到上限；开关 `trainFixedBrakeSignal` 改为
+> `trainBrakeSignalCap`（1-15 级，默认 1 行为不变、15 等效关闭），经 /dbx 面板可调。
 > 本文件是开发依据；原始清单仅作需求索引，两者冲突时以本文件为准。
 
 ## 0. 环境基线
@@ -385,15 +388,17 @@
   pN 为 sable 力单位（`BlockEntityPropeller#getThrust` 同单位）。未组装（不在子层级）不计时。
   实现 `PhysicsBogeyLateralForceMixin` + 纯函数 `TrainLateralForceMath`；
   新开关 `trainLateralForce`（默认开，热关闭下一 tick 清空计时与进行中施力）
-- E9 刹车红石信号视为 1 级（2026-10-10 用户口径，全维度）：转向架收到任意强度红石信号一律按
-  1 级信号处理，原行为为 `getControlStrength()` = 信号/15 随强度线性。实现
-  `PhysicsBogeyFixedBrakeSignalMixin`：`getControlStrength()D` RETURN 处任意正强度压到 1/15、
-  0 保持 0——该方法是信号唯一归一化入口，刹车力度（正控 1/15、反控 14/15）、动力网络应力
+- E9 转向架红石信号强度上限（2026-10-10 用户口径，2026-10-12 v1.17 调整为上限可调，全维度）：转向架
+  收到的红石信号强度不高于上限的原样生效，超过上限的一律压到上限；原行为为 `getControlStrength()D` =
+  信号/15 随强度线性（上限 15 即等效关闭、恢复原版）。实现
+  `PhysicsBogeyBrakeSignalCapMixin`：`getControlStrength()D` RETURN 处把超过 上限/15 的强度压到
+  上限/15、0 保持 0——该方法是信号唯一归一化入口，刹车力度、动力网络应力
   （`calculateStressApplied` 同按 controlMode 三分支：正控 control×stress、反控 (1−control)×stress、
   默认恒 1.0×stress 与信号无关，即默认模式本条目零效果）与 E3/E4 沿检测（读 `getBrakeStrength`）
   自动一致；`getSteerValue` 转向差值直读 `getSignal`，不受影响。
-  反控模式二阶后果（接受项）：刹车恒 ≥14/15 不归零，E3/E4 施闸/松闸沿不再触发。
-  新开关 `trainFixedBrakeSignal`（默认开）
+  反控模式二阶后果（接受项）：刹车恒 ≥(15−上限)/15 不归零，E3/E4 施闸/松闸沿不再触发。
+  上限 `trainBrakeSignalCap`（1-15 级，默认 1 即 v1.14「视为 1 级」口径；经 /dbx 面板可调，
+  旧布尔开关 `trainFixedBrakeSignal` 被上限蕴含、旧键已被自动清除）
 - A9 虚空共存（用户拍板）：rotating 内 voidscape band 里 Voidscape `Insanity`
   的生命上限修饰符保留；我方 A3 只读写自有 id
   `dimblend_experience:far_curse_max_health`（代码已确认天然共存），叠加效果留实机验证；
@@ -633,7 +638,7 @@
 | wideGaugeParticles | E6（纯客户端视觉） | true |
 | offStructureTeleport | E7（离结构传送，仅 rotating） | true |
 | trainLateralForce | E8（车架随机横向力，全维度） | true |
-| trainFixedBrakeSignal | E9（刹车红石信号视为 1 级，全维度） | true |
+| trainBrakeSignalCap | E9（转向架红石信号强度上限，全维度，经 /dbx 面板可调） | 1 |
 | villagerMaster | G1 | true |
 | structureBed | G2 | true |
 | limitedWater | G3（源水检测） | true |
@@ -665,7 +670,7 @@
 | compat.create.KineticNetworkUnloadedAccessor | Create KineticNetwork（unloadedCapacity/Stress/Members 读写） | B4 读档账本修正 | create 在场 |
 | compat.create.KineticNetworkLedgerTraceMixin | Create KineticNetwork（initFromTE/addSilently/add/remove/sync/updateCapacityFor/updateStressFor HEAD，只读记账本事件环） | B4 误判过载诊断探针（`CdgOverloadProbe`） | create 在场 |
 | compat.simurail.PhysicsBogeyBrakeSoundMixin | Simurail 物理转向架 BE | E3/E4 | simurail 在场（simurail 硬性依赖 sable，蕴含 sable 在场） |
-| compat.simurail.PhysicsBogeyFixedBrakeSignalMixin | Simurail 物理转向架 BE（`getControlStrength` RETURN 压到 1/15） | E9 | simurail 在场 |
+| compat.simurail.PhysicsBogeyBrakeSignalCapMixin | Simurail 物理转向架 BE（`getControlStrength` RETURN 把超过 上限/15 的强度压到 上限/15） | E9 | simurail 在场 |
 | compat.simurail.PhysicsBogeyLateralForceMixin | Simurail 物理转向架 BE（`tick` + `sable$physicsTick`） | E8 | simurail 在场 |
 | compat.simurail.PhysicsBogeyTrackSoundMixin | Simurail 物理转向架 BE | E2 | simurail 在场（client 数组） |
 | compat.simurail.PhysicsBogeyWideGaugeParticleMixin | Simurail 物理转向架 BE | E6 | simurail 在场（client 数组） |

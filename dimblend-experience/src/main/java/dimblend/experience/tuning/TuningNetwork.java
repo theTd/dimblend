@@ -18,8 +18,8 @@ public final class TuningNetwork {
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
         // The snapshot carries one value per option: adding options changes the protocol.
-        // v8 adds the performance checklist request/report payloads.
-        var registrar = event.registrar("8");
+        // v9 adds the bogie redstone signal cap option (E9).
+        var registrar = event.registrar("9");
         registrar.playToServer(TuningEditPayload.TYPE, TuningEditPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof ServerPlayer player) {

@@ -25,6 +25,8 @@
 	"screen.dimblend_experience.tuning.shake_interval.description": "默认：2.0 秒。范围：0.1-60.0 秒，精度：0.1。设为 0 时不进行抽签。",
 	"screen.dimblend_experience.tuning.shake_force": "列车随机晃动附加横向力",
 	"screen.dimblend_experience.tuning.shake_force.description": "默认：1200 pN。范围：0-10000 pN，精度：1。",
+	"screen.dimblend_experience.tuning.brake_signal_cap": "转向架红石信号上限",
+	"screen.dimblend_experience.tuning.brake_signal_cap.description": "默认：1。转向架收到的红石信号强度不高于上限的原样生效，超过上限的一律压到上限（刹车力度与动力网络应力同按修正后强度）。设为 15 恢复原版随强度线性。",
 	"screen.dimblend_experience.tuning.soiling_multiplier": "脏污增长抽签概率系数",
 	"screen.dimblend_experience.tuning.soiling_multiplier.description": "默认：0.5。范围：0.00-1.00，精度：0.01。概率 = min(1, 速度 / 12 × 系数)。设为 0 时不进行积灰抽签。",
 	"screen.dimblend_experience.tuning.coupler_redstone": "允许红石信号激活车钩",

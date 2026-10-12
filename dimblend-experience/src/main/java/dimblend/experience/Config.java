@@ -150,10 +150,13 @@ public final class Config {
                     + "（垂直车架朝向、左右随机、持续 10 tick，作用于车架位置）。全维度；需要 Simurail 在场")
             .define("trainLateralForce", true);
 
-    public static final ModConfigSpec.BooleanValue TRAIN_FIXED_BRAKE_SIGNAL = BUILDER
-            .comment("E 板块 E9：转向架刹车红石信号视为 1 级——收到任意强度信号一律按 1 级信号计"
-                    + "（刹车力度与动力网络应力同按 1 级；原行为为随信号强度线性）。全维度；需要 Simurail 在场")
-            .define("trainFixedBrakeSignal", true);
+    // 键名由 trainFixedBrakeSignal（v1.14 布尔：任意正强度一律按 1 级计）改为 trainBrakeSignalCap：
+    // 旧布尔语义是上限 1 的特例，上限可调后开关与上限两键语义重复故合并；旧键被自动清除、新键取默认 1（v1.14 行为不变）
+    public static final ModConfigSpec.IntValue TRAIN_BRAKE_SIGNAL_CAP = BUILDER
+            .comment("E 板块 E9：转向架可接收红石信号的最大强度（级，1-15）：不高于上限的信号原样生效，"
+                    + "超过上限的强度统一压到上限（刹车力度与动力网络应力同按修正后强度；"
+                    + "原行为为随信号强度线性，上限 15 即等效关闭恢复原版）。全维度；需要 Simurail 在场；经 /dbx 面板可调")
+            .defineInRange("trainBrakeSignalCap", 1, 1, 15);
 
     public static final ModConfigSpec.DoubleValue TRAIN_SHAKE_INTERVAL_SECONDS = BUILDER
             .comment("Random train shaking draw interval in seconds; default 2.0. 0 disables draws, otherwise 0.1-60.0 in steps of 0.1.")
