@@ -58,6 +58,36 @@ class TuningOptionTest {
     }
 
     @Test
+    void sableSubstepsRejectsZeroFractionsAndValuesAboveTen() {
+        var option = TuningOption.SABLE_SUBSTEPS;
+        assertFalse(option.isCheckbox());
+        assertSame(TuningOption.Section.SABLE, option.section());
+        assertSame(TuningOption.Section.MAIN, TuningOption.SHAKE_INTERVAL.section());
+        assertEquals(2.0D, option.defaultValue());
+        for (int i = 1; i <= 10; i++) {
+            assertTrue(option.isValid(i));
+        }
+        assertFalse(option.isValid(0.0D));
+        assertFalse(option.isValid(11.0D));
+        assertFalse(option.isValid(2.5D));
+        assertEquals("2", option.format(option.defaultValue()));
+    }
+
+    @Test
+    void sableIterationAndIntervalOptionsRespectTheirCeilings() {
+        TuningOption[] options = {TuningOption.SABLE_SOLVER_ITERATIONS, TuningOption.SABLE_PGS_ITERATIONS,
+                TuningOption.SABLE_STABILIZATION_ITERATIONS, TuningOption.SABLE_PHYSICS_TICK_INTERVAL};
+        int[] ceilings = {64, 8, 8, 10};
+        for (int i = 0; i < options.length; i++) {
+            assertTrue(options[i].isValid(1.0D), options[i].id());
+            assertTrue(options[i].isValid(ceilings[i]), options[i].id());
+            assertFalse(options[i].isValid(0.0D), options[i].id());
+            assertFalse(options[i].isValid(ceilings[i] + 1.0D), options[i].id());
+            assertFalse(options[i].isValid(1.5D), options[i].id());
+        }
+    }
+
+    @Test
     void booleanPayloadsCannotSmuggleArbitraryNumericValues() {
         for (var option : TuningOption.values()) {
             assertFalse(option.isValid(Double.NaN));

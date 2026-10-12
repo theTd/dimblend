@@ -1,6 +1,9 @@
 package dimblend.experience.tuning;
 
 import dimblend.experience.DimBlend;
+import dimblend.experience.tuning.perf.PerfCheckReportPayload;
+import dimblend.experience.tuning.perf.PerfCheckRequestPayload;
+import dimblend.experience.tuning.perf.PerfCheckService;
 import java.util.Arrays;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -15,7 +18,8 @@ public final class TuningNetwork {
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
         // The snapshot carries one value per option: adding options changes the protocol.
-        var registrar = event.registrar("5");
+        // v8 adds the performance checklist request/report payloads.
+        var registrar = event.registrar("8");
         registrar.playToServer(TuningEditPayload.TYPE, TuningEditPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof ServerPlayer player) {
@@ -25,6 +29,15 @@ public final class TuningNetwork {
         registrar.playToClient(TuningSnapshotPayload.TYPE, TuningSnapshotPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() ->
                         dimblend.experience.client.TuningClient.receive(payload)));
+        registrar.playToServer(PerfCheckRequestPayload.TYPE, PerfCheckRequestPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> {
+                    if (context.player() instanceof ServerPlayer player) {
+                        PerfCheckService.handle(player, payload);
+                    }
+                }));
+        registrar.playToClient(PerfCheckReportPayload.TYPE, PerfCheckReportPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() ->
+                        dimblend.experience.client.TuningClient.receivePerfReport(payload)));
     }
 
     public static void open(ServerPlayer player) {

@@ -98,6 +98,16 @@ public final class SableLavaMelt {
     }
 
     private static void onLevelTick(LevelTickEvent.Post event) {
+        // Named profiler section, so /dimblend slowticks can attribute this listener.
+        event.getLevel().getProfiler().push("dimblend:lava_melt");
+        try {
+            tickLevel(event);
+        } finally {
+            event.getLevel().getProfiler().pop();
+        }
+    }
+
+    private static void tickLevel(LevelTickEvent.Post event) {
         if (!(event.getLevel() instanceof ServerLevel level) || !RotatingDimension.is(level)) {
             return;
         }

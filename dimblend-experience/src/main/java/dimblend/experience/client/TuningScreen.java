@@ -39,6 +39,7 @@ public final class TuningScreen extends Screen {
     private Component status = Component.empty();
     private boolean updating;
     private boolean draggingScrollbar;
+    private TuningOption.Section section = TuningOption.Section.MAIN;
 
     public TuningScreen(TuningSnapshotPayload snapshot) {
         super(Component.translatable("screen.dimblend_experience.tuning"));
@@ -55,6 +56,9 @@ public final class TuningScreen extends Screen {
         contentHeight = 0;
         updating = true;
         for (TuningOption option : TuningOption.values()) {
+            if (option.section() != section) {
+                continue;
+            }
             boolean editable = snapshot.editable() && snapshot.available(option);
             int labelWidth = panelWidth - (option.isCheckbox() ? 98 : 176);
             var label = font.split(Component.translatable(option.key()), Math.max(40, labelWidth));
@@ -99,6 +103,20 @@ public final class TuningScreen extends Screen {
                     .tooltip(Tooltip.create(Component.translatable(KEY + "reset_default"))).build(), editable);
             contentHeight += row.height;
         }
+        Row navigation = new Row(null, contentHeight, 30, 20, List.of(), List.of());
+        rows.add(navigation);
+        int navigationY = listTop + contentHeight - scroll;
+        if (section == TuningOption.Section.MAIN) {
+            int half = (panelWidth - 20) / 2;
+            add(navigation, Button.builder(Component.translatable(KEY + "section_sable"), button -> switchSection())
+                    .bounds(left + 8, navigationY, half, 20).build(), true);
+            add(navigation, Button.builder(Component.translatable(KEY + "section_perf"), button -> openPerfChecklist())
+                    .bounds(left + 12 + half, navigationY, half, 20).build(), true);
+        } else {
+            add(navigation, Button.builder(Component.translatable(KEY + "section_main"), button -> switchSection())
+                    .bounds(left + 8, navigationY, panelWidth - 16, 20).build(), true);
+        }
+        contentHeight += navigation.height;
         updating = false;
         scroll = Math.max(0, Math.min(scroll, maxScroll()));
         positionRows();
@@ -110,6 +128,31 @@ public final class TuningScreen extends Screen {
         widget.active = editable;
         row.widgets.add(widget);
         addRenderableWidget(widget);
+    }
+
+    private void switchSection() {
+        section = section == TuningOption.Section.MAIN ? TuningOption.Section.SABLE : TuningOption.Section.MAIN;
+        scroll = 0;
+        rebuildWidgets();
+    }
+
+    /** Page to show when this screen is next (re)initialised, e.g. returning from the checklist. */
+    void showSection(TuningOption.Section next) {
+        section = next;
+        scroll = 0;
+    }
+
+    private void openPerfChecklist() {
+        // tick() only runs while this screen is current: send validated edits before leaving it.
+        flushPending();
+        minecraft.setScreen(new PerfChecklistScreen(this));
+    }
+
+    private void flushPending() {
+        if (minecraft.getConnection() != null) {
+            pending.forEach((option, value) -> PacketDistributor.sendToServer(new TuningEditPayload(option.id(), value)));
+        }
+        pending.clear();
     }
 
     private double displayValue(TuningOption option) {
@@ -157,7 +200,7 @@ public final class TuningScreen extends Screen {
             value = Double.parseDouble(input(option).getValue());
         } catch (NumberFormatException ignored) {
         }
-        value = Math.max(0.0D, Math.min(option.maximum(), Math.rint(value / option.step() + direction) * option.step()));
+        value = Math.max(option.minimum(), Math.min(option.maximum(), Math.rint(value / option.step() + direction) * option.step()));
         input(option).setValue(option.format(value));
         sendDelay = 0;
     }
@@ -210,6 +253,9 @@ public final class TuningScreen extends Screen {
         }
         updating = true;
         for (Row row : rows) {
+            if (row.option == null) {
+                continue;
+            }
             row.widgets.forEach(widget -> widget.active = next.editable() && next.available(row.option));
             if (pending.containsKey(row.option) || row.option == inFlight) {
                 continue;
@@ -287,9 +333,7 @@ public final class TuningScreen extends Screen {
     @Override
     public void onClose() {
         // Flush validated drafts on close; invalid partial input is never transmitted.
-        if (minecraft.getConnection() != null) {
-            pending.forEach((option, value) -> PacketDistributor.sendToServer(new TuningEditPayload(option.id(), value)));
-        }
+        flushPending();
         super.onClose();
     }
 
@@ -304,6 +348,9 @@ public final class TuningScreen extends Screen {
         graphics.enableScissor(left, listTop, left + panelWidth, listBottom);
         for (Row row : rows) {
             int y = listTop + row.offset - scroll;
+            if (row.option == null) {
+                continue;
+            }
             int labelX = left + (row.option.isCheckbox() ? 32 : 8);
             if (!row.option.isCheckbox()) {
                 for (int i = 0; i < row.label.size(); i++) {

@@ -18,39 +18,68 @@ public enum TuningOption {
     MOTOR_OVERLOAD("motor_overload", 1.0D, "createaddition"),
     RADIO_STATIC("radio_static", 0.5D, 2.0D, 2, "dimblend_radio"),
     RADIO_ACOUSTIC_INTENSITY("radio_acoustic_intensity", 1.0D, 2.0D, 2, "dimblend_radio"),
-    EXP_CLEAR_RATIO("exp_clear_ratio", 1.0D, 1.0D, 2, "");
+    EXP_CLEAR_RATIO("exp_clear_ratio", 1.0D, 1.0D, 2, ""),
+    SABLE_SUBSTEPS("sable_substeps", 2.0D, 1.0D, 10.0D, 0, "sable", Section.SABLE),
+    SABLE_SOLVER_ITERATIONS("sable_solver_iterations", 18.0D, 1.0D, 64.0D, 0, "sable", Section.SABLE),
+    SABLE_PGS_ITERATIONS("sable_pgs_iterations", 2.0D, 1.0D, 8.0D, 0, "sable", Section.SABLE),
+    SABLE_STABILIZATION_ITERATIONS("sable_stabilization_iterations", 2.0D, 1.0D, 8.0D, 0, "sable", Section.SABLE),
+    SABLE_PHYSICS_TICK_INTERVAL("sable_physics_tick_interval", 1.0D, 1.0D, 10.0D, 0, "sable", Section.SABLE),
+    SABLE_SLEEP_SKIP("sable_sleep_skip", 1.0D, "sable", Section.SABLE),
+    SABLE_CONTACT_FORCE_EVENTS("sable_contact_force_events", 1.0D, "sable", Section.SABLE),
+    SABLE_BIOME_PROJECTION_FAST_PATH("sable_biome_projection_fast_path", 1.0D, "sable", Section.SABLE),
+    SABLE_EMPTY_CONTAINER_FAST_PATH("sable_empty_container_fast_path", 1.0D, "sable", Section.SABLE);
+
+    /** Display pages of the tuning screen; the snapshot still carries every option. */
+    public enum Section { MAIN, SABLE }
 
     public static final String PREFIX = "screen.dimblend_experience.tuning.";
     private final String id;
     private final double defaultValue;
+    private final double minimum;
     private final double maximum;
     private final int decimals;
     private final String modId;
+    private final Section section;
 
     TuningOption(String id, double defaultValue, String modId) {
-        this(id, defaultValue, 1.0D, -1, modId);
+        this(id, defaultValue, 0.0D, 1.0D, -1, modId, Section.MAIN);
+    }
+
+    TuningOption(String id, double defaultValue, String modId, Section section) {
+        this(id, defaultValue, 0.0D, 1.0D, -1, modId, section);
     }
 
     TuningOption(String id, double defaultValue, double maximum, int decimals, String modId) {
+        this(id, defaultValue, 0.0D, maximum, decimals, modId, Section.MAIN);
+    }
+
+    TuningOption(String id, double defaultValue, double minimum, double maximum, int decimals, String modId,
+                 Section section) {
         this.id = id;
         this.defaultValue = defaultValue;
+        this.minimum = minimum;
         this.maximum = maximum;
         this.decimals = decimals;
         this.modId = modId;
+        this.section = section;
     }
 
     public String id() { return id; }
     public String key() { return PREFIX + id; }
     public String modId() { return modId; }
+    public Section section() { return section; }
     public double defaultValue() { return defaultValue; }
     public boolean isCheckbox() { return decimals < 0; }
     public double step() { return Math.pow(10.0D, -Math.max(0, decimals)); }
+    public double minimum() { return minimum; }
     public double maximum() { return maximum; }
     /** Settings owned by dimblend_radio, which every client applies to its own audio. */
     public boolean radio() { return this == RADIO_STATIC || this == RADIO_ACOUSTIC_INTENSITY; }
+    /** Settings on the Sable page, owned by sable's server config. */
+    public boolean sable() { return section == Section.SABLE; }
 
     public boolean isValid(double value) {
-        if (!Double.isFinite(value) || value < 0.0D || value > maximum) {
+        if (!Double.isFinite(value) || value < minimum || value > maximum) {
             return false;
         }
         if (isCheckbox()) {

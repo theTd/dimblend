@@ -11,6 +11,10 @@ public final class TuningSettings {
         return switch (option) {
             case SOILING_MULTIPLIER -> CarwashTuningBridge.isLoaded();
             case RADIO_STATIC, RADIO_ACOUSTIC_INTENSITY -> RadioTuningBridge.isLoaded();
+            case SABLE_SUBSTEPS, SABLE_SOLVER_ITERATIONS, SABLE_PGS_ITERATIONS, SABLE_STABILIZATION_ITERATIONS,
+                    SABLE_PHYSICS_TICK_INTERVAL, SABLE_SLEEP_SKIP, SABLE_CONTACT_FORCE_EVENTS,
+                    SABLE_BIOME_PROJECTION_FAST_PATH, SABLE_EMPTY_CONTAINER_FAST_PATH ->
+                    SableTuningBridge.isLoaded();
             default -> true;
         };
     }
@@ -34,6 +38,10 @@ public final class TuningSettings {
             case DIESEL_OVERLOAD -> Config.DIESEL_ENGINE_OVERLOAD.get() ? 1.0D : 0.0D;
             case MOTOR_OVERLOAD -> Config.ELECTRIC_MOTOR_OVERLOAD.get() ? 1.0D : 0.0D;
             case EXP_CLEAR_RATIO -> Config.DEATH_EXP_CLEAR_RATIO.get();
+            case SABLE_SUBSTEPS, SABLE_SOLVER_ITERATIONS, SABLE_PGS_ITERATIONS, SABLE_STABILIZATION_ITERATIONS,
+                    SABLE_PHYSICS_TICK_INTERVAL, SABLE_SLEEP_SKIP, SABLE_CONTACT_FORCE_EVENTS,
+                    SABLE_BIOME_PROJECTION_FAST_PATH, SABLE_EMPTY_CONTAINER_FAST_PATH ->
+                    available(option) ? SableTuningBridge.get(option) : option.defaultValue();
         };
     }
 
@@ -45,6 +53,8 @@ public final class TuningSettings {
             CarwashTuningBridge.set(value);
         } else if (option.radio()) {
             RadioTuningBridge.set(option, value);
+        } else if (option.sable()) {
+            SableTuningBridge.set(option, value);
         } else {
             applyExperience(option, value);
             Config.save();
@@ -68,6 +78,9 @@ public final class TuningSettings {
             case MOTOR_OVERLOAD -> Config.ELECTRIC_MOTOR_OVERLOAD.set(enabled);
             case EXP_CLEAR_RATIO -> Config.DEATH_EXP_CLEAR_RATIO.set(value);
             case SOILING_MULTIPLIER, RADIO_STATIC, RADIO_ACOUSTIC_INTENSITY -> { }
+            case SABLE_SUBSTEPS, SABLE_SOLVER_ITERATIONS, SABLE_PGS_ITERATIONS, SABLE_STABILIZATION_ITERATIONS,
+                    SABLE_PHYSICS_TICK_INTERVAL, SABLE_SLEEP_SKIP, SABLE_CONTACT_FORCE_EVENTS,
+                    SABLE_BIOME_PROJECTION_FAST_PATH, SABLE_EMPTY_CONTAINER_FAST_PATH -> { }
         }
     }
 

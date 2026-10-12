@@ -9,9 +9,9 @@ import org.spongepowered.asm.mixin.injection.At;
 /**
  * E9 刹车红石信号视为 1 级（全维度）：转向架收到任意强度红石信号，一律按 1 级信号处理。
  *
- * <p>字节码事实（运行 jar 0.0.0-a 反汇编）：{@code getControlStrength()D} =
+ * <p>字节码事实（运行 jar 0.0.0-a 反汇编）：{@code getControlStrength()F} =
  * clamp({@code level.getSignal(above 或 below, UP/DOWN)} / 15, 0, 1)，是转向架红石信号的
- * 唯一归一化入口——{@code getBrakeStrength()D} 按 {@code options.controlMode} 取其原值
+ * 唯一归一化入口——{@code getBrakeStrength()} 按 {@code options.controlMode} 取其原值
  * （正控）或 {@code 1 -} 其（反控），{@code calculateStressApplied} 同按 controlMode 三分支
  * 取其 × {@code options.stress} 计动力网络应力（正控 control、反控 1−control、默认恒 1.0
  * 与信号无关——默认模式下本 mixin 零效果）。本 mixin 在 {@code getControlStrength} RETURN 把任意正强度压到 1/15
@@ -27,11 +27,11 @@ import org.spongepowered.asm.mixin.injection.At;
 public abstract class PhysicsBogeyFixedBrakeSignalMixin {
 
     /** 1 级红石信号的归一化强度。 */
-    private static final double LEVEL_ONE_STRENGTH = 1.0D / 15.0D;
+    private static final float LEVEL_ONE_STRENGTH = 1.0F / 15.0F;
 
-    @ModifyReturnValue(method = "getControlStrength()D", at = @At("RETURN"), remap = false)
-    private double dimblend$signalAsLevelOne(double original) {
-        if (!Config.TRAIN_FIXED_BRAKE_SIGNAL.get() || original <= 0.0D) {
+    @ModifyReturnValue(method = "getControlStrength()F", at = @At("RETURN"), remap = false)
+    private float dimblend$signalAsLevelOne(float original) {
+        if (!Config.TRAIN_FIXED_BRAKE_SIGNAL.get() || original <= 0.0F) {
             return original;
         }
         return LEVEL_ONE_STRENGTH;

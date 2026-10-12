@@ -50,6 +50,16 @@ public final class VillagerMasterRules {
 
     @SubscribeEvent
     public static void onLevelTick(LevelTickEvent.Post event) {
+        // Named profiler section, so /dimblend slowticks can attribute this listener.
+        event.getLevel().getProfiler().push("dimblend:villager_master");
+        try {
+            tickLevel(event);
+        } finally {
+            event.getLevel().getProfiler().pop();
+        }
+    }
+
+    private static void tickLevel(LevelTickEvent.Post event) {
         Level raw = event.getLevel();
         if (!(raw instanceof ServerLevel level) || !RotatingDimension.is(level)) {
             return;

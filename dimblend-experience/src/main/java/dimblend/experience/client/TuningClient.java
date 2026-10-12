@@ -6,6 +6,7 @@ import dimblend.experience.tuning.TuningEditPayload;
 import dimblend.experience.tuning.TuningOption;
 import dimblend.experience.tuning.TuningSettings;
 import dimblend.experience.tuning.TuningSnapshotPayload;
+import dimblend.experience.tuning.perf.PerfCheckReportPayload;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
@@ -56,6 +57,15 @@ public final class TuningClient {
             minecraft.setScreen(new TuningScreen(payload));
         } else if (minecraft.screen instanceof TuningScreen screen) {
             screen.receive(payload);
+        } else if (minecraft.screen instanceof PerfChecklistScreen checklist) {
+            // Keep the panel underneath current so returning to it shows fresh values.
+            checklist.parent().receive(payload);
+        }
+    }
+
+    public static void receivePerfReport(PerfCheckReportPayload payload) {
+        if (Minecraft.getInstance().screen instanceof PerfChecklistScreen checklist) {
+            checklist.receive(payload);
         }
     }
 

@@ -20,6 +20,8 @@ Missing optional mods leave their controls disabled.
 | Allow coupler redstone activation | false | Checkbox | experience |
 | Allow Survival right-click on couplers | false | Checkbox | experience |
 | Limited-water checks | true | Checkbox | experience |
+| Structure-void fitting on vehicles | true | Checkbox | experience |
+| Lava melting vehicle blocks | true | Checkbox | experience |
 | Portable Engine quantity limit | true | Checkbox | experience |
 | Steam Engine overload penalty | true | Checkbox | experience |
 | Small/Modular/Large Diesel Engine overload penalty | true | Checkbox | experience |
@@ -45,8 +47,9 @@ when the multiplier is zero.
 Radio follows the same pattern through `dimblend.radio.api.RadioTuning` and its
 own `serverconfig/dimblend_radio-server.toml`. Its settings are heard on each
 client, so remote clients also apply the broadcast radio values in memory
-(NeoForge already sends the config at login). This is why the snapshot
-protocol version is now `2`: the snapshot carries one value per option.
+(NeoForge already sends the config at login). The snapshot carries one value
+per option, so each added or removed option bumps the protocol version (now `8`; see the
+performance checklist below).
 
 The existing `couplerRedstone` config uses the inverse meaning: true blocks
 redstone effects. The panel displays the positive **allow** meaning. Survival
@@ -60,6 +63,61 @@ the train interval clears its countdown and active push; changing a nonzero
 interval restarts the countdown. Changing force affects subsequent physics steps.
 Disabling a rule cannot undo damage that has already occurred. Re-enabling the
 Portable Engine limit resumes the existing enforcement on tracked networks.
+
+## Sable Page
+
+The **Sable ▸** row at the bottom of the main page switches to a second page of
+Sable physics settings; **◂ Back** returns to the main page. Every row requires
+Sable; otherwise the rows stay disabled.
+
+| Setting | Default | Valid values | Recommended |
+| --- | --- | --- | --- |
+| Sub-steps per tick | 2 | 1-10, step 1 | 1 |
+| Solver iterations | 18 | 1-64, step 1 | 6 |
+| PGS iterations | 2 | 1-8, step 1 | 2 |
+| Stabilization iterations | 2 | 1-8, step 1 | 2 |
+| Physics tick interval | 1 | 1-10, step 1 | 1; 2 is an experimental half-rate mode |
+| Sleep skip | true | Checkbox | on |
+| Contact force events | true | Checkbox | off — vehicles lose collision sounds and particles |
+| Biome projection fast path | true | Checkbox | on |
+| Empty-container fast path | true | Checkbox | on |
+
+All Sable rows persist in Sable's own
+`serverconfig/sable-server.toml`; each save is re-applied to every loaded
+level's physics system immediately through
+`dev.ryanhcode.sable.api.physics.SablePhysicsTuning.applyToAllLevels`.
+Sable rows are in-memory no-ops on remote clients: the
+physics settings are enforced by the server only.
+
+## Performance Checklist
+
+The **Performance checklist ▸** button on the main page opens a step-by-step
+wizard (one page per step, then a summary whose rows jump back to their step).
+Each step shows its status, the current value, what to do and why. The order is
+largest tick stall first, from the 2026-10 TrainTripWorld spark captures.
+
+| Step | Checked on | Flags when | One-click fix |
+| --- | --- | --- | --- |
+| spark background profiler | server | `backgroundProfiler` is not `false` in `config/spark/config.json` (spark's Java sampler freezes all threads ~100×/s) | writes `false`; takes effect on restart |
+| Garbage collector | server, remote client | not generational ZGC | — (launcher: `-XX:+UseZGC -XX:+ZGenerational`) |
+| Heap headroom | server, remote client | heap still used after the last collection > 60 % (> 75 % = problem) of `-Xmx`; suggests the `-Xmx` that restores 60 % | — (launcher) |
+| Machine memory | server, remote client | free physical memory < 15 % (< 5 % = problem) | — |
+| Background autosave writes | server | `dimblend_asyncsave` missing, or loaded without its mixins | — |
+| FiniteWater mod | server | `finite_water` installed | — (remove the jar) |
+| Overworld can unload | server | game rule `spawnChunkRadius` > 0 (the spawn-chunk ticket keeps a 7×7 full area plus a partly loaded ring in memory all session), or chunks force-loaded with `/forceload` | sets `spawnChunkRadius` to 0 (the rule callback drops the ticket at once); force-loaded chunks: guidance only |
+| Simulation distance | singleplayer client; dedicated server | > 8 | singleplayer: sets the option to 8 (the integrated server follows it live); dedicated: guidance for `server.properties` |
+| Render distance | client | > 12 | sets the option to 12 |
+| Sable physics settings | server | informational: shows sub-steps / iterations / interval versus Sable's defaults | opens the Sable page |
+| Sable smoothing buffer | client | `sub_level_snapshot_interpolation_delay_ticks` < 3 | sets 3 (applies immediately) |
+
+The JVM steps run in the process they describe: in singleplayer only the
+server's results are shown (same JVM); a client connected to a remote server
+also lists its own collector, heap and memory. Server steps and the spark fix use
+the same permission gate as the panel (level 2) and travel on two extra payloads
+(`perf_check_request`, `perf_check_report`), which is why the tuning protocol
+version is now `8`. The thresholds live in `PerfRules` and are unit-tested;
+`PerfChecklistTranslationsTest` checks both languages cover every step, advice
+and fix label.
 
 ## Verification
 
