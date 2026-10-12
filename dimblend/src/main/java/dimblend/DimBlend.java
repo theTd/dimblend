@@ -80,6 +80,7 @@ public final class DimBlend {
         NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, VoidscapeBand::onFinalizeSpawnExit);
         NeoForge.EVENT_BUS.register(MONITOR);
         NeoForge.EVENT_BUS.register(WATCHDOG);
+        NeoForge.EVENT_BUS.addListener(dimblend.diagnostics.SlowTickRecorder::onServerStopping);
         NeoForge.EVENT_BUS.register(PURGE);
     }
 

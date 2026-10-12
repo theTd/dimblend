@@ -147,6 +147,9 @@ dependencies {
     // required=false so a missing Simurail/Sable install skips it.
     compileOnly files("libs/simurail-1.21.1-0.0.0-a+ecd2dd3.jar")
     compileOnly files("libs/sable-neoforge-1.21.1-2.0.5_cui-modded.jar")
+    // run/mods 里另有同款 gitignored dev install（与上面 BoP/GlitchCore 双来源同一模式，
+    // 不冲突）；这一行让 run-server（mods 目录为空）与干净检出也能装上 sable 做联动验证。
+    localRuntime files("libs/sable-neoforge-1.21.1-2.0.5_cui-modded.jar")
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

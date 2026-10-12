@@ -10,6 +10,8 @@
     "ConstantHeightMixin",
     "LayerLightSectionStorageMixin",
     "LivingEntityTickMixin",
+    "MinecraftServerSlowTickMixin",
+    "MinecraftServerLevelTickEventSectionMixin",
     "LevelDayTimeMixin",
     "LevelWeatherAccessor",
     "NaturalSpawnerMixin",

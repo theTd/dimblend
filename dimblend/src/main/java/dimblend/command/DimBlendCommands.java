@@ -2,6 +2,7 @@ package dimblend.command;
 
 import dimblend.DimBlend;
 import dimblend.DimBlendRegistries;
+import dimblend.diagnostics.SlowTickRecorder;
 import dimblend.worldgen.BandIndex;
 import dimblend.worldgen.BandLayout;
 import dimblend.worldgen.OverworldSlice;
@@ -91,6 +92,15 @@ public final class DimBlendCommands {
                                         .executes(context -> setWatchdog(context.getSource(), true)))
                                 .then(Commands.literal("off")
                                         .executes(context -> setWatchdog(context.getSource(), false))))
+                        .then(Commands.literal("slowticks")
+                                .executes(context -> slowTicksStatus(context.getSource()))
+                                .then(Commands.literal("start")
+                                        .executes(context -> startSlowTicks(context.getSource(), 50))
+                                        .then(Commands.argument("thresholdMs", IntegerArgumentType.integer(5, 10_000))
+                                                .executes(context -> startSlowTicks(context.getSource(),
+                                                        IntegerArgumentType.getInteger(context, "thresholdMs")))))
+                                .then(Commands.literal("stop")
+                                        .executes(context -> stopSlowTicks(context.getSource()))))
                         .then(Commands.argument("band", StringArgumentType.word())
                                 .suggests(bandSuggestions())
                                 .executes(context -> teleport(
@@ -350,6 +360,38 @@ public final class DimBlendCommands {
     private static int dumpWatchdog(CommandSourceStack source) {
         source.sendSuccess(() -> Component.literal("hang watchdog " + (DimBlend.watchdog().isEnabled() ? "on" : "off")), false);
         return 1;
+    }
+
+    private static int slowTicksStatus(CommandSourceStack source) {
+        source.sendSuccess(() -> Component.literal(SlowTickRecorder.status()), false);
+        return 1;
+    }
+
+    private static int startSlowTicks(CommandSourceStack source, int thresholdMs) {
+        if (SlowTickRecorder.running()) {
+            source.sendFailure(Component.literal("slow-tick recording already running; /dimblend slowticks stop first"));
+            return 0;
+        }
+        var directory = SlowTickRecorder.start(source.getServer(), thresholdMs);
+        source.sendSuccess(() -> Component.literal("recording server ticks over " + thresholdMs
+                + " ms of work (vanilla section profiler, no sampling); each slow tick is logged, "
+                + "/dimblend slowticks stop writes the summary to " + directory), true);
+        return 1;
+    }
+
+    private static int stopSlowTicks(CommandSourceStack source) {
+        try {
+            var summary = SlowTickRecorder.stop();
+            if (summary == null) {
+                source.sendFailure(Component.literal("slow-tick recording is not running"));
+                return 0;
+            }
+            source.sendSuccess(() -> Component.literal("slow-tick summary written to " + summary), true);
+            return 1;
+        } catch (java.io.IOException e) {
+            source.sendFailure(Component.literal("could not write the slow-tick summary: " + e.getMessage()));
+            return 0;
+        }
     }
 
     private static int setWatchdog(CommandSourceStack source, boolean on) {

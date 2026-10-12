@@ -3,7 +3,9 @@ package dimblend.time;
 import dimblend.DimBlendRegistries;
 import dimblend.worldgen.BandLayout;
 import dimblend.worldgen.RotatingChunkGenerator;
+import java.lang.ref.WeakReference;
 import java.util.ArrayDeque;
+import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
@@ -17,9 +19,16 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
  * checks use {@code getSkyDarken}, not {@code isNight}.
  */
 public final class ServerBandTime {
+    /**
+     * One deque per thread, kept for the thread's lifetime. It used to be removed whenever it
+     * emptied, so every mob tick re-created it: a ThreadLocal miss plus a fresh ArrayDeque per
+     * call (~2 % of slow server ticks in the 2026-10-12 spark capture, and GC garbage).
+     */
     private static final ThreadLocal<ArrayDeque<TimeLockTarget>> STACK = ThreadLocal.withInitial(ArrayDeque::new);
     private static final long TWILIGHT_DAY_TIME =
             (TimeLockTarget.TWILIGHT_MIN + TimeLockTarget.TWILIGHT_MAX_EXCLUSIVE - 1) / 2;
+    /** Lock target per band of the current rotating generator; held weakly so an unloaded world can be freed. */
+    private static volatile LaneTargets laneTargets;
 
     private ServerBandTime() {
     }
@@ -32,9 +41,6 @@ public final class ServerBandTime {
         ArrayDeque<TimeLockTarget> stack = STACK.get();
         if (!stack.isEmpty()) {
             stack.pop();
-        }
-        if (stack.isEmpty()) {
-            STACK.remove();
         }
     }
 
@@ -80,11 +86,18 @@ public final class ServerBandTime {
     }
 
     public static void run(Level level, BlockPos pos, Runnable body) {
-        push(level, pos);
+        TimeLockTarget target = targetAt(level, pos.getX());
+        ArrayDeque<TimeLockTarget> stack = STACK.get();
+        if (target.mode() == TimeLockTarget.Mode.NONE && stack.isEmpty()) {
+            // Nothing to attribute and nothing to shadow: current() already reads NONE.
+            body.run();
+            return;
+        }
+        stack.push(target);
         try {
             body.run();
         } finally {
-            pop();
+            stack.pop();
         }
     }
 
@@ -96,7 +109,28 @@ public final class ServerBandTime {
         if (!(generator instanceof RotatingChunkGenerator rotating)) {
             return TimeLockTarget.NONE;
         }
-        int index = rotating.delegateIndexForBlockX(blockX);
-        return TimeLockTarget.fromLane(BandLayout.laneName(rotating.delegates().get(index)));
+        return laneTargets(rotating)[rotating.delegateIndexForBlockX(blockX)];
+    }
+
+    /**
+     * The lane of a band never changes for a generator, so resolve each band's target once
+     * instead of re-deriving the lane name (instanceof checks, registry id, string switch) on
+     * every mob tick, random tick and spawn attempt.
+     */
+    private static TimeLockTarget[] laneTargets(RotatingChunkGenerator rotating) {
+        LaneTargets cached = laneTargets;
+        if (cached != null && cached.generator().get() == rotating) {
+            return cached.targets();
+        }
+        List<ChunkGenerator> delegates = rotating.delegates();
+        TimeLockTarget[] targets = new TimeLockTarget[delegates.size()];
+        for (int i = 0; i < targets.length; i++) {
+            targets[i] = TimeLockTarget.fromLane(BandLayout.laneName(delegates.get(i)));
+        }
+        laneTargets = new LaneTargets(new WeakReference<>(rotating), targets);
+        return targets;
+    }
+
+    private record LaneTargets(WeakReference<RotatingChunkGenerator> generator, TimeLockTarget[] targets) {
     }
 }
