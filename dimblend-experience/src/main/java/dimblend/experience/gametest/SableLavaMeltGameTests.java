@@ -1,6 +1,7 @@
 package dimblend.experience.gametest;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.companion.math.BoundingBox3i;
@@ -11,6 +12,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Items;
@@ -21,6 +24,8 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.PlayLevelSoundEvent;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
 /**
@@ -36,6 +41,9 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
  * 不同 batch 并发执行，私有还原会互踩）；用例中段的临时翻转自己翻回。
  * 每条用例结束前清掉自己放的岩浆（±5 格），避免残源/残流熔穿并发用例的载具。
  * 不加 {@code @GameTestHolder}：引用 Sable 类，只由 DimBlend 在 Sable 在场时显式注册。</p>
+ * <p>浇淋音效用例经 NeoForge 的 {@code PlayLevelSoundEvent.AtPosition} 服务端观测：
+ * {@code ServerLevel#playSound} 在服务端也发布该事件（播音位置/音效/声源可断言），
+ * 无需真人客户端。</p>
  */
 @PrefixGameTestTemplate(false)
 public final class SableLavaMeltGameTests {
@@ -208,6 +216,50 @@ public final class SableLavaMeltGameTests {
     }
 
     /**
+     * 浇淋音效：熔毁进行中的方块每轮扫描在其世界侧投影位置播
+     * {@code block.fire.extinguish}。黑曜石（50）需 1250 tick，窗口内只会累计进度
+     * 不会熔穿——听到嘶声时方块必须还在。观测断言四要素：同一 level、同一音效、
+     * BLOCKS 声源、位置在投影格附近（音效若落在 plot 存储区则远处听不见，
+     * 正是 {@code PhysicsBogeyBrakeSoundMixin} 防过的坐标混用事故）。
+     */
+    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_lava_melt_sound", timeoutTicks = 300)
+    public static void meltingBlockSizzlesAtProjectedPosition(GameTestHelper helper) {
+        SavedConfig saved = enableRules();
+        ServerLevel level = helper.getLevel();
+        Assembled assembled = assemble(helper, VEHICLE_REL, Blocks.OBSIDIAN);
+        helper.runAfterDelay(SETTLE_TICKS, () -> {
+            BlockPos cell = projectedCell(assembled);
+            helper.assertTrue(level.getBlockState(cell).is(Blocks.STRUCTURE_VOID),
+                    "precondition: projected cell must be fitted");
+            int[] sizzles = new int[1];
+            Consumer<PlayLevelSoundEvent.AtPosition> listener = event -> {
+                if (event.getLevel() != level || event.getSound() == null
+                        || event.getSound().value() != SoundEvents.FIRE_EXTINGUISH
+                        || event.getSource() != SoundSource.BLOCKS) {
+                    return;
+                }
+                if (event.getPosition().distanceToSqr(Vec3.atCenterOf(cell)) <= 4.0D) {
+                    sizzles[0]++;
+                }
+            };
+            NeoForge.EVENT_BUS.addListener(PlayLevelSoundEvent.AtPosition.class, listener);
+            level.setBlockAndUpdate(cell, Blocks.LAVA.defaultBlockState());
+            pollForSizzle(helper, listener, sizzles, 40, () -> {
+                try {
+                    helper.assertTrue(plotState(level, assembled).is(Blocks.OBSIDIAN),
+                            "sizzle must play while the block is still melting but was "
+                                    + plotState(level, assembled));
+                } finally {
+                    NeoForge.EVENT_BUS.unregister(listener);
+                    clearLavaAround(level, cell, 5);
+                    restore(saved);
+                }
+                helper.succeed();
+            });
+        });
+    }
+
+    /**
      * 配对开关语义：熔毁开时拟合不驱逐岩浆；熔毁关后退回旧行为——
      * 下一轮 refit 把岩浆顶成结构空位（且熔毁停摆、方块保留）。
      * 驱逐走载具 refit 轮询（verify 级联，多载具时十余 tick 才轮到），轮询等待。
@@ -254,6 +306,23 @@ public final class SableLavaMeltGameTests {
                 pollUntilEvicted(helper, level, assembled, cell, attemptsLeft - 1, onEvicted);
             }
         });
+    }
+
+    /** 轮询等待浇淋嘶声出现：每 5 tick 一查，听到后回调；attempts 耗尽则失败。 */
+    private static void pollForSizzle(GameTestHelper helper,
+            Consumer<PlayLevelSoundEvent.AtPosition> listener, int[] sizzles,
+            int attemptsLeft, Runnable onHeard) {
+        if (sizzles[0] > 0) {
+            onHeard.run();
+            return;
+        }
+        if (attemptsLeft <= 0) {
+            NeoForge.EVENT_BUS.unregister(listener);
+            helper.assertTrue(false,
+                    "melting block must sizzle block.fire.extinguish at its projected position within the window");
+            return;
+        }
+        helper.runAfterDelay(5, () -> pollForSizzle(helper, listener, sizzles, attemptsLeft - 1, onHeard));
     }
 
     private SableLavaMeltGameTests() {

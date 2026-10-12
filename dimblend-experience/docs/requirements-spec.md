@@ -567,6 +567,10 @@
   接触中断进度清零（与徒手停手同型）
 - 掉落：方块自身掉落规则 `Block#getDrops`（无工具/时运/精准），在投影世界位置
   生成掉落物并播 2001 破坏粒子+音效；容器内容物并入掉落并清空（防撒到 plot 存储区）
+- 浇淋音效：熔毁进行中（本轮未熔、进度仍在累计）的方块每轮扫描在其世界侧投影位置
+  播一次 `block.fire.extinguish`（原版灭火口径：音量 0.5、音高 2.6±0.4 随机，同
+  `BucketItem` 灭火）——持续浇淋即持续嘶声，熔穿瞬间由破坏粒子/音效收尾；播世界
+  坐标（播在 plot 存储格玩家听不见，`PhysicsBogeyBrakeSoundMixin` 事故口径）
 - 与拟合的配合：开关开启时 `VoidFitApplier#placeVoid` 不驱逐熔岩格（熔岩浇穿
   船体逐步推进：熔穿→投影收缩→空位拆除→熔岩进缺口）；关闭后熔岩与水同被
   驱逐、本特性停摆
@@ -574,7 +578,7 @@
   累计、新接触从 0 起算不预支空窗；开关停摆恢复后首扫重置计时不补发停摆期）
   → `LavaMeltMath` 纯函数；`VoidFitVoxelizer#forEachProjectedBlock` 与体素化共用
   投影枚举；plot 读写一律 `level` + 全局存储坐标（`EmbeddedPlotLevelAccessor`
-  是中心相对坐标，严禁混用）；单测 4 条 + GameTest 4 条
+  是中心相对坐标，严禁混用）；单测 4 条 + GameTest 5 条
 - 开关 `sableLavaMelt`（默认开）；需要 Sable 在场
 
 ### G4 传送门禁令（回家通道不管）

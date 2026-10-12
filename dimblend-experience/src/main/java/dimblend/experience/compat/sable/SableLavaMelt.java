@@ -17,6 +17,8 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
@@ -62,6 +64,13 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
  * 反馈。容器方块（箱子等）内容物先并入掉落再清空，避免 BE 移除回调把内容物撒到
  * 玩家够不到的 plot 存储区。capability 型（非 {@link Container} 接口）mod 容器
  * 不覆盖，内容物随 BE 移除丢失（接受项）。</p>
+ *
+ * <p>浇淋音效：熔毁进行中（本轮未熔、进度仍在累计）的方块每轮扫描在其世界侧投影
+ * 位置播一次 {@code block.fire.extinguish}（原版灭火口径：音量 0.5、音高 2.6±0.4
+ * 随机，同 {@code BucketItem} 灭火）——持续浇淋即持续嘶声，熔穿瞬间的收尾反馈仍是
+ * 破坏粒子/音效。必须播世界坐标：服务端 {@code playSound} 不做 plot→世界路由，
+ * 播在 plot 存储格玩家听不见（{@code PhysicsBogeyBrakeSoundMixin} 的事故口径），
+ * 投影中心与破坏粒子/掉落同锚。</p>
  *
  * <p>所有世界读取（熔岩探测）都带 {@code hasChunkAt} 守卫且在 tick 上下文执行——
  * 不走 ChunkEvent.Load 内的同步写入路径（见 docs/sable-void-fit-chunk-deadlock.md
@@ -195,12 +204,25 @@ public final class SableLavaMelt {
                 melting.add(contact);
             } else {
                 melt.progress.put(contact.plotPos(), (float) next);
+                playSizzle(level, contact);
             }
         }
         for (Contact contact : melting) {
             meltBlock(level, contact);
             melt.progress.remove(contact.plotPos());
         }
+    }
+
+    /**
+     * 熔毁浇淋音：被浇方块每轮扫描播一次原版灭火嘶声（口径同 {@code BucketItem}
+     * 灭火：音量 0.5、音高 2.6±0.4 随机）。位置必须用世界侧投影坐标——plot 存储
+     * 格在远处真实区块里，播在那儿玩家听不见（服务端 {@code playSound} 不做
+     * sublevel 坐标路由，见类注释）。
+     */
+    private static void playSizzle(ServerLevel level, Contact contact) {
+        level.playSound(null, contact.worldX(), contact.worldY(), contact.worldZ(),
+                SoundEvents.FIRE_EXTINGUISH, SoundSource.BLOCKS, 0.5F,
+                2.6F + (level.random.nextFloat() - level.random.nextFloat()) * 0.8F);
     }
 
     /** 方块投影体积（中心 w、半 extent h）外扩 {@link LavaMeltMath#CONTACT_TOLERANCE} 内有熔岩格。 */
