@@ -6,7 +6,8 @@
   "mixins": [
     "LevelStorageAccessMixin",
     "MinecraftServerSaveMixin",
-    "PlayerDataStorageMixin"
+    "PlayerDataStorageMixin",
+    "PrimaryLevelDataWorldGenSettingsMixin"
   ],
   "injectors": {
     "defaultRequire": 1

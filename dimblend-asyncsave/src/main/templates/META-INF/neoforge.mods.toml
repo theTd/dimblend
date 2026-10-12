@@ -20,6 +20,11 @@ and server shutdown keep the vanilla fully-synchronous semantics (pending writes
 first). SavedData is already async+atomic on NeoForge and is left untouched.
 '''
 
+# NeoForge only applies mixin configs declared here; without this block none of the
+# async-save mixins load and every autosave write stays on the server thread.
+[[mixins]]
+config="${mod_id}.mixins.json"
+
 [[dependencies.${mod_id}]]
     modId="neoforge"
     type="required"
