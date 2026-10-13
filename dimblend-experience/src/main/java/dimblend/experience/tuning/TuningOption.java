@@ -7,6 +7,7 @@ public enum TuningOption {
     SHAKE_INTERVAL("shake_interval", 2.0D, 60.0D, 1, "simurail"),
     SHAKE_FORCE("shake_force", 1200.0D, 10000.0D, 0, "simurail"),
     BRAKE_SIGNAL_CAP("brake_signal_cap", 1.0D, 1.0D, 15.0D, 0, "simurail", Section.MAIN),
+    BOGIE_ROLL_TORQUE("bogie_roll_torque", 5000.0D, 0.0D, 10000000.0D, 0, "simurail", Section.MAIN),
     SOILING_MULTIPLIER("soiling_multiplier", 0.5D, 1.0D, 2, "dimblend_carwash"),
     COUPLER_REDSTONE("coupler_redstone", 0.0D, "simurail"),
     COUPLER_SURVIVAL("coupler_survival", 0.0D, "simurail"),

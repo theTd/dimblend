@@ -17,6 +17,7 @@ Missing optional mods leave their controls disabled.
 | Train shaking draw interval | 2.0 seconds | 0 = disabled; 0.1-60.0, step 0.1 | experience |
 | Train additional lateral force | 1200 pN | 0-10000, step 1 | experience |
 | Bogie redstone signal cap | 1 | 1-15, step 1; signals above the cap are clamped to it, 15 restores vanilla scaling | experience |
+| Bogie roll torque cap | 5000 | 0-10000000, step 1; 0 = no roll spring (cars rest on the 15° roll stop) | simurail |
 | Dirtiness probability multiplier | 0.5 | 0.00-1.00, step 0.01; 0 = no soiling draws | carwash |
 | Allow coupler redstone activation | false | Checkbox | experience |
 | Allow Survival right-click on couplers | false | Checkbox | experience |
@@ -49,7 +50,7 @@ Radio follows the same pattern through `dimblend.radio.api.RadioTuning` and its
 own `serverconfig/dimblend_radio-server.toml`. Its settings are heard on each
 client, so remote clients also apply the broadcast radio values in memory
 (NeoForge already sends the config at login). The snapshot carries one value
-per option, so each added or removed option bumps the protocol version (now `9`; see the
+per option, so each added or removed option bumps the protocol version (now `10`; see the
 performance checklist below).
 
 The existing `couplerRedstone` config uses the inverse meaning: true blocks
@@ -69,6 +70,32 @@ The bogie redstone signal cap clamps any stronger signal to the cap; brake
 strength and kinetic network stress follow the adjusted signal. 1 keeps every
 signal at level one (the former fixed behavior); 15 is a no-op.
 
+The bogie roll torque cap is Simurail's own `bogeyAngularSpringMaxTorque` in
+`simurail-server.toml`; Simurail stays the only source of truth and experience
+reads and writes it through a bridge loaded only when Simurail is present.
+Each bogie with yaw and pitch offsets enabled and both axles on track runs a
+roll spring that pushes the car body back upright with a torque proportional to
+its lean (plus Simurail's curve compensation), clipped to this cap; other
+bogies either lock roll with their joint or, while half-derailed, swing freely
+to the stop, and ignore the cap. The pivot joint still
+stops the body at 15° of roll (shifted by up to 10° of curve tilt), so at 0
+cars sag onto that stop instead of being held upright. Once gravity's tip
+torque, roughly `mass × 11 (Sable's default gravity) × (height of the centre of
+mass above the bogie pivots) × sin(lean)`, exceeds the cap times the car's
+number of sprung bogies, the springs can no longer bring the car back; raise the
+cap above that for cars that lean over. Simurail reads it on every physics
+step, so changes apply at once without re-placing bogies (typing slowly can
+briefly apply a partial number). The spring's stiffness and damping are
+unchanged.
+
+The roll spring is explicit: at Simurail's defaults (frequency 15, damping rate
+1.2) it is only stable for physics steps under about 0.048 s. A step of 0.05 s
+or more — one Sable sub-step per tick, or a physics tick interval at least as
+large as the sub-step count — is past that limit, and the spring then shudders,
+flipping direction every step and growing until the cap bounds it (with a much
+higher cap, only the 15° roll stop does). When raising the cap, keep the step
+under 0.05 s, e.g. 2 sub-steps at tick interval 1.
+
 ## Sable Page
 
 The **Sable ▸** row at the bottom of the main page switches to a second page of
@@ -77,7 +104,7 @@ Sable; otherwise the rows stay disabled.
 
 | Setting | Default | Valid values | Recommended |
 | --- | --- | --- | --- |
-| Sub-steps per tick | 2 | 1-10, step 1 | 1 |
+| Sub-steps per tick | 2 | 1-10, step 1 | 1; with Simurail trains prefer 2 — at 1 their roll spring shudders (see the bogie roll torque cap above) |
 | Solver iterations | 18 | 1-64, step 1 | 6 |
 | PGS iterations | 2 | 1-8, step 1 | 2 |
 | Stabilization iterations | 2 | 1-8, step 1 | 2 |
@@ -119,8 +146,8 @@ The JVM steps run in the process they describe: in singleplayer only the
 server's results are shown (same JVM); a client connected to a remote server
 also lists its own collector, heap and memory. Server steps and the spark fix use
 the same permission gate as the panel (level 2) and travel on two extra payloads
-(`perf_check_request`, `perf_check_report`), which is why the tuning protocol
-version is now `9`. The thresholds live in `PerfRules` and are unit-tested;
+(`perf_check_request`, `perf_check_report`), which also bumped the tuning
+protocol version (now `10`, see above). The thresholds live in `PerfRules` and are unit-tested;
 `PerfChecklistTranslationsTest` checks both languages cover every step, advice
 and fix label.
 

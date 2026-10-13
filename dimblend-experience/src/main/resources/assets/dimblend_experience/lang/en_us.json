@@ -27,6 +27,8 @@
   "screen.dimblend_experience.tuning.shake_force.description": "Default: 1200 pN. Range: 0-10000 pN, step: 1.",
   "screen.dimblend_experience.tuning.brake_signal_cap": "Bogie redstone signal cap",
   "screen.dimblend_experience.tuning.brake_signal_cap.description": "Default: 1. Signals at or below the cap pass through unchanged; stronger signals are clamped to the cap (brake strength and kinetic network stress follow the adjusted signal). 15 restores vanilla scaling.",
+  "screen.dimblend_experience.tuning.bogie_roll_torque": "Bogie roll torque cap",
+  "screen.dimblend_experience.tuning.bogie_roll_torque.description": "Default: 5000 (Simurail's own default). Range: 0-10000000, step: 1. Caps the torque each bogie's roll spring may use to keep the car body upright (Simurail's bogeyAngularSpringMaxTorque). Raise it if tall or heavy cars lean over on their bogies; the spring's stiffness is unchanged, so only cars that hit the cap respond. 0 removes the roll spring; cars then rest on the bogie's 15° roll stop. With 1 Sable sub-step per tick, values far above the default can make cars shudder; keep 2 sub-steps. Applies on the next physics step and is saved in Simurail's server config.",
   "screen.dimblend_experience.tuning.soiling_multiplier": "Dirtiness probability multiplier",
   "screen.dimblend_experience.tuning.soiling_multiplier.description": "Default: 0.5. Range: 0.00-1.00, step: 0.01. Chance = min(1, speed / 12 x multiplier). 0 disables dirtiness draws.",
   "screen.dimblend_experience.tuning.coupler_redstone": "Allow redstone activation of couplers",

@@ -36,6 +36,23 @@ class TuningOptionTest {
     }
 
     @Test
+    void bogieRollTorqueMirrorsSimurailDefaultAndTakesWholeValuesUpToTenMillion() {
+        var option = TuningOption.BOGIE_ROLL_TORQUE;
+        assertFalse(option.isCheckbox());
+        assertSame(TuningOption.Section.MAIN, option.section());
+        assertEquals("simurail", option.modId());
+        assertEquals(5000.0D, option.defaultValue());
+        for (double valid : new double[] {0.0D, 1.0D, 5000.0D, 50000.0D, 10000000.0D}) {
+            assertTrue(option.isValid(valid));
+        }
+        for (double invalid : new double[] {-1.0D, 0.5D, 5000.5D, 10000001.0D}) {
+            assertFalse(option.isValid(invalid));
+        }
+        // The panel's input box holds at most 12 characters.
+        assertEquals("10000000", option.format(option.maximum()));
+    }
+
+    @Test
     void multiplierAcceptsEveryHundredthWithoutFloatingPointArtifacts() {
         var option = TuningOption.SOILING_MULTIPLIER;
         for (int i = 0; i <= 100; i++) {
