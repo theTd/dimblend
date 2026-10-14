@@ -558,12 +558,14 @@
 - 开关 `sableStructureVoidFit`（默认开）+ `sableVoidFitRefitTicks`（默认 5）
 
 ### G6 岩浆熔毁 sable 结构方块（2026-10-11 拍板口径，仅 rotating）
-- 岩浆与岩浆流按 **4 倍徒手速度** 熔毁位于 sable 结构上的方块并使其掉落：
+- 岩浆与岩浆流按 **sableLavaMeltSpeed 倍徒手速度**（默认 4 倍；2026-10-14 起经
+  /dbx 调参面板与配置可调，0.5-64.0 步进 0.1，逐次扫描读值即时生效、已累进度
+  不清零）熔毁位于 sable 结构上的方块并使其掉落：
   熔岩格与方块投影体积（旋转保守半 extent）AABB 距离 ≤0.25 即"被岩浆浇着"
   ——同格（载具驶入熔岩）与贴壳（熔岩流到空位壳边）都覆盖
-- 硬度只决定速度不设阈值：熔毁耗时 = 徒手耗时/4（需正确工具的方块徒手术
-  divisor=100、否则 30，同原版 `getDigSpeed` 分支）——黑曜石级（50）约 62.5 秒
-  持续浇淋才熔（等效抗岩浆），硬度负（基岩等）免疫，硬度 0 即熔；
+- 硬度只决定速度不设阈值：熔毁耗时 = 徒手耗时/倍率（需正确工具的方块徒手术
+  divisor=100、否则 30，同原版 `getDigSpeed` 分支）——黑曜石级（50）默认倍率下
+  约 62.5 秒持续浇淋才熔（等效抗岩浆），硬度负（基岩等）免疫，硬度 0 即熔；
   接触中断进度清零（与徒手停手同型）
 - 免疫清单（2026-10-14 增补）：`#dimblend_experience:lava_melt_immune` 内的方块
   一律不熔（不进接触、不累计、不掉落）——标签继承 `#create:non_breakable`
@@ -580,13 +582,16 @@
   船体逐步推进：熔穿→投影收缩→空位拆除→熔岩进缺口）；关闭后熔岩与水同被
   驱逐、本特性停摆
 - 实现：`SableLavaMelt`（5 tick 一轮、2 载具/轮游标轮询；连续接触按真实 tick 差
-  累计、新接触从 0 起算不预支空窗；开关停摆恢复后首扫重置计时不补发停摆期）
-  → `LavaMeltMath` 纯函数；`VoidFitVoxelizer#forEachProjectedBlock` 与体素化共用
+  累计、新接触从 0 起算不预支空窗；开关停摆恢复后首扫重置计时不补发停摆期；
+  倍率逐次扫描读 `Config.SABLE_LAVA_MELT_SPEED`，运行中改值即时生效）
+  → `LavaMeltMath` 纯函数（速率按倍率参数化，两参重载走默认值）；`VoidFitVoxelizer#forEachProjectedBlock` 与体素化共用
   投影枚举；plot 读写一律 `level` + 全局存储坐标（`EmbeddedPlotLevelAccessor`
   是中心相对坐标，严禁混用）；免疫守卫在扫描枚举与熔毁执行两处各查一次
-  `state.is(LAVA_MELT_IMMUNE)`（执行处复核防枚举后邻接更新改写）；单测 6 条 +
-  GameTest 6 条（含标签接线断言）
-- 开关 `sableLavaMelt`（默认开）；需要 Sable 在场
+  `state.is(LAVA_MELT_IMMUNE)`（执行处复核防枚举后邻接更新改写）；单测 8 条 +
+  GameTest 6 条（含标签接线断言；GameTestSableRules 把倍率钉为默认值，套件时序与
+  服务器配置无关）
+- 开关 `sableLavaMelt`（默认开）+ 倍率 `sableLavaMeltSpeed`（默认 4.0，/dbx 面板
+  可调，快照协议随新增选项升版、当前版本以 parameter-tuning 为准）；需要 Sable 在场
 
 ### G4 传送门禁令（回家通道不管）
 - 下界门：rotating 内点火生成一律取消（`BlockEvent.PortalSpawnEvent` 取消，
@@ -658,7 +663,8 @@
 | sableVoidFitRefitTicks | G3 配套（拟合扫描周期 1–40 tick） | 5 |
 | portalBan | G4 | true |
 | enderStorageStructureOnly | G5（末影存储仅限 sable 结构放置） | true |
-| sableLavaMelt | G6（岩浆 4 倍徒手速熔毁 sable 结构方块并掉落） | true |
+| sableLavaMelt | G6（岩浆按 sableLavaMeltSpeed 倍率（默认 4 倍徒手速）熔毁 sable 结构方块并掉落） | true |
+| sableLavaMeltSpeed | G6 配套（熔毁速度倍率 0.5–64.0 步进 0.1，运行中即时生效；经 /dbx 面板可调） | 4.0 |
 | steamEngineOverload | H（蒸汽引擎过载两阶段） | true |
 | rotatingDimensionId | A1–A6 作用域维度 id | "dimblend:rotating" |
 

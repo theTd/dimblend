@@ -1,6 +1,7 @@
 package dimblend.experience.gametest;
 
 import dimblend.experience.Config;
+import dimblend.experience.compat.sable.LavaMeltMath;
 
 /**
  * Sable 相关 GameTest 的共享配置覆写（引用计数）。vanilla GameTest 在同一世界内
@@ -23,6 +24,7 @@ public final class GameTestSableRules {
     private static boolean savedVoidFit;
     private static int savedRefitTicks;
     private static boolean savedLavaMelt;
+    private static double savedLavaMeltSpeed;
 
     /** 进入一条 Sable 用例：首个进入者快照原值并应用测试值（可重入，后续进入者不改值）。 */
     public static synchronized void acquire() {
@@ -31,10 +33,13 @@ public final class GameTestSableRules {
             savedVoidFit = Config.SABLE_STRUCTURE_VOID_FIT.get();
             savedRefitTicks = Config.SABLE_VOID_FIT_REFIT_TICKS.get();
             savedLavaMelt = Config.SABLE_LAVA_MELT.get();
+            savedLavaMeltSpeed = Config.SABLE_LAVA_MELT_SPEED.get();
             Config.ROTATING_DIMENSION_ID.set("minecraft:overworld");
             Config.SABLE_STRUCTURE_VOID_FIT.set(true);
             Config.SABLE_VOID_FIT_REFIT_TICKS.set(1);
             Config.SABLE_LAVA_MELT.set(true);
+            // 熔毁用例的时序断言按默认倍率（4 倍徒手）写就，钉住默认值使套件与服务器配置无关
+            Config.SABLE_LAVA_MELT_SPEED.set(LavaMeltMath.DEFAULT_SPEED_MULTIPLIER);
         }
     }
 
@@ -47,6 +52,7 @@ public final class GameTestSableRules {
         Config.SABLE_STRUCTURE_VOID_FIT.set(savedVoidFit);
         Config.SABLE_VOID_FIT_REFIT_TICKS.set(savedRefitTicks);
         Config.SABLE_LAVA_MELT.set(savedLavaMelt);
+        Config.SABLE_LAVA_MELT_SPEED.set(savedLavaMeltSpeed);
     }
 
     private GameTestSableRules() {

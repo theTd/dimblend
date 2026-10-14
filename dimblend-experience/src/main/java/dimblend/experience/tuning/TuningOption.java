@@ -14,6 +14,8 @@ public enum TuningOption {
     LIMITED_WATER("limited_water", 1.0D, ""),
     SABLE_VOID_FIT("sable_void_fit", 1.0D, "sable"),
     SABLE_LAVA_MELT("sable_lava_melt", 1.0D, "sable"),
+    // 倍率默认值与 LavaMeltMath.DEFAULT_SPEED_MULTIPLIER 的镜像由 TuningOptionTest 钉死
+    SABLE_LAVA_MELT_SPEED("sable_lava_melt_speed", 4.0D, 0.5D, 64.0D, 1, "sable", Section.MAIN),
     PORTABLE_ENGINE_LIMIT("portable_engine_limit", 1.0D, "simulated"),
     STEAM_OVERLOAD("steam_overload", 1.0D, "create"),
     DIESEL_OVERLOAD("diesel_overload", 1.0D, "createdieselgenerators"),

@@ -36,14 +36,16 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
 /**
- * G6 岩浆熔毁（结构空位拟合的配对特性）：rotating 维度内，岩浆/岩浆流按 4 倍徒手
- * 速度熔毁位于 Sable 结构上的方块并使其掉落。
+ * G6 岩浆熔毁（结构空位拟合的配对特性）：rotating 维度内，岩浆/岩浆流按
+ * {@code sableLavaMeltSpeed} 倍徒手速度（默认
+ * {@value LavaMeltMath#DEFAULT_SPEED_MULTIPLIER} 倍，/dbx 调参面板即时可调）熔毁位于
+ * Sable 结构上的方块并使其掉落。
  *
  * <p>接触口径（用户拍板 2026-10-11）：熔岩格与方块投影体积（沿用体素化的旋转保守
  * 半 extent）AABB 距离 ≤ {@link LavaMeltMath#CONTACT_TOLERANCE} 即"被岩浆浇着"——
  * 同格（载具驶入熔岩，投影格内已有岩浆）与贴壳（熔岩从外侧流到拟合空位壳边，
  * 空位壳挡流体但 0.25 容差让壳边方块照常被浇）都覆盖。硬度只决定速度不设阈值：
- * 黑曜石级（50）约 62.5 秒持续浇淋才熔，等效抗岩浆；硬度负（基岩等）免疫。</p>
+ * 黑曜石级（50）默认倍率下约 62.5 秒持续浇淋才熔，等效抗岩浆；硬度负（基岩等）免疫。</p>
  *
  * <p>免疫清单（2026-10-14 增补）：{@link #LAVA_MELT_IMMUNE} 标签内的方块一律不熔
  * （不进接触、不累计进度、不掉落；中途改标签，存量进度按接触中断自然清零）。标签
@@ -192,6 +194,9 @@ public final class SableLavaMelt {
         long now = level.getGameTime();
         long elapsed = melt.lastScan < 0L ? SCAN_TICKS : now - melt.lastScan;
         melt.lastScan = now;
+        // 倍率逐次扫描读配置：/dbx 面板或改文件后的新值下一轮即生效；已累进度不清零，
+        // 后续按新速率累计（与徒手挖掘中途换工具同型）
+        double speedMultiplier = Config.SABLE_LAVA_MELT_SPEED.get();
         LongOpenHashSet contacted = new LongOpenHashSet();
         List<Contact> contacts = new ArrayList<>();
         VoidFitVoxelizer.forEachProjectedBlock(subLevel, (plotPos, state, wx, wy, wz, hx, hy, hz) -> {
@@ -218,7 +223,8 @@ public final class SableLavaMelt {
             BlockPos plotPos = BlockPos.of(contact.plotPos());
             BlockState state = level.getBlockState(plotPos);
             float hardness = state.getDestroySpeed(level, plotPos);
-            double rate = LavaMeltMath.perTickProgress(hardness, state.requiresCorrectToolForDrops());
+            double rate = LavaMeltMath.perTickProgress(hardness, state.requiresCorrectToolForDrops(),
+                    speedMultiplier);
             if (Double.isInfinite(rate)) {
                 melting.add(contact);
                 continue;

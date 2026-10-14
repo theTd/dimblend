@@ -1,6 +1,7 @@
 package dimblend.experience.tuning;
 
 import static org.junit.jupiter.api.Assertions.*;
+import dimblend.experience.compat.sable.LavaMeltMath;
 import org.junit.jupiter.api.Test;
 
 class TuningOptionTest {
@@ -127,6 +128,24 @@ class TuningOptionTest {
             assertFalse(options[i].isValid(ceilings[i] + 1.0D), options[i].id());
             assertFalse(options[i].isValid(1.5D), options[i].id());
         }
+    }
+
+    @Test
+    void lavaMeltSpeedAcceptsTenthsBetweenHalfAndSixtyFour() {
+        var option = TuningOption.SABLE_LAVA_MELT_SPEED;
+        assertFalse(option.isCheckbox());
+        assertSame(TuningOption.Section.MAIN, option.section());
+        assertEquals("sable", option.modId());
+        // 面板默认值与熔毁数学的默认倍率互为镜像（Config 默认值亦取自该常量），漂移即失败
+        assertEquals(LavaMeltMath.DEFAULT_SPEED_MULTIPLIER, option.defaultValue());
+        assertEquals(4.0D, option.defaultValue());
+        for (double valid : new double[] {0.5D, 0.6D, 4.0D, 63.9D, 64.0D}) {
+            assertTrue(option.isValid(valid));
+        }
+        for (double invalid : new double[] {0.0D, 0.4D, 4.05D, 64.1D, -0.5D}) {
+            assertFalse(option.isValid(invalid));
+        }
+        assertEquals("4.0", option.format(option.defaultValue()));
     }
 
     @Test

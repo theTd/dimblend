@@ -3,17 +3,20 @@ package dimblend.experience.compat.sable;
 /**
  * G6 岩浆熔毁的纯计算：硬度 → 熔毁进度速率。
  *
- * <p>用户拍板口径（2026-10-11）：熔毁速度 = 徒手挖掘的 {@value #SPEED_MULTIPLIER} 倍
- * （徒手 16 秒的方块被岩浆浇 4 秒熔掉）。徒手每 tick 进度沿用原版公式
+ * <p>用户拍板口径（2026-10-11）：熔毁速度默认 = 徒手挖掘的
+ * {@value #DEFAULT_SPEED_MULTIPLIER} 倍（徒手 16 秒的方块被岩浆浇 4 秒熔掉），
+ * 2026-10-14 起经 {@code sableLavaMeltSpeed} 配置 / /dbx 调参面板可调（倍率由调用方
+ * 逐次扫描读入并传入，运行中改值即时生效——已累进度不变、后续按新速率累计，与徒手
+ * 挖掘中途换工具同型）。徒手每 tick 进度沿用原版公式
  * {@code 1 / (hardness × divisor)}：不需要正确工具时 divisor=30、需要时 divisor=100
- * （Player#getDigSpeed 的 1/30 与 1/100 分支），熔毁速率同式乘 4。硬度决定时间，
- * 无阈值——黑曜石级硬度（50）需约 62.5 秒持续浇淋，等效抗岩浆；硬度 -1
- * （基岩、structure_void）不可熔。</p>
+ * （Player#getDigSpeed 的 1/30 与 1/100 分支），熔毁速率同式乘倍率。硬度决定时间，
+ * 无阈值——黑曜石级硬度（50）在默认 4 倍下需约 62.5 秒持续浇淋，等效抗岩浆；硬度
+ * -1（基岩、structure_void）不可熔。</p>
  */
 public final class LavaMeltMath {
 
-    /** 熔毁速度倍率（相对徒手）。 */
-    public static final double SPEED_MULTIPLIER = 4.0D;
+    /** 默认熔毁速度倍率（相对徒手）；运行值见配置 sableLavaMeltSpeed。 */
+    public static final double DEFAULT_SPEED_MULTIPLIER = 4.0D;
     /** 接触容差：熔岩格与方块投影体积的 AABB 距离不超过该值即视为"被岩浆浇着"。 */
     public static final double CONTACT_TOLERANCE = 0.25D;
 
@@ -26,7 +29,8 @@ public final class LavaMeltMath {
      * 每 tick 熔毁进度（累计到 1.0 熔毁）。硬度 0（火把、草丛类）即熔，
      * 返回 {@link Double#POSITIVE_INFINITY} 由调用方按当前 tick 立即熔毁处理。
      */
-    public static double perTickProgress(float destroySpeed, boolean requiresCorrectToolForDrops) {
+    public static double perTickProgress(float destroySpeed, boolean requiresCorrectToolForDrops,
+            double speedMultiplier) {
         if (destroySpeed < 0.0F) {
             return 0.0D;
         }
@@ -34,13 +38,24 @@ public final class LavaMeltMath {
             return Double.POSITIVE_INFINITY;
         }
         double divisor = requiresCorrectToolForDrops ? 100.0D : 30.0D;
-        return SPEED_MULTIPLIER / (destroySpeed * divisor);
+        return speedMultiplier / (destroySpeed * divisor);
+    }
+
+    /** 默认倍率（{@link #DEFAULT_SPEED_MULTIPLIER}）下的每 tick 熔毁进度。 */
+    public static double perTickProgress(float destroySpeed, boolean requiresCorrectToolForDrops) {
+        return perTickProgress(destroySpeed, requiresCorrectToolForDrops, DEFAULT_SPEED_MULTIPLIER);
     }
 
     /** 熔毁所需 tick 数（硬度 0 为 0，硬度负为无穷大），测试与文档口径核对用。 */
-    public static double ticksToMelt(float destroySpeed, boolean requiresCorrectToolForDrops) {
-        double perTick = perTickProgress(destroySpeed, requiresCorrectToolForDrops);
+    public static double ticksToMelt(float destroySpeed, boolean requiresCorrectToolForDrops,
+            double speedMultiplier) {
+        double perTick = perTickProgress(destroySpeed, requiresCorrectToolForDrops, speedMultiplier);
         return 1.0D / perTick;
+    }
+
+    /** 默认倍率（{@link #DEFAULT_SPEED_MULTIPLIER}）下的熔毁所需 tick 数。 */
+    public static double ticksToMelt(float destroySpeed, boolean requiresCorrectToolForDrops) {
+        return ticksToMelt(destroySpeed, requiresCorrectToolForDrops, DEFAULT_SPEED_MULTIPLIER);
     }
 
     private LavaMeltMath() {

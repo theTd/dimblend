@@ -24,6 +24,7 @@ Missing optional mods leave their controls disabled.
 | Limited-water checks | true | Checkbox | experience |
 | Structure-void fitting on vehicles | true | Checkbox | experience |
 | Lava melting vehicle blocks | true | Checkbox | experience |
+| Lava melt speed multiplier | 4.0 | 0.5-64.0, step 0.1; relative to bare-hand breaking, applies on the fly without clearing accumulated melt progress | experience |
 | Portable Engine quantity limit | true | Checkbox | experience |
 | Steam Engine overload penalty | true | Checkbox | experience |
 | Small/Modular/Large Diesel Engine overload penalty | true | Checkbox | experience |
@@ -51,7 +52,7 @@ Radio follows the same pattern through `dimblend.radio.api.RadioTuning` and its
 own `serverconfig/dimblend_radio-server.toml`. Its settings are heard on each
 client, so remote clients also apply the broadcast radio values in memory
 (NeoForge already sends the config at login). The snapshot carries one value
-per option, so each added or removed option bumps the protocol version (now `13`; see the
+per option, so each added or removed option bumps the protocol version (now `14`; see the
 performance checklist below).
 
 The existing `couplerRedstone` config uses the inverse meaning: true blocks
@@ -148,7 +149,7 @@ server's results are shown (same JVM); a client connected to a remote server
 also lists its own collector, heap and memory. Server steps and the spark fix use
 the same permission gate as the panel (level 2) and travel on two extra payloads
 (`perf_check_request`, `perf_check_report`), which also bumped the tuning
-protocol version (now `13`, see above). The thresholds live in `PerfRules` and are unit-tested;
+protocol version (now `14`, see above). The thresholds live in `PerfRules` and are unit-tested;
 `PerfChecklistTranslationsTest` checks both languages cover every step, advice
 and fix label.
 
