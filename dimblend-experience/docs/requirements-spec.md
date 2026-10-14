@@ -690,6 +690,36 @@
 - 实现 `EnderStorageStructureGuard` + 纯函数 `EnderStorageBlockIds`；
   新开关 `enderStorageStructureOnly`（默认开）
 
+### G7 产蛋器内嵌鸡在 Sable 子层级不显示（2026-10-15，纯客户端修复，v6 按渲染层拆分模型，**2026-10-15 实机验收通过**）
+
+> 前三轮「谓词翻转 + BER 兜底 + 单块重排」方案实机均未通过（BER 从未被分发），
+> 已整套删除。复盘与探针证据见 `docs/createeggproduction-egg-collector-chicken-handover.md`。
+
+- 症状：Create:Egg Production（createeggproduction 1.1.0）的产蛋器方块
+  （`createeggproduction:egg_collector_block`）放在 sable 子层级内时，玻璃罩里的
+  内嵌鸡不显示；孵化器正常（其模型无半透明玻璃罩、整块不透明，不受本问题影响）
+- 根因：鸡几何直接烤在方块模型里（`block/texture4` 贴图的 `chi` 组），整个方块被
+  mod 注册为 translucent 渲染层；translucent 画会写深度，玻璃罩组在模型里排在鸡组
+  **前面**，Sable 的子层级渲染不按摄像机距离对 translucent quad 排序（原版区块
+  渲染有 per-section 半透明排序），玻璃先写深度 → 里面的鸡全被深度测试剔除
+- 修法：`EggCollectorModelInstaller`（`ModelEvent.ModifyBakingResult`，客户端 MOD 总线，
+  `ModList.isLoaded("createeggproduction")` 门控、只按注册名匹配不引用该 mod 类）把
+  `egg_collector_block` 全部方块状态变体（`inventory` 物品变体不动）换成
+  `EggCollectorLayerSplitModel`：`getRenderTypes` 返回 `{cutout, translucent}`，
+  `getQuads(..., cutout)` 只给鸡组 quad（贴图名 `createeggproduction:block/texture4`），
+  `getQuads(..., translucent)` 给其余（底座/玻璃/草），`renderType == null` 原样全给
+- 为何覆盖全部路径（字节码核实）：主世界 Sodium、Sable 单块（`SableSubLevelRenderPlatformImpl.getRenderLayers`
+  → `model.getRenderTypes`，`tesselateWithoutAO(..., renderType)`）、Sable 区块化
+  （`VanillaChunkedSubLevelRenderData.compileSections` → 原版 `SectionRenderDispatcher.rebuildSectionSync`
+  → NeoForge 补丁 `SectionCompiler` 逐层 `getRenderTypes`/`renderBatched`）均按渲染层取 quad；
+  Sable 在 Sodium 下经 `SodiumWorldRendererMixin` 挂 `drawChunkLayer(RenderType)`，随原版逐层
+  调用，cutout 层先于 translucent 层 → 鸡先写深度、玻璃后混合，不依赖逐 quad 排序
+- 鸡贴图 `texture4` alpha 只有 0/255（已核对 png），cutout 截断与原半透明混合观感一致；
+  主世界行为不变
+- 不需要 mixin、不需要 compileOnly 依赖；拆分结果按原模型返回列表引用缓存（不可变快照，
+  区块编译多线程安全）
+- 无配置开关（纯客户端视觉修复，非 gameplay）
+
 ## 8. 实现覆盖对账（实现完毕时点）
 
 ### Config 开关清单（server 端 `dimblend_experience-server.toml`）
@@ -819,6 +849,7 @@
 - 模型装饰器实机视觉、列车移动 BE 同步、mixin 运行时应用（启动日志确认）、mixin plugin 过滤（卸载 CCA/CDG 后日志确认）
 - 启动验证（2026-09-19，TrainTripWorld 实例实测两轮）：mod 加载、common setup、全部 mixin 应用（defaultRequire:1 下存活即实证）、0 ERROR/FATAL 到主菜单；期间修复 NeoForge 版本范围硬阻塞（[21.1.251,)→[21.1.249,) 解耦）与 example 脚手架残留
 - 启动验证（2026-09-23 v1.7 批次，dev runClient + CCA 临时 localRuntime）：createaddition 1.5.10 加载、CCA Initialized、Sound engine started 到主菜单，0 ERROR/FATAL/InvalidMixin；本批 4 个 mixin（SoundClient 改版 + AlternatorIdleDrain + Goggle + GeneratorStats）随 CCA BE 注册完成 apply；dev 环境 mixin 库为 sponge-mixin 0.15.2+mixin.0.8.7（fabric fork）。实机听音/看数仍在待办
+- G7 实机项（2026-10-15 验收通过）：TrainTripWorld 实例放产蛋器于 sable 结构内（单块/多块子层级各一）与主世界各一，确认玻璃内嵌鸡可见、明暗与周围方块一致、玻璃仍半透明、孵化器不受影响、物品栏图标正常
 
 ### 复核闭环状态（截至第 19 轮）
 
