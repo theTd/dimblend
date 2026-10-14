@@ -140,10 +140,18 @@ public final class Config {
             .comment("E 板块 E6：幻纱宽轨上的车架在其 y-1 3x3 范围生成下落的末地烛粒子（纯客户端视觉）。需要 Simurail 在场")
             .define("wideGaugeParticles", true);
 
-    public static final ModConfigSpec.BooleanValue OFF_STRUCTURE_TELEPORT = BUILDER
-            .comment("E 板块 E7：旋转维度内任意车架速度大于 4 m/s 时，每 10 秒检测玩家半径 32 格内是否有 sable 结构；"
-                    + "都无则传送回重生位置（有效床，否则走廊旁）。创造/旁观豁免；需要 Simurail+Sable 在场")
-            .define("offStructureTeleport", true);
+    // 键名 offStructureTeleport（v1.8 E7 离结构传送）随 v1.18 机制重做废弃：旧键被自动清除，
+    // 新机制（无人值守刹车锁存）用 trainDeadmanBrake / trainDeadmanRadius 两键
+    public static final ModConfigSpec.BooleanValue TRAIN_DEADMAN_BRAKE = BUILDER
+            .comment("E 板块 E7'：旋转维度内存在超速车架（>4 m/s）且没有任何玩家在跟车"
+                    + "（离玩家最近的车架在值守半径内且超速）时，全维度列车强制满刹锁存；"
+                    + "锁存只能由任意车架红石信号通一次再断开解除。需要 Simurail+Sable 在场")
+            .define("trainDeadmanBrake", true);
+
+    public static final ModConfigSpec.DoubleValue TRAIN_DEADMAN_RADIUS = BUILDER
+            .comment("E 板块 E7' 配套：无人值守判定半径（格，8-128，默认 32）——玩家离其最近的车架"
+                    + "在该半径内且该车架超速（>4 m/s）才算在跟车。经 /dbx 面板可调")
+            .defineInRange("trainDeadmanRadius", 32.0D, 8.0D, 128.0D);
 
     public static final ModConfigSpec.BooleanValue TRAIN_LATERAL_FORCE = BUILDER
             .comment("E 板块 E8：车架速度大于 4 m/s 时以 速度/20 的概率施加横向力；默认每 2 秒抽签、1200 pN，可分别调节"

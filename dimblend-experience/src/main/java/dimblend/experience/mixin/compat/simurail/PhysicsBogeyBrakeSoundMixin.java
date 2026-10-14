@@ -5,7 +5,7 @@ import dev.ryanhcode.sable.Sable;
 import dimblend.experience.Config;
 import dimblend.experience.ModSounds;
 import dimblend.experience.compat.simurail.TrainBrakeBroadcast;
-import dimblend.experience.compat.simurail.TrainOffStructureMath;
+import dimblend.experience.compat.simurail.TrainSpeedGateMath;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
@@ -17,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * E3/E4 刹车/松闸气阀触发音（服务端，沿触发整车广播）。
- * E3 施闸音另受 {@link TrainOffStructureMath#isBrakeAudible} 门控：速度不大于 4 m/s 不播。
+ * E3 施闸音另受 {@link TrainSpeedGateMath#isBrakeAudible} 门控：速度不大于 4 m/s 不播。
  *
  * <p>字节码事实（运行 jar 0.0.0-a 反汇编）：spec 原拟的
  * {@code getGroupBrakeStrength()} 在新版源码中，<b>运行 jar 只有
@@ -83,7 +83,7 @@ public abstract class PhysicsBogeyBrakeSoundMixin {
         }
         if (last <= EDGE_EPSILON && brake > EDGE_EPSILON) {
             // E3：刹车音效只在速度大于 4 m/s 时播放；沿基线仍更新，避免低速施闸后加速误补沿
-            if (TrainOffStructureMath.isBrakeAudible(speed)) {
+            if (TrainSpeedGateMath.isBrakeAudible(speed)) {
                 dimblend$broadcast(self, speed, ModSounds.TRAIN_BRAKE.get(), BRAKE_VOLUME, 1.0F, now);
             }
         } else if (last > EDGE_EPSILON && brake <= EDGE_EPSILON) {

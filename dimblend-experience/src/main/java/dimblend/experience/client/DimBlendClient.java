@@ -1,6 +1,7 @@
 package dimblend.experience.client;
 
 import dimblend.experience.DimBlend;
+import dimblend.experience.compat.simurail.ClientDeadmanLatch;
 import dimblend.experience.exploration.ClientFarCurseTier;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -20,7 +21,10 @@ public final class DimBlendClient {
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(
-                (ClientPlayerNetworkEvent.LoggingOut logout) -> ClientFarCurseTier.reset()));
+                (ClientPlayerNetworkEvent.LoggingOut logout) -> {
+                    ClientFarCurseTier.reset();
+                    ClientDeadmanLatch.reset();
+                }));
     }
 
     @SubscribeEvent

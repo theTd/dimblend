@@ -36,6 +36,22 @@ class TuningOptionTest {
     }
 
     @Test
+    void deadmanRadiusAcceptsWholeBlocksBetweenEightAndOneTwentyEight() {
+        var option = TuningOption.DEADMAN_RADIUS;
+        assertFalse(option.isCheckbox());
+        assertSame(TuningOption.Section.MAIN, option.section());
+        assertEquals("simurail", option.modId());
+        assertEquals(32.0D, option.defaultValue());
+        for (double valid : new double[] {8.0D, 32.0D, 64.0D, 128.0D}) {
+            assertTrue(option.isValid(valid));
+        }
+        for (double invalid : new double[] {7.0D, 32.5D, 129.0D, 0.0D}) {
+            assertFalse(option.isValid(invalid));
+        }
+        assertEquals("32", option.format(option.defaultValue()));
+    }
+
+    @Test
     void bogieRollTorqueMirrorsSimurailDefaultAndTakesWholeValuesUpToTenMillion() {
         var option = TuningOption.BOGIE_ROLL_TORQUE;
         assertFalse(option.isCheckbox());

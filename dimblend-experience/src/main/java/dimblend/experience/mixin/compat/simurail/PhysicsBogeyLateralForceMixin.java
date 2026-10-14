@@ -7,7 +7,7 @@ import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dimblend.experience.Config;
 import dimblend.experience.compat.simurail.TrainForceGroups;
 import dimblend.experience.compat.simurail.TrainLateralForceMath;
-import dimblend.experience.compat.simurail.TrainOffStructureMath;
+import dimblend.experience.compat.simurail.TrainSpeedGateMath;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
@@ -80,7 +80,7 @@ public abstract class PhysicsBogeyLateralForceMixin {
             return;
         }
         double speed = Math.abs(this.visualSpeed);
-        if (!TrainOffStructureMath.isFast(speed)) {
+        if (!TrainSpeedGateMath.isFast(speed)) {
             dimblend$lateralCountdown = -1;
             return;
         }

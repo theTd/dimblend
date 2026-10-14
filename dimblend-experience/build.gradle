@@ -107,7 +107,7 @@ configurations {
 dependencies {
     // Optional panel bridge: experience only imports carwash's api package.
     compileOnly project(":dimblend-carwash")
-    // Same for radio: only its api package (reception noise, acoustic intensity).
+    // Same for radio: only its api package (reception noise, End voice frequency, acoustic intensity).
     compileOnly project(":dimblend-radio")
     // A11 贝壳 X 标记：编译期零依赖（TreasureShellMarker 按注册名运行时查
     // dimblend_blocks:shell_marker），dev run / GameTest 需要方块真的在场
@@ -150,7 +150,7 @@ dependencies {
     compileOnly "maven.modrinth:jade:15.10.5+neoforge"
     // sable 的 companion 类型（ActiveSableCompanion 继承链）在独立 companion jar 中
     compileOnly "dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:${project.sable_companion_version}"
-    // runData 需要完整构造 mod：TrainOffStructureRules / StructureBedGuard 是 @EventBusSubscriber，
+    // runData 需要完整构造 mod：StructureBedGuard 等 @EventBusSubscriber
     // FML 启动扫描会无条件加载它们，缺 sable 即 NoClassDefFoundError。localRuntime 仅进 dev 运行，
     // 不进发布 jar；其余 compat jar 仍保持 compileOnly（对应订阅者无第三方引用）。
     localRuntime files("libs/sable-neoforge-1.21.1-2.0.5_cui-modded.jar")
