@@ -120,3 +120,7 @@
 
 - [ ] 待实测｜行驶载具内部不进水（结构空位拟合，G3 配套衍生）：拟合格不落盘、凸出部分对交互射线透明、区块加载补放走 tick 队列（2026-10-10 实施 + 2026-10-11 穿透/死锁修复，见 spec「G3 配套一」与 `docs/sable-void-fit-chunk-deadlock.md`；待实测）
 - [ ] 待实测｜岩浆和岩浆流会按照砖块硬度破坏自身以及周边半径0.25以内的位于sable结构上的砖块 并使其掉落（2026-10-11 新条目已实施：速度=徒手 4 倍（徒手 16 秒的方块浇 4 秒熔毁；2026-10-14 起倍率经 sableLavaMeltSpeed 0.5-64.0 可调、/dbx 面板即时生效且已累进度不清零），硬度只定速度不设阈值、黑曜石级默认约 62.5 秒等效抗岩浆、硬度负免疫；接触中断进度清零；掉落走方块自身规则、容器内容物并入、投影位置播破坏粒子音效；熔毁进行中在方块投影位置每轮扫描播 block.fire.extinguish（持续浇淋即持续嘶声，2026-10-13 增补）；拟合不再驱逐熔岩，熔穿后投影收缩岩浆推进；`#dimblend_experience:lava_melt_immune`（继承 `#create:non_breakable`）内的机械不可破坏部件（转向架/自动车钩）免疫不熔（2026-10-14 增补）；`SableLavaMelt`/`LavaMeltMath`，新开关 sableLavaMelt + 倍率 sableLavaMeltSpeed，单测 8 条 + GameTest 6 条，见 spec G6；待实测）
+
+## createegg-production
+
+- [x] 已完成｜产蛋器放在 sable 结构上时 玻璃罩里面的鸡要能显示出来 孵化器本来就正常不用动（2026-10-15 v6 已实施并实机验收通过：根因是鸡几何烤在方块模型里且整块 translucent、Sable 子层级渲染不按距离排半透明 quad，玻璃先写深度把鸡剔掉；烘焙完成时把产蛋器方块模型换成按渲染层拆分的包装模型——鸡归 cutout、底座/玻璃/草留 translucent，cutout 层恒先于 translucent 层画，主世界/Sable 单块/Sable 区块化三条路径一致；`EggCollectorModelInstaller` + `EggCollectorLayerSplitModel`，无 mixin、纯客户端、无开关，见 spec G7；前三轮 BER 兜底方案实机未通过已删除，复盘见 `docs/createeggproduction-egg-collector-chicken-handover.md`）
