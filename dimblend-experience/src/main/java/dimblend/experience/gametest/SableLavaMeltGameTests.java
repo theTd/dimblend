@@ -9,12 +9,15 @@ import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dimblend.experience.Config;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
@@ -323,6 +326,23 @@ public final class SableLavaMeltGameTests {
             return;
         }
         helper.runAfterDelay(5, () -> pollForSizzle(helper, listener, sizzles, attemptsLeft - 1, onHeard));
+    }
+
+    /**
+     * 免疫标签接线（2026-10-14 增补）：lava_melt_immune 必须在运行时解析出标签绑定——
+     * 标签文件名与 {@code SableLavaMelt#LAVA_MELT_IMMUNE} 常量漂移会让转向架等部件的
+     * 豁免静默失效（正是本特性修过的事故型）。本环境无 simurail，嵌套条目按可选跳过、
+     * 标签内容为空，但绑定必须存在（全可选跳过的空标签仍绑定，见 TagLoader#build 按
+     * 文件键建表）。id 字面量与 SableLavaMelt 常量互为镜像，改动须同步。
+     */
+    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_lava_melt_immune", timeoutTicks = 100)
+    public static void lavaMeltImmuneTagIsBound(GameTestHelper helper) {
+        TagKey<Block> immune = TagKey.create(Registries.BLOCK,
+                ResourceLocation.fromNamespaceAndPath(NAMESPACE, "lava_melt_immune"));
+        helper.assertTrue(
+                helper.getLevel().registryAccess().lookupOrThrow(Registries.BLOCK).get(immune).isPresent(),
+                "lava_melt_immune tag must be bound (data/dimblend_experience/tags/block/lava_melt_immune.json)");
+        helper.succeed();
     }
 
     private SableLavaMeltGameTests() {

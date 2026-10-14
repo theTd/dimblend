@@ -11,15 +11,19 @@ import java.util.UUID;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dimblend.experience.Config;
+import dimblend.experience.DimBlend;
 import dimblend.experience.exploration.RotatingDimension;
 import it.unimi.dsi.fastutil.longs.Long2FloatOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -40,6 +44,13 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
  * 同格（载具驶入熔岩，投影格内已有岩浆）与贴壳（熔岩从外侧流到拟合空位壳边，
  * 空位壳挡流体但 0.25 容差让壳边方块照常被浇）都覆盖。硬度只决定速度不设阈值：
  * 黑曜石级（50）约 62.5 秒持续浇淋才熔，等效抗岩浆；硬度负（基岩等）免疫。</p>
+ *
+ * <p>免疫清单（2026-10-14 增补）：{@link #LAVA_MELT_IMMUNE} 标签内的方块一律不熔
+ * （不进接触、不累计进度、不掉落；中途改标签，存量进度按接触中断自然清零）。标签
+ * 继承 {@code #create:non_breakable}——打包时标为"机械不可破坏"的车辆关键部件
+ * （simurail 转向架、自动车钩）：它们靠硬度以外的口径防破坏（生存攻击载具方块在
+ * Sable 里只产生拳击冲量、不路由破坏；Create 机械臂/钻头遵守 non_breakable 清单），
+ * 本特性直改 plot 存储会绕过这些口径，故显式豁免同一张清单。</p>
  *
  * <p>与拟合的配合：{@code VoidFitApplier#placeVoid} 在本开关开启时跳过熔岩格不再
  * 驱逐——熔岩留在投影格内持续浇淋，熔穿后投影收缩、空位拆除，熔岩向缺口推进，
@@ -84,6 +95,18 @@ public final class SableLavaMelt {
     private static final int SCAN_TICKS = 5;
     /** 单轮扫描最多处理的载具数。 */
     private static final int VEHICLE_BUDGET_PER_SCAN = 2;
+
+    /**
+     * 熔毁免疫标签（{@code data/dimblend_experience/tags/block/lava_melt_immune.json}）：
+     * 继承 {@code #create:non_breakable}——打包清单里"靠硬度以外口径防机械破坏"的
+     * 车辆关键部件（转向架/自动车钩）岩浆同样熔不动。纯 TagKey 标识符、不引用 Create
+     * 类（Create 是可选依赖）；嵌套目标由本 mod 自带数据文件定义、始终在场，其内
+     * simurail 条目为可选项，simurail 缺席时跳过、标签为空。
+     * （id 字面量在 {@code SableLavaMeltGameTests#lavaMeltImmuneTagIsBound} 有镜像
+     * 断言，改名须同步。）
+     */
+    private static final TagKey<Block> LAVA_MELT_IMMUNE = TagKey.create(Registries.BLOCK,
+            ResourceLocation.fromNamespaceAndPath(DimBlend.MODID, "lava_melt_immune"));
 
     /** 单个载具的熔毁进度：plot 格（BlockPos.asLong）→ 已累计进度，及上次扫描时刻。 */
     private static final class VehicleMelt {
@@ -176,6 +199,9 @@ public final class SableLavaMelt {
             if (!LavaMeltMath.meltable(hardness)) {
                 return;
             }
+            if (state.is(LAVA_MELT_IMMUNE)) {
+                return;
+            }
             if (!touchesLava(level, wx, wy, wz, hx, hy, hz)) {
                 return;
             }
@@ -259,7 +285,8 @@ public final class SableLavaMelt {
     private static void meltBlock(ServerLevel level, Contact contact) {
         BlockPos plotPos = BlockPos.of(contact.plotPos());
         BlockState state = level.getBlockState(plotPos);
-        if (state.isAir()) {
+        // 枚举到执行之间，同批先熔方块的邻接更新可能改写本格（如双箱解体）：重读后复核
+        if (state.isAir() || state.is(LAVA_MELT_IMMUNE)) {
             return;
         }
         BlockPos worldPos = BlockPos.containing(contact.worldX(), contact.worldY(), contact.worldZ());
