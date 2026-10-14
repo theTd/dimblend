@@ -106,6 +106,13 @@ public final class Config {
                     + "（每 tick 250、约每秒 5000，扣到 0 为止；有输入产电时不流失）")
             .define("alternatorIdleDrain", true);
 
+    public static final ModConfigSpec.BooleanValue ALTERNATOR_OVERSTRESS_LATCH = BUILDER
+            .comment("D 板块 D8：CCA 交流发电机过载解列锁存——kinetic 网络过载且被驱动中时"
+                    + "本机应力需求强制归零并锁定（网络即时解负），播 motor_overstress 音效"
+                    + "（每 20 tick、音量 0.5）与 enchanted_hit 粒子（每 tick×5）；锁存期"
+                    + "照常空转产 FE，只摘应力需求；理论转速归零（网络停机）才恢复。")
+            .define("alternatorOverstressLatch", true);
+
     public static final ModConfigSpec.BooleanValue SIMURAIL_PROTECT = BUILDER
             .comment("E 板块：Simurail 自带方块防爆防拆，仅创造模式可编辑。"
                     + "例外：create:non_breakable tag 补强为静态数据包资源，不受本开关控制（Create 机械侧防护始终生效）")

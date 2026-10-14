@@ -26,6 +26,8 @@
 		"compat.cdg.HugeDieselEngineMixin",
 		"compat.cca.ElectricMotorMixin",
 		"compat.cca.AlternatorIdleDrainMixin",
+		"compat.cca.AlternatorOverstressLatchMixin",
+		"compat.create.AlternatorLatchSyncMixin",
 		"compat.create.ItemDrainIrrigationMixin",
 		"compat.create.ItemDrainGrowthBoostMixin",
 		"compat.create.ItemDrainPipeRefillMixin",

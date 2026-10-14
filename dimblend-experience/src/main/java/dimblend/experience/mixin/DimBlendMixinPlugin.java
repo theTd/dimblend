@@ -22,10 +22,14 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.endsWith(".compat.cca.ElectricMotorMixin")
                 || mixinClassName.endsWith(".compat.cca.ElectricMotorSoundClientMixin")
                 || mixinClassName.endsWith(".compat.cca.AlternatorIdleDrainMixin")
+                || mixinClassName.endsWith(".compat.cca.AlternatorOverstressLatchMixin")
                 || mixinClassName.endsWith(".compat.cca.ElectricMotorGoggleMixin")
                 // 目标是 Create 的 GeneratingKineticBlockEntity，但行为仅对 CCA 电动马达
                 // 生效（handler instanceof 门控），故按 createaddition 在场性过滤
-                || mixinClassName.endsWith(".compat.create.ElectricMotorGeneratorStatsMixin")) {
+                || mixinClassName.endsWith(".compat.create.ElectricMotorGeneratorStatsMixin")
+                // 目标是 Create 的 KineticBlockEntity，handler 以本 mod 接口 instanceof
+                // 门控、仅对 CCA 交流发电机生效，同样按 createaddition 在场性过滤
+                || mixinClassName.endsWith(".compat.create.AlternatorLatchSyncMixin")) {
             return isLoaded("createaddition");
         }
         // simurail 硬性依赖 sable（mods.toml required），在场性蕴含 sable 在场

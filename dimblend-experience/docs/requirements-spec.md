@@ -316,6 +316,38 @@
   理论转速非零；Network/Speed/behaviour 三标签全同步）。实现：`compat.cca.MotorOverstressLatch`
  （无状态 helper）+ `ElectricMotorMixin`（HEAD 驱动/TAIL 补判/重算旁路/D1 旁路/耗电 MEV×2）
   + `ElectricMotorGoggleMixin`（显示×2），全挂 `electricMotorBehavior`。待实测。
+- D8 交流发电机过载解列锁存（2026-10-14 新条目，用户拍板）：背景——发电机网络应力需求 =
+  `KineticNetwork.getActualStressOf` 的 members 缓存 impact（`calculateStressApplied()`，
+  CCA 恒定 MAX_STRESS/256）× |`getTheoreticalSpeed()`| 实时读数；而 Create 6.0.10 的
+  `updateNetwork()` 只在 networkDirty（拓扑增删）时重算（`RotationPropagator` 传播转速只
+  setSpeed、不 dirty——javap 核实），故需求随速度变化落到账本有迟滞，过载后需求残留、恢复慢。
+  改为：进入判据 kinetic 过载（`isOverStressed()`）且被驱动中（理论转速非零，含负向）
+  且本机已在网络账本上（`members.containsKey(self)`——读档竞态门控：读档后
+  network/speed/overStressed 均从 NBT 恢复，首 tick HEAD 即满足前两项，但
+  `initialize()`（SmartBlockEntity.tick 首 tick 惰性调用）尚未跑，其内 `addSilently`
+  负责把存档份额从 unloadedStress 扣回并 put members、第一句即 `members.containsKey`
+  早退；若 updateStressFor 抢先 put，结算被跳过、存档份额幻影残留 unloadedStress
+  （应力虚高并落盘累积、解锁后双计）。门控把读档路径进入推迟到第二个 tick，
+  正常放置 attachKinetics→add() 首 tick 前已入 members 不受影响）→
+  置锁存 + `KineticNetwork.updateStressFor(self, 0)` 即时清零 members 缓存并触发
+  updateStress→sync（本机造成的过载当 tick 解除）+ sendData + 当 tick 即播副作用；
+  锁存期 `calculateStressApplied` RETURN 钩子压 0（网络 split/merge 重 add 等重缓存路径
+  仍得 0，锁不被拓扑变化顶掉），服务端每 tick 方块中心 enchanted_hit×5 + 每 20 tick
+  motor_overstress 音量 0.5（复用 D7 `MotorOverstressLatch.tickEffects` 同素材同参数）；
+  本机照常随网络空转产 FE（只摘应力需求、不断产能——用户口径"把需求应力设置0然后锁了"）。
+  退出：理论转速归零（网络停驱；过载冻结只压 `getSpeed()` 读数、不动 speed 字段，
+  `getTheoreticalSpeed()` 不受冻结影响不误判）→ 清锁存 + updateStressFor 恢复真实 impact
+  （转速 0 下账本数值不变、无 sync 抖动）+ sendData；开关关闭同样清锁存恢复。
+  锁存标志经 Create KBE `write`/`read`（clientPacket=true 才写读）进客户端同步包、
+  磁盘不落（与 D7 同例纯内存，区块卸载/重进按新进入重判）；客户端护目镜应力段随
+  calculateStressApplied 归零整段隐藏（KBE.addToGoggleTooltip 的 Mth.equal 早退），
+  显示与实际入网需求一致（客户端无法像 D7 那样从已同步量派生锁存——锁存成功时网络
+  恰好不过载，故显式同步）。实现：`compat.cca.AlternatorOverstressLatch`（判据 helper）
+  + `AlternatorOverstressLatchAccess`（跨 mixin 字段访问口，免 Create 目标类引用 CCA 类）
+  + `compat.cca.AlternatorOverstressLatchMixin`（CCA 目标：HEAD 驱动 + RETURN 钩子）
+  + `compat.create.AlternatorLatchSyncMixin`（Create KBE write/read TAIL，instanceof 门控），
+  挂新开关 `alternatorOverstressLatch`（默认开）；单测 `AlternatorOverstressLatchTest` 钉
+  进出判据。待实测。
 
 
 ## 5. 板块 E：Simurail
@@ -646,6 +678,7 @@
 | dieselOverloadProbe | B 诊断探针（只读，输出 `[CDG-PROBE]` 日志，定位完毕可关） | true |
 | electricMotorBehavior | D（含 D4 自定义音效替代 + D6 护目镜实际转速显示） | true |
 | alternatorIdleDrain | D5（交流发电机无输入自放电） | true |
+| alternatorOverstressLatch | D8（交流发电机过载解列锁存） | true |
 | simurailProtect | E1 | true |
 | couplerRedstone | E5（true=红石信号不再断开车钩） | true |
 | assemblerGuard | F1 | true |
@@ -678,6 +711,8 @@
 | compat.cca.ElectricMotorMixin | CCA 电动马达 BE | D | createaddition 在场 |
 | compat.cca.ElectricMotorSoundClientMixin | CCA 电动马达 BE | D4 | createaddition 在场（client 数组） |
 | compat.cca.AlternatorIdleDrainMixin | CCA 交流发电机 BE | D5 | createaddition 在场 |
+| compat.cca.AlternatorOverstressLatchMixin | CCA 交流发电机 BE | D8 | createaddition 在场 |
+| compat.create.AlternatorLatchSyncMixin | Create KineticBlockEntity（write/read TAIL） | D8 同步 | createaddition 在场（handler 接口 instanceof 限定发电机） |
 | compat.cca.ElectricMotorGoggleMixin | CCA 电动马达 BE | D6 能耗行 | createaddition 在场（client 数组） |
 | compat.create.ElectricMotorGeneratorStatsMixin | Create GeneratingKineticBlockEntity | D6 应力量行 | createaddition 在场（client 数组；handler instanceof 限定马达） |
 | compat.create.SteamEngineOverloadMixin | Create 蒸汽引擎 BE（tick RETURN） | H | create 在场 |
