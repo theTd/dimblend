@@ -43,7 +43,8 @@
 		"compat.simurail.PhysicsBogeyBrakeSignalCapMixin",
 		"compat.simurail.PhysicsBogeyDeadmanBrakeMixin",
 		"compat.simurail.PhysicsBogeyLateralForceMixin",
-		"compat.simurail.AutomaticCouplerRedstoneMixin"
+		"compat.simurail.AutomaticCouplerRedstoneMixin",
+		"compat.simurail.AutomaticCouplerPartnerAccessor"
 	],
 	"client": [
 		"client.ItemStackNicknameMixin",

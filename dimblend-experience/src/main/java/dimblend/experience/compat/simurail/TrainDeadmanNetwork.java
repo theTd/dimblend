@@ -14,7 +14,7 @@ public final class TrainDeadmanNetwork {
 
     @SubscribeEvent
     public static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar("1");
+        PayloadRegistrar registrar = event.registrar("2");
         registrar.playToClient(DeadmanLatchPayload.TYPE, DeadmanLatchPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> DeadmanLatchPayload.applyOnClient(payload)));
     }

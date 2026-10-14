@@ -18,10 +18,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * E7' 无人值守刹车锁存粒子（纯客户端视觉，与 E6 同粒度：按转向架）。
  *
  * <p>锁存是服务端状态，经 {@code DeadmanLatchPayload} S2C 同步到
- * {@link ClientDeadmanLatch}；当前世界维度处于锁存时，每个转向架按 E6
+ * {@link ClientDeadmanLatch}；当前车厢处于锁存时，每个转向架按 E6
  * 幻纱宽轨粒子的同一组参数（y-1 上方 3x3 平面、每格每 tick 20% 概率、
- * 下坠初速）生成 {@code PORTAL} 粒子——锁存期间全维度常播，与列车动停无关。
- * 未组装（不在子层级）的转向架直接取方块中心。</p>
+ * 下坠初速）生成 {@code PORTAL} 粒子——锁存期间常播，与列车动停无关。</p>
  */
 @Mixin(PhysicsBogeyBlockEntity.class)
 public abstract class PhysicsBogeyDeadmanParticleMixin {
@@ -40,18 +39,16 @@ public abstract class PhysicsBogeyDeadmanParticleMixin {
             return;
         }
         ClientLevel world = Minecraft.getInstance().level;
-        if (world == null || !ClientDeadmanLatch.isLatched(world.dimension())) {
+        if (world == null) {
             return;
         }
         SubLevel subLevel = Sable.HELPER.getContaining(self);
-        Vec3 center;
-        if (subLevel != null) {
-            BlockPos local = self.getBlockPos();
-            center = subLevel.logicalPose()
-                    .transformPosition(new Vec3(local.getX() + 0.5, local.getY() + 0.5, local.getZ() + 0.5));
-        } else {
-            center = self.getBlockPos().getCenter();
+        if (subLevel == null || !ClientDeadmanLatch.isLatched(world.dimension(), subLevel.getUniqueId())) {
+            return;
         }
+        BlockPos local = self.getBlockPos();
+        Vec3 center = subLevel.logicalPose()
+                .transformPosition(new Vec3(local.getX() + 0.5, local.getY() + 0.5, local.getZ() + 0.5));
         double baseY = center.y - 1.0 + PARTICLE_LIFT;
         int baseX = (int) Math.floor(center.x);
         int baseZ = (int) Math.floor(center.z);

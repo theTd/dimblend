@@ -52,7 +52,7 @@ public final class TrainBrakeBroadcast {
     /** 同类型沿去重窗（tick）。 */
     private static final long DEDUP_WINDOW_TICKS = 5L;
 
-    record Member(Vec3 worldPos, double speed, long tick, ResourceKey<Level> dim) {
+    private record Member(Vec3 worldPos, double speed, long tick, ResourceKey<Level> dim) {
     }
 
     private static final Map<PhysicsBogeyBlockEntity, Member> MEMBERS =
@@ -80,27 +80,6 @@ public final class TrainBrakeBroadcast {
 
     public static void forget(PhysicsBogeyBlockEntity bogey) {
         MEMBERS.remove(bogey);
-    }
-
-    /**
-     * 同维度登记新鲜成员快照（世界坐标 + |visualSpeed|），供 E7' 无人值守刹车扫描；
-     * 过期/已移除成员不计。快照拷贝后锁外使用。
-     */
-    static List<Member> snapshotFresh(ResourceKey<Level> dim, long nowTick) {
-        List<Member> snapshot = new ArrayList<>();
-        synchronized (MEMBERS) {
-            for (Map.Entry<PhysicsBogeyBlockEntity, Member> entry : MEMBERS.entrySet()) {
-                if (entry.getKey().isRemoved()) {
-                    continue;
-                }
-                Member member = entry.getValue();
-                if (nowTick - member.tick > STALE_TICKS || !member.dim.equals(dim)) {
-                    continue;
-                }
-                snapshot.add(member);
-            }
-        }
-        return snapshot;
     }
 
     /**

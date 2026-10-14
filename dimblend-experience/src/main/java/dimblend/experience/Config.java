@@ -144,8 +144,8 @@ public final class Config {
     // 新机制（无人值守刹车锁存）用 trainDeadmanBrake / trainDeadmanRadius 两键
     public static final ModConfigSpec.BooleanValue TRAIN_DEADMAN_BRAKE = BUILDER
             .comment("E 板块 E7'：旋转维度内编组在动（存在 >4 m/s 车架）且编组上离每个玩家最近的"
-                    + "车架都超出半径时，全维度列车强制满刹锁存；锁存由任意车架红石信号通一次"
-                    + "再断开解除（一节脉冲重置全列）。需要 Simurail+Sable 在场")
+                    + "车架都超出半径时，该编组全列车架强制满刹锁存；任意车架红石信号等级变化"
+                    + "即解除所在编组全部紧急刹车（上升、下降、正强度间变化均有效）。需要 Simurail+Sable 在场")
             .define("trainDeadmanBrake", true);
 
     public static final ModConfigSpec.DoubleValue TRAIN_DEADMAN_RADIUS = BUILDER

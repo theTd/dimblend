@@ -2,6 +2,10 @@ package dimblend.experience.compat.simurail;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.Predicate;
 
 /**
  * E7' 无人值守刹车锁存的纯函数。
@@ -9,59 +13,56 @@ import java.util.List;
  */
 public final class TrainDeadmanMath {
 
-    /**
-     * 编组链距（格）：车架中心距离不超过此值视为车钩挂接的同一编组（传递闭包）。
-     * 编组靠车钩挂接、各车厢未必同一 sable 子层级，拓扑不可查，只能几何聚类。
-     * 双向取舍（2026-10-15 拍板 24 格，待实测编组架间距校准）：聚大——并排停放的他车
-     * 误并入只会放宽跟车判定（漏刹方向）；聚小——架间距超过链距的编组被断链拆成多组
-     * 逐组问责，判定变严（误刹方向，用户实测误刹 bug 的理论复发路径），由解除脉冲兜底。
-     * 判定口径：对整列编组量距离，编组上离玩家<b>最近</b>的车架超过半径才算无人值守，
-     * 不看该架速度。
-     */
-    public static final double COUPLING_CHAIN = 24.0D;
-    private static final double COUPLING_CHAIN_SQ = COUPLING_CHAIN * COUPLING_CHAIN;
-
-    /** 一个登记车架的值守探针：世界坐标与 |visualSpeed|。 */
+    /** One bogey, in world coordinates; speed is the magnitude of visualSpeed in m/s. */
     public record Probe(double x, double y, double z, double speed) {
     }
 
-    /** 把探针按编组链距聚成组（传递闭包），返回组列表（组内为探针下标）。 */
-    public static List<List<Integer>> cluster(List<Probe> probes) {
-        int n = probes.size();
+    /** A loaded Sable carriage and its actual automatic-coupler connections. */
+    public record Carriage(java.util.UUID id, List<java.util.UUID> partners, List<Probe> bogeys) {
+    }
+
+    /** A complete connected consist, retaining IDs for whole-consist brake/reset propagation. */
+    public record Consist(List<UUID> carriageIds, List<Probe> bogeys) {
+    }
+
+    /** Connected components of the carriage graph, including carriages without bogeys as bridges. */
+    public static List<Consist> cluster(List<Carriage> carriages) {
+        int n = carriages.size();
         int[] parent = new int[n];
+        java.util.Map<java.util.UUID, Integer> indices = new java.util.HashMap<>();
         for (int i = 0; i < n; i++) {
             parent[i] = i;
+            indices.put(carriages.get(i).id(), i);
         }
         for (int i = 0; i < n; i++) {
-            Probe a = probes.get(i);
-            for (int j = i + 1; j < n; j++) {
-                Probe b = probes.get(j);
-                double dx = a.x() - b.x();
-                double dy = a.y() - b.y();
-                double dz = a.z() - b.z();
-                if (dx * dx + dy * dy + dz * dz <= COUPLING_CHAIN_SQ) {
-                    parent[find(parent, i)] = find(parent, j);
+            for (java.util.UUID partner : carriages.get(i).partners()) {
+                Integer other = indices.get(partner);
+                if (other != null) {
+                    parent[find(parent, i)] = find(parent, other);
                 }
             }
         }
-        List<List<Integer>> groups = new ArrayList<>();
-        int[] indexByRoot = new int[n];
-        java.util.Arrays.fill(indexByRoot, -1);
+        java.util.Map<Integer, List<Carriage>> groups = new java.util.LinkedHashMap<>();
         for (int i = 0; i < n; i++) {
-            int root = find(parent, i);
-            if (indexByRoot[root] < 0) {
-                indexByRoot[root] = groups.size();
-                groups.add(new ArrayList<>());
-            }
-            groups.get(indexByRoot[root]).add(i);
+            groups.computeIfAbsent(find(parent, i), key -> new ArrayList<>()).add(carriages.get(i));
         }
-        return groups;
+        List<Consist> consists = new ArrayList<>();
+        for (List<Carriage> group : groups.values()) {
+            List<UUID> ids = new ArrayList<>();
+            List<Probe> bogeys = new ArrayList<>();
+            for (Carriage carriage : group) {
+                ids.add(carriage.id());
+                bogeys.addAll(carriage.bogeys());
+            }
+            consists.add(new Consist(List.copyOf(ids), List.copyOf(bogeys)));
+        }
+        return consists;
     }
 
     /** 编组内是否存在超速车架（{@link TrainSpeedGateMath#isFast}）。 */
-    public static boolean hasFast(List<Probe> probes, List<Integer> group) {
-        for (int index : group) {
-            if (TrainSpeedGateMath.isFast(probes.get(index).speed())) {
+    public static boolean hasFast(List<Probe> group) {
+        for (Probe probe : group) {
+            if (TrainSpeedGateMath.isFast(probe.speed())) {
                 return true;
             }
         }
@@ -69,11 +70,10 @@ public final class TrainDeadmanMath {
     }
 
     /** 编组上离给定点最近的车架的距离平方（距离判定不看该架速度——2026-10-15 用户口径）。 */
-    public static double nearestDistanceSq(List<Probe> probes, List<Integer> group,
+    public static double nearestDistanceSq(List<Probe> group,
                                            double px, double py, double pz) {
         double nearestSq = Double.MAX_VALUE;
-        for (int index : group) {
-            Probe probe = probes.get(index);
+        for (Probe probe : group) {
             double dx = px - probe.x();
             double dy = py - probe.y();
             double dz = pz - probe.z();
@@ -85,26 +85,29 @@ public final class TrainDeadmanMath {
         return nearestSq;
     }
 
-    /** 通断脉冲状态机一步的结果：新的 arm 状态与是否触发解除。 */
-    public record PulseStep(boolean armed, boolean release) {
+    /** Initial observation establishes a baseline; any subsequent raw signal-level change is an edge. */
+    public static boolean signalChanged(Integer previous, int current) {
+        return previous != null && previous != current;
     }
 
     /**
-     * 解除脉冲状态机：仅在锁存期间 arm 有效（未锁存一律清零——因此锁存置位瞬间
-     * 该维度不可能携带残留 arm，锁存前已常通的信号仅断开不构成完整脉冲）；
-     * 锁存期间见通沿（非高→高）arm，见断沿（高→非高）且已 arm 则解除并复位。
+     * Propagate a latch across current coupler connections. Any signal edge resets its entire
+     * consist and takes precedence over any new latching in this update. Unrelated consists
+     * retain their own state. Absent carriage IDs retain the latch until they return or the world unloads.
      */
-    public static PulseStep stepPulse(boolean prevHigh, boolean curHigh, boolean armed, boolean latched) {
-        if (!latched) {
-            return new PulseStep(false, false);
+    public static Set<UUID> updateLatches(Set<UUID> previous, List<Consist> consists,
+                                         Set<UUID> signalChanges, Predicate<Consist> unattended) {
+        Set<UUID> next = new HashSet<>(previous);
+        for (Consist consist : consists) {
+            boolean latched = consist.carriageIds().stream().anyMatch(previous::contains);
+            boolean reset = consist.carriageIds().stream().anyMatch(signalChanges::contains);
+            if (reset) {
+                next.removeAll(consist.carriageIds());
+            } else if (latched || unattended.test(consist)) {
+                next.addAll(consist.carriageIds());
+            }
         }
-        if (curHigh && !prevHigh) {
-            return new PulseStep(true, false);
-        }
-        if (!curHigh && prevHigh && armed) {
-            return new PulseStep(false, true);
-        }
-        return new PulseStep(armed, false);
+        return Set.copyOf(next);
     }
 
     private static int find(int[] parent, int i) {

@@ -17,7 +17,7 @@ Missing optional mods leave their controls disabled.
 | Train shaking draw interval | 2.0 seconds | 0 = disabled; 0.1-60.0, step 0.1 | experience |
 | Train additional lateral force | 1200 pN | 0-10000, step 1 | experience |
 | Bogie redstone signal cap | 1 | 1-15, step 1; signals above the cap are clamped to it, 15 restores vanilla scaling | experience |
-| Deadman brake radius | 32 | 8-128 blocks, step 1; rotating only: a moving consist with nobody within this radius of its nearest bogie force-brakes the dimension; one on/off redstone pulse on any bogey releases | experience |
+| Deadman brake radius | 32 | 8-128 blocks, step 1; rotating only: a moving consist with nobody within this radius of its nearest bogie force-brakes that consist; any raw redstone level change on any bogie releases its entire connected consist | experience |
 | Bogie roll torque cap | 5000 | 0-10000000, step 1; 0 = no roll spring (cars rest on the 15° roll stop) | simurail |
 | Dirtiness probability multiplier | 0.5 | 0.00-1.00, step 0.01; 0 = no soiling draws | carwash |
 | Allow coupler redstone activation | false | Checkbox | experience |

@@ -5,10 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 
-/** E7' 编组聚类与距离值守判定、解除脉冲状态机（纯函数，见 {@link TrainDeadmanMath}）。 */
+/** Coupler topology, attendance distance, and the emergency-brake signal-change reset. */
 class TrainDeadmanMathTest {
 
     private static final double RADIUS_SQ = 32.0D * 32.0D;
@@ -21,126 +22,164 @@ class TrainDeadmanMathTest {
         return list;
     }
 
-    @Test
-    void chainDistanceLinksCoupledBogeysIntoOneConsist() {
-        // 链距内（24 格）传递闭包：a—b—c 连成一组，d 超链距独立
-        List<TrainDeadmanMath.Probe> all = probes(
-                0, 64, 0, 10,
-                24, 64, 0, 10,
-                48, 64, 0, 10,
-                100, 64, 0, 10);
-        List<List<Integer>> groups = TrainDeadmanMath.cluster(all);
-        assertEquals(2, groups.size());
-        List<Integer> merged = groups.stream().filter(g -> g.size() == 3).findFirst().orElseThrow();
-        assertTrue(merged.containsAll(List.of(0, 1, 2)));
-        List<Integer> alone = groups.stream().filter(g -> g.size() == 1).findFirst().orElseThrow();
-        assertEquals(List.of(3), alone);
+    private static java.util.UUID id(int n) {
+        return new java.util.UUID(0, n);
+    }
+
+    private static TrainDeadmanMath.Carriage carriage(int id, List<Integer> partners,
+                                                       double... xyzSpeed) {
+        return new TrainDeadmanMath.Carriage(id(id), partners.stream().map(TrainDeadmanMathTest::id).toList(),
+                probes(xyzSpeed));
     }
 
     @Test
-    void clusterBoundaryIsInclusive() {
-        // 恰为链距的算同一编组，超出即分离
-        List<TrainDeadmanMath.Probe> edge = probes(
-                0, 64, 0, 0,
-                TrainDeadmanMath.COUPLING_CHAIN, 64, 0, 0);
-        assertEquals(1, TrainDeadmanMath.cluster(edge).size());
-        List<TrainDeadmanMath.Probe> apart = probes(
-                0, 64, 0, 0,
-                TrainDeadmanMath.COUPLING_CHAIN + 0.01D, 64, 0, 0);
-        assertEquals(2, TrainDeadmanMath.cluster(apart).size());
-    }
-
-    @Test
-    void nearestBogeyDistanceIgnoresItsSpeed() {
-        // 玩家在编组旁（距离 5 格），最近架未超速（3.9 m/s）而编组内另一架超速：
-        // 距离判定不看最近架速度——玩家算已值守，修复 2026-10-15 实测误刹根因
-        List<TrainDeadmanMath.Probe> consist = probes(
-                0, 64, 0, 3.9D,
-                20, 64, 0, 10);
-        List<List<Integer>> groups = TrainDeadmanMath.cluster(consist);
+    void coupledLongTrainIsOneConsistRegardlessOfBogieGaps() {
+        var groups = TrainDeadmanMath.cluster(List.of(
+                carriage(1, List.of(2), 0, 64, 0, 10),
+                carriage(2, List.of(3), 40, 64, 0, 3),
+                carriage(3, List.of(), 80, 64, 0, 0)));
         assertEquals(1, groups.size());
-        List<Integer> group = groups.get(0);
-        assertTrue(TrainDeadmanMath.hasFast(consist, group));
-        assertTrue(TrainDeadmanMath.nearestDistanceSq(consist, group, 5, 64, 0) <= RADIUS_SQ);
+        var train = groups.getFirst();
+        assertEquals(3, train.bogeys().size());
+        assertTrue(TrainDeadmanMath.hasFast(train.bogeys()));
+        assertEquals(1, TrainDeadmanMath.nearestDistanceSq(train.bogeys(), 81, 64, 0));
     }
 
     @Test
-    void playerAtConsistTailCountsEvenWhenOnlyHeadIsFast() {
-        // 长编组车头超速车尾未超：玩家站车尾（距离 1 格）也按编组最近架算已值守
-        List<TrainDeadmanMath.Probe> consist = probes(
-                0, 64, 0, 10,
-                24, 64, 0, 3.0D,
-                48, 64, 0, 3.0D);
-        List<Integer> group = TrainDeadmanMath.cluster(consist).get(0);
-        assertTrue(TrainDeadmanMath.hasFast(consist, group));
-        assertTrue(TrainDeadmanMath.nearestDistanceSq(consist, group, 47, 64, 0) <= RADIUS_SQ);
-        // 玩家离开整列编组（最近架 33+ 格）才算无人值守
-        assertTrue(TrainDeadmanMath.nearestDistanceSq(consist, group, 81.01D, 64, 0) > RADIUS_SQ);
-    }
-
-    @Test
-    void parkedNeighborDoesNotCoverMovingConsistWhenApart() {
-        // 停放架与快车分属两组（间距超链距）：站停放架旁的玩家对快车组的最近距离仍超半径
-        List<TrainDeadmanMath.Probe> all = probes(
-                0, 64, 0, 0,
-                100, 64, 0, 10);
-        List<List<Integer>> groups = TrainDeadmanMath.cluster(all);
+    void parallelParkedTrainCannotAttendDepartingTrain() {
+        // Positions alone used to merge these into one train and mask the runaway.
+        var groups = TrainDeadmanMath.cluster(List.of(
+                carriage(1, List.of(), 0, 64, 0, 0),
+                carriage(2, List.of(3), 20, 64, 0, 10),
+                carriage(3, List.of(), 40, 64, 0, 10)));
         assertEquals(2, groups.size());
-        List<Integer> moving = groups.stream()
-                .filter(g -> TrainDeadmanMath.hasFast(all, g)).findFirst().orElseThrow();
-        assertTrue(TrainDeadmanMath.nearestDistanceSq(all, moving, 5, 64, 0) > RADIUS_SQ);
+        var moving = groups.stream().filter(consist -> TrainDeadmanMath.hasFast(consist.bogeys())).findFirst().orElseThrow();
+        assertTrue(TrainDeadmanMath.nearestDistanceSq(moving.bogeys(), -20, 64, 0) > RADIUS_SQ);
     }
 
     @Test
-    void parkedBogeyMergedIntoConsistOnlyWidensAttendance() {
-        // 停放架与快车被链聚成一组（并排）时并入的是同一编组：距离按全组最近架量
-        List<TrainDeadmanMath.Probe> all = probes(
-                0, 64, 0, 0,
-                24, 64, 0, 10);
-        List<List<Integer>> groups = TrainDeadmanMath.cluster(all);
+    void sameCarriageBogeysStayTogetherWithoutCouplers() {
+        var groups = TrainDeadmanMath.cluster(List.of(
+                carriage(1, List.of(), 0, 64, 0, 10, 50, 64, 0, 3.9)));
         assertEquals(1, groups.size());
-        assertTrue(TrainDeadmanMath.hasFast(all, groups.get(0)));
-        assertTrue(TrainDeadmanMath.nearestDistanceSq(all, groups.get(0), 1, 64, 0) <= RADIUS_SQ);
+        assertTrue(TrainDeadmanMath.hasFast(groups.getFirst().bogeys()));
+        assertEquals(25, TrainDeadmanMath.nearestDistanceSq(groups.getFirst().bogeys(), 55, 64, 0));
     }
 
     @Test
-    void pulseReleasesOnlyAfterFullPulseWhileLatched() {
-        // 锁存期间：通沿 arm → 断沿解除并复位
-        var armed = TrainDeadmanMath.stepPulse(false, true, false, true);
-        assertTrue(armed.armed());
-        assertFalse(armed.release());
-        var released = TrainDeadmanMath.stepPulse(true, false, true, true);
-        assertFalse(released.armed());
-        assertTrue(released.release());
+    void carriageWithoutBogeysStillConnectsBothEnds() {
+        var groups = TrainDeadmanMath.cluster(List.of(
+                carriage(1, List.of(2), 0, 64, 0, 10),
+                carriage(2, List.of(3)),
+                carriage(3, List.of(), 100, 64, 0, 10)));
+        assertEquals(1, groups.size());
+        assertEquals(2, groups.getFirst().bogeys().size());
+        var withoutBridge = TrainDeadmanMath.cluster(List.of(
+                carriage(1, List.of(2), 0, 64, 0, 10),
+                carriage(3, List.of(), 100, 64, 0, 10)));
+        assertEquals(2, withoutBridge.size());
+        assertTrue(withoutBridge.stream().allMatch(group -> group.bogeys().size() == 1));
     }
 
     @Test
-    void signalAlreadyHighBeforeLatchDoesNotReleaseOnFall() {
-        // 锁存前已常通：arm 为 false 进入锁存，仅断开不构成完整脉冲
-        var step = TrainDeadmanMath.stepPulse(true, false, false, true);
-        assertFalse(step.armed());
-        assertFalse(step.release());
+    void missingPartnerAndUncoupledCarriageStaySeparate() {
+        var groups = TrainDeadmanMath.cluster(List.of(
+                carriage(1, List.of(99), 0, 64, 0, 10),
+                carriage(2, List.of(), 1, 64, 0, 10)));
+        assertEquals(2, groups.size());
     }
 
     @Test
-    void unlatchedAlwaysClearsArmAndNeverReleases() {
-        // 未锁存维度逐 tick 清零 arm：锁存置位瞬间不可能携带残留 arm
-        var fromArmed = TrainDeadmanMath.stepPulse(true, true, true, false);
-        assertFalse(fromArmed.armed());
-        assertFalse(fromArmed.release());
-        var falling = TrainDeadmanMath.stepPulse(true, false, true, false);
-        assertFalse(falling.armed());
-        assertFalse(falling.release());
+    void radiusBoundaryAndVerticalDistanceAreMeasuredInWorldSpace() {
+        var train = probes(1000, 64, -1000, 10);
+        assertEquals(RADIUS_SQ, TrainDeadmanMath.nearestDistanceSq(train, 1032, 64, -1000));
+        assertTrue(TrainDeadmanMath.nearestDistanceSq(train, 1032.01, 64, -1000) > RADIUS_SQ);
+        assertTrue(TrainDeadmanMath.nearestDistanceSq(train, 1000, 97, -1000) > RADIUS_SQ);
     }
 
     @Test
-    void steadySignalKeepsStateWithoutRelease() {
-        // 持续高位保持 arm 不解除；持续低位无动作
-        var steadyHigh = TrainDeadmanMath.stepPulse(true, true, true, true);
-        assertTrue(steadyHigh.armed());
-        assertFalse(steadyHigh.release());
-        var steadyLow = TrainDeadmanMath.stepPulse(false, false, false, true);
-        assertFalse(steadyLow.armed());
-        assertFalse(steadyLow.release());
+    void stationaryAndEmptyConsistsCannotTriggerBrake() {
+        assertFalse(TrainDeadmanMath.hasFast(probes(0, 64, 0, 4.0)));
+        assertFalse(TrainDeadmanMath.hasFast(List.of()));
+        assertEquals(List.of(), TrainDeadmanMath.cluster(List.of()));
+    }
+
+    @Test
+    void anyRawSignalLevelChangeCountsButFirstObservationDoesNot() {
+        for (int current = 0; current <= 15; current++) {
+            assertFalse(TrainDeadmanMath.signalChanged(null, current));
+            for (int previous = 0; previous <= 15; previous++) {
+                assertEquals(previous != current, TrainDeadmanMath.signalChanged(previous, current));
+            }
+        }
+    }
+
+    @Test
+    void anyBogieSignalChangeReleasesAllConnectedCarriagesEvenIfStillUnattended() {
+        var consists = TrainDeadmanMath.cluster(List.of(
+                carriage(1, List.of(2), 0, 64, 0, 10),
+                carriage(2, List.of(3)),
+                carriage(3, List.of(), 80, 64, 0, 10)));
+        for (int changedCarriage = 1; changedCarriage <= 3; changedCarriage++) {
+            var next = TrainDeadmanMath.updateLatches(Set.of(id(1), id(2), id(3)), consists,
+                    Set.of(id(changedCarriage)), group -> true);
+            assertEquals(Set.of(), next);
+        }
+    }
+
+    @Test
+    void releasingOneTrainDoesNotReleaseAnotherTrain() {
+        var consists = TrainDeadmanMath.cluster(List.of(
+                carriage(1, List.of(2)), carriage(2, List.of()),
+                carriage(3, List.of(4)), carriage(4, List.of())));
+        var next = TrainDeadmanMath.updateLatches(Set.of(id(1), id(2), id(3), id(4)), consists,
+                Set.of(id(2)), group -> false);
+        assertEquals(Set.of(id(3), id(4)), next);
+    }
+
+    @Test
+    void signalOnUnlatchedTrainCannotReleaseLatchedNeighbor() {
+        var consists = TrainDeadmanMath.cluster(List.of(carriage(1, List.of()), carriage(2, List.of())));
+        assertEquals(Set.of(id(2)), TrainDeadmanMath.updateLatches(Set.of(id(2)), consists,
+                Set.of(id(1)), group -> false));
+    }
+
+    @Test
+    void signalChangeAlsoPreventsNewLatchForThatUpdateWhileAnotherTrainCanLatch() {
+        var consists = TrainDeadmanMath.cluster(List.of(carriage(1, List.of(2)), carriage(2, List.of()),
+                carriage(3, List.of())));
+        assertEquals(Set.of(id(3)), TrainDeadmanMath.updateLatches(Set.of(), consists,
+                Set.of(id(2)), group -> true));
+    }
+
+    @Test
+    void latchFollowsNewConnectionsAndResetUsesCurrentConsist() {
+        var joined = TrainDeadmanMath.cluster(List.of(carriage(1, List.of(2)), carriage(2, List.of())));
+        assertEquals(Set.of(id(1), id(2)), TrainDeadmanMath.updateLatches(Set.of(id(1)), joined,
+                Set.of(), group -> false));
+        assertEquals(Set.of(), TrainDeadmanMath.updateLatches(Set.of(id(1)), joined,
+                Set.of(id(2)), group -> false));
+    }
+
+    @Test
+    void afterUncouplingOnlyTheChangedConsistReleases() {
+        var split = TrainDeadmanMath.cluster(List.of(carriage(1, List.of()), carriage(2, List.of())));
+        assertEquals(Set.of(id(2)), TrainDeadmanMath.updateLatches(Set.of(id(1), id(2)), split,
+                Set.of(id(1)), group -> false));
+    }
+
+    @Test
+    void unattendedDetectionLatchesOnlyTheOffendingConsistAndRetainsExistingLatch() {
+        var consists = TrainDeadmanMath.cluster(List.of(carriage(1, List.of(2)), carriage(2, List.of()),
+                carriage(3, List.of()), carriage(4, List.of())));
+        var next = TrainDeadmanMath.updateLatches(Set.of(id(3)), consists, Set.of(),
+                group -> group.carriageIds().contains(id(1)));
+        assertEquals(Set.of(id(1), id(2), id(3)), next);
+    }
+
+    @Test
+    void temporarilyMissingCarriageRetainsLatchUntilItReturns() {
+        assertEquals(Set.of(id(1)), TrainDeadmanMath.updateLatches(Set.of(id(1)), List.of(),
+                Set.of(), group -> false));
     }
 }

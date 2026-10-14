@@ -4,6 +4,9 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 
 import java.util.Set;
+import java.util.Map;
+import java.util.Collection;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -12,22 +15,22 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class ClientDeadmanLatch {
 
-    private static final Set<ResourceKey<Level>> LATCHED_DIMS = ConcurrentHashMap.newKeySet();
+    private static final Map<ResourceKey<Level>, Set<UUID>> LATCHED_CARRIAGES = new ConcurrentHashMap<>();
 
-    public static boolean isLatched(ResourceKey<Level> dim) {
-        return LATCHED_DIMS.contains(dim);
+    public static boolean isLatched(ResourceKey<Level> dim, UUID carriage) {
+        return LATCHED_CARRIAGES.getOrDefault(dim, Set.of()).contains(carriage);
     }
 
-    public static void set(ResourceKey<Level> dim, boolean latched) {
-        if (latched) {
-            LATCHED_DIMS.add(dim);
+    public static void set(ResourceKey<Level> dim, Collection<UUID> carriages) {
+        if (!carriages.isEmpty()) {
+            LATCHED_CARRIAGES.put(dim, Set.copyOf(carriages));
         } else {
-            LATCHED_DIMS.remove(dim);
+            LATCHED_CARRIAGES.remove(dim);
         }
     }
 
     public static void reset() {
-        LATCHED_DIMS.clear();
+        LATCHED_CARRIAGES.clear();
     }
 
     private ClientDeadmanLatch() {
