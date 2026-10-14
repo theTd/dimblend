@@ -57,6 +57,17 @@ import com.google.gson.JsonPrimitive;
  *       Biomes O' Plenty（{@code biomesoplenty:brimstone}，中文名「硫磺石」）；
  *       Create 搅拌配方的材料/产物列表经其 Codec 均支持物品与流体混排
  *       （ProcessingRecipeParams 核实）。</li>
+ *   <li>森罗厨房石磨与哨兵机械臂切削（2026-10-14 修订）：石磨燧石磨火药为普通数据包
+ *       配方 {@code kaleidoscope_cookery:millstone/gunpowder_from_flint}，按配方 ID 删除；
+ *       哨兵机械臂的弹药切削配方（{@code create:cutting}，铜板 =&gt; 待加工弹壳）不在
+ *       数据包中，由上游在 {@code ServerAboutToStartEvent} 按 TACZ 弹药表动态注入
+ *       （反射改 {@code RecipeManager.byType}，配方 ID 形如
+ *       {@code sentrymechanicalarm:ammo_cutting/<弹药路径>}，数量随弹药表变化，
+ *       2026-10-14 实例日志核实当前 30 条），故经 {@link RecipeEdit.ModifyRecipeFieldsByIdPrefix}
+ *       前缀匹配放进 {@link #lateEdits()}，在 {@code ServerStartedEvent}（晚于上游注入点）
+ *       统一把材料 {@code ingredients.0.item} 改写为黄铜板 {@code create:brass_sheet}。
+ *       /reload 后上游动态配方本身即被原版重载清掉且不再注入（上游行为），
+ *       晚期规则无需也不应在重载阶段重放。</li>
  * </ul>
  */
 public final class RecipeEditRules {
@@ -209,7 +220,26 @@ public final class RecipeEditRules {
         edits.add(new RecipeEdit.DeleteByRecipeId("TACZ 火药合成",
                 Set.of(ResourceLocation.parse("tacz:gunpowder"))));
 
+        // —— 3.14 森罗物语：厨房（2026-10-14 修订） ——
+        // 删除石磨 燧石 => 火药（类型 kaleidoscope_cookery:millstone 的数据包配方）
+        edits.add(new RecipeEdit.DeleteByRecipeId("石磨燧石磨火药",
+                Set.of(ResourceLocation.parse("kaleidoscope_cookery:millstone/gunpowder_from_flint"))));
+
         return edits.build();
+    }
+
+    /**
+     * 服务器启动后阶段（{@code ServerStartedEvent}）应用的规则：作用于上游在数据包
+     * 重载之外动态注入的配方。本阶段规则在初始加载与 /reload 的重载阶段一律不参与，
+     * 未命中告警也只针对启动后的最终配方状态。
+     */
+    public static List<RecipeEdit> lateEdits() {
+        // —— 3.15 哨兵机械臂弹药切削（2026-10-14 修订） ——
+        // 切削材料 铜板 -> 黄铜板：上游按 TACZ 弹药表动态注入 sentrymechanicalarm:ammo_cutting/*
+        //（create:cutting，铜板 => 待加工弹壳），前缀匹配覆盖全部弹药种类
+        return List.of(new RecipeEdit.ModifyRecipeFieldsByIdPrefix("弹药切削铜板改黄铜板",
+                "sentrymechanicalarm:ammo_cutting/",
+                Map.of("ingredients.0.item", new JsonPrimitive("create:brass_sheet"))));
     }
 
     private static GridRuleBuilder modify(String label, String... resultTargets) {

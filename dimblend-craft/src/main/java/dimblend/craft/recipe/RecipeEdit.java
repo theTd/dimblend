@@ -59,6 +59,19 @@ public sealed interface RecipeEdit {
     }
 
     /**
+     * 字段级修改规则的公共视图：精确配方 ID（{@link ModifyRecipeFields}）与
+     * 配方 ID 前缀（{@link ModifyRecipeFieldsByIdPrefix}）两种匹配方式。
+     */
+    sealed interface FieldModify extends RecipeEdit {
+
+        /** 字段路径 → 写入值。 */
+        Map<String, JsonElement> fieldEdits();
+
+        /** 该规则是否命中给定配方 ID。 */
+        boolean matchesId(ResourceLocation recipeId);
+    }
+
+    /**
      * 按配方 ID 修改任意类型配方的 JSON 字段（机器配方：搅拌、洗涤、烧炼、分馏、合金炉等）。
      *
      * <p>实现上经配方自身序列化器的 Codec 做「编码 → 写入字段 → 解码」往返，
@@ -71,7 +84,30 @@ public sealed interface RecipeEdit {
      * @param fieldEdits 字段路径 → 写入值
      */
     record ModifyRecipeFields(String label, Set<ResourceLocation> recipeIds,
-            Map<String, JsonElement> fieldEdits) implements RecipeEdit {
+            Map<String, JsonElement> fieldEdits) implements FieldModify {
+
+        @Override
+        public boolean matchesId(ResourceLocation recipeId) {
+            return recipeIds.contains(recipeId);
+        }
+    }
+
+    /**
+     * 按配方 ID 前缀匹配并做字段级修改：用于上游在数据包重载之外动态注入、
+     * 数量随上游数据变化而无法枚举精确 ID 的配方（如哨兵机械臂在
+     * {@code ServerAboutToStartEvent} 按 TACZ 弹药表注入的 {@code ammo_cutting/*} 系列）。
+     *
+     * <p>匹配与字段写入语义同 {@link ModifyRecipeFields}；区别在于本规则命中的配方
+     * 在重载阶段尚不存在，因此只允许放进 {@code RecipeEditRules.lateEdits()}
+     * （服务器启动后阶段）使用。</p>
+     */
+    record ModifyRecipeFieldsByIdPrefix(String label, String recipeIdPrefix,
+            Map<String, JsonElement> fieldEdits) implements FieldModify {
+
+        @Override
+        public boolean matchesId(ResourceLocation recipeId) {
+            return recipeId.toString().startsWith(recipeIdPrefix);
+        }
     }
 
     /**

@@ -47,7 +47,7 @@ displayName="${mod_name}" #mandatory
 # The description text for the mod (multi line!) (#mandatory)
 description='''
 Dimblend Craft: TrainTripWorld 整合包专用的运行时配方调整 mod。
-在数据包重载后按冻结的需求规则表批量修改与删除 Create 及其附属、TACZ 的配方。
+按冻结的需求规则表批量修改与删除 Create 及其附属、TACZ、森罗物语系列、哨兵机械臂的配方。
 规则明细见仓库内 docs/配方修改需求.md。
 '''
 

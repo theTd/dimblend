@@ -21,11 +21,13 @@ import net.minecraft.world.item.crafting.ShapedRecipe;
 import dimblend.craft.DimblendCraft;
 
 /**
- * 配方编辑执行器：在数据包重载的 apply 阶段对 {@link RecipeManager} 做单趟
- * 「删除 / 网格修改」处理，最后经原版 {@link RecipeManager#replaceRecipes} 原子生效。
+ * 配方编辑执行器：对 {@link RecipeManager} 做单趟「删除 / 网格修改 / 字段修改 / 排序」
+ * 处理，最后经原版 {@link RecipeManager#replaceRecipes} 原子生效。
  *
- * <p>执行器本身无状态：规则是纯数据，每次重载（初始加载、/reload）都从零重放，
- * 天然幂等。目标 mod 缺失的规则不产生任何改动，只输出未命中告警。</p>
+ * <p>调用点有两个阶段：数据包重载（{@link RecipeEditReloadListener}，初始加载与
+ * /reload）与服务器启动后（{@code DimblendCraft.onServerStarted}，处理上游在重载之外
+ * 动态注入的配方）；两个阶段各传各的规则子集。执行器本身无状态：规则是纯数据，
+ * 每次应用都从零重放，天然幂等。目标 mod 缺失的规则不产生任何改动，只输出未命中告警。</p>
  */
 public final class RecipeEditApplicator {
 
@@ -63,7 +65,7 @@ public final class RecipeEditApplicator {
                 continue;
             }
 
-            RecipeEdit.ModifyRecipeFields fieldModify = matchingFieldModify(holder.id(), edits);
+            RecipeEdit.FieldModify fieldModify = matchingFieldModify(holder.id(), edits);
             if (fieldModify != null) {
                 Stats stats = statsByIdentity.get(fieldModify);
                 RecipeHolder<?> edited = applyFieldModify(holder, recipe, fieldModify, registries, stats);
@@ -171,10 +173,10 @@ public final class RecipeEditApplicator {
         return typeKey != null && recipeTypeIds.contains(typeKey);
     }
 
-    private static RecipeEdit.ModifyRecipeFields matchingFieldModify(ResourceLocation recipeId,
+    private static RecipeEdit.FieldModify matchingFieldModify(ResourceLocation recipeId,
             List<RecipeEdit> edits) {
         for (RecipeEdit edit : edits) {
-            if (edit instanceof RecipeEdit.ModifyRecipeFields modify && modify.recipeIds().contains(recipeId)) {
+            if (edit instanceof RecipeEdit.FieldModify modify && modify.matchesId(recipeId)) {
                 return modify;
             }
         }
@@ -217,7 +219,7 @@ public final class RecipeEditApplicator {
     }
 
     private static RecipeHolder<?> applyFieldModify(RecipeHolder<?> holder, Recipe<?> recipe,
-            RecipeEdit.ModifyRecipeFields modify, HolderLookup.Provider registries, Stats stats) {
+            RecipeEdit.FieldModify modify, HolderLookup.Provider registries, Stats stats) {
         Optional<Recipe<?>> edited = RecipeJsonEditor.edit(recipe, modify.fieldEdits(), registries);
         if (edited.isEmpty()) {
             DimblendCraft.LOGGER.error("[配方] 规则「{}」无法应用于配方 {}（JSON 往返编辑失败："
@@ -230,7 +232,7 @@ public final class RecipeEditApplicator {
         return new RecipeHolder<>(holder.id(), edited.get());
     }
 
-    private static String describeFieldEdits(RecipeEdit.ModifyRecipeFields modify) {
+    private static String describeFieldEdits(RecipeEdit.FieldModify modify) {
         StringBuilder description = new StringBuilder();
         modify.fieldEdits().entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
