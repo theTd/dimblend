@@ -21,14 +21,15 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * E7' 无人值守刹车锁存（服务端，仅 rotating；v1.18 取代 E7 离结构传送）：
- * 每 10 tick 扫描一次——同维度存在 |visualSpeed| &gt; 4 m/s 的车架，且没有任何
- * 非旁观玩家在跟车时，全维度进入刹车锁存。在跟车为玩家视角
- * （{@link TrainDeadmanMath#isAttending}）：离玩家最近的车架在值守半径
- * （{@code trainDeadmanRadius}，默认 32，/dbx 面板可调）内且超速——只看最近一架，
- * 旁站停放的车不能代管远处行驶的车，长编组/多节编组（车钩挂接、各车厢未必同一
- * sable 子层级）司机就近值守本节即有效。锁存期间 {@code getBrakeStrength()} 经
- * mixin 强制满刹，直到任意车架红石信号<b>通一次再断开</b>（锁存期间见过 0→正 沿，
- * 再出现 正→0 沿）才解除。锁存不自动解除、不随停车解除。
+ * 每 10 tick 扫描一次——编组（{@link TrainDeadmanMath#cluster} 近距离链聚类，车钩挂接、
+ * 各车厢未必同一 sable 子层级故不用拓扑）内存在 |visualSpeed| &gt; 4 m/s 的车架（编组在动），
+ * 且编组上离<b>每个</b>非旁观玩家最近的车架都超出值守半径
+ * （{@code trainDeadmanRadius}，默认 32，/dbx 面板可调）时，全维度进入刹车锁存
+ * （2026-10-15 用户口径：距离对整列编组量、不看最近架自身速度——列车在动而玩家
+ * 就在编组旁（车头、车尾皆可）即算已值守）。锁存期间 {@code getBrakeStrength()} 经
+ * mixin 强制满刹，直到任意车架红石信号<b>通一次再断开</b>才解除——解除作用于整个锁存，
+ * 即全列车所有车架（含他车）同时恢复，一节脉冲即可重置全列，无需逐节操作
+ * （2026-10-15 用户拍板）。锁存不自动解除、不随停车解除。
  *
  * <p>玩家坐标经 {@link SableWorldPosition#project} 投影到世界坐标，车上乘客落在车体
  * 位置，天然在半径内。锁存为内存态，重启即丢（接受项）。锁存变化经
@@ -115,28 +116,37 @@ public final class TrainDeadmanBrake {
             return;
         }
         List<TrainDeadmanMath.Probe> probes = new ArrayList<>(members.size());
-        boolean anyFast = false;
         for (TrainBrakeBroadcast.Member member : members) {
             Vec3 pos = member.worldPos();
             probes.add(new TrainDeadmanMath.Probe(pos.x, pos.y, pos.z, member.speed()));
-            anyFast |= TrainSpeedGateMath.isFast(member.speed());
         }
-        if (!anyFast) {
-            return;
-        }
-        double radius = Config.TRAIN_DEADMAN_RADIUS.get();
-        // 值守为玩家视角：离玩家最近的车架在半径内且超速才算在跟车
+        // 编组 = 近距离链聚类（车钩挂接的相邻架；拓扑不可查，各车厢未必同一子层级）。
+        // 逐编组问责：在动（内有超速架）且编组上离每个玩家最近的架都超出半径 → 锁存全维度。
+        double radiusSq = Config.TRAIN_DEADMAN_RADIUS.get();
+        radiusSq *= radiusSq;
+        List<Vec3> attendants = new ArrayList<>();
         for (Player player : level.players()) {
-            if (player.isSpectator()) {
+            if (!player.isSpectator()) {
+                attendants.add(SableWorldPosition.project(level, player.position()));
+            }
+        }
+        for (List<Integer> group : TrainDeadmanMath.cluster(probes)) {
+            if (!TrainDeadmanMath.hasFast(probes, group)) {
                 continue;
             }
-            Vec3 projected = SableWorldPosition.project(level, player.position());
-            if (TrainDeadmanMath.isAttending(projected.x, projected.y, projected.z, probes, radius)) {
+            boolean attended = false;
+            for (Vec3 player : attendants) {
+                if (TrainDeadmanMath.nearestDistanceSq(probes, group, player.x, player.y, player.z) <= radiusSq) {
+                    attended = true;
+                    break;
+                }
+            }
+            if (!attended) {
+                if (LATCHED.add(dim)) {
+                    broadcast(level.getServer(), dim, true);
+                }
                 return;
             }
-        }
-        if (LATCHED.add(dim)) {
-            broadcast(level.getServer(), dim, true);
         }
     }
 

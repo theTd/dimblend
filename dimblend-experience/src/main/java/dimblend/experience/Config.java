@@ -143,14 +143,14 @@ public final class Config {
     // 键名 offStructureTeleport（v1.8 E7 离结构传送）随 v1.18 机制重做废弃：旧键被自动清除，
     // 新机制（无人值守刹车锁存）用 trainDeadmanBrake / trainDeadmanRadius 两键
     public static final ModConfigSpec.BooleanValue TRAIN_DEADMAN_BRAKE = BUILDER
-            .comment("E 板块 E7'：旋转维度内存在超速车架（>4 m/s）且没有任何玩家在跟车"
-                    + "（离玩家最近的车架在值守半径内且超速）时，全维度列车强制满刹锁存；"
-                    + "锁存只能由任意车架红石信号通一次再断开解除。需要 Simurail+Sable 在场")
+            .comment("E 板块 E7'：旋转维度内编组在动（存在 >4 m/s 车架）且编组上离每个玩家最近的"
+                    + "车架都超出半径时，全维度列车强制满刹锁存；锁存由任意车架红石信号通一次"
+                    + "再断开解除（一节脉冲重置全列）。需要 Simurail+Sable 在场")
             .define("trainDeadmanBrake", true);
 
     public static final ModConfigSpec.DoubleValue TRAIN_DEADMAN_RADIUS = BUILDER
-            .comment("E 板块 E7' 配套：无人值守判定半径（格，8-128，默认 32）——玩家离其最近的车架"
-                    + "在该半径内且该车架超速（>4 m/s）才算在跟车。经 /dbx 面板可调")
+            .comment("E 板块 E7' 配套：无人值守判定半径（格，8-128，默认 32）——对整列编组量距离，"
+                    + "编组上离玩家最近的车架在该半径内即算已值守（不看该架速度）。经 /dbx 面板可调")
             .defineInRange("trainDeadmanRadius", 32.0D, 8.0D, 128.0D);
 
     public static final ModConfigSpec.BooleanValue TRAIN_LATERAL_FORCE = BUILDER

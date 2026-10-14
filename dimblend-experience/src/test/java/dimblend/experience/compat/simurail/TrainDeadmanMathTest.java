@@ -1,5 +1,6 @@
 package dimblend.experience.compat.simurail;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -7,51 +8,99 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-/** E7' 无人值守判定（玩家视角最近车架）与解除脉冲状态机（纯函数，见 {@link TrainDeadmanMath}）。 */
+/** E7' 编组聚类与距离值守判定、解除脉冲状态机（纯函数，见 {@link TrainDeadmanMath}）。 */
 class TrainDeadmanMathTest {
 
-    private static final double RADIUS = 32.0D;
+    private static final double RADIUS_SQ = 32.0D * 32.0D;
 
-    @Test
-    void attendingWhenNearestBogeyFastAndWithinRadius() {
-        TrainDeadmanMath.Probe fast = new TrainDeadmanMath.Probe(0, 64, 0, 10);
-        assertTrue(TrainDeadmanMath.isAttending(20, 64, 0, List.of(fast), RADIUS));
+    private static List<TrainDeadmanMath.Probe> probes(double... xyzSpeed) {
+        java.util.ArrayList<TrainDeadmanMath.Probe> list = new java.util.ArrayList<>();
+        for (int i = 0; i < xyzSpeed.length; i += 4) {
+            list.add(new TrainDeadmanMath.Probe(xyzSpeed[i], xyzSpeed[i + 1], xyzSpeed[i + 2], xyzSpeed[i + 3]));
+        }
+        return list;
     }
 
     @Test
-    void notAttendingWhenNearestBogeyBeyondRadius() {
-        TrainDeadmanMath.Probe fast = new TrainDeadmanMath.Probe(0, 64, 0, 10);
-        assertFalse(TrainDeadmanMath.isAttending(32.01D, 64, 0, List.of(fast), RADIUS));
-        assertTrue(TrainDeadmanMath.isAttending(32, 64, 0, List.of(fast), RADIUS));
+    void chainDistanceLinksCoupledBogeysIntoOneConsist() {
+        // 链距内（24 格）传递闭包：a—b—c 连成一组，d 超链距独立
+        List<TrainDeadmanMath.Probe> all = probes(
+                0, 64, 0, 10,
+                24, 64, 0, 10,
+                48, 64, 0, 10,
+                100, 64, 0, 10);
+        List<List<Integer>> groups = TrainDeadmanMath.cluster(all);
+        assertEquals(2, groups.size());
+        List<Integer> merged = groups.stream().filter(g -> g.size() == 3).findFirst().orElseThrow();
+        assertTrue(merged.containsAll(List.of(0, 1, 2)));
+        List<Integer> alone = groups.stream().filter(g -> g.size() == 1).findFirst().orElseThrow();
+        assertEquals(List.of(3), alone);
     }
 
     @Test
-    void parkedBogeyCannotProxyForDistantMovingTrain() {
-        // 最近的是旁站停放的车（低速），远处行驶的车不能由它代管
-        TrainDeadmanMath.Probe parked = new TrainDeadmanMath.Probe(0, 64, 0, 0);
-        TrainDeadmanMath.Probe moving = new TrainDeadmanMath.Probe(20, 64, 0, 10);
-        assertFalse(TrainDeadmanMath.isAttending(5, 64, 0, List.of(parked, moving), RADIUS));
+    void clusterBoundaryIsInclusive() {
+        // 恰为链距的算同一编组，超出即分离
+        List<TrainDeadmanMath.Probe> edge = probes(
+                0, 64, 0, 0,
+                TrainDeadmanMath.COUPLING_CHAIN, 64, 0, 0);
+        assertEquals(1, TrainDeadmanMath.cluster(edge).size());
+        List<TrainDeadmanMath.Probe> apart = probes(
+                0, 64, 0, 0,
+                TrainDeadmanMath.COUPLING_CHAIN + 0.01D, 64, 0, 0);
+        assertEquals(2, TrainDeadmanMath.cluster(apart).size());
     }
 
     @Test
-    void slowNearestBlocksEvenWhenMovingBogeyAlsoInRadius() {
-        // 停放车更近（5 格）且在半径内，行驶车（20 格）也在半径内——只看最近架，仍不算跟车
-        TrainDeadmanMath.Probe parked = new TrainDeadmanMath.Probe(5, 64, 0, 0);
-        TrainDeadmanMath.Probe moving = new TrainDeadmanMath.Probe(20, 64, 0, 10);
-        assertFalse(TrainDeadmanMath.isAttending(0, 64, 0, List.of(parked, moving), RADIUS));
+    void nearestBogeyDistanceIgnoresItsSpeed() {
+        // 玩家在编组旁（距离 5 格），最近架未超速（3.9 m/s）而编组内另一架超速：
+        // 距离判定不看最近架速度——玩家算已值守，修复 2026-10-15 实测误刹根因
+        List<TrainDeadmanMath.Probe> consist = probes(
+                0, 64, 0, 3.9D,
+                20, 64, 0, 10);
+        List<List<Integer>> groups = TrainDeadmanMath.cluster(consist);
+        assertEquals(1, groups.size());
+        List<Integer> group = groups.get(0);
+        assertTrue(TrainDeadmanMath.hasFast(consist, group));
+        assertTrue(TrainDeadmanMath.nearestDistanceSq(consist, group, 5, 64, 0) <= RADIUS_SQ);
     }
 
     @Test
-    void longConsistDriverAttendsNearestCar() {
-        // 长编组稳态：司机在车尾，车尾车架同样超速，就近值守本节即有效
-        TrainDeadmanMath.Probe head = new TrainDeadmanMath.Probe(0, 64, 0, 10);
-        TrainDeadmanMath.Probe tail = new TrainDeadmanMath.Probe(60, 64, 0, 10);
-        assertTrue(TrainDeadmanMath.isAttending(61, 64, 0, List.of(head, tail), RADIUS));
+    void playerAtConsistTailCountsEvenWhenOnlyHeadIsFast() {
+        // 长编组车头超速车尾未超：玩家站车尾（距离 1 格）也按编组最近架算已值守
+        List<TrainDeadmanMath.Probe> consist = probes(
+                0, 64, 0, 10,
+                24, 64, 0, 3.0D,
+                48, 64, 0, 3.0D);
+        List<Integer> group = TrainDeadmanMath.cluster(consist).get(0);
+        assertTrue(TrainDeadmanMath.hasFast(consist, group));
+        assertTrue(TrainDeadmanMath.nearestDistanceSq(consist, group, 47, 64, 0) <= RADIUS_SQ);
+        // 玩家离开整列编组（最近架 33+ 格）才算无人值守
+        assertTrue(TrainDeadmanMath.nearestDistanceSq(consist, group, 81.01D, 64, 0) > RADIUS_SQ);
     }
 
     @Test
-    void emptyMemberListIsNotAttending() {
-        assertFalse(TrainDeadmanMath.isAttending(0, 64, 0, List.of(), RADIUS));
+    void parkedNeighborDoesNotCoverMovingConsistWhenApart() {
+        // 停放架与快车分属两组（间距超链距）：站停放架旁的玩家对快车组的最近距离仍超半径
+        List<TrainDeadmanMath.Probe> all = probes(
+                0, 64, 0, 0,
+                100, 64, 0, 10);
+        List<List<Integer>> groups = TrainDeadmanMath.cluster(all);
+        assertEquals(2, groups.size());
+        List<Integer> moving = groups.stream()
+                .filter(g -> TrainDeadmanMath.hasFast(all, g)).findFirst().orElseThrow();
+        assertTrue(TrainDeadmanMath.nearestDistanceSq(all, moving, 5, 64, 0) > RADIUS_SQ);
+    }
+
+    @Test
+    void parkedBogeyMergedIntoConsistOnlyWidensAttendance() {
+        // 停放架与快车被链聚成一组（并排）时并入的是同一编组：距离按全组最近架量
+        List<TrainDeadmanMath.Probe> all = probes(
+                0, 64, 0, 0,
+                24, 64, 0, 10);
+        List<List<Integer>> groups = TrainDeadmanMath.cluster(all);
+        assertEquals(1, groups.size());
+        assertTrue(TrainDeadmanMath.hasFast(all, groups.get(0)));
+        assertTrue(TrainDeadmanMath.nearestDistanceSq(all, groups.get(0), 1, 64, 0) <= RADIUS_SQ);
     }
 
     @Test
