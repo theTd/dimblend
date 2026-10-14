@@ -28,16 +28,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * <li>B2 燃尽走原版停机（不干预）</li>
  * <li>B3 到额定后在 80%~100% 间随机跳变，每 1~3 秒取一次新值（计时在 tick
  * 状态机内推进，getter 纯读）</li>
- * <li>B6 过载引信（用户拍板，不可中断）：运转中过载连续 40 tick（2 秒）确认后播
- * {@code diesel_overstress.ogg} 1 次、出力归零，引信期间每 tick 播 large_smoke
- * （delta 0.2,0.2,0.2 / speed 0 / count 10）；6 秒（120 tick）后播
+ * <li>B6 过载警告与引信（用户拍板，引信不可中断）：运转中过载确认累计首 tick 即播
+ * {@code diesel_overstress.ogg} 1 次（2026-10-14 拍板提前，原在点引信当 tick）；
+ * 确认前解除过载（累计清零）即掐掉警告音，点引信后播完不掐。连续 40 tick（2 秒）
+ * 确认后点引信、出力归零，引信期间每 tick 播 large_smoke
+ * （delta 0.2,0.2,0.2 / speed 0 / count 10）；2 秒（40 tick，2026-10-14 拍板，
+ * 较原 6 秒提前 4 秒引爆）后播
  * {@code entity.generic.explode} 1 次 + 爆炸粒子（delta 1,1,1 / speed 0 /
- * count 100），再破坏自毁掉落（余油不返还、无真实爆炸伤害）。加载期
- * {@code overStressed} 会在 {@code addSilently} 改账之后粘住，
- * {@code (stress, networkSize)} 不变不等于网络已恢复。确认前用实时
- * {@code calculateCapacity/calculateStress} 复核（见 {@code CdgKineticOverload}），
- * 实时不过载不累计并把缓存位刷掉；确认进度不跨存档携带。
- * 确认前爬梯/波动计时冻结。红石关停/燃尽/负载恢复都不取消引信。
+ * count 100），再破坏自毁掉落（余油不返还、无真实爆炸伤害）。确认口径三关
+ * （2026-10-13 修订，见 {@code CdgKineticOverload}）：缓存位真 + 已加载成员
+ * 实时账过载 + 已加载应力超出全网额定容量——粘位/unloaded 幻影账/爬梯波动可覆盖
+ * 的缺额都不累计且<b>不冻结</b>爬梯（引擎照常爬回额定或触发整网重建清账）；
+ * 确认进度不跨存档携带。
+ * 确认累计期间（真过载）爬梯/波动计时冻结。红石关停/燃尽/负载恢复都不取消引信。
  * 自毁破坏失败（极端情况）才回退闩锁逻辑</li>
  * </ul>
  * 目标：普通与组合式柴油机。巨型柴油机由 B5（HugeDieselEngineMixin）独立覆盖，
@@ -107,8 +110,9 @@ public abstract class DieselEngineRampMixin {
     /**
      * 状态机（每 tick 收尾，仅服务端）：引信进行中→只推进倒计时（不可中断，
      * 到时爆音+粒子+自毁）；燃尽→解除闩锁复位；重新加油（油量
-     * 相对上次记录上升）→ 解除闩锁全新点火；运转中过载→<b>点引信</b>（警告音 1 次、
-     * 出力归零，6 秒后自毁，失败回退闩锁）；运转中推进
+     * 相对上次记录上升）→ 解除闩锁全新点火；运转中过载→累计首 tick 播警告音、
+     * 满确认窗口<b>点引信</b>（出力归零，2 秒后自毁，失败回退闩锁；确认前解除过载
+     * 即掐掉警告音，点引信后播完不掐）；运转中推进
      * 爬梯计时与波动抽取计时（getGeneratedSpeed 纯读系数）；<b>停转（红石关停/
      * 模拟调速归零）复位</b>——与燃尽/重新加油的"全新点火"语义一致（复核裁定，第 2 轮的
      * 续转语义已回退）。
@@ -128,9 +132,13 @@ public abstract class DieselEngineRampMixin {
         }
         IEngine engine = (IEngine) (Object) this;
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
-        if (!Config.DIESEL_ENGINE_OVERLOAD.get() && state.clearOverload()) {
-            self.setChanged();
-            ((GeneratingKineticBlockEntity) self).updateGeneratedRotation();
+        if (!Config.DIESEL_ENGINE_OVERLOAD.get()) {
+            // 关开关=未进不可挽回：累计中的警告音掐掉，再清闩锁/引信字段
+            CdgOverloadFuse.clearConfirmation(level, state);
+            if (state.clearOverload()) {
+                self.setChanged();
+                ((GeneratingKineticBlockEntity) self).updateGeneratedRotation();
+            }
         }
         boolean wasLatched = state.overloadLatched;
         CdgOverloadProbe.touch(self);
@@ -172,23 +180,32 @@ public abstract class DieselEngineRampMixin {
         state.fuelPresent = fuel;
         state.lastFuelAmount = fuelAmount;
         if (!fuel) {
-            state.overloadTicks = 0;
+            CdgOverloadFuse.clearConfirmation(level, state);
             return;
         }
 
         boolean enabled = engine.enabled();
         boolean overloaded = CdgKineticOverload.refreshedOverstressed(self);
         if (Config.DIESEL_ENGINE_OVERLOAD.get() && enabled && overloaded) {
-            // B6：实时过载连续 40 tick（2 秒，见 CdgOverloadMath）才点引信——
-            // 确认前爬梯/波动计时冻结（本 tick 直接 return，不断也不复位），燃油
-            // 照常扣除（门控仅闩锁/引信后生效）。确认后警告音 1 次、出力立即归零
-            // （闩锁口径），6 秒后爆音+粒子+自毁掉落（余油不返还）。
+            // B6：确认口径全真（已加载实时账过载且超出全网额定容量）连续 40 tick
+            // （2 秒，见 CdgOverloadMath/CdgKineticOverload）才点引信——累计期间
+            // 爬梯/波动计时冻结（本 tick 直接 return，不断也不复位），燃油照常扣除
+            // （门控仅闩锁/引信后生效）。累计首 tick 即播警告音（确认前解除过载
+            // 由下方复位路径掐掉），确认后出力立即归零（闩锁口径），警告音播完
+            // 不掐，2 秒后爆音+粒子+自毁掉落（余油不返还）。
+            // refreshedOverstressed 判否的三种形态（粘位/毒账/爬梯可覆盖）都落回
+            // 下方正常推进：overloadTicks 清零、爬梯照常——不冻结，让引擎爬回
+            // 额定或靠转速变化触发整网重建清掉幻影份额。
             if (loadGrace) {
                 // 读档宽限：网络仍在重建，不累计；同未确认口径冻结爬梯/波动
-                state.overloadTicks = 0;
+                CdgOverloadFuse.clearConfirmation(level, state);
                 return;
             }
             state.overloadTicks = CdgOverloadMath.countOverloadTick(state.overloadTicks);
+            if (state.overloadTicks == 1) {
+                // 过载一开始（确认累计首 tick）即播警告音；确认前解除会被掐掉
+                CdgOverloadFuse.startWarning(level, self.getBlockPos());
+            }
             if (!CdgOverloadMath.isOverloadConfirmed(state.overloadTicks)) {
                 return;
             }
@@ -203,7 +220,7 @@ public abstract class DieselEngineRampMixin {
             }
             return;
         }
-        state.overloadTicks = 0;
+        CdgOverloadFuse.clearConfirmation(level, state);
         if (!state.overloadLatched) {
             // throttle 口径（1.3.15）：getter 额定 = upgrade.getSpeed * throttle，
             // 饱和判定必须同源；throttle == 0（模拟调速关闭）视为停转复位

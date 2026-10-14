@@ -38,7 +38,7 @@ public class CdgEngineState {
     public int fluctTicksLeft;
     /** B6 过载引信进行中（置位即隐含 overloadLatched：出力与燃油门控走闩锁口径）。 */
     public boolean fuseActive;
-    /** B6 引信剩余 tick（120 起，到 0 自毁）。 */
+    /** B6 引信剩余 tick（{@link CdgOverloadFuse#FUSE_TICKS} 起，到 0 自毁）。 */
     public int fuseTicksLeft;
     /**
      * B6 疑似过载连续计数（运转中过载每 tick +1，任一正常 tick 清零）。

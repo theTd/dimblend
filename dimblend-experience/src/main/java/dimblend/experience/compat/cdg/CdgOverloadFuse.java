@@ -3,27 +3,33 @@ package dimblend.experience.compat.cdg;
 import dimblend.experience.ModSounds;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.network.protocol.game.ClientboundStopSoundPacket;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 
 import java.util.function.BooleanSupplier;
 
 /**
- * B6 过载引信（不可中断，三类柴油机共用，确认窗口见 {@link CdgOverloadMath}）：
- * 运转中过载连续 2 秒确认后 {@link #startFuse} 点引信——存档/区块加载期
+ * B6 过载警告与引信（确认窗口见 {@link CdgOverloadMath}，引信不可中断，三类柴油机共用）：
+ * 运转中过载确认累计的首个 tick 即播 {@code diesel_overstress} 警告音（{@link #startWarning}，
+ * 2026-10-14 拍板：从点引信当 tick 提前到过载一开始）；进入不可挽回（点引信）前解除过载
+ * ——累计被清零——则掐掉警告音（{@link #clearConfirmation}），点引信后不再干预、播完为止。
+ * 过载连续 2 秒确认后 {@link #startFuse} 点引信——存档/区块加载期
  * kinetic 网络重建的短暂误报在此窗口内被滤掉，与蒸汽机 H 板块 16 秒持续确认同设计语言；
  * 确认后每服务端 tick {@link #tickFuse} 递减，红石关停/燃尽/负载恢复都不取消；
  * 倒计时期间每 tick 在引擎中心播 {@code minecraft:large_smoke}
- * （delta 0.2,0.2,0.2 / speed 0 / count 10），持续整个 6 秒；
- * 120 tick（6 秒）到时播放 {@code entity.generic.explode} 一次 + 爆炸粒子
+ * （delta 0.2,0.2,0.2 / speed 0 / count 10），持续整个 2 秒；
+ * 40 tick（2 秒，2026-10-14 拍板：较原 6 秒提前 4 秒引爆）到时播放
+ * {@code entity.generic.explode} 一次 + 爆炸粒子
  * （{@code minecraft:explosion}，delta 1,1,1 / speed 0 / count 100），再破坏自毁掉落。
  * 仅自毁掉落，无地形/实体伤害（不调 {@code level.explode}）。
  */
 public final class CdgOverloadFuse {
 
-    /** 引信时长：6 秒 × 20 tps。 */
-    public static final int FUSE_TICKS = 120;
+    /** 引信时长：2 秒 × 20 tps。 */
+    public static final int FUSE_TICKS = 40;
     /** 自爆粒子数：与 /particle minecraft:explosion ~ ~ ~ 1 1 1 0 100 同口径。 */
     public static final int DETONATE_PARTICLE_COUNT = 100;
     /** 引信期烟雾粒子数（每 tick）：与 /particle minecraft:large_smoke ~ ~ ~ 0.2 0.2 0.2 0 10 同口径。 */
@@ -34,7 +40,31 @@ public final class CdgOverloadFuse {
     private CdgOverloadFuse() {
     }
 
-    /** 点引信：警告音一次 + 出力闩锁归零（燃油门控走闩锁口径），倒计时 120 tick；确认计数清零。 */
+    /** 过载警告：确认累计的首个 tick 在引擎位置播 {@code diesel_overstress} 一次。 */
+    public static void startWarning(ServerLevel level, BlockPos pos) {
+        level.playSound(null, pos, ModSounds.DIESEL_OVERSTRESS.get(), SoundSource.BLOCKS, 1.0F, 1.0F);
+    }
+
+    /**
+     * 确认进度清零（调用方：过载解除/断油/停转/读档宽限等一切未点引信的复位路径）：
+     * 累计过（警告音在播）则掐掉警告音——进入不可挽回前解除过载不播完；
+     * 点引信后计数已由 {@link #startFuse} 清零，不会走到这里，警告音播完为止。
+     */
+    public static void clearConfirmation(ServerLevel level, CdgEngineState state) {
+        if (state.overloadTicks > 0) {
+            ClientboundStopSoundPacket packet = new ClientboundStopSoundPacket(
+                    ModSounds.DIESEL_OVERSTRESS.getId(), SoundSource.BLOCKS);
+            for (ServerPlayer player : level.players()) {
+                player.connection.send(packet);
+            }
+        }
+        state.overloadTicks = 0;
+    }
+
+    /**
+     * 点引信：出力闩锁归零（燃油门控走闩锁口径），倒计时 {@link #FUSE_TICKS}；确认计数清零。
+     * 警告音在确认累计首 tick 已播（{@link #startWarning}），此处不重播也不掐断（播完为止）。
+     */
     public static void startFuse(ServerLevel level, BlockPos pos, CdgEngineState state) {
         state.fuseActive = true;
         state.overloadLatched = true;
@@ -42,7 +72,6 @@ public final class CdgOverloadFuse {
         state.overloadTicks = 0;
         state.rampTicks = 0;
         state.fluctTicksLeft = 0;
-        level.playSound(null, pos, ModSounds.DIESEL_OVERSTRESS.get(), SoundSource.BLOCKS, 1.0F, 1.0F);
     }
 
     /**

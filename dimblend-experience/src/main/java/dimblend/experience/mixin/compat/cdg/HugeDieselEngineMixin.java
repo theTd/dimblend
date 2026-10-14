@@ -31,12 +31,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * 饱和判定与该调用实参同源（{@code |getFuelSpeed * getThrottle|}，注意 1.3.15
  * 此处未乘 upgrade 倍率——与上游保持一致，不另做修正）。</p>
  *
- * <p>B6 过载引信（用户拍板，不可中断）：轴缓存 {@code overStressed} 为真时先按实时
- * 容量/应力复核（见 {@code CdgKineticOverload}；加载期 {@code addSilently} 不 sync，
- * 缓存位会粘住），实时过载连续满 40 tick（2 秒）才确认。确认后先摘轴侧登记
- * （否则轴残留末速空转），再点引信——警告音 1 次、出力归零，
+ * <p>B6 过载警告与引信（用户拍板，引信不可中断）：轴缓存 {@code overStressed} 为真时先按三关
+ * 复核（见 {@code CdgKineticOverload}；2026-10-13 修订——整网实时账、已加载成员实时账、
+ * 全网额定容量覆盖判定；加载期 {@code addSilently} 不 sync，缓存位会粘住），
+ * 三关全真连续 40 tick（2 秒）才确认，期间爬梯/波动计时冻结；判否（粘位/毒账/
+ * 爬梯可覆盖）不累计也不冻结，照常推进爬梯。确认累计首 tick 即播警告音
+ * （2026-10-14 拍板提前，原在点引信当 tick）；确认前解除过载（累计清零）即掐掉，
+ * 点引信后播完不掐。确认后先摘轴侧登记（否则轴残留末速空转），再点引信——出力归零，
  * 引信期间每 tick 播 large_smoke（delta 0.2,0.2,0.2 / speed 0 / count 10）；
- * 实时不过载不累计（确认进度不跨存档携带）。6 秒后爆音 1 次 + 爆炸粒子
+ * 实时不过载不累计（确认进度不跨存档携带）。2 秒后爆音 1 次 + 爆炸粒子
  * （delta 1,1,1 / speed 0 / count 100），再 {@code destroyBlock(pos, true)}
  * 破坏本体掉落（余油不返还、无真实爆炸伤害）。红石关停/燃尽/负载恢复都不取消引信。
  * 自毁破坏失败（极端情况）才回退闩锁等重新加油。燃尽走原版停机（不干预）。</p>
@@ -101,7 +104,8 @@ public abstract class HugeDieselEngineMixin {
      * B5 计时 + B6 过载引信（每 tick 收尾，仅服务端）：引信进行中→只推进倒计时
      * （不可中断，到时摘登记+爆音+粒子+自毁）；闩锁回退→重新加油解除；
      * 停转（无油/红石关停/燃尽/模拟调速归零）→复位爬梯计时（引信除外）；
-     * 轴过载 → 摘登记 + 点引信（警告音 1 次）。爬梯/波动计时与普通机同口径。
+     * 轴过载 → 累计首 tick 播警告音（确认前解除即掐掉），满确认窗口摘登记 + 点引信。
+     * 爬梯/波动计时与普通机同口径。
      */
     @Inject(method = "tick()V", at = @At("RETURN"))
     private void dimblend$hugeIgnitionAndOverload(CallbackInfo ci) {
@@ -113,8 +117,12 @@ public abstract class HugeDieselEngineMixin {
             return;
         }
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
-        if (!Config.DIESEL_ENGINE_OVERLOAD.get() && state.clearOverload()) {
-            self.setChanged();
+        if (!Config.DIESEL_ENGINE_OVERLOAD.get()) {
+            // 关开关=未进不可挽回：累计中的警告音掐掉，再清闩锁/引信字段
+            CdgOverloadFuse.clearConfirmation(level, state);
+            if (state.clearOverload()) {
+                self.setChanged();
+            }
         }
         boolean wasLatched = state.overloadLatched;
         CdgOverloadProbe.touch(self);
@@ -149,7 +157,7 @@ public abstract class HugeDieselEngineMixin {
         }
         PoweredEngineShaftBlockEntity shaft = self.getShaft();
         if (shaft == null) {
-            state.overloadTicks = 0;
+            CdgOverloadFuse.clearConfirmation(level, state);
             return;
         }
         int fuelAmount = self.getTank().getFluidAmount();
@@ -165,22 +173,29 @@ public abstract class HugeDieselEngineMixin {
         if (!self.enabled() || self.getThrottle() == 0.0F) {
             // 未运行（无油/红石关停/燃尽/模拟调速归零）：复位计时，与普通机"停转复位"一致；
             // 且轴过载此时与其他引擎有关，不得炸本机
-            state.overloadTicks = 0;
+            CdgOverloadFuse.clearConfirmation(level, state);
             state.rampTicks = 0;
             state.fluctTicksLeft = 0;
             return;
         }
         if (Config.DIESEL_ENGINE_OVERLOAD.get() && CdgKineticOverload.refreshedOverstressed(shaft)) {
-            // B6 过载损坏（只炸本体）：实时容量盖不住应力时连续 40 tick（2 秒，见
-            // CdgOverloadMath）确认才点引信。粘住的缓存位在复核时按实时值刷掉，
-            // 不累计。确认前爬梯/波动计时冻结（直接 return，不断也不复位），
-            // 燃油照常扣除；确认后先摘轴侧登记防残留末速空转，再点引信
+            // B6 过载损坏（只炸本体）：三关全真（缓存位 + 已加载实时账过载 + 已加载
+            // 应力超出全网额定容量）连续 40 tick（2 秒，见 CdgOverloadMath）确认才点
+            // 引信。粘住的缓存位在复核时按实时值刷掉，不累计；判否形态（毒账/爬梯
+            // 可覆盖）落回下方正常推进爬梯，不冻结。确认累计期间爬梯/波动计时冻结
+            // （直接 return，不断也不复位），燃油照常扣除；累计首 tick 即播警告音
+            // （确认前解除由复位路径掐掉，点引信后播完不掐）；确认后先摘轴侧登记防
+            // 残留末速空转，再点引信
             if (loadGrace) {
                 // 读档宽限：网络仍在重建，不累计；同未确认口径冻结爬梯/波动
-                state.overloadTicks = 0;
+                CdgOverloadFuse.clearConfirmation(level, state);
                 return;
             }
             state.overloadTicks = CdgOverloadMath.countOverloadTick(state.overloadTicks);
+            if (state.overloadTicks == 1) {
+                // 过载一开始（确认累计首 tick）即播警告音；确认前解除会被掐掉
+                CdgOverloadFuse.startWarning(level, self.getBlockPos());
+            }
             if (!CdgOverloadMath.isOverloadConfirmed(state.overloadTicks)) {
                 return;
             }
@@ -199,7 +214,7 @@ public abstract class HugeDieselEngineMixin {
             }
             return;
         }
-        state.overloadTicks = 0;
+        CdgOverloadFuse.clearConfirmation(level, state);
         // 饱和判定与传轴实参同源（见类 javadoc）：|getFuelSpeed * getThrottle|
         float rated = Math.abs(self.getFuelSpeed() * self.getThrottle());
         float rampTarget = dimblend$IGNITION_RPM
