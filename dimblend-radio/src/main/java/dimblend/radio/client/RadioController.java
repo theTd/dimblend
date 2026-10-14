@@ -88,7 +88,7 @@ public final class RadioController {
     /** A device/resource reload is an interruption, even if OpenAL had buffered the final seconds. */
     public static void onSoundReload() {
         RadioAcousticController.reset();
-        RadioEnderVoices.clear();
+        RadioEndVoices.clear();
         LIVE.values().forEach(live -> live.feed().release());
         LIVE.clear();
         RELEASING.forEach(releasing -> releasing.feed.release());
@@ -223,8 +223,9 @@ public final class RadioController {
     /** The radio's reception where it stands now; End reception loads its voices on first use. */
     private static void followReception(Minecraft mc, BlockPos pos, RadioPcmFeed.Handle feed) {
         RadioReception reception = RadioReception.at(mc.level, pos);
-        if (reception.voices && RadioLiveSettings.receptionNoiseVolume() > 0.0f) {
-            RadioEnderVoices.prepare(mc);
+        if (reception.voices && RadioLiveSettings.receptionNoiseVolume() > 0.0f
+                && RadioLiveSettings.endVoiceFrequency() > 0.0f) {
+            RadioEndVoices.prepare(mc);
         }
         if (feed.setReception(reception)) {
             DimBlendRadio.LOGGER.info("[radio] reception={} pos={} world={} dimension={}", reception, pos,

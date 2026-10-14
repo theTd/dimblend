@@ -20,7 +20,7 @@ import net.neoforged.neoforge.common.Tags;
  * @param crackle a crackle's peak level
  * @param fading how deep the slow signal fades go: the track dips by up to this share while the
  *               static swells by as much
- * @param voices faint enderman voices drift in now and then
+ * @param voices faint enderman and shulker voices drift in now and then
  */
 public enum RadioReception {
     /** Overworld and underground. */

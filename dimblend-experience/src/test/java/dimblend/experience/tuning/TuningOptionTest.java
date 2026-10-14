@@ -86,6 +86,20 @@ class TuningOptionTest {
     }
 
     @Test
+    void radioEndVoiceFrequencyDefaultsToDoubleAndAcceptsTenths() {
+        var option = TuningOption.RADIO_END_VOICE_FREQUENCY;
+        assertTrue(option.radio());
+        assertEquals(2.0D, option.defaultValue());
+        for (double valid : new double[] {0.0D, 0.1D, 1.0D, 2.0D, 3.9D, 4.0D}) {
+            assertTrue(option.isValid(valid));
+        }
+        for (double invalid : new double[] {-0.1D, 0.01D, 2.05D, 4.1D}) {
+            assertFalse(option.isValid(invalid));
+        }
+        assertEquals("2.0", option.format(option.defaultValue()));
+    }
+
+    @Test
     void sableSubstepsRejectsZeroFractionsAndValuesAboveTen() {
         var option = TuningOption.SABLE_SUBSTEPS;
         assertFalse(option.isCheckbox());

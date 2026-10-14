@@ -107,7 +107,7 @@ public final class RadioPcmFeed {
             this.cursor = handle.start;
             this.end = handle.data.length;
             this.noise = new RadioReceptionNoise(handle.format.getSampleRate(),
-                    System.nanoTime() ^ ((long) handle.id.hashCode() << 32), RadioEnderVoices::clips);
+                    System.nanoTime() ^ ((long) handle.id.hashCode() << 32), RadioEndVoices::clips);
         }
 
         public AudioFormat getFormat() {

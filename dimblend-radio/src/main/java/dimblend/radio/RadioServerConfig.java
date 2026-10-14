@@ -14,10 +14,17 @@ public final class RadioServerConfig {
     public static final ModConfigSpec.DoubleValue RECEPTION_NOISE = BUILDER
             .comment("Radio reception noise volume: 0 plays every radio clean, 0.5 the former always-on"
                     + " level, up to 2. Overworld and underground play clean; the Nether and modded areas add"
-                    + " faint static; the End lets faint enderman voices through now and then; Voidscape plays"
-                    + " static only. A stored boolean from older versions resets to the default.")
+                    + " faint static; the End lets faint enderman and shulker voices through now and then;"
+                    + " Voidscape plays static only. A stored boolean from older versions resets to the default.")
             .defineInRange("receptionNoise", (double) RadioLiveSettings.DEFAULT_RECEPTION_NOISE_VOLUME,
                     0.0D, (double) RadioLiveSettings.MAX_RECEPTION_NOISE_VOLUME);
+
+    public static final ModConfigSpec.DoubleValue END_VOICE_FREQUENCY = BUILDER
+            .comment("End voice frequency multiplier: 1 is the original cadence (first voice after 10-30 seconds,"
+                    + " then every 25-70 seconds), default 2 doubles it. Range 0.0-4.0, step 0.1;"
+                    + " 0 disables new voices. Enderman and shulker clips are selected with weights 7 and 1.")
+            .defineInRange("endVoiceFrequency", (double) RadioLiveSettings.DEFAULT_END_VOICE_FREQUENCY,
+                    0.0D, (double) RadioLiveSettings.MAX_END_VOICE_FREQUENCY);
 
     public static final ModConfigSpec.DoubleValue ACOUSTIC_INTENSITY = BUILDER
             .comment("Acoustic simulation intensity: scales the simulated echo (reflections and reverb); default 1.0."
@@ -31,7 +38,7 @@ public final class RadioServerConfig {
     /** Copies the loaded values into {@link RadioLiveSettings}, or its defaults while unloaded. */
     public static void refresh() {
         if (SPEC.isLoaded()) {
-            RadioLiveSettings.set(RECEPTION_NOISE.get(), ACOUSTIC_INTENSITY.get());
+            RadioLiveSettings.set(RECEPTION_NOISE.get(), ACOUSTIC_INTENSITY.get(), END_VOICE_FREQUENCY.get());
         } else {
             RadioLiveSettings.reset();
         }
@@ -42,11 +49,16 @@ public final class RadioServerConfig {
      * copies; saving is the caller's choice.
      */
     public static void apply(double receptionNoiseVolume, double acousticIntensity) {
+        apply(receptionNoiseVolume, acousticIntensity, RadioLiveSettings.endVoiceFrequency());
+    }
+
+    public static void apply(double receptionNoiseVolume, double acousticIntensity, double voiceFrequency) {
         if (SPEC.isLoaded()) {
             RECEPTION_NOISE.set(receptionNoiseVolume);
             ACOUSTIC_INTENSITY.set(acousticIntensity);
+            END_VOICE_FREQUENCY.set(voiceFrequency);
         }
-        RadioLiveSettings.set(receptionNoiseVolume, acousticIntensity);
+        RadioLiveSettings.set(receptionNoiseVolume, acousticIntensity, voiceFrequency);
     }
 
     static void onLoading(ModConfigEvent.Loading event) {

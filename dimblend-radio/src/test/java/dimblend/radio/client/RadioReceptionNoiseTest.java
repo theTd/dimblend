@@ -62,7 +62,15 @@ class RadioReceptionNoiseTest {
     }
 
     private static RadioReceptionNoise noise(List<float[]> clips) {
-        return new RadioReceptionNoise(RATE, 42, rate -> clips);
+        return new RadioReceptionNoise(RATE, 42, rate -> clips.isEmpty()
+                ? List.of() : List.of(new RadioEndVoices.WeightedClips(1, clips)));
+    }
+
+    private static int firstNonZero(float[] samples) {
+        for (int i = 0; i < samples.length; i++) {
+            if (samples[i] != 0) return i;
+        }
+        return -1;
     }
 
     @Test
@@ -114,14 +122,64 @@ class RadioReceptionNoiseTest {
     void endReceptionLetsFaintVoicesThroughNowAndThen() {
         float[] voice = new float[RATE];
         for (int i = 0; i < voice.length; i++) voice[i] = (float) Math.sin(2 * Math.PI * 1000 * i / RATE);
-        float[][] io = run(noise(List.of(RadioEnderVoices.prepareClip(voice, RATE))),
+        float[][] io = run(noise(List.of(RadioEndVoices.prepareClip(voice, RATE))),
                 RadioReception.ENDER_VOICES, 40, 0, 1.0f);
         double peak = 0;
         for (float sample : io[1]) peak = Math.max(peak, Math.abs(sample));
         assertTrue(peak > 0.02, "a voice came through within 40 s: " + peak);
         assertTrue(peak < 0.45, "the voice leaves mixing headroom: " + peak);
-        // The first one waits at least ten seconds.
-        assertEquals(0, rms(Arrays.copyOf(io[1], 10 * RATE), null), 1e-9);
+        // The default frequency is twice the original cadence, so the first wait is at least five seconds.
+        assertEquals(0, rms(Arrays.copyOf(io[1], 5 * RATE), null), 1e-9);
+    }
+
+    @Test
+    void endVoiceFrequencyTwoHalvesTheOriginalFirstWaitAndZeroDisablesVoices() {
+        float[] voice = new float[RATE];
+        Arrays.fill(voice, 0.1f);
+        try {
+            RadioServerConfig.apply(RadioLiveSettings.DEFAULT_RECEPTION_NOISE_VOLUME,
+                    RadioLiveSettings.DEFAULT_ACOUSTIC_INTENSITY, 1);
+            int original = firstNonZero(run(noise(List.of(voice)), RadioReception.ENDER_VOICES,
+                    31, 0, 1.0f)[1]);
+            RadioServerConfig.apply(RadioLiveSettings.DEFAULT_RECEPTION_NOISE_VOLUME,
+                    RadioLiveSettings.DEFAULT_ACOUSTIC_INTENSITY, 2);
+            int doubled = firstNonZero(run(noise(List.of(voice)), RadioReception.ENDER_VOICES,
+                    31, 0, 1.0f)[1]);
+            assertTrue(original >= 0, "the original cadence plays a voice within 31 seconds");
+            assertEquals(original / 2, doubled, "frequency 2 halves the same random first wait");
+            assertEquals(2.0f, RadioLiveSettings.DEFAULT_END_VOICE_FREQUENCY);
+
+            RadioServerConfig.apply(RadioLiveSettings.DEFAULT_RECEPTION_NOISE_VOLUME,
+                    RadioLiveSettings.DEFAULT_ACOUSTIC_INTENSITY, 0);
+            assertEquals(-1, firstNonZero(run(noise(List.of(voice)), RadioReception.ENDER_VOICES,
+                    31, 0, 1.0f)[1]), "frequency 0 disables new voices");
+        } finally {
+            RadioServerConfig.apply(RadioLiveSettings.DEFAULT_RECEPTION_NOISE_VOLUME,
+                    RadioLiveSettings.DEFAULT_ACOUSTIC_INTENSITY, RadioLiveSettings.DEFAULT_END_VOICE_FREQUENCY);
+        }
+    }
+
+    @Test
+    void endVoiceSelectionUsesSevenToOneEndermanShulkerWeight() {
+        assertEquals(7, RadioEndVoices.ENDERMAN_WEIGHT);
+        assertEquals(1, RadioEndVoices.SHULKER_WEIGHT);
+        float[] enderman1 = {0.1f};
+        float[] enderman2 = {0.2f};
+        float[] enderman3 = {0.3f};
+        float[] shulker = {0.4f};
+        var groups = List.of(
+                new RadioEndVoices.WeightedClips(RadioEndVoices.ENDERMAN_WEIGHT,
+                        List.of(enderman1, enderman2, enderman3)),
+                new RadioEndVoices.WeightedClips(RadioEndVoices.SHULKER_WEIGHT, List.of(shulker)));
+        assertSame(enderman1, RadioReceptionNoise.selectClip(groups, 0, 0));
+        assertSame(enderman3, RadioReceptionNoise.selectClip(groups, 0.874999, 0.999999));
+        assertSame(shulker, RadioReceptionNoise.selectClip(groups, 0.875, 0),
+                "three 7/3-weighted enderman variants must not leak across the group boundary");
+        assertSame(shulker, RadioReceptionNoise.selectClip(groups, 0.999999, 0));
+
+        var endermanOnly = groups.subList(0, 1);
+        assertSame(enderman2, RadioReceptionNoise.selectClip(endermanOnly, 0.999999, 0.5),
+                "a missing shulker group leaves enderman variants playable");
     }
 
     @Test
@@ -182,9 +240,9 @@ class RadioReceptionNoiseTest {
     @Test
     void voiceClipsAreResampledToThePlaybackRate() {
         float[] clip = new float[44100];
-        assertSame(clip, RadioEnderVoices.resample(clip, 44100, 44100));
-        assertEquals(48000, RadioEnderVoices.resample(clip, 44100, 48000).length);
-        assertEquals(22050, RadioEnderVoices.resample(clip, 44100, 22050).length);
+        assertSame(clip, RadioEndVoices.resample(clip, 44100, 44100));
+        assertEquals(48000, RadioEndVoices.resample(clip, 44100, 48000).length);
+        assertEquals(22050, RadioEndVoices.resample(clip, 44100, 22050).length);
     }
 
     @Test
@@ -193,11 +251,11 @@ class RadioReceptionNoiseTest {
         for (int i = 0; i < quiet.length; i++) {
             quiet[i] = 0.04f * (float) Math.sin(2 * Math.PI * 1000 * i / RATE);
         }
-        float[] prepared = RadioEnderVoices.prepareClip(quiet, RATE);
+        float[] prepared = RadioEndVoices.prepareClip(quiet, RATE);
         float[][] io = run(noise(List.of(prepared)), RadioReception.ENDER_VOICES, 35, 0.5, 1.0f);
         double voicePeak = 0;
         int voicedStart = -1;
-        for (int i = 10 * RATE; i < io[1].length; i++) {
+        for (int i = 5 * RATE; i < io[1].length; i++) {
             if (Math.abs(io[1][i] - io[0][i]) > 0.001) { voicedStart = i; break; }
         }
         assertTrue(voicedStart >= 0, "a voice should play");
@@ -222,11 +280,11 @@ class RadioReceptionNoiseTest {
             source[i] = (float) (0.9 * Math.sin(2 * Math.PI * 1000 * i / RATE));
         }
         float[] original = source.clone();
-        float[] prepared = RadioEnderVoices.prepareClip(source, RATE);
+        float[] prepared = RadioEndVoices.prepareClip(source, RATE);
         assertArrayEquals(original, source);
         for (float sample : prepared) assertTrue(Math.abs(sample) <= 0.850001f);
         assertEquals(0.18, rms(prepared, null), 1.0e-5);
-        assertArrayEquals(new float[BLOCK], RadioEnderVoices.prepareClip(new float[BLOCK], RATE));
-        assertEquals(0, RadioEnderVoices.prepareClip(new float[0], RATE).length);
+        assertArrayEquals(new float[BLOCK], RadioEndVoices.prepareClip(new float[BLOCK], RATE));
+        assertEquals(0, RadioEndVoices.prepareClip(new float[0], RATE).length);
     }
 }

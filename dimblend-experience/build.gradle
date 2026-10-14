@@ -107,7 +107,7 @@ configurations {
 dependencies {
     // Optional panel bridge: experience only imports carwash's api package.
     compileOnly project(":dimblend-carwash")
-    // Same for radio: only its api package (reception noise, acoustic intensity).
+    // Same for radio: only its api package (reception noise, End voice frequency, acoustic intensity).
     compileOnly project(":dimblend-radio")
     // A11 贝壳 X 标记：编译期零依赖（TreasureShellMarker 按注册名运行时查
     // dimblend_blocks:shell_marker），dev run / GameTest 需要方块真的在场

@@ -23,63 +23,104 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.RandomSource;
 
 /**
- * The enderman ambient clips End reception lets through, as mono PCM. They are the sound event's
- * current variants (resource packs apply), decoded once in the background and resampled per
- * playback sample rate on first use; a sound reload drops them.
+ * The enderman and shulker ambient clips End reception lets through, as mono PCM. Current resource
+ * pack variants are decoded once in the background and resampled per playback sample rate on first
+ * use; a sound reload drops them. Each sound event keeps its 7:1 group weight regardless of how
+ * many variants it has.
  */
-public final class RadioEnderVoices {
+public final class RadioEndVoices {
+    static final int ENDERMAN_WEIGHT = 7;
+    static final int SHULKER_WEIGHT = 1;
+
     private record Clip(float[] samples, float rate) { }
+    private record VoiceEvent(ResourceLocation id, int weight) { }
+    private record VoiceSource(int weight, List<ResourceLocation> paths) { }
+    private record VoiceGroup(int weight, List<Clip> clips) { }
+
+    /** A sound event's resampled variants and its exact integer group weight. */
+    record WeightedClips(int weight, List<float[]> clips) {
+        WeightedClips {
+            if (weight <= 0 || clips == null || clips.isEmpty()) {
+                throw new IllegalArgumentException("A voice group needs a positive weight and non-empty clips");
+            }
+            for (float[] clip : clips) {
+                if (clip == null || clip.length == 0) {
+                    throw new IllegalArgumentException("Voice clips must not be empty");
+                }
+            }
+            clips = List.copyOf(clips);
+        }
+    }
 
     private static final Object LOCK = new Object();
-    /** Decoded clips; null until loaded. */
-    private static volatile List<Clip> clips;
-    private static final Map<Integer, List<float[]>> RESAMPLED = new ConcurrentHashMap<>();
+    /** Decoded groups; null until loaded. */
+    private static volatile List<VoiceGroup> groups;
+    private static final Map<Integer, List<WeightedClips>> RESAMPLED = new ConcurrentHashMap<>();
     private static boolean loading;
     /** Bumped by {@link #clear}: a load started before it is discarded. */
     private static int generation;
 
     /** Client thread: starts loading the clips unless they are loaded or loading. */
     public static void prepare(Minecraft mc) {
-        Set<ResourceLocation> paths = new LinkedHashSet<>();
         int started;
         synchronized (LOCK) {
-            if (clips != null || loading) return;
+            if (groups != null || loading) return;
             loading = true;
             started = generation;
         }
-        WeighedSoundEvents event = mc.getSoundManager().getSoundEvent(SoundEvents.ENDERMAN_AMBIENT.getLocation());
-        if (event != null) {
-            // Variants are only reachable by drawing them; enough draws find every one.
-            RandomSource random = RandomSource.create(0);
-            for (int draw = 0; draw < 64; draw++) {
-                Sound sound = event.getSound(random);
-                if (sound != SoundManager.EMPTY_SOUND) paths.add(sound.getPath());
+        List<VoiceSource> sources = new ArrayList<>();
+        for (VoiceEvent voiceEvent : events()) {
+            Set<ResourceLocation> paths = new LinkedHashSet<>();
+            WeighedSoundEvents event = mc.getSoundManager().getSoundEvent(voiceEvent.id());
+            if (event != null) {
+                // Variants are only reachable by drawing them; enough draws find every one.
+                RandomSource random = RandomSource.create(0);
+                for (int draw = 0; draw < 64; draw++) {
+                    Sound sound = event.getSound(random);
+                    if (sound != SoundManager.EMPTY_SOUND) paths.add(sound.getPath());
+                }
             }
+            sources.add(new VoiceSource(voiceEvent.weight(), List.copyOf(paths)));
         }
         ResourceManager resources = mc.getResourceManager();
         Util.backgroundExecutor().execute(() -> {
-            List<Clip> decoded = new ArrayList<>();
-            for (ResourceLocation path : paths) {
-                try (InputStream input = resources.open(path); JOrbisAudioStream stream = new JOrbisAudioStream(input)) {
-                    decoded.add(mono(stream.readAll(), stream.getFormat()));
-                } catch (Exception e) {
-                    DimBlendRadio.LOGGER.warn("[radio] could not load End reception voice {}", path, e);
+            List<VoiceGroup> decoded = new ArrayList<>();
+            for (VoiceSource source : sources) {
+                List<Clip> eventClips = new ArrayList<>();
+                for (ResourceLocation path : source.paths()) {
+                    try (InputStream input = resources.open(path); JOrbisAudioStream stream = new JOrbisAudioStream(input)) {
+                        Clip clip = mono(stream.readAll(), stream.getFormat());
+                        if (clip.samples().length > 0) eventClips.add(clip);
+                    } catch (Exception e) {
+                        DimBlendRadio.LOGGER.warn("[radio] could not load End reception voice {}", path, e);
+                    }
+                }
+                if (!eventClips.isEmpty()) {
+                    decoded.add(new VoiceGroup(source.weight(), List.copyOf(eventClips)));
                 }
             }
             synchronized (LOCK) {
                 if (generation != started) return;
                 loading = false;
-                clips = List.copyOf(decoded);
+                groups = List.copyOf(decoded);
                 RESAMPLED.clear();
             }
         });
     }
 
-    /** Audio thread: the clips at {@code rate}, or none while they are not loaded. */
-    static List<float[]> clips(int rate) {
-        List<Clip> loaded = clips;
+    private static List<VoiceEvent> events() {
+        return List.of(
+                new VoiceEvent(SoundEvents.ENDERMAN_AMBIENT.getLocation(), ENDERMAN_WEIGHT),
+                new VoiceEvent(SoundEvents.SHULKER_AMBIENT.getLocation(), SHULKER_WEIGHT));
+    }
+
+    /** Audio thread: the weighted groups at {@code rate}, or none while they are not loaded. */
+    static List<WeightedClips> clips(int rate) {
+        List<VoiceGroup> loaded = groups;
         if (loaded == null) return List.of();
-        return RESAMPLED.computeIfAbsent(rate, target -> loaded.stream().map(clip -> resample(clip, target)).toList());
+        return RESAMPLED.computeIfAbsent(rate, target -> loaded.stream()
+                .map(group -> new WeightedClips(group.weight(), group.clips().stream()
+                        .map(clip -> resample(clip, target)).toList())).toList());
     }
 
     /** Sound reload: resources may have changed. */
@@ -87,7 +128,7 @@ public final class RadioEnderVoices {
         synchronized (LOCK) {
             generation++;
             loading = false;
-            clips = null;
+            groups = null;
             RESAMPLED.clear();
         }
     }
@@ -150,6 +191,6 @@ public final class RadioEnderVoices {
         return resample(clip.samples(), clip.rate(), rate);
     }
 
-    private RadioEnderVoices() {
+    private RadioEndVoices() {
     }
 }

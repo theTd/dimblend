@@ -19,6 +19,7 @@ public enum TuningOption {
     DIESEL_OVERLOAD("diesel_overload", 1.0D, "createdieselgenerators"),
     MOTOR_OVERLOAD("motor_overload", 1.0D, "createaddition"),
     RADIO_STATIC("radio_static", 0.5D, 2.0D, 2, "dimblend_radio"),
+    RADIO_END_VOICE_FREQUENCY("radio_end_voice_frequency", 2.0D, 4.0D, 1, "dimblend_radio"),
     RADIO_ACOUSTIC_INTENSITY("radio_acoustic_intensity", 1.0D, 2.0D, 2, "dimblend_radio"),
     EXP_CLEAR_RATIO("exp_clear_ratio", 1.0D, 1.0D, 2, ""),
     SABLE_SUBSTEPS("sable_substeps", 2.0D, 1.0D, 10.0D, 0, "sable", Section.SABLE),
@@ -76,7 +77,9 @@ public enum TuningOption {
     public double minimum() { return minimum; }
     public double maximum() { return maximum; }
     /** Settings owned by dimblend_radio, which every client applies to its own audio. */
-    public boolean radio() { return this == RADIO_STATIC || this == RADIO_ACOUSTIC_INTENSITY; }
+    public boolean radio() {
+        return this == RADIO_STATIC || this == RADIO_END_VOICE_FREQUENCY || this == RADIO_ACOUSTIC_INTENSITY;
+    }
     /** Settings on the Sable page, owned by sable's server config. */
     public boolean sable() { return section == Section.SABLE; }
 

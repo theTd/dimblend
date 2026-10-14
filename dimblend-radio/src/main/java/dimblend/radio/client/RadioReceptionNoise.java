@@ -1,5 +1,6 @@
 package dimblend.radio.client;
 
+import dimblend.radio.RadioLiveSettings;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.function.IntFunction;
@@ -26,7 +27,7 @@ final class RadioReceptionNoise {
     private static final float SETTLED = 1.0e-4f;
 
     private final float rate;
-    private final IntFunction<List<float[]>> voiceClips;
+    private final IntFunction<List<RadioEndVoices.WeightedClips>> voiceClips;
     // Per-sample coefficients near 1e-4: the gliding state is double, as float would stall about
     // 1e-3 short of its target (the step falls below float precision) and never settle.
     private final double glide, fadeFollow, duckFollow;
@@ -43,13 +44,14 @@ final class RadioReceptionNoise {
     private int strengthHold;
     // Voices.
     private float[] clip;
-    private int clipPosition, voiceCountdown = -1;
+    private int clipPosition;
+    private double voiceCountdown = -1;
     private double voiceDuck;
 
     /**
-     * @param voiceClips filtered and leveled mono clips at the given sample rate; empty while they load
+     * @param voiceClips filtered, leveled and weighted mono clips at the given sample rate; empty while loading
      */
-    RadioReceptionNoise(float sampleRate, long seed, IntFunction<List<float[]>> voiceClips) {
+    RadioReceptionNoise(float sampleRate, long seed, IntFunction<List<RadioEndVoices.WeightedClips>> voiceClips) {
         this.rate = sampleRate;
         this.seed = seed == 0 ? 0x9E3779B97F4A7C15L : seed;
         this.voiceClips = voiceClips;
@@ -86,6 +88,7 @@ final class RadioReceptionNoise {
         }
         if (reception == RadioReception.CLEAR && atRest()) return;
         float voiceTarget = reception.voices ? 1 : 0;
+        float voiceFrequency = reception.voices ? RadioLiveSettings.endVoiceFrequency() : 0;
         float crackleChance = reception.crackleRate / rate;
         for (int frame = 0; frame < frames; frame++) {
             music += (reception.music - music) * glide;
@@ -95,7 +98,7 @@ final class RadioReceptionNoise {
             voice += (voiceTarget - voice) * glide;
 
             float lost = (float) (1 - fadeStrength());
-            float voiceSample = voiceSample(reception.voices);
+            float voiceSample = voiceSample(reception.voices, voiceFrequency);
             voiceDuck += ((clip != null ? voice : 0) - voiceDuck) * duckFollow;
             float musicGain = (float) (music * (1 - fading * lost) * (1 - VOICE_DUCK * voiceDuck));
             float noise = (float) ((hissSample() * hiss * (1 + fading * (2 * lost - 1))
@@ -153,26 +156,43 @@ final class RadioReceptionNoise {
     }
 
     /** The playing voice clip's next sample; between clips, counts down to the next one. */
-    private float voiceSample(boolean wanted) {
+    private float voiceSample(boolean wanted, float frequency) {
         if (clip == null) {
             if (!wanted) {
                 voiceCountdown = -1;
                 return 0;
             }
             if (voiceCountdown < 0) voiceCountdown = seconds(10, 30);
-            if (voiceCountdown-- > 0) return 0;
-            List<float[]> clips = voiceClips.apply(Math.round(rate));
-            if (clips.isEmpty()) {
+            if (frequency <= 0) return 0;
+            // The countdown uses original-cadence samples, so live edits also scale the current wait.
+            voiceCountdown -= frequency;
+            if (voiceCountdown > 0) return 0;
+            List<RadioEndVoices.WeightedClips> groups = voiceClips.apply(Math.round(rate));
+            if (groups.isEmpty()) {
                 voiceCountdown = seconds(1, 1);
                 return 0;
             }
-            clip = clips.get((int) (uniform() * clips.size()));
+            clip = selectClip(groups, uniform(), uniform());
             clipPosition = 0;
             voiceCountdown = seconds(25, 70);
         }
         float sample = clip[clipPosition++];
         if (clipPosition >= clip.length) clip = null;
         return sample;
+    }
+
+    static float[] selectClip(List<RadioEndVoices.WeightedClips> groups, double groupDraw, double clipDraw) {
+        int totalWeight = groups.stream().mapToInt(RadioEndVoices.WeightedClips::weight).sum();
+        int selected = (int) (groupDraw * totalWeight);
+        for (RadioEndVoices.WeightedClips group : groups) {
+            if (selected < group.weight()) return selectVariant(group, clipDraw);
+            selected -= group.weight();
+        }
+        return selectVariant(groups.getLast(), clipDraw);
+    }
+
+    private static float[] selectVariant(RadioEndVoices.WeightedClips group, double draw) {
+        return group.clips().get((int) (draw * group.clips().size()));
     }
 
     private int seconds(float from, float to) {
