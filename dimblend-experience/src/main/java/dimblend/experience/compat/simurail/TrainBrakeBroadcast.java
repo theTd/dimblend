@@ -83,24 +83,6 @@ public final class TrainBrakeBroadcast {
     }
 
     /**
-     * 同维度是否有登记新鲜、|visualSpeed| 大于 {@code minSpeed} 的车架。
-     * 供 E7 离结构传送做全局速度闸；过期成员不计。
-     */
-    public static boolean hasAnyFasterThan(ResourceKey<Level> dim, double minSpeed, long nowTick) {
-        synchronized (MEMBERS) {
-            for (Member member : MEMBERS.values()) {
-                if (nowTick - member.tick > STALE_TICKS || !member.dim.equals(dim)) {
-                    continue;
-                }
-                if (member.speed > minSpeed) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
      * 沿触发整车广播：在注册表快照内按距离由近及远逐个播音（含触发者自身）。
      *
      * @return 实际播放数（去重跳过时为 0）。

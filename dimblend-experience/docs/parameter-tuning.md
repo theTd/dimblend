@@ -18,6 +18,7 @@ Missing optional mods leave their controls disabled.
 | Train additional lateral force | 1200 pN | 0-10000, step 1 | experience |
 | Bogie redstone signal cap | 1 | 1-15, step 1; signals above the cap are clamped to it, 15 restores vanilla scaling | experience |
 | Brake sound speed threshold | 2.0 m/s | 0.0-64.0 m/s, step 0.1; brake sound plays only above the threshold, release sound is not gated | experience |
+| Deadman brake radius | 32 | 8-128 blocks, step 1; rotating only: a moving consist with nobody within this radius of its nearest bogie force-brakes that consist; any raw redstone level change on any bogie releases its entire connected consist | experience |
 | Bogie roll torque cap | 5000 | 0-10000000, step 1; 0 = no roll spring (cars rest on the 15° roll stop) | simurail |
 | Dirtiness probability multiplier | 0.5 | 0.00-1.00, step 0.01; 0 = no soiling draws | carwash |
 | Allow coupler redstone activation | false | Checkbox | experience |
@@ -53,7 +54,7 @@ Radio follows the same pattern through `dimblend.radio.api.RadioTuning` and its
 own `serverconfig/dimblend_radio-server.toml`. Its settings are heard on each
 client, so remote clients also apply the broadcast radio values in memory
 (NeoForge already sends the config at login). The snapshot carries one value
-per option, so each added or removed option bumps the protocol version (now `15`; see the
+per option, so each added or removed option bumps the protocol version (now `16`; see the
 performance checklist below).
 
 The existing `couplerRedstone` config uses the inverse meaning: true blocks
@@ -150,7 +151,7 @@ server's results are shown (same JVM); a client connected to a remote server
 also lists its own collector, heap and memory. Server steps and the spark fix use
 the same permission gate as the panel (level 2) and travel on two extra payloads
 (`perf_check_request`, `perf_check_report`), which also bumped the tuning
-protocol version (now `15`, see above). The thresholds live in `PerfRules` and are unit-tested;
+protocol version (now `16`, see above). The thresholds live in `PerfRules` and are unit-tested;
 `PerfChecklistTranslationsTest` checks both languages cover every step, advice
 and fix label.
 

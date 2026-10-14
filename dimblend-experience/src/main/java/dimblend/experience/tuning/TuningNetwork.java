@@ -18,8 +18,8 @@ public final class TuningNetwork {
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
         // The snapshot carries one value per option: adding options changes the protocol.
-// v15 adds the configurable brake sound speed threshold (v14 added the lava melt speed multiplier option).
-        var registrar = event.registrar("15");
+        // v16 adds the deadman radius alongside v15's independent brake sound threshold.
+        var registrar = event.registrar("16");
         registrar.playToServer(TuningEditPayload.TYPE, TuningEditPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof ServerPlayer player) {

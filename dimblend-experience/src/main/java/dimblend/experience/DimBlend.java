@@ -62,6 +62,7 @@ public class DimBlend {
         // E8 横向力的 sable 力分组（Simulated 力示意图按分组绘制），条件与 E8 mixin 一致：仅 simurail 在场
         if (ModList.get().isLoaded("simurail")) {
             TrainForceGroups.FORCE_GROUPS.register(modEventBus);
+            dimblend.experience.compat.simurail.TrainDeadmanBrake.register();
         }
 
         // G3 配套：Sable 载具世界侧结构空位拟合（引 Sable 类型，仅 Sable 在场时解析注册）

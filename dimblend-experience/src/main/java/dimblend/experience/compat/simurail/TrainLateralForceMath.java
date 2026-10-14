@@ -4,7 +4,7 @@ package dimblend.experience.compat.simurail;
  * E8 车架随机横向力的纯函数。
  * 速度单位与转向架 {@code visualSpeed} 一致（1 b/s = 1 m/s）；力单位为 sable 的 pN
  * （与 {@code BlockEntityPropeller#getThrust} 同单位，施加时按物理子步乘 timeStep 成冲量）。
- * 速度门槛复用 {@link TrainOffStructureMath#isFast}（&gt;4 m/s，不含等于）。
+ * 速度门槛复用 {@link TrainSpeedGateMath#isFast}（&gt;4 m/s，不含等于）。
  */
 public final class TrainLateralForceMath {
 

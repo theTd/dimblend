@@ -16,4 +16,12 @@ class TrainSpeedGateMathTest {
         assertFalse(TrainSpeedGateMath.isBrakeAudible(3.0D, 4.0D));
         assertTrue(TrainSpeedGateMath.isBrakeAudible(0.1D, 0.0D));
     }
+    @Test
+    void emergencyGateRemainsFourIndependentlyOfBrakeSoundThreshold() {
+        assertFalse(TrainSpeedGateMath.isFast(4.0D));
+        assertFalse(TrainSpeedGateMath.isFast(3.99D));
+        assertTrue(TrainSpeedGateMath.isFast(4.01D));
+        assertTrue(TrainSpeedGateMath.isBrakeAudible(3.0D, 2.0D));
+        assertFalse(TrainSpeedGateMath.isFast(3.0D));
+    }
 }

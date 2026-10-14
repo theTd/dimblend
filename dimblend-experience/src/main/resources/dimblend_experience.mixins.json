@@ -43,8 +43,10 @@
 		"compat.create.SteamEngineOverloadMixin",
 		"compat.simurail.PhysicsBogeyBrakeSoundMixin",
 		"compat.simurail.PhysicsBogeyBrakeSignalCapMixin",
+		"compat.simurail.PhysicsBogeyDeadmanBrakeMixin",
 		"compat.simurail.PhysicsBogeyLateralForceMixin",
-		"compat.simurail.AutomaticCouplerRedstoneMixin"
+		"compat.simurail.AutomaticCouplerRedstoneMixin",
+		"compat.simurail.AutomaticCouplerPartnerAccessor"
 	],
 	"client": [
 		"client.ItemStackNicknameMixin",
@@ -53,7 +55,8 @@
 		"compat.create.ItemDrainGoggleMixin",
 		"compat.create.ElectricMotorGeneratorStatsMixin",
 		"compat.simurail.PhysicsBogeyTrackSoundMixin",
-		"compat.simurail.PhysicsBogeyWideGaugeParticleMixin"
+		"compat.simurail.PhysicsBogeyWideGaugeParticleMixin",
+		"compat.simurail.PhysicsBogeyDeadmanParticleMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

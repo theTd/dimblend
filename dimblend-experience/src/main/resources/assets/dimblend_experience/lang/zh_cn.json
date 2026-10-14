@@ -29,6 +29,8 @@
 	"screen.dimblend_experience.tuning.brake_signal_cap.description": "默认：1。转向架收到的红石信号强度不高于上限的原样生效，超过上限的一律压到上限（刹车力度与动力网络应力同按修正后强度）。设为 15 恢复原版随强度线性。",
 	"screen.dimblend_experience.tuning.brake_sound_speed_threshold": "刹车音效速度阈值",
 	"screen.dimblend_experience.tuning.brake_sound_speed_threshold.description": "默认：2.0 m/s。范围：0.0-64.0 m/s，精度：0.1。仅车架速度严格大于此阈值时播放施闸音；松闸音不受此门控。",
+	"screen.dimblend_experience.tuning.deadman_radius": "无人值守刹车判定半径",
+	"screen.dimblend_experience.tuning.deadman_radius.description": "默认：32。范围：8-128 格，精度：1。仅旋转维度：对整列编组量距离——编组上离玩家最近的车架在该半径内即算已值守（不看该架速度，编组按同车厢及自动车钩真实连接界定）；编组在动（存在 >4 m/s 车架）且无人值守时该编组全列满刹锁存；任意车架的原始红石等级变化即解除所在编组全部紧急刹车，通电、断电及正强度间变化均有效，其他编组保持自身状态。",
 	"screen.dimblend_experience.tuning.bogie_roll_torque": "转向架防侧倾力矩上限",
 	"screen.dimblend_experience.tuning.bogie_roll_torque.description": "默认：5000（Simurail 原版默认）。范围：0-10000000，精度：1。每个转向架的侧倾弹簧扶正车厢所用力矩的上限（Simurail 的 bogeyAngularSpringMaxTorque）。高或重的车厢在转向架上歪倒时调高；弹簧刚度不变，只有顶到上限的车厢才受影响。0 即去掉侧倾弹簧，车厢靠在转向架 15° 侧倾限位上。Sable 每 tick 1 个子步时，远高于默认的值可能让车厢抖动，调高时请保持 2 个子步。下一个物理步生效，写入 Simurail 服务端配置。",
 	"screen.dimblend_experience.tuning.soiling_multiplier": "脏污增长抽签概率系数",

@@ -48,6 +48,17 @@
 > `trainBrakeSignalCap`（1-15 级，默认 1 行为不变、15 等效关闭），经 /dbx 面板可调。
 > v1.19（2026-10-14 用户口径，E3 刹车音速度门可调）：默认阈值由 4 降为 2 m/s，新增
 > `trainBrakeSoundSpeedThreshold`（0-64 m/s，/dbx 面板步进 0.1）；松闸音不受此门控。
+> v1.18（2026-10-14 用户口径，E7 重做：无人值守刹车锁存）：废弃离结构传送（`TrainOffStructureRules`、
+> `CorridorRespawnLocator` 随之删除，`offStructureTeleport` 键作废），改为——rotating 内编组在动
+> 且无人值守时全维度强制满刹锁存；锁存由任意车架红石信号通一次再断开解除；锁存期间转向架播
+> portal 粒子（E6 参数）。新开关 `trainDeadmanBrake` + 半径 `trainDeadmanRadius`
+> （默认 32，经 /dbx 面板可调）。
+> 2026-10-15 实测修订（同日两次）：①值守判定改对整列编组量距离（按车厢及真实车钩连接成组，编组最近架
+> 超半径才算无人值守，不看该架速度——此前「最近架必须超速才算跟车」在玩家身边有低速架时误判，
+> 列车明明在旁却紧急刹车）；②钉死解除语义：一节车架的完整通断脉冲重置全列车（含他车），
+> 无需逐节操作。
+> 2026-10-15 后续用户确认距离刹车正确，解除口径更新为：任意车架的原始红石等级变化即
+> 解除所在编组全列紧急刹车，不再要求完整脉冲。锁存及粒子同步收敛到编组/车厢，其他编组独立。
 > 本文件是开发依据；原始清单仅作需求索引，两者冲突时以本文件为准。
 
 ## 0. 环境基线
@@ -84,7 +95,7 @@
 
 ### A2 重生点规则（v1.13 作废）
 - v1.13 起整体取消：床遗失/被挡/失效时不再改道 `(死亡x, 66, 5)` 走廊旁，重生落点完全走原版逻辑
-- 走廊旁落点算法 `CorridorRespawnLocator` 保留，仅供 E7 离结构传送的回送落点使用
+- 走廊旁落点算法 `CorridorRespawnLocator` 曾保留供 E7 离结构传送回送落点；v1.18 E7 重做后无调用方，已随 E7 一并删除
 
 ### A3 远行诅咒（z 轴生命上限递减）
 - `|z|` 每跨过一个 256 整数倍边界（256/512/768/…），生命**上限 ×0.75 乘算叠加**（20→15→11.25→…）
@@ -398,18 +409,35 @@
   （`END_ROD` 加下坠初速，密度每 tick 每格约 20% 实施时调）；动静都播；
   与行进声同粒度（按转向架）；新开关 `wideGaugeParticles`（默认开）；
   宽轨方块 id 以运行实例 railways jar（0.2.0-beta.2）注册表核实为准（2026-09-23 用户条目：仅幻纱宽轨）
-- E7 离结构传送（仅 rotating）：同维度任意车架 |visualSpeed| &gt; 4 m/s 时，
-  每 10 秒（200 tick）以玩家世界坐标为中心探测半径 32 格内是否有任意 sable 子层级
-  （`Sable.HELPER.getAllIntersecting` + 点到 AABB 欧氏距离 ≤32；先
-  `projectOutOfSubLevel`）。都无则传送回重生位置——有效床/锚点且落在 rotating
-  内走原版站立点（`findRespawnPositionAndUseSpawnBlock(keepInventory=true)`
-  不耗锚点充能）；缺失/被挡/其他维度改走走廊旁（`CorridorRespawnLocator`，
-  原 A2 落点算法，A2 死亡规则 v1.13 作废后仍供本条目使用），绝不弹世界出生点。
-  **走廊条带 |z|≤16 视为安全落点**（dimblend 预生成 z ∈ [-16, 15]，无床落点
-  z=5）：闸门仍开且附近无 sable 时下一周期不再 `teleportTo`，避免无床玩家
-  每 10 秒抽搐/下坐骑。创造/旁观豁免；simurail 或 sable 缺席 fail-open。
-  速度闸复用 `TrainBrakeBroadcast` 成员登记（与 E3/E4 同表，过期窗 40 tick）。
-  新开关 `offStructureTeleport`（默认开）
+- E7' 无人值守刹车锁存（v1.18 重做，仅 rotating；旧「离结构传送」废弃；2026-10-15 实测修订）：
+  每 10 tick（0.5 秒）在维度 Post tick 扫描一次；转向架 tick 仅采集速度和信号，
+  扫描时统一投影当前世界坐标，避免首架 tick 扫描半份登记表及沿用音效缓存旧坐标。
+  编组界定：同一 Sable 子层级内的车架归为一车厢，按自动车钩的真实 partnerSubLevelID
+  连接做传递闭包（含无车架的中间车厢）；不按 24 格距离猜连接，并排他车不再误并入，
+  长车厢也不会因架间距过大误拆组。未加载的伙伴不强制加载、不生成虚构连接。
+  逐编组问责：编组内存在 |visualSpeed| &gt; 4 m/s 的车架（编组在动），
+  且编组上离<b>每个</b>非旁观玩家最近的车架都超出值守半径（`trainDeadmanRadius`，默认 32 格，
+  8-128 经 /dbx 面板可调）时，该编组全列进入<b>刹车锁存</b>。距离对整列编组量、不看最近架自身
+  速度（2026-10-15 实测修订：此前「离玩家最近的车架必须超速才算跟车」在玩家身边存在任何
+  低速架——旁边停放的车、编组中未加速到 4 m/s 的架——时误判无人值守，列车明明在旁却紧急
+  刹车）。锁存期间 `getBrakeStrength()D` RETURN 经 `PhysicsBogeyDeadmanBrakeMixin`
+  强制 1.0 满刹（正控/反控一致；E3/E4 沿检测同读此方法，锁存/解除自动伴随施闸/松闸音效沿）。
+  玩家坐标先 `projectOutOfSubLevel` 投影（车上乘客落在车体位置，天然值守）。
+  **解除由编组内任意车架原始红石等级变化触发，立即解除该编组所有车厢的紧急刹车**
+  （2026-10-15 后续新需求，取代此前完整通断脉冲）：0→正、正→0、正→另一正等级均有效。
+  读取 Simurail 同一安全输入面上未经 E9 强度上限压顶的原始 0-15 等级，因此 1→2 等变化
+  不会被默认 1 级上限遮蔽。新加载车架首采样仅建立基线，不视为信号变化。
+  解除只作用于当前真实连接编组，其他列车保持自身锁存；信号变化当次更新不建立新的紧急锁存，
+  下次距离扫描若仍超速且无人值守，可重新施加紧急刹车。接入已锁存编组的车厢同步锁存，
+  拆开后各编组分别锁存/解除；临时卸载的车厢 UUID 保留状态，返回时继续按当前连接判定。
+  锁存不自动解除、不随停车解除；内存态，维度卸载和服务器停止时清空，切换存档不继承。
+  锁存车厢 UUID 完整快照经 `DeadmanLatchPayload` S2C 广播（协议版本 2；进服/换维度由 `TrainDeadmanSync`
+  补发），锁存期间客户端仅在已锁存车厢的转向架播 `PORTAL` 粒子（E6 同参数：y-1 上方 3x3、
+  每格每 tick 20%、下坠初速 -0.25）。新开关 `trainDeadmanBrake`（默认开；
+  关闭即解除全部锁存并广播）。simurail 缺席时 mixin 不应用、无登记即无扫描，
+  fail-open。旧键 `offStructureTeleport` 作废自动清除。
+  验证：编译及无人值守/速度门槛局部单测；用户已确认此前距离刹车实测正确；新的信号等级变化整列解除、他列隔离与粒子同步待实机验证。
+  连接语义仅覆盖 Sable 同车厢及 Simurail 自动车钩；其他模组的连接器不自动视为同列。
 - E8 车架随机横向力（2026-09-24 新条目，全维度，服务端）：逐车架（转向架 BE）独立计时——
   |visualSpeed| &gt; 4 m/s 期间每隔固定 2 秒（40 tick）判定一次，以
   min(速度/20, 1) 的概率触发；触发后对车架所在子层级施加 1200 pN 力，方向为车架局部
@@ -688,7 +716,9 @@
 | portableEngineExclusivity | F2（便携引擎整网唯一，零转速也算同网） | true |
 | trainSounds | E2/E3/E4 | true |
 | wideGaugeParticles | E6（纯客户端视觉） | true |
-| offStructureTeleport | E7（离结构传送，仅 rotating） | true |
+| offStructureTeleport | （v1.18 作废：E7 离结构传送已重做，键自动清除） | — |
+| trainDeadmanBrake | E7'（无人值守编组刹车锁存，仅 rotating；关闭即解除全部锁存） | true |
+| trainDeadmanRadius | E7' 配套（值守半径 8-128 格，经 /dbx 面板可调） | 32 |
 | trainLateralForce | E8（车架随机横向力，全维度） | true |
 | trainBrakeSignalCap | E9（转向架红石信号强度上限，全维度，经 /dbx 面板可调） | 1 |
 | villagerMaster | G1 | true |
@@ -729,6 +759,9 @@
 | compat.simurail.PhysicsBogeyLateralForceMixin | Simurail 物理转向架 BE（`tick` + `sable$physicsTick`） | E8 | simurail 在场 |
 | compat.simurail.PhysicsBogeyTrackSoundMixin | Simurail 物理转向架 BE | E2 | simurail 在场（client 数组） |
 | compat.simurail.PhysicsBogeyWideGaugeParticleMixin | Simurail 物理转向架 BE | E6 | simurail 在场（client 数组） |
+| compat.simurail.AutomaticCouplerPartnerAccessor | Simurail 自动车钩 BE（只读连接车厢 UUID，避免查询缺席伙伴触发加载或空值异常） | E7' | simurail 在场 |
+| compat.simurail.PhysicsBogeyDeadmanBrakeMixin | Simurail 物理转向架 BE（tick 速度/信号采样 + `getBrakeStrength` RETURN 锁存满刹） | E7' | simurail 在场 |
+| compat.simurail.PhysicsBogeyDeadmanParticleMixin | Simurail 物理转向架 BE（锁存期间 portal 粒子，E6 同参数） | E7' | simurail 在场（client 数组） |
 | compat.simurail.AutomaticCouplerRedstoneMixin | Simurail 自动车钩方块 | E5 | simurail 在场 |
 | compat.copycats.CopycatsObsidianHardnessMixin | Copycats+ 两根基类 | C0 | copycats 在场 |
 | compat.create.CreateCopycatObsidianHardnessMixin | Create CopycatBlock 根 | C0 | create 在场 |
@@ -750,7 +783,7 @@
 | LootPoolSingletonContainerAccessor / LootItemAccessor | 原版条目类（functions/item 读取） | A10 | 无条件（原版目标） |
 | BuriedTreasureShellMarkerMixin | 原版 BuriedTreasurePiece（postProcess 内 createChest 之后读 boundingBox 拿宝箱坐标，调 TreasureShellMarker.mark） | A11 | 无条件（原版目标） |
 
-事件处理器（非 mixin）：DeathRules（A1，LivingExperienceDropEvent + PlayerEvent.Clone）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainOffStructureRules（E7）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、EnderStorageStructureGuard（G5）、ExplorationMapLootFilter（A10，LootTableLoadEvent 战利品表加载时移除禁出地图条目）。
+事件处理器（非 mixin）：DeathRules（A1，LivingExperienceDropEvent + PlayerEvent.Clone）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainDeadmanSync（E7' 锁存状态进服/换维度补发；规则本体 `TrainDeadmanBrake` 在 Simurail 在场时显式注册维度 Post tick 与卸载/停服事件，mixin 仅采样）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、EnderStorageStructureGuard（G5）、ExplorationMapLootFilter（A10，LootTableLoadEvent 战利品表加载时移除禁出地图条目）。
 
 ### 依赖接线（C 板块例外为版本级对齐）
 
