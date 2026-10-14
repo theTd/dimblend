@@ -37,6 +37,18 @@ class TuningOptionTest {
     }
 
     @Test
+    void brakeSoundSpeedThresholdDefaultsToTwoAndAcceptsTenths() {
+        var option = TuningOption.BRAKE_SOUND_SPEED_THRESHOLD;
+        assertEquals(2.0D, option.defaultValue());
+        for (double valid : new double[] {0.0D, 0.1D, 2.0D, 63.9D, 64.0D}) {
+            assertTrue(option.isValid(valid));
+        }
+        for (double invalid : new double[] {-0.1D, 0.01D, 2.05D, 64.1D}) {
+            assertFalse(option.isValid(invalid));
+        }
+    }
+
+    @Test
     void bogieRollTorqueMirrorsSimurailDefaultAndTakesWholeValuesUpToTenMillion() {
         var option = TuningOption.BOGIE_ROLL_TORQUE;
         assertFalse(option.isCheckbox());

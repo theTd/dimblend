@@ -28,6 +28,7 @@ public final class TuningSettings {
             case SHAKE_INTERVAL -> Config.TRAIN_SHAKE_INTERVAL_SECONDS.get();
             case SHAKE_FORCE -> Config.TRAIN_SHAKE_FORCE_PN.get();
             case BRAKE_SIGNAL_CAP -> Config.TRAIN_BRAKE_SIGNAL_CAP.get();
+            case BRAKE_SOUND_SPEED_THRESHOLD -> Config.TRAIN_BRAKE_SOUND_SPEED_THRESHOLD.get();
             case BOGIE_ROLL_TORQUE -> available(option) ? SimurailTuningBridge.get() : option.defaultValue();
             case SOILING_MULTIPLIER -> available(option) ? CarwashTuningBridge.get() : option.defaultValue();
             case RADIO_STATIC, RADIO_END_VOICE_FREQUENCY, RADIO_ACOUSTIC_INTENSITY -> available(option) ? RadioTuningBridge.get(option) : option.defaultValue();
@@ -74,6 +75,7 @@ public final class TuningSettings {
             case SHAKE_INTERVAL -> Config.TRAIN_SHAKE_INTERVAL_SECONDS.set(value);
             case SHAKE_FORCE -> Config.TRAIN_SHAKE_FORCE_PN.set((int) value);
             case BRAKE_SIGNAL_CAP -> Config.TRAIN_BRAKE_SIGNAL_CAP.set((int) value);
+            case BRAKE_SOUND_SPEED_THRESHOLD -> Config.TRAIN_BRAKE_SOUND_SPEED_THRESHOLD.set(value);
             case COUPLER_REDSTONE -> Config.COUPLER_REDSTONE.set(!enabled);
             case COUPLER_SURVIVAL -> Config.ALLOW_SURVIVAL_COUPLER_INTERACTION.set(enabled);
             case LIMITED_WATER -> Config.LIMITED_WATER.set(enabled);

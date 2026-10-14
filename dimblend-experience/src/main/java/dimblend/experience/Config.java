@@ -144,6 +144,11 @@ public final class Config {
                     + "需要 Simurail 在场；客户端经 ConfigSync 同步后生效")
             .define("trainSounds", true);
 
+    public static final ModConfigSpec.DoubleValue TRAIN_BRAKE_SOUND_SPEED_THRESHOLD = BUILDER
+            .comment("E3 施闸音速度阈值（m/s，0-64，默认 2.0，/dbx 面板步进 0.1）："
+                    + "仅 |visualSpeed| 严格大于阈值时播放；松闸音不受此门控")
+            .defineInRange("trainBrakeSoundSpeedThreshold", 2.0D, 0.0D, 64.0D);
+
     public static final ModConfigSpec.BooleanValue WIDE_GAUGE_PARTICLES = BUILDER
             .comment("E 板块 E6：幻纱宽轨上的车架在其 y-1 3x3 范围生成下落的末地烛粒子（纯客户端视觉）。需要 Simurail 在场")
             .define("wideGaugeParticles", true);

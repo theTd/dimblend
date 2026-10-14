@@ -104,7 +104,7 @@
 - [ ] 待实测｜增大列车行进声音音量（约目前基础的三倍；2026-09-23 用户条目行进声减半：`BogeyTrackSound.FULL_VOLUME` 3.0→1.5，见 spec E2）
 - [ ] 待实测｜整列列车在有速度的时候按速度产生如下动态声音（整车单循环，见下条）
 - [ ] 待实测｜所有列车车架会依照行进速度播放行进音效 标准10m/s 音阶1 最低2m/s 音阶0.5 最高16m/s 音阶1.5 淡入5秒、停播淡出1秒；素材为短促单次音、整车 leader 每秒起一条（间隔不随音调拉伸）（2026-09-22 拍板口径已实施：`BogeyTrackSound.LOW_PITCH=0.5`，见 spec E2；2026-09-23 根因修复：淡入起播零音量被 `SoundEngine` 跳过（"Skipped playing sound, volume was zero"），`canStartSilent` 已恒返 true，否则全车架无声；2026-09-24 实测失败收敛：30架各播一条30秒循环叠成混乱声，改整车单源（`TrainLoopLeader` 同子层级/25m车钩邻接连锁选leader、按集群最大速度驱动；车场内60m开外他车链不上，不抢播），停播淡出改为1秒+孤儿看门狗；2026-09-24 改 `motor_running` 短音、播放时机改为 1 秒一次；2026-09-24 用户回标：`motor_running` 是马达素材，换为列车素材 `train-running (2)`（1.14 秒短音），仍每秒一条、音调随速度，停播逻辑不变；待实测）
-- [ ] 待实测｜刹车音效 音阶1 音量减半；仅速度大于 4 m/s 时播放（2026-09-22 拍板音阶 1.0 已实施；2026-09-23 用户条目音量减半已实施：`PhysicsBogeyBrakeSoundMixin.BRAKE_VOLUME=0.5`，松闸维持 1.0；v1.8 速度门 `TrainOffStructureMath.isBrakeAudible`，见 spec E3；待听音实测）
+- [ ] 待实测｜刹车音效 音阶1 音量减半；仅速度大于阈值时播放，阈值默认 2 m/s 且经 /dbx 面板可调（2026-09-22 拍板音阶 1.0 已实施；2026-09-23 用户条目音量减半已实施：`PhysicsBogeyBrakeSoundMixin.BRAKE_VOLUME=0.5`，松闸维持 1.0；v1.19 速度门默认由 4 降为 2 m/s，配置键 `trainBrakeSoundSpeedThreshold`，见 spec E3；待听音实测）
 - [ ] 待实测｜解除刹车时会播放泄气阀音效（spec E4 口径维持原参数；2026-09-22 增量未单独提及，状态不变）
 - [ ] 待实测｜刹车和解除刹车音效 所有车架都会播放（2026-09-22 用户回标未实现；2026-09-23 根因修复：① 服务端播音须先 `projectOutOfSubLevel` 投影到世界坐标（车勾同型），此前播局部坐标、声音落在 plot 区车旁听不见；② 触发从 `sable$physicsTick` 移到服务端 `tick()`，静置/休眠列车不断沿；2026-09-24 实测失败收敛：沿只能在受电单架上看到，改沿触发整车补播（`TrainBrakeBroadcast` 半径120m+速度窗1.5m/s，单次上限48，同速邻车误播为接受项），见 spec E3/E4；待实测）
 - [ ] 待实测｜位于幻纱宽轨上面的车架 会在其 y-1 3x3 范围生成下落的末地烛粒子 密度和末地烛相近即可（2026-09-22 口径已实施：`PhysicsBogeyWideGaugeParticleMixin` 纯客户端，见 spec E6；2026-09-23 用户条目：仅 `railways:track_phantom_wide` 精确匹配、其他宽轨不播；待实测）
