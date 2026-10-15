@@ -32,8 +32,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * {@code diesel_overstress.ogg} 1 次（2026-10-14 拍板提前，原在点引信当 tick）；
  * 确认前解除过载（累计清零）即掐掉警告音，点引信后播完不掐。连续 40 tick（2 秒）
  * 确认后点引信、出力归零，引信期间每 tick 播 large_smoke
- * （delta 0.2,0.2,0.2 / speed 0 / count 10）；2 秒（40 tick，2026-10-14 拍板，
- * 较原 6 秒提前 4 秒引爆）后播
+ * （delta 0.2,0.2,0.2 / speed 0 / count 10）；4 秒（80 tick，2026-10-15 拍板：
+ * 2 秒偏早再延后 2 秒，较最初 6 秒口径仍提前 2 秒）后播
  * {@code entity.generic.explode} 1 次 + 爆炸粒子（delta 1,1,1 / speed 0 /
  * count 100），再破坏自毁掉落（余油不返还、无真实爆炸伤害）。确认口径三关
  * （2026-10-13 修订，见 {@code CdgKineticOverload}）：缓存位真 + 已加载成员
@@ -111,7 +111,7 @@ public abstract class DieselEngineRampMixin {
      * 状态机（每 tick 收尾，仅服务端）：引信进行中→只推进倒计时（不可中断，
      * 到时爆音+粒子+自毁）；燃尽→解除闩锁复位；重新加油（油量
      * 相对上次记录上升）→ 解除闩锁全新点火；运转中过载→累计首 tick 播警告音、
-     * 满确认窗口<b>点引信</b>（出力归零，2 秒后自毁，失败回退闩锁；确认前解除过载
+     * 满确认窗口<b>点引信</b>（出力归零，4 秒后自毁，失败回退闩锁；确认前解除过载
      * 即掐掉警告音，点引信后播完不掐）；运转中推进
      * 爬梯计时与波动抽取计时（getGeneratedSpeed 纯读系数）；<b>停转（红石关停/
      * 模拟调速归零）复位</b>——与燃尽/重新加油的"全新点火"语义一致（复核裁定，第 2 轮的
@@ -192,7 +192,7 @@ public abstract class DieselEngineRampMixin {
             // 爬梯/波动计时冻结（本 tick 直接 return，不断也不复位），燃油照常扣除
             // （门控仅闩锁/引信后生效）。累计首 tick 即播警告音（确认前解除过载
             // 由下方复位路径掐掉），确认后出力立即归零（闩锁口径），警告音播完
-            // 不掐，2 秒后爆音+粒子+自毁掉落（余油不返还）。
+            // 不掐，4 秒后爆音+粒子+自毁掉落（余油不返还）。
             // refreshedOverstressed 判否的三种形态（粘位/毒账/爬梯可覆盖）都落回
             // 下方正常推进：overloadTicks 清零、爬梯照常——不冻结，让引擎爬回
             // 额定或靠转速变化触发整网重建清掉幻影份额。

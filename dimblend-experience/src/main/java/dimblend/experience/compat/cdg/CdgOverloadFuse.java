@@ -20,16 +20,20 @@ import java.util.function.BooleanSupplier;
  * kinetic 网络重建的短暂误报在此窗口内被滤掉，与蒸汽机 H 板块 16 秒持续确认同设计语言；
  * 确认后每服务端 tick {@link #tickFuse} 递减，红石关停/燃尽/负载恢复都不取消；
  * 倒计时期间每 tick 在引擎中心播 {@code minecraft:large_smoke}
- * （delta 0.2,0.2,0.2 / speed 0 / count 10），持续整个 2 秒；
- * 40 tick（2 秒，2026-10-14 拍板：较原 6 秒提前 4 秒引爆）到时播放
+ * （delta 0.2,0.2,0.2 / speed 0 / count 10），持续整个 4 秒；
+ * 80 tick（4 秒，2026-10-15 拍板：2 秒引信偏早，再延后 2 秒引爆；
+ * 较最初 6 秒口径仍提前 2 秒）到时播放
  * {@code entity.generic.explode} 一次 + 爆炸粒子
  * （{@code minecraft:explosion}，delta 1,1,1 / speed 0 / count 100），再破坏自毁掉落。
  * 仅自毁掉落，无地形/实体伤害（不调 {@code level.explode}）。
  */
 public final class CdgOverloadFuse {
 
-    /** 引信时长：2 秒 × 20 tps。 */
-    public static final int FUSE_TICKS = 40;
+    /**
+     * 引信时长：4 秒 × 20 tps（2026-10-15 拍板：2 秒偏早再延后 2 秒，较最初 6 秒口径仍提前 2 秒）。
+     * 警告音素材长 6.005 秒（≈120 tick）：过载首 tick 起播，2 秒确认 + 4 秒引信，刚好在爆炸瞬间播完。
+     */
+    public static final int FUSE_TICKS = 80;
     /** 自爆粒子数：与 /particle minecraft:explosion ~ ~ ~ 1 1 1 0 100 同口径。 */
     public static final int DETONATE_PARTICLE_COUNT = 100;
     /** 引信期烟雾粒子数（每 tick）：与 /particle minecraft:large_smoke ~ ~ ~ 0.2 0.2 0.2 0 10 同口径。 */
