@@ -33,6 +33,7 @@ Missing optional mods leave their controls disabled.
 | Electric Motor overload penalty | true | Checkbox | experience |
 | Radio reception noise volume | 0.50 | 0.00-2.00, step 0.01; 0 = every radio clean, 0.50 = former on level | radio |
 | Radio End voice frequency multiplier | 2.0 | 0.0-4.0, step 0.1; 1.0 = original cadence, 0 = no new voices | radio |
+| Radio End voice volume | 0.75 | 0.00-2.00, step 0.01; 0.5 = former hard-coded loudness, 0 = no voices (music not ducked) | radio |
 | Radio acoustic simulation intensity | 1.00 | 0.00-2.00, step 0.01; 0 = no simulated echo | radio |
 | Experience clear ratio on respawn | 1.00 | 0.00-1.00, step 0.01; rotating dimension only, ignores keepInventory, no experience orb drops | experience |
 
@@ -54,7 +55,7 @@ Radio follows the same pattern through `dimblend.radio.api.RadioTuning` and its
 own `serverconfig/dimblend_radio-server.toml`. Its settings are heard on each
 client, so remote clients also apply the broadcast radio values in memory
 (NeoForge already sends the config at login). The snapshot carries one value
-per option, so each added or removed option bumps the protocol version (now `16`; see the
+per option, so each added or removed option bumps the protocol version (now `17`; see the
 performance checklist below).
 
 The existing `couplerRedstone` config uses the inverse meaning: true blocks

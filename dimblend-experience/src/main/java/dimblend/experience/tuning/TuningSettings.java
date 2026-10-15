@@ -11,7 +11,7 @@ public final class TuningSettings {
         return switch (option) {
             case SOILING_MULTIPLIER -> CarwashTuningBridge.isLoaded();
             case BOGIE_ROLL_TORQUE -> SimurailTuningBridge.isLoaded();
-            case RADIO_STATIC, RADIO_END_VOICE_FREQUENCY, RADIO_ACOUSTIC_INTENSITY -> RadioTuningBridge.isLoaded();
+            case RADIO_STATIC, RADIO_END_VOICE_FREQUENCY, RADIO_END_VOICE_VOLUME, RADIO_ACOUSTIC_INTENSITY -> RadioTuningBridge.isLoaded();
             case SABLE_SUBSTEPS, SABLE_SOLVER_ITERATIONS, SABLE_PGS_ITERATIONS, SABLE_STABILIZATION_ITERATIONS,
                     SABLE_PHYSICS_TICK_INTERVAL, SABLE_SLEEP_SKIP, SABLE_CONTACT_FORCE_EVENTS,
                     SABLE_BIOME_PROJECTION_FAST_PATH, SABLE_EMPTY_CONTAINER_FAST_PATH ->
@@ -32,7 +32,7 @@ public final class TuningSettings {
             case DEADMAN_RADIUS -> Config.TRAIN_DEADMAN_RADIUS.get();
             case BOGIE_ROLL_TORQUE -> available(option) ? SimurailTuningBridge.get() : option.defaultValue();
             case SOILING_MULTIPLIER -> available(option) ? CarwashTuningBridge.get() : option.defaultValue();
-            case RADIO_STATIC, RADIO_END_VOICE_FREQUENCY, RADIO_ACOUSTIC_INTENSITY -> available(option) ? RadioTuningBridge.get(option) : option.defaultValue();
+            case RADIO_STATIC, RADIO_END_VOICE_FREQUENCY, RADIO_END_VOICE_VOLUME, RADIO_ACOUSTIC_INTENSITY -> available(option) ? RadioTuningBridge.get(option) : option.defaultValue();
             case COUPLER_REDSTONE -> Config.COUPLER_REDSTONE.get() ? 0.0D : 1.0D;
             case COUPLER_SURVIVAL -> Config.ALLOW_SURVIVAL_COUPLER_INTERACTION.get() ? 1.0D : 0.0D;
             case LIMITED_WATER -> Config.LIMITED_WATER.get() ? 1.0D : 0.0D;
@@ -89,7 +89,7 @@ public final class TuningSettings {
             case DIESEL_OVERLOAD -> Config.DIESEL_ENGINE_OVERLOAD.set(enabled);
             case MOTOR_OVERLOAD -> Config.ELECTRIC_MOTOR_OVERLOAD.set(enabled);
             case EXP_CLEAR_RATIO -> Config.DEATH_EXP_CLEAR_RATIO.set(value);
-            case BOGIE_ROLL_TORQUE, SOILING_MULTIPLIER, RADIO_STATIC, RADIO_END_VOICE_FREQUENCY, RADIO_ACOUSTIC_INTENSITY -> { }
+            case BOGIE_ROLL_TORQUE, SOILING_MULTIPLIER, RADIO_STATIC, RADIO_END_VOICE_FREQUENCY, RADIO_END_VOICE_VOLUME, RADIO_ACOUSTIC_INTENSITY -> { }
             case SABLE_SUBSTEPS, SABLE_SOLVER_ITERATIONS, SABLE_PGS_ITERATIONS, SABLE_STABILIZATION_ITERATIONS,
                     SABLE_PHYSICS_TICK_INTERVAL, SABLE_SLEEP_SKIP, SABLE_CONTACT_FORCE_EVENTS,
                     SABLE_BIOME_PROJECTION_FAST_PATH, SABLE_EMPTY_CONTAINER_FAST_PATH -> { }

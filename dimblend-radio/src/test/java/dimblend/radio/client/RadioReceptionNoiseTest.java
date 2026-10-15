@@ -183,6 +183,56 @@ class RadioReceptionNoiseTest {
     }
 
     @Test
+    void endVoiceVolumeZeroSchedulesNoVoicesAndDoesNotDuckTheMusic() {
+        float[] voice = new float[RATE / 2];
+        Arrays.fill(voice, 0.2f);
+        try {
+            RadioServerConfig.apply(RadioLiveSettings.DEFAULT_RECEPTION_NOISE_VOLUME,
+                    RadioLiveSettings.DEFAULT_ACOUSTIC_INTENSITY,
+                    RadioLiveSettings.DEFAULT_END_VOICE_FREQUENCY, 0);
+            // ENDER_VOICES 无 hiss/crackle/fading：音量 0 不排 clip → 无人声也不 duck，输出逐位还原
+            float[][] io = run(noise(List.of(voice)), RadioReception.ENDER_VOICES, 35, 0.5, 1.0f);
+            assertArrayEquals(io[0], io[1],
+                    "voice volume 0 schedules no clip, so the music is not ducked either");
+        } finally {
+            RadioServerConfig.apply(RadioLiveSettings.DEFAULT_RECEPTION_NOISE_VOLUME,
+                    RadioLiveSettings.DEFAULT_ACOUSTIC_INTENSITY,
+                    RadioLiveSettings.DEFAULT_END_VOICE_FREQUENCY, RadioLiveSettings.DEFAULT_END_VOICE_VOLUME);
+        }
+    }
+
+    @Test
+    void endVoiceVolumeDefaultIsOnePointFiveTimesTheFormerHardCodedGain() {
+        assertEquals(0.75f, RadioLiveSettings.DEFAULT_END_VOICE_VOLUME);
+        float[] voice = new float[RATE];
+        Arrays.fill(voice, 0.1f);
+        try {
+            // 同 seed → 同倒计时同 clip，voice glide 确定性：峰值比即增益比
+            RadioServerConfig.apply(RadioLiveSettings.DEFAULT_RECEPTION_NOISE_VOLUME,
+                    RadioLiveSettings.DEFAULT_ACOUSTIC_INTENSITY,
+                    RadioLiveSettings.DEFAULT_END_VOICE_FREQUENCY, 0.5);
+            double former = peak(run(noise(List.of(voice)), RadioReception.ENDER_VOICES, 40, 0, 1.0f)[1]);
+            RadioServerConfig.apply(RadioLiveSettings.DEFAULT_RECEPTION_NOISE_VOLUME,
+                    RadioLiveSettings.DEFAULT_ACOUSTIC_INTENSITY,
+                    RadioLiveSettings.DEFAULT_END_VOICE_FREQUENCY, RadioLiveSettings.DEFAULT_END_VOICE_VOLUME);
+            double raised = peak(run(noise(List.of(voice)), RadioReception.ENDER_VOICES, 40, 0, 1.0f)[1]);
+            assertTrue(former > 0.02, "a voice came through at the former 0.5 gain: " + former);
+            assertEquals(former * 1.5, raised, former * 0.05,
+                    "the default 0.75 is 1.5 times the former hard-coded 0.5");
+        } finally {
+            RadioServerConfig.apply(RadioLiveSettings.DEFAULT_RECEPTION_NOISE_VOLUME,
+                    RadioLiveSettings.DEFAULT_ACOUSTIC_INTENSITY,
+                    RadioLiveSettings.DEFAULT_END_VOICE_FREQUENCY, RadioLiveSettings.DEFAULT_END_VOICE_VOLUME);
+        }
+    }
+
+    private static double peak(float[] samples) {
+        double peak = 0;
+        for (float sample : samples) peak = Math.max(peak, Math.abs(sample));
+        return peak;
+    }
+
+    @Test
     void endReceptionStaysSilentWhileVoicesLoad() {
         float[][] io = run(noise(List.of()), RadioReception.ENDER_VOICES, 40, 0, 1.0f);
         assertEquals(0, rms(io[1], null), 1e-9);

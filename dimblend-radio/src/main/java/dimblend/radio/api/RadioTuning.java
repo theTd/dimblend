@@ -25,6 +25,10 @@ public final class RadioTuning {
         return isLoaded() ? RadioServerConfig.END_VOICE_FREQUENCY.get() : RadioLiveSettings.endVoiceFrequency();
     }
 
+    public static double endVoiceVolume() {
+        return isLoaded() ? RadioServerConfig.END_VOICE_VOLUME.get() : RadioLiveSettings.endVoiceVolume();
+    }
+
     public static void setReceptionNoiseVolume(double value) {
         applyReceptionNoiseVolume(value);
         RadioServerConfig.SPEC.save();
@@ -40,25 +44,37 @@ public final class RadioTuning {
         RadioServerConfig.SPEC.save();
     }
 
+    public static void setEndVoiceVolume(double value) {
+        applyEndVoiceVolume(value);
+        RadioServerConfig.SPEC.save();
+    }
+
     public static void applyReceptionNoiseVolume(double value) {
         if (!validNoiseVolume(value)) {
             throw new IllegalArgumentException("Reception noise volume must be 0.00-2.00 in steps of 0.01");
         }
-        RadioServerConfig.apply(value, acousticIntensity(), endVoiceFrequency());
+        RadioServerConfig.apply(value, acousticIntensity(), endVoiceFrequency(), endVoiceVolume());
     }
 
     public static void applyAcousticIntensity(double value) {
         if (!validIntensity(value)) {
             throw new IllegalArgumentException("Acoustic intensity must be 0.00-2.00 in steps of 0.01");
         }
-        RadioServerConfig.apply(receptionNoiseVolume(), value, endVoiceFrequency());
+        RadioServerConfig.apply(receptionNoiseVolume(), value, endVoiceFrequency(), endVoiceVolume());
     }
 
     public static void applyEndVoiceFrequency(double value) {
         if (!validEndVoiceFrequency(value)) {
             throw new IllegalArgumentException("End voice frequency must be 0.0-4.0 in steps of 0.1");
         }
-        RadioServerConfig.apply(receptionNoiseVolume(), acousticIntensity(), value);
+        RadioServerConfig.apply(receptionNoiseVolume(), acousticIntensity(), value, endVoiceVolume());
+    }
+
+    public static void applyEndVoiceVolume(double value) {
+        if (!validEndVoiceVolume(value)) {
+            throw new IllegalArgumentException("End voice volume must be 0.00-2.00 in steps of 0.01");
+        }
+        RadioServerConfig.apply(receptionNoiseVolume(), acousticIntensity(), endVoiceFrequency(), value);
     }
 
     public static boolean validIntensity(double value) {
@@ -74,6 +90,11 @@ public final class RadioTuning {
     public static boolean validEndVoiceFrequency(double value) {
         return Double.isFinite(value) && value >= 0.0D && value <= RadioLiveSettings.MAX_END_VOICE_FREQUENCY
                 && Math.abs(value * 10.0D - Math.rint(value * 10.0D)) < 1.0E-7D;
+    }
+
+    public static boolean validEndVoiceVolume(double value) {
+        return Double.isFinite(value) && value >= 0.0D && value <= RadioLiveSettings.MAX_END_VOICE_VOLUME
+                && Math.abs(value * 100.0D - Math.rint(value * 100.0D)) < 1.0E-7D;
     }
 
     private RadioTuning() {

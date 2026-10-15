@@ -10,6 +10,7 @@ final class RadioTuningBridge {
         return switch (option) {
             case RADIO_STATIC -> RadioTuning.receptionNoiseVolume();
             case RADIO_END_VOICE_FREQUENCY -> RadioTuning.endVoiceFrequency();
+            case RADIO_END_VOICE_VOLUME -> RadioTuning.endVoiceVolume();
             case RADIO_ACOUSTIC_INTENSITY -> RadioTuning.acousticIntensity();
             default -> throw new IllegalArgumentException("Not a radio tuning option: " + option);
         };
@@ -20,6 +21,7 @@ final class RadioTuningBridge {
         switch (option) {
             case RADIO_STATIC -> RadioTuning.setReceptionNoiseVolume(value);
             case RADIO_END_VOICE_FREQUENCY -> RadioTuning.setEndVoiceFrequency(value);
+            case RADIO_END_VOICE_VOLUME -> RadioTuning.setEndVoiceVolume(value);
             case RADIO_ACOUSTIC_INTENSITY -> RadioTuning.setAcousticIntensity(value);
             default -> throw new IllegalArgumentException("Not a radio tuning option: " + option);
         }
@@ -30,6 +32,7 @@ final class RadioTuningBridge {
         switch (option) {
             case RADIO_STATIC -> RadioTuning.applyReceptionNoiseVolume(value);
             case RADIO_END_VOICE_FREQUENCY -> RadioTuning.applyEndVoiceFrequency(value);
+            case RADIO_END_VOICE_VOLUME -> RadioTuning.applyEndVoiceVolume(value);
             case RADIO_ACOUSTIC_INTENSITY -> RadioTuning.applyAcousticIntensity(value);
             default -> throw new IllegalArgumentException("Not a radio tuning option: " + option);
         }

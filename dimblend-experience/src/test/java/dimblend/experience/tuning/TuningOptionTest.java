@@ -129,6 +129,22 @@ class TuningOptionTest {
     }
 
     @Test
+    void radioEndVoiceVolumeDefaultsToPointSevenFiveAndAcceptsHundredths() {
+        var option = TuningOption.RADIO_END_VOICE_VOLUME;
+        assertTrue(option.radio());
+        assertFalse(option.isCheckbox());
+        // 面板默认值与 radio 的人声音量默认常量互为镜像（旧硬编码 0.5 × 1.5），漂移即失败
+        assertEquals(dimblend.radio.RadioLiveSettings.DEFAULT_END_VOICE_VOLUME, option.defaultValue());
+        assertEquals(0.75D, option.defaultValue());
+        for (int i = 0; i <= 200; i++) {
+            assertTrue(option.isValid(i / 100.0D));
+        }
+        assertFalse(option.isValid(0.005D));
+        assertFalse(option.isValid(2.01D));
+        assertEquals("0.75", option.format(option.defaultValue()));
+    }
+
+    @Test
     void sableSubstepsRejectsZeroFractionsAndValuesAboveTen() {
         var option = TuningOption.SABLE_SUBSTEPS;
         assertFalse(option.isCheckbox());

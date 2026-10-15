@@ -59,6 +59,8 @@
   "screen.dimblend_experience.tuning.radio_static.description": "Default: 0.50 (the former on level). Range: 0.00-2.00, step: 0.01. Scales the static, crackle and voices: 0 plays every radio clean, 2.00 is four times the former level. Overworld and underground play clean; the Nether and modded areas add faint static; the End lets faint enderman and shulker voices through now and then; Voidscape plays static only.",
   "screen.dimblend_experience.tuning.radio_end_voice_frequency": "Radio End voice frequency multiplier",
   "screen.dimblend_experience.tuning.radio_end_voice_frequency.description": "Default: 2.0 (twice the original rate). Range: 0.0-4.0, step: 0.1. 1.0 restores the original first wait of 10-30 seconds and subsequent spacing of 25-70 seconds; 0 disables new voices. Enderman and shulker ambient clips are selected with weights 7 and 1.",
+  "screen.dimblend_experience.tuning.radio_end_voice_volume": "Radio End voice volume",
+  "screen.dimblend_experience.tuning.radio_end_voice_volume.description": "Default: 0.75 (1.5 times the former hard-coded gain). Range: 0.00-2.00, step: 0.01. 0.5 restores the former loudness; 0 schedules no enderman or shulker voices at all, so the music is not ducked either.",
   "screen.dimblend_experience.tuning.radio_acoustic_intensity": "Radio acoustic simulation intensity",
   "screen.dimblend_experience.tuning.radio_acoustic_intensity.description": "Default: 1.00. Range: 0.00-2.00, step: 0.01. Scales the simulated echo (reflections and reverb). 0 leaves only the direct sound, which keeps its occlusion and 3D direction.",
   "screen.dimblend_experience.tuning.exp_clear_ratio": "Experience clear ratio on respawn",

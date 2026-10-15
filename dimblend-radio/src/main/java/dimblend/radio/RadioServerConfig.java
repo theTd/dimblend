@@ -33,12 +33,20 @@ public final class RadioServerConfig {
             .defineInRange("acousticIntensity", (double) RadioLiveSettings.DEFAULT_ACOUSTIC_INTENSITY,
                     0.0D, (double) RadioLiveSettings.MAX_ACOUSTIC_INTENSITY);
 
+    public static final ModConfigSpec.DoubleValue END_VOICE_VOLUME = BUILDER
+            .comment("End voice volume: scales the enderman and shulker clips heard in the End; default 0.75,"
+                    + " 1.5 times the former hard-coded gain. Range 0.00-2.00, step 0.01. 0.5 restores the"
+                    + " former loudness; 0 schedules no voices (the music is not ducked either).")
+            .defineInRange("endVoiceVolume", (double) RadioLiveSettings.DEFAULT_END_VOICE_VOLUME,
+                    0.0D, (double) RadioLiveSettings.MAX_END_VOICE_VOLUME);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     /** Copies the loaded values into {@link RadioLiveSettings}, or its defaults while unloaded. */
     public static void refresh() {
         if (SPEC.isLoaded()) {
-            RadioLiveSettings.set(RECEPTION_NOISE.get(), ACOUSTIC_INTENSITY.get(), END_VOICE_FREQUENCY.get());
+            RadioLiveSettings.set(RECEPTION_NOISE.get(), ACOUSTIC_INTENSITY.get(), END_VOICE_FREQUENCY.get(),
+                    END_VOICE_VOLUME.get());
         } else {
             RadioLiveSettings.reset();
         }
@@ -53,12 +61,18 @@ public final class RadioServerConfig {
     }
 
     public static void apply(double receptionNoiseVolume, double acousticIntensity, double voiceFrequency) {
+        apply(receptionNoiseVolume, acousticIntensity, voiceFrequency, RadioLiveSettings.endVoiceVolume());
+    }
+
+    public static void apply(double receptionNoiseVolume, double acousticIntensity, double voiceFrequency,
+            double voiceVolume) {
         if (SPEC.isLoaded()) {
             RECEPTION_NOISE.set(receptionNoiseVolume);
             ACOUSTIC_INTENSITY.set(acousticIntensity);
             END_VOICE_FREQUENCY.set(voiceFrequency);
+            END_VOICE_VOLUME.set(voiceVolume);
         }
-        RadioLiveSettings.set(receptionNoiseVolume, acousticIntensity, voiceFrequency);
+        RadioLiveSettings.set(receptionNoiseVolume, acousticIntensity, voiceFrequency, voiceVolume);
     }
 
     static void onLoading(ModConfigEvent.Loading event) {

@@ -21,7 +21,8 @@ final class RadioReceptionNoise {
     /** Time constant of the signal strength following its target. */
     private static final float FADE_SECONDS = 0.25f;
     private static final float CRACKLE_SECONDS = 0.002f;
-    private static final float VOICE_GAIN = 0.5f;
+    // 人声增益原硬编码 0.5；2026-10-15 起为 RadioLiveSettings.endVoiceVolume()（默认 0.75
+    // = 旧值 ×1.5，0.5 恢复旧响度，0 不排人声），每 process() 调用读一次、与频率同粒度
     private static final float VOICE_DUCK = 0.35f;
     /** At rest: within this of the targets, the glide snaps onto them. */
     private static final float SETTLED = 1.0e-4f;
@@ -89,6 +90,7 @@ final class RadioReceptionNoise {
         if (reception == RadioReception.CLEAR && atRest()) return;
         float voiceTarget = reception.voices ? 1 : 0;
         float voiceFrequency = reception.voices ? RadioLiveSettings.endVoiceFrequency() : 0;
+        float voiceVolume = reception.voices ? RadioLiveSettings.endVoiceVolume() : 0;
         float crackleChance = reception.crackleRate / rate;
         for (int frame = 0; frame < frames; frame++) {
             music += (reception.music - music) * glide;
@@ -98,11 +100,11 @@ final class RadioReceptionNoise {
             voice += (voiceTarget - voice) * glide;
 
             float lost = (float) (1 - fadeStrength());
-            float voiceSample = voiceSample(reception.voices, voiceFrequency);
+            float voiceSample = voiceSample(reception.voices, voiceFrequency, voiceVolume);
             voiceDuck += ((clip != null ? voice : 0) - voiceDuck) * duckFollow;
             float musicGain = (float) (music * (1 - fading * lost) * (1 - VOICE_DUCK * voiceDuck));
             float noise = (float) ((hissSample() * hiss * (1 + fading * (2 * lost - 1))
-                    + crackleSample(crackleChance) * crackle + voiceSample * VOICE_GAIN * voice) * noiseScale);
+                    + crackleSample(crackleChance) * crackle + voiceSample * voiceVolume * voice) * noiseScale);
 
             for (int channel = 0; channel < channels; channel++) {
                 int index = (frame * channels + channel) * 2;
@@ -156,14 +158,16 @@ final class RadioReceptionNoise {
     }
 
     /** The playing voice clip's next sample; between clips, counts down to the next one. */
-    private float voiceSample(boolean wanted, float frequency) {
+    private float voiceSample(boolean wanted, float frequency, float volume) {
         if (clip == null) {
             if (!wanted) {
                 voiceCountdown = -1;
                 return 0;
             }
             if (voiceCountdown < 0) voiceCountdown = seconds(10, 30);
-            if (frequency <= 0) return 0;
+            // 音量 0 与频率 0 同级：不排新 clip——否则音量为 0 仍 duck 音乐却不发声
+            // （VOICE_DUCK 0.35 白压音乐）；正在播的 clip 不受影响，放完自然收尾
+            if (frequency <= 0 || volume <= 0) return 0;
             // The countdown uses original-cadence samples, so live edits also scale the current wait.
             voiceCountdown -= frequency;
             if (voiceCountdown > 0) return 0;

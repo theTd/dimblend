@@ -18,8 +18,8 @@ public final class TuningNetwork {
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
         // The snapshot carries one value per option: adding options changes the protocol.
-        // v16 adds the deadman radius alongside v15's independent brake sound threshold.
-        var registrar = event.registrar("16");
+        // v17 adds the radio End voice volume alongside v16's deadman radius.
+        var registrar = event.registrar("17");
         registrar.playToServer(TuningEditPayload.TYPE, TuningEditPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof ServerPlayer player) {
