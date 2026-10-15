@@ -215,6 +215,27 @@
   同 F1 口径）。已知覆盖边界：蓝图炮/`/setblock`/直接 setBlock 不经 `EntityPlaceEvent`，不拦。
   开关 `dieselEnginePlacementGuard`（默认开）。GameTest `CdgPlacementGuardGameTests`，需
   `-PwithCdg`，仅 CDG 在场时注册。
+- B9 柴油机 boost 启动（2026-10-15 窗子拍板定稿）：柴油机运转且未达额定
+  （"启动直到达到额定转速"期间），每次点火会话仅一次——若 |网络转速| > 当前阶梯
+  转速 rampTarget，把 rampTicks 前推使 rampTarget = min(|网络转速|, 0.8 × 额定)，
+  之后阶梯照常每 80gt +2rpm 爬完剩余部分。设计动机：借网络转速实现 boost 启动，
+  封顶 80% 留 20% 自爬（窗子拍板）。阶梯公式（两 mixin 共用）：
+  stepped = min(16 + 2×(rampTicks/80), rated)；逆推 rampTicks = floor((target − 16) × 40)
+  （整数除法向下取精不 overshoot）。网络 ≤ 自身、对齐目标 ≤ 当前 rampTarget、
+  目标 ≤ 起步 16 均不触发；封顶 0.8×rated 恒小于 rated，B3 波动/饱和判定不受影响；
+  过载确认期分支早退（爬梯冻结），boost 自然冻结无需特判。"每会话一次" =
+  `CdgEngineState.boostConsumed` 消费标志，随 CODEC 持久化（防读档中途重置多送一次；
+  新增第 9 个必填字段，与 commit 3a25aee 同口径——mod 未投产、不容忍旧档），
+  rampTicks 复位（停转/燃尽/重新加油=会话结束）时清除；窗子补充：不考虑红石关停
+  场景（该用法已禁用），会话边界=真实停机/再点火。网络转速读取同
+  `CdgPlacementGuard` 先例：普通/组合式读引擎 BE `getSpeed()`、巨型读轴 BE
+  `getSpeed()`，取绝对值；额定口径与各 mixin 现有饱和判定同源（普通/组合式
+  upgrade.getSpeed(fuelSpeed)×throttle；巨型 |fuelSpeed×throttle|，1.3.15 上游不乘
+  upgrade 保持）。组合式 isController 语义与现有一致（非 controller 油箱恒空走不到
+  running 分支）。hook 位置：running 分支 `rampTicks++` 之前
+  （`DieselEngineRampMixin` / `HugeDieselEngineMixin`）。无独立开关——作为爬梯固有
+  行为随 `dieselEngineBehavior` 总门控。纯函数 `CdgBoostMath` + 单测
+  `CdgBoostMathTest`（目标封顶/逆推不 overshoot/不触发四形态/续爬步数）。待实测。
 
 ## 3. 板块 C：创造模式伪装方块（Create + Copycats+ 扩展）
 

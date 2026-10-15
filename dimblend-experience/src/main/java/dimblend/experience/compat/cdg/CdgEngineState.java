@@ -14,6 +14,8 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
  * <li>fluctFactor/fluctTicksLeft 波动状态——运行时噪声，重置无碍</li>
  * <li>fuseActive/fuseTicksLeft B6 过载引信（不可中断）：置位后每服务端 tick 递减，
  * 到 0 自毁；红石关停/燃尽/负载恢复都不取消；持久化保证跨区块卸载/存档重启不中断</li>
+ * <li>boostConsumed B9 boost 启动已消费标志（每次点火会话仅一次；rampTicks 复位=
+ * 会话结束时清除）——持久化防读档中途重置多送一次</li>
  * <li>overloadTicks B6 持续过载确认计数（连续"运转中过载" tick 数，满
  * {@link CdgOverloadMath#OVERLOAD_CONFIRM_TICKS} 才点引信；任一正常 tick 清零）。
  * 不序列化：确认进度不跨存档/区块重载携带，存档前半程确认与读档后网络重建
@@ -40,6 +42,8 @@ public class CdgEngineState {
     public boolean fuseActive;
     /** B6 引信剩余 tick（{@link CdgOverloadFuse#FUSE_TICKS} 起，到 0 自毁）。 */
     public int fuseTicksLeft;
+    /** B9 boost 启动已消费标志（每次点火会话仅一次；rampTicks 复位=会话结束时清除）。 */
+    public boolean boostConsumed;
     /**
      * B6 疑似过载连续计数（运转中过载每 tick +1，任一正常 tick 清零）。
      * 不序列化：确认进度不跨存档/区块重载携带。
@@ -63,11 +67,12 @@ public class CdgEngineState {
             Codec.FLOAT.fieldOf("fluctFactor").forGetter(s -> s.fluctFactor),
             Codec.INT.fieldOf("fluctTicksLeft").forGetter(s -> s.fluctTicksLeft),
             Codec.BOOL.fieldOf("fuseActive").forGetter(s -> s.fuseActive),
-            Codec.INT.fieldOf("fuseTicksLeft").forGetter(s -> s.fuseTicksLeft))
+            Codec.INT.fieldOf("fuseTicksLeft").forGetter(s -> s.fuseTicksLeft),
+            Codec.BOOL.fieldOf("boostConsumed").forGetter(s -> s.boostConsumed))
             .apply(instance, CdgEngineState::new));
 
     public CdgEngineState(int rampTicks, boolean overloadLatched, boolean fuelPresent, int lastFuelAmount,
-            float fluctFactor, int fluctTicksLeft, boolean fuseActive, int fuseTicksLeft) {
+            float fluctFactor, int fluctTicksLeft, boolean fuseActive, int fuseTicksLeft, boolean boostConsumed) {
         this.rampTicks = rampTicks;
         this.overloadLatched = overloadLatched;
         this.fuelPresent = fuelPresent;
@@ -76,6 +81,7 @@ public class CdgEngineState {
         this.fluctTicksLeft = fluctTicksLeft;
         this.fuseActive = fuseActive;
         this.fuseTicksLeft = fuseTicksLeft;
+        this.boostConsumed = boostConsumed;
     }
 
     public CdgEngineState() {

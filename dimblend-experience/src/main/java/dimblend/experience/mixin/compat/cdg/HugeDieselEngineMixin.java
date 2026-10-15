@@ -4,6 +4,7 @@ import com.jesz.createdieselgenerators.content.diesel_engine.huge.HugeDieselEngi
 import com.jesz.createdieselgenerators.content.diesel_engine.huge.PoweredEngineShaftBlockEntity;
 import dimblend.experience.Config;
 import dimblend.experience.compat.cdg.CdgAttachments;
+import dimblend.experience.compat.cdg.CdgBoostMath;
 import dimblend.experience.compat.cdg.CdgEngineState;
 import dimblend.experience.compat.cdg.CdgKineticOverload;
 import dimblend.experience.compat.cdg.CdgLoadGrace;
@@ -21,6 +22,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * B5 大型柴油引擎：热机爬梯 + 额定波动 + 过载损坏（与普通/组合式同口径）。
+ * B9 boost 启动同口径覆盖（每会话一次，|轴转速| > 当前阶梯时前推 rampTicks 到
+ * min(|轴转速|, 0.8×额定) 档位，见 tick RETURN 内联注释与 {@link CdgBoostMath}）。
  *
  * <p>巨型机为 {@code SmartBlockEntity}（非 Kinetic），经
  * {@link PoweredEngineShaftBlockEntity#update} 出力：tick 内唯一一次
@@ -151,6 +154,7 @@ public abstract class HugeDieselEngineMixin {
                 state.overloadLatched = true;
                 state.rampTicks = 0;
                 state.fluctTicksLeft = 0;
+                state.boostConsumed = false;
             }
             // 引信倒计时每 tick 标脏（理由见 DieselEngineRampMixin）
             self.setChanged();
@@ -168,15 +172,18 @@ public abstract class HugeDieselEngineMixin {
                 state.overloadLatched = false;
                 state.rampTicks = 0;
                 state.fluctTicksLeft = 0;
+                state.boostConsumed = false;
             }
         }
         state.lastFuelAmount = fuelAmount;
         if (!self.enabled() || self.getThrottle() == 0.0F) {
-            // 未运行（无油/红石关停/燃尽/模拟调速归零）：复位计时，与普通机"停转复位"一致；
+            // 未运行（无油/红石关停/燃尽/模拟调速归零）：复位计时，与普通机"停转复位"一致
+            // （rampTicks 复位=点火会话结束，B9 boost 消费标志一并清除）；
             // 且轴过载此时与其他引擎有关，不得炸本机
             CdgOverloadFuse.clearConfirmation(level, state);
             state.rampTicks = 0;
             state.fluctTicksLeft = 0;
+            state.boostConsumed = false;
             return;
         }
         if (Config.DIESEL_ENGINE_OVERLOAD.get() && CdgKineticOverload.refreshedOverstressed(shaft)) {
@@ -218,8 +225,18 @@ public abstract class HugeDieselEngineMixin {
         CdgOverloadFuse.clearConfirmation(level, state);
         // 饱和判定与传轴实参同源（见类 javadoc）：|getFuelSpeed * getThrottle|
         float rated = Math.abs(self.getFuelSpeed() * self.getThrottle());
+        // B9 boost 启动（每会话一次，与普通/组合式同口径）：|网络转速|（读轴 BE
+        // getSpeed()，CdgPlacementGuard 同先例）> 当前阶梯时前推 rampTicks 到
+        // min(|网络转速|, 0.8×额定) 档位；过载确认期上方分支早退，boost 自然冻结
         float rampTarget = dimblend$IGNITION_RPM
                 + dimblend$RAMP_STEP_RPM * (state.rampTicks / dimblend$RAMP_STEP_TICKS);
+        float boostTarget = CdgBoostMath.boostTarget(Math.abs(shaft.getSpeed()), rated);
+        if (CdgBoostMath.shouldBoost(state.boostConsumed, boostTarget, rampTarget)) {
+            state.rampTicks = CdgBoostMath.rampTicksFor(boostTarget);
+            state.boostConsumed = true;
+            rampTarget = dimblend$IGNITION_RPM
+                    + dimblend$RAMP_STEP_RPM * (state.rampTicks / dimblend$RAMP_STEP_TICKS);
+        }
         state.rampTicks++;
         if (rampTarget >= rated) {
             if (--state.fluctTicksLeft <= 0) {

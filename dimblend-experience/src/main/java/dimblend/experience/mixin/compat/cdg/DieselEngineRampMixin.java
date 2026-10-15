@@ -7,6 +7,7 @@ import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import com.simibubi.create.content.kinetics.base.GeneratingKineticBlockEntity;
 import dimblend.experience.Config;
 import dimblend.experience.compat.cdg.CdgAttachments;
+import dimblend.experience.compat.cdg.CdgBoostMath;
 import dimblend.experience.compat.cdg.CdgEngineState;
 import dimblend.experience.compat.cdg.CdgKineticOverload;
 import dimblend.experience.compat.cdg.CdgLoadGrace;
@@ -28,6 +29,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * <li>B2 燃尽走原版停机（不干预）</li>
  * <li>B3 到额定后在 80%~100% 间随机跳变，每 1~3 秒取一次新值（计时在 tick
  * 状态机内推进，getter 纯读）</li>
+ * <li>B9 boost 启动（2026-10-15 窗子拍板定稿）：运转且未达额定期间，每次点火会话
+ * 仅一次——|网络转速|（普通/组合式读引擎 BE {@code getSpeed()}）&gt; 当前阶梯转速时，
+ * 把 rampTicks 前推到 min(|网络转速|, 0.8×额定) 对应档位（{@link CdgBoostMath} 纯函数），
+ * 之后阶梯照常爬完剩余 20%；消费标志随 {@link CdgEngineState} CODEC 持久化，rampTicks
+ * 复位（停转/燃尽/重新加油）时清除。无独立开关，随 dieselEngineBehavior 总门控</li>
  * <li>B6 过载警告与引信（用户拍板，引信不可中断）：运转中过载确认累计首 tick 即播
  * {@code diesel_overstress.ogg} 1 次（2026-10-14 拍板提前，原在点引信当 tick）；
  * 确认前解除过载（累计清零）即掐掉警告音，点引信后播完不掐。连续 40 tick（2 秒）
@@ -160,6 +166,7 @@ public abstract class DieselEngineRampMixin {
                 state.overloadLatched = true;
                 state.rampTicks = 0;
                 state.fluctTicksLeft = 0;
+                state.boostConsumed = false;
             }
             // 引信倒计时每 tick 标脏：存档/崩溃窗口内丢失倒计时 vs 多一次 NBT 写，
             // 取前者（需求：卸载/重启不中断引信）
@@ -172,10 +179,12 @@ public abstract class DieselEngineRampMixin {
                 state.overloadLatched = false;
                 state.rampTicks = 0;
                 state.fluctTicksLeft = 0;
+                state.boostConsumed = false;
             }
         } else if (state.fuelPresent && !fuel) {
             // B2 燃尽：复位，下次加油为全新点火
             state.rampTicks = 0;
+            state.boostConsumed = false;
         }
         state.fuelPresent = fuel;
         state.lastFuelAmount = fuelAmount;
@@ -231,8 +240,20 @@ public abstract class DieselEngineRampMixin {
                 // 翻转点=getter 开始应用波动系数的点；不依赖当前转速（无冻结/无空转/
                 // 无相位漂移，复核员第 2 轮给出的修法）
                 float rawRated = Math.abs(engine.getUpgrade().getSpeed(engine.getFuelSpeed(), engine) * throttle);
+                // B9 boost 启动（每会话一次，2026-10-15 窗子拍板）：|网络转速| > 当前阶梯
+                // 转速时把 rampTicks 前推到 min(|网络转速|, 0.8×额定) 对应档位——封顶 80%
+                // 留 20% 自爬；网络 ≤ 自身/目标 ≤ 当前阶梯/≤ 起步 16 不触发。过载确认期
+                // 上方分支早退（爬梯冻结），boost 随之自然冻结，无需特判；组合式非
+                // controller 油箱恒空、走不到本分支，isController 语义与现有一致
                 float rampTarget = dimblend$IGNITION_RPM
                         + dimblend$RAMP_STEP_RPM * (state.rampTicks / dimblend$RAMP_STEP_TICKS);
+                float boostTarget = CdgBoostMath.boostTarget(Math.abs(self.getSpeed()), rawRated);
+                if (CdgBoostMath.shouldBoost(state.boostConsumed, boostTarget, rampTarget)) {
+                    state.rampTicks = CdgBoostMath.rampTicksFor(boostTarget);
+                    state.boostConsumed = true;
+                    rampTarget = dimblend$IGNITION_RPM
+                            + dimblend$RAMP_STEP_RPM * (state.rampTicks / dimblend$RAMP_STEP_TICKS);
+                }
                 boolean reachedRated = rampTarget >= rawRated;
                 state.rampTicks++;
                 if (reachedRated) {
@@ -244,9 +265,11 @@ public abstract class DieselEngineRampMixin {
                     state.fluctTicksLeft = 0;
                 }
             } else {
-                // 停转（红石关停）复位——与燃尽/重新加油的"全新点火"语义一致（复核裁定）
+                // 停转（红石关停）复位——与燃尽/重新加油的"全新点火"语义一致（复核裁定）；
+                // rampTicks 复位=点火会话结束，B9 boost 消费标志一并清除
                 state.rampTicks = 0;
                 state.fluctTicksLeft = 0;
+                state.boostConsumed = false;
             }
         }
         // 低-B：闩锁跃迁标脏（NeoForge AttachmentType javadoc 要求，保证崩溃窗口内
