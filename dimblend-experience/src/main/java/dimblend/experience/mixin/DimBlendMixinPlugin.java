@@ -16,7 +16,9 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         if (mixinClassName.endsWith(".compat.cdg.DieselEngineRampMixin")
-                || mixinClassName.endsWith(".compat.cdg.HugeDieselEngineMixin")) {
+                || mixinClassName.endsWith(".compat.cdg.HugeDieselEngineMixin")
+                || mixinClassName.endsWith(".compat.cdg.CdgEngineTankCapacityMixin")
+                || mixinClassName.endsWith(".compat.cdg.CdgModularEngineTankCapacityMixin")) {
             return isLoaded("createdieselgenerators");
         }
         if (mixinClassName.endsWith(".compat.cca.ElectricMotorMixin")

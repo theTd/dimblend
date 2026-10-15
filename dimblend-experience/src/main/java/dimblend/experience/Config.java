@@ -84,6 +84,15 @@ public final class Config {
                     + "只读不改行为，定位完毕后可关")
             .define("dieselOverloadProbe", true);
 
+    public static final ModConfigSpec.IntValue DIESEL_ENGINE_FUEL_TANK_MB = BUILDER
+            .comment("B10：CDG 小号（普通）与中号（组合式）柴油机燃料容量（mB，默认 100，范围 1-16000；"
+                    + "1000 恢复 CDG 原生）。大号（巨型）100mB 为 CDG 原样、不受此键影响。"
+                    + "生效机制：双端容量均经构造器定型（普通 addBehaviours / 组合式构造器）——新放置/"
+                    + "区块重进（BE 重建）生效；组合式 read 重断言走客户端同步包路径（clientPacket=true），"
+                    + "防客户端容量与服务端分叉。超出新容量的存油保留烧完为止、不能再补到容量以上。"
+                    + "需要 CDG 在场")
+            .defineInRange("dieselEngineFuelTankMb", 100, 1, 16000);
+
     public static final ModConfigSpec.BooleanValue STEAM_ENGINE_OVERLOAD = BUILDER
             .comment("H 板块：Create 蒸汽引擎过载两阶段（过载持续 16 秒内每秒警告音 + 云粒子，解除即停；"
                     + "满 16 秒断开传动杆掉落 + 排气音 1 次 + 8 秒云粒子，过载解除不中断）")

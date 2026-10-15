@@ -236,6 +236,34 @@
   （`DieselEngineRampMixin` / `HugeDieselEngineMixin`）。无独立开关——作为爬梯固有
   行为随 `dieselEngineBehavior` 总门控。纯函数 `CdgBoostMath` + 单测
   `CdgBoostMathTest`（目标封顶/逆推不 overshoot/不触发四形态/续爬步数）。待实测。
+- B10 柴油机小号/中号燃料容量降到 100mB（2026-10-15 用户需求）：CDG 硬编码油箱
+  容量——普通（小号）`DieselEngineBlockEntity.addBehaviours` 的
+  `SmartFluidTankBehaviour.single(this, 1000)`（javap offset 46 `sipush 1000`，
+  全类唯一 1000）与组合式（中号）`ModularDieselEngineBlockEntity` 构造器
+  `new SmartFluidTank(1000, consumer)`（offset 24）+ `read(...)` 连通性变化
+  isController 分支 `tankInventory.setCapacity(1000)`（offset 268 isController →
+  278 sipush 1000，全类仅此两处 1000）——经两个单目标 mixin（`CdgEngineTankCapacityMixin`
+  普通、`CdgModularEngineTankCapacityMixin` 组合式）按方法限定 @ModifyConstant 替换为
+  配置值（每方法内 1000 唯一、无误伤面；三处注入 require=1 随 mixins.json
+  defaultRequire 启动期钉死——CDG 改常量面/方法签名即 InjectionError 即响，含仅
+  客户端路径的 read 重断言（GameTest 服务端环境覆盖不到，更依赖启动期钉死）；
+  plugin 按 CDG 在场过滤）。CDG 配置文件无油箱容量项
+  （TrainTripWorld/config 三个 createdieselgenerators-*.toml 已查），只能 mixin。
+  大号（巨型）原生 `single(this, 100)` 为 CDG 原样、本需求不动。新整数键
+  `dieselEngineFuelTankMb`（默认 100，范围 1-16000；1000 恢复 CDG 原生；不加 /dbx
+  面板行——用户没要求，避免快照协议 churn）。生效机制（javap read offset 201-205
+  `iload_3; ifne 206; return` 核实：clientPacket=false 即服务端磁盘读档直接 return，
+  走不到 setCapacity 分支）：双端容量均经构造器定型（普通 addBehaviours / 组合式
+  构造器）——新放置/区块重进（BE 重建）即生效；read 重断言的真实生效面是客户端
+  同步包路径（read(clientPacket=true) 且连通性/长度变化时到达）——防客户端容量被
+  重断言回 1000 与服务端分叉；配置未加载（标题画面等）透传原生 1000。
+  **存量兼容（接受项，NeoForge 21.1.249 FluidTank
+  javap 核实）**：setCapacity 只写 capacity 字段、不截断存油；fill 按 容量−存量
+  计空间——容量从 1000 降到 100 后，箱内超出 100 的存油保留烧完为止、不能再补到
+  容量以上。配置未加载时 handler 透传原值（SERVER 配置 NeoForge 进服同步客户端，
+  双端同值无分叉）。GameTest
+  `CdgTankCapacityGameTests` 3 例（普通/组合式容量==配置值、配置 1000 恢复原生，
+  需 `-PwithCdg`，仅 CDG 在场时注册）。待实测。
 
 ## 3. 板块 C：创造模式伪装方块（Create + Copycats+ 扩展）
 
@@ -797,6 +825,7 @@
 | dieselEngineBehavior | B | true |
 | dieselLoadGraceSeconds | B6 读档宽限秒数（开服后这段时间内柴油机不判爆，0=关闭） | 5 |
 | dieselOverloadProbe | B 诊断探针（只读，输出 `[CDG-PROBE]` 日志，定位完毕可关） | true |
+| dieselEngineFuelTankMb | B10（CDG 小号/中号柴油机燃料容量 mB，1000 恢复 CDG 原生；大号原生 100 不受影响） | 100 |
 | electricMotorBehavior | D（含 D4 自定义音效替代 + D6 护目镜实际转速显示） | true |
 | alternatorIdleDrain | D5（交流发电机无输入自放电） | true |
 | alternatorOverstressLatch | D8（交流发电机过载解列锁存） | true |
@@ -830,6 +859,8 @@
 |---|---|---|---|
 | BeaconBlockEntityMixin | 原版信标 BE | A7 | 无条件（原版目标） |
 | compat.cdg.DieselEngineRampMixin | CDG 普通/组合柴油机 BE | B | createdieselgenerators 在场 |
+| compat.cdg.CdgEngineTankCapacityMixin | CDG 普通柴油机 BE（addBehaviours 油箱容量 1000 常量 @ModifyConstant） | B10 | createdieselgenerators 在场 |
+| compat.cdg.CdgModularEngineTankCapacityMixin | CDG 组合柴油机 BE（构造器 + read 两处油箱容量 1000 常量 @ModifyConstant） | B10 | createdieselgenerators 在场 |
 | compat.cdg.HugeDieselEngineMixin | CDG 巨型柴油机 BE | B5 | createdieselgenerators 在场 |
 | compat.cca.ElectricMotorMixin | CCA 电动马达 BE | D | createaddition 在场 |
 | compat.cca.ElectricMotorSoundClientMixin | CCA 电动马达 BE | D4 | createaddition 在场（client 数组） |

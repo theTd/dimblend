@@ -16,6 +16,7 @@ import dimblend.experience.compat.simurail.TrainForceGroups;
 import dimblend.experience.datagen.DataGenerators;
 import dimblend.experience.gametest.CdgKineticOverloadGameTests;
 import dimblend.experience.gametest.CdgPlacementGuardGameTests;
+import dimblend.experience.gametest.CdgTankCapacityGameTests;
 import dimblend.experience.gametest.GutterOutletBiomeProjectionGameTests;
 import dimblend.experience.gametest.SableBiomeProjectionGameTests;
 import dimblend.experience.gametest.SableLavaMeltGameTests;
@@ -113,6 +114,7 @@ public class DimBlend {
         // 引用 CDG 类：仅 CDG 在场（dev 下 -PwithCdg）时注册
         if (ModList.get().isLoaded("createdieselgenerators")) {
             event.register(CdgPlacementGuardGameTests.class);
+            event.register(CdgTankCapacityGameTests.class);
         }
     }
 }
