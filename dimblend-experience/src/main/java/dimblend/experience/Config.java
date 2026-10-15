@@ -110,7 +110,9 @@ public final class Config {
             .comment("D 板块 D8：CCA 交流发电机过载解列锁存——kinetic 网络过载且被驱动中时"
                     + "本机应力需求强制归零并锁定（网络即时解负），播 motor_overstress 音效"
                     + "（每 20 tick、音量 0.5）与 enchanted_hit 粒子（每 tick×5）；锁存期"
-                    + "照常空转产 FE，只摘应力需求；理论转速归零（网络停机）才恢复。")
+                    + "FE 产出也锁 0（2026-10-15 拍板；只锁产出、不锁输出，buffer 存量继续"
+                    + "流出直至放空）；理论转速与锁存时不同（含停机归零）即恢复"
+                    + "（2026-10-15 拍板，原\"归零才恢复\"作废）。")
             .define("alternatorOverstressLatch", true);
 
     public static final ModConfigSpec.BooleanValue SIMURAIL_PROTECT = BUILDER

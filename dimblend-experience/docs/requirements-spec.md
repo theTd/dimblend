@@ -347,17 +347,34 @@
   锁存期 `calculateStressApplied` RETURN 钩子压 0（网络 split/merge 重 add 等重缓存路径
   仍得 0，锁不被拓扑变化顶掉），服务端每 tick 方块中心 enchanted_hit×5 + 每 20 tick
   motor_overstress 音量 0.5（复用 D7 `MotorOverstressLatch.tickEffects` 同素材同参数）；
-  本机照常随网络空转产 FE（只摘应力需求、不断产能——用户口径"把需求应力设置0然后锁了"）。
-  退出：理论转速归零（网络停驱；过载冻结只压 `getSpeed()` 读数、不动 speed 字段，
-  `getTheoreticalSpeed()` 不受冻结影响不误判）→ 清锁存 + updateStressFor 恢复真实 impact
-  （转速 0 下账本数值不变、无 sync 抖动）+ sendData；开关关闭同样清锁存恢复。
+  **FE 产出同样锁 0**（2026-10-15 用户需求变更，原"锁存期照常空转产 FE——只摘应力需求、
+  不断产能"口径作废）：`tick()` 内产能率 `getEnergyProductionRate(I)I` 唯一调用点
+  （javap 核实 offset 67 invokestatic，本类静态方法、无重载）经 MEV 压 0，
+  `internalProduceEnergy(0)` 照走、buffer 不再入账；**只锁产出、不锁输出**——buffer
+  存量（默认 5000 FE）继续经六面输出 loop 流出直至放空（约 1 tick），属拍板语义。
+  护目镜产能行经同签名 MEV 同压 0（`addToGoggleTooltip` 内调用点 javap 核实 offset 47；
+  客户端锁存字段经同步包回写，显示与实际一致）。D5 漏电门（`AlternatorIdleDrainMixin`，
+  产能门 `|getSpeed|>0 && isSpeedRequirementFulfilled()` 的取反）不受影响：锁存期转速
+  非零、产能门仍为真，不会并发漏电（交互已评估）。
+  退出（2026-10-15 用户拍板改口径，原"理论转速归零"作废）：理论转速与进入锁存时
+  记录值（`dimblend$latchedSpeed`，进入时快照、纯内存不落盘）**不同即解锁**——精确
+  比较、不加阈值（Create 转速传播是确定性浮点，同拓扑同源逐 bit 相同；split/merge
+  微差导致误判解锁也接受，明确不做任何防翻动处理）；停机归零天然满足（记录值必非零，
+  进入判据要求非零），新判据是旧判据超集；过载冻结只压 `getSpeed()` 读数、不动
+  speed 字段，`getTheoreticalSpeed()` 不受冻结影响不误判）→ 清锁存 + updateStressFor
+  恢复真实 impact（转速 0 下账本数值不变、无 sync 抖动）+ sendData；开关关闭同样
+  清锁存恢复。**拍板接受项（重锁语义）**：再次满足进入判据即重新锁存——重录记录值、
+  重播进入音效/粒子（latchAge 归零）；窗子原话口径"锁存的音效粒子本身就是一直播放、
+  需要一直吵提醒玩家处理，柴油机 B3 波动（额定后 80%~100% 每 1~3 秒跳变）造成的
+  频繁解锁→重锁不构成问题，可以不处理"。
   锁存标志经 Create KBE `write`/`read`（clientPacket=true 才写读）进客户端同步包、
   磁盘不落（与 D7 同例纯内存，区块卸载/重进按新进入重判）；客户端护目镜应力段随
   calculateStressApplied 归零整段隐藏（KBE.addToGoggleTooltip 的 Mth.equal 早退），
   显示与实际入网需求一致（客户端无法像 D7 那样从已同步量派生锁存——锁存成功时网络
   恰好不过载，故显式同步）。实现：`compat.cca.AlternatorOverstressLatch`（判据 helper）
   + `AlternatorOverstressLatchAccess`（跨 mixin 字段访问口，免 Create 目标类引用 CCA 类）
-  + `compat.cca.AlternatorOverstressLatchMixin`（CCA 目标：HEAD 驱动 + RETURN 钩子）
+  + `compat.cca.AlternatorOverstressLatchMixin`（CCA 目标：HEAD 驱动 + RETURN 钩子
+  + 锁存期产出/护目镜两处 `getEnergyProductionRate` MEV）
   + `compat.create.AlternatorLatchSyncMixin`（Create KBE write/read TAIL，instanceof 门控），
   挂新开关 `alternatorOverstressLatch`（默认开）；单测 `AlternatorOverstressLatchTest` 钉
   进出判据。待实测。

@@ -26,14 +26,22 @@ package dimblend.experience.compat.cca;
  *
  * <p>锁存期：需求应力强制 0（进入/退出经 {@code updateStressFor} 即时改缓存并触发
  * 重算+sync；{@code calculateStressApplied} 钩子保证锁存期网络 split/merge 重 add
- * 等任何重缓存路径仍得 0），本机造成的过载即时解除；服务端每 tick 方块中心
+ * 等任何重缓存路径仍得 0），本机造成的过载即时解除；FE 产出同样锁 0（2026-10-15
+ * 拍板，只锁产出、不锁输出，buffer 存量继续流出至放空，见
+ * {@code AlternatorOverstressLatchMixin}）；服务端每 tick 方块中心
  * enchanted_hit×5 + 每 20 tick motor_overstress（复用
  * {@link MotorOverstressLatch#tickEffects}，与 D7 同素材同参数）。
- * 退出：理论转速归零（网络真正停驱；过载冻结只把 {@code getSpeed()} 读数压 0、
- * 不动 speed 字段，{@code getTheoreticalSpeed()} 不受冻结影响，不会误判退出）。</p>
+ * 退出（2026-10-15 拍板改口径，原"理论转速归零"作废）：理论转速与进入锁存时记录值
+ * <b>不同</b>即解锁——精确比较、不加阈值（Create 转速传播是确定性浮点，同拓扑同源
+ * 逐 bit 相同；split/merge 微差导致误判解锁也接受，明确不做防翻动处理）。停机（转速
+ * 归零）天然满足——锁存记录值必非零（进入判据要求非零），新判据是旧判据超集；
+ * 过载冻结只把 {@code getSpeed()} 读数压 0、不动 speed 字段，
+ * {@code getTheoreticalSpeed()} 不受冻结影响，不会误判退出。</p>
  *
- * <p>锁存期本机照常随网络空转并产 FE（只摘应力需求、不断产能——用户拍板口径）；
- * 等转速归零（网络停机）才恢复需求，等同解列后需停机复归。</p>
+ * <p>解锁后网络需求恢复真实值，再次满足进入判据即重新锁存（重录记录值、重播进入
+ * 音效/粒子、latchAge 归零）——拍板接受项：锁存的音效粒子本身就是一直播放、需要
+ * 一直吵提醒玩家处理，柴油机 B3 波动（额定后 80%~100% 每 1~3 秒跳变）造成的频繁
+ * 解锁→重锁不构成问题，不处理。</p>
  */
 public final class AlternatorOverstressLatch {
 
@@ -47,9 +55,13 @@ public final class AlternatorOverstressLatch {
         return overStressed && theoreticalSpeed != 0.0F && onNetworkLedger;
     }
 
-    /** 退出判据：理论转速归零（网络停驱）。 */
-    public static boolean shouldReset(float theoreticalSpeed) {
-        return theoreticalSpeed == 0.0F;
+    /**
+     * 退出判据（2026-10-15 拍板）：理论转速与进入锁存时的记录值不同即解锁——精确比较、
+     * 不加阈值（同拓扑同源逐 bit 相同；split/merge 微差误判解锁接受）。停机归零天然满足
+     * （锁存记录值必非零），为旧"归零才解锁"判据的超集。
+     */
+    public static boolean shouldReset(float currentSpeed, float latchedSpeed) {
+        return currentSpeed != latchedSpeed;
     }
 
     private AlternatorOverstressLatch() {

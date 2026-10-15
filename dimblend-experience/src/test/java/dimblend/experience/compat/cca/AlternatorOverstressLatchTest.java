@@ -18,9 +18,17 @@ class AlternatorOverstressLatchTest {
     }
 
     @Test
-    void resetsOnlyAtStandstill() {
-        assertTrue(AlternatorOverstressLatch.shouldReset(0.0F));
-        assertFalse(AlternatorOverstressLatch.shouldReset(1.0F));
-        assertFalse(AlternatorOverstressLatch.shouldReset(-1.0F));
+    void resetsWhenSpeedDiffersFromLatchedRecord() {
+        // 与锁存记录值相同：不解锁（同拓扑同源逐 bit 相同，含负向）
+        assertFalse(AlternatorOverstressLatch.shouldReset(64.0F, 64.0F));
+        assertFalse(AlternatorOverstressLatch.shouldReset(-64.0F, -64.0F));
+        // 与记录值不同即解锁（网络转速变化，不加阈值）
+        assertTrue(AlternatorOverstressLatch.shouldReset(63.0F, 64.0F));
+        assertTrue(AlternatorOverstressLatch.shouldReset(96.0F, 64.0F));
+        // 停机归零天然解锁（锁存记录值必非零，为旧"归零才解锁"判据超集）
+        assertTrue(AlternatorOverstressLatch.shouldReset(0.0F, 64.0F));
+        // 正负换向解锁
+        assertTrue(AlternatorOverstressLatch.shouldReset(-64.0F, 64.0F));
+        assertTrue(AlternatorOverstressLatch.shouldReset(64.0F, -64.0F));
     }
 }
