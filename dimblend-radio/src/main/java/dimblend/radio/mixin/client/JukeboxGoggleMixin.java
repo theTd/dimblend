@@ -6,10 +6,8 @@ import org.spongepowered.asm.mixin.Mixin;
 
 import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
 
-import dimblend.radio.RadioSignals;
 import dimblend.radio.client.RadioLibrary;
 import dimblend.radio.client.RadioController;
-import dimblend.radio.client.TrackTitles;
 import dimblend.radio.net.ClientRadioState;
 import dimblend.radio.net.RadioStatePayload;
 import net.minecraft.ChatFormatting;
@@ -27,11 +25,30 @@ import net.minecraft.world.level.block.entity.JukeboxBlockEntity;
  * {@code GoggleOverlayRenderer} 统一加，这里只管自家行。只用原版 Component +
  * ChatFormatting，不碰 CreateLang/TooltipHelper（零 catnip 加载风险）。</p>
  *
+ * <p><b>2026-10-15 修复（用户报告首行被图标遮挡）</b>：Create 6.0.10
+ * {@code GoggleOverlayRenderer.renderOverlay} 把悬浮图标（BE 未实现
+ * IHaveCustomOverlayIcon 时默认护目镜物品，JukeboxBlockEntity 未实现）画在
+ * {@code (posX+10, posY-16)} 的 16×16 区域，文字块经
+ * {@code RemovedGuiUtils.drawHoveringText} 从 {@code (posX+12, posY-12)} 开始——
+ * 首行左侧约 14px 被图标覆盖（第二行起因垂直位置在图标下方不受影响）。catnip
+ * （ponder jar 内）{@code LangBuilder.forGoggles(list, indent)} 给每行加
+ * {@code getIndents(font, 4+indent)} 个前导空格——默认字体空格 4px 时即
+ * 4+indent 个空格、基线 16px——正是给图标让位；本 mixin 当初为避 catnip 加载风险
+ * 用纯原版 Component，漏了这层基线缩进。现全行统一加基线前导（Create 原生就是
+ * 全行统一基线、文字块整体右移，不是只给首行加），value 行 = GUTTER + INDENT
+ * （6 空格）、首行 = GUTTER（4 空格）；非默认字体下与 catnip 快路径同为近似值。</p>
+ *
+ * <p><b>2026-10-15 二次修复（实机 InvalidMixinException）</b>：排版行构造全部收敛到
+ * {@link JukeboxGoggleLayout}（包可见纯函数类，兼作单测接缝）——mixin 类禁含非
+ * private static 字段/方法（GUTTER/INDENT 为测试降级后启动即炸；非私有 static
+ * 方法还会被 merge 进 JukeboxBlockEntity 造成污染，单测不应用 mixin 抓不到），
+ * 本类只留注入胶水与 private 成员。</p>
+ *
  * <ul>
  *   <li>首行（GRAY）：{@code 电台 3台 · 音量 80%}</li>
- *   <li>曲名（WHITE，加粗否）：缩进</li>
- *   <li>作者（GRAY）：缩进，无标签时整行省略</li>
- *   <li>进度：缩进 + 48 段细条（AQUA 已播 / DARK_GRAY 未播）+
+ *   <li>曲名（WHITE，加粗否）：基线 + 缩进</li>
+ *   <li>作者（GRAY）：基线 + 缩进，无标签时整行省略</li>
+ *   <li>进度：基线 + 缩进 + 48 段细条（AQUA 已播 / DARK_GRAY 未播）+
  *   DARK_GRAY {@code 01:23 / 03:45}；本端未知时长时整行省略</li>
  *   <li>缺文件：首行后跟 RED {@code 缺少本地文件，请补曲库} + DARK_GRAY 短 hash
  *   （护目镜即提示位，不再刷聊天栏）</li>
@@ -51,13 +68,6 @@ import net.minecraft.world.level.block.entity.JukeboxBlockEntity;
 @Mixin(JukeboxBlockEntity.class)
 public abstract class JukeboxGoggleMixin implements IHaveGoggleInformation {
 
-    /** value 行缩进（Create label/value 惯例）。 */
-    private static final String INDENT = "  ";
-    /** 48 段，每段约 2.08%；用窄字符保持弹窗紧凑。 */
-    private static final int BAR_SEGMENTS = 48;
-    /** ASCII 细竖线，无额外字体资源要求。 */
-    private static final String BAR_BLOCK = "|";
-
     @Override
     public boolean addToGoggleTooltip(List<Component> tooltip, boolean isPlayerSneaking) {
         JukeboxBlockEntity self = (JukeboxBlockEntity) (Object) this;
@@ -74,59 +84,34 @@ public abstract class JukeboxGoggleMixin implements IHaveGoggleInformation {
         if (state == null || !state.playing()) {
             return false;
         }
-        tooltip.add(contextLine(state));
+        tooltip.add(JukeboxGoggleLayout.contextLine(state));
         String name = RadioLibrary.displayName(state.trackHash());
         if (name == null) {
             // 本端缺文件：护目镜即提示位（RED 警示 + 短 hash），不再刷聊天栏
-            tooltip.add(indent(Component.literal("缺少本地文件，请补曲库"), ChatFormatting.RED));
-            tooltip.add(indent(Component.literal("hash " + shortHash(state.trackHash())),
+            tooltip.add(JukeboxGoggleLayout.indent(Component.literal("缺少本地文件，请补曲库"),
+                    ChatFormatting.RED));
+            tooltip.add(JukeboxGoggleLayout.indent(Component.literal("hash " + shortHash(state.trackHash())),
                     ChatFormatting.DARK_GRAY));
             return true;
         }
-        tooltip.add(indent(Component.literal(name), ChatFormatting.WHITE));
+        tooltip.add(JukeboxGoggleLayout.indent(Component.literal(name), ChatFormatting.WHITE));
         String artist = RadioLibrary.artistOf(state.trackHash());
         if (artist != null) {
-            tooltip.add(indent(Component.literal(artist), ChatFormatting.GRAY));
+            tooltip.add(JukeboxGoggleLayout.indent(Component.literal(artist), ChatFormatting.GRAY));
         }
         RadioController.Progress progress = RadioController.progress(state);
         if (progress != null && progress.totalSeconds() > 0) {
-            tooltip.add(progressLine(progress.elapsedSeconds(), progress.totalSeconds()));
+            tooltip.add(JukeboxGoggleLayout.progressLine(progress.elapsedSeconds(), progress.totalSeconds()));
             if (progress.finished()) {
-                tooltip.add(indent(Component.literal("播放完毕，等待下一曲"), ChatFormatting.GRAY));
+                tooltip.add(JukeboxGoggleLayout.indent(Component.literal("播放完毕，等待下一曲"),
+                        ChatFormatting.GRAY));
             }
         }
         if (isPlayerSneaking) {
-            tooltip.add(indent(Component.literal("hash " + shortHash(state.trackHash())),
+            tooltip.add(JukeboxGoggleLayout.indent(Component.literal("hash " + shortHash(state.trackHash())),
                     ChatFormatting.DARK_GRAY));
         }
         return true;
-    }
-
-    /** 首行：灰 label（台号 + 音量）。 */
-    private static Component contextLine(RadioStatePayload state) {
-        return Component
-                .literal("电台 " + state.station() + "台 · 音量 "
-                        + RadioSignals.volumePercent(state.side()) + "%")
-                .withStyle(ChatFormatting.GRAY);
-    }
-
-    /** 进度行：缩进 + 条（AQUA 已播/DARK_GRAY 未播）+ DARK_GRAY 时刻。 */
-    private static Component progressLine(double elapsedSec, double totalSec) {
-        int filled = (int) Math.floor(BAR_SEGMENTS * elapsedSec / totalSec);
-        filled = Math.max(0, Math.min(BAR_SEGMENTS, filled));
-        var line = Component.literal(INDENT)
-                .append(Component.literal(BAR_BLOCK.repeat(filled)).withStyle(ChatFormatting.AQUA))
-                .append(Component.literal(BAR_BLOCK.repeat(BAR_SEGMENTS - filled))
-                        .withStyle(ChatFormatting.DARK_GRAY))
-                .append(Component
-                        .literal(" " + TrackTitles.formatTime(elapsedSec) + " / "
-                                + TrackTitles.formatTime(totalSec))
-                        .withStyle(ChatFormatting.DARK_GRAY));
-        return line;
-    }
-
-    private static Component indent(Component text, ChatFormatting color) {
-        return Component.literal(INDENT).append(text.copy().withStyle(color));
     }
 
     private static String shortHash(String hash) {
