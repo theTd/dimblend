@@ -44,6 +44,7 @@
 		"compat.simurail.PhysicsBogeyBrakeSoundMixin",
 		"compat.simurail.PhysicsBogeyBrakeSignalCapMixin",
 		"compat.simurail.PhysicsBogeyDeadmanBrakeMixin",
+		"compat.simurail.PhysicsBogeyDeadmanStressMixin",
 		"compat.simurail.PhysicsBogeyLateralForceMixin",
 		"compat.simurail.AutomaticCouplerRedstoneMixin",
 		"compat.simurail.AutomaticCouplerPartnerAccessor"

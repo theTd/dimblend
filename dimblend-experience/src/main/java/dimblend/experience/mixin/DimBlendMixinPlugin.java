@@ -36,6 +36,7 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.endsWith(".compat.simurail.PhysicsBogeyBrakeSoundMixin")
                 || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyBrakeSignalCapMixin")
                 || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyDeadmanBrakeMixin")
+                || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyDeadmanStressMixin")
                 || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyLateralForceMixin")
                 || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyTrackSoundMixin")
                 || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyWideGaugeParticleMixin")

@@ -448,6 +448,28 @@
   下次距离扫描若仍超速且无人值守，可重新施加紧急刹车。接入已锁存编组的车厢同步锁存，
   拆开后各编组分别锁存/解除；临时卸载的车厢 UUID 保留状态，返回时继续按当前连接判定。
   锁存不自动解除、不随停车解除；内存态，维度卸载和服务器停止时清空，切换存档不继承。
+  **锁存强制驱动网络过载（2026-10-15 窗子拍板，实施方式放权）**：意图——锁存要保持
+  "掉下车=事故"而非"主动跳车=免费自动停车"，代价 = 锁存期间让驱动列车前进的 Create
+  网络过载，触发动力源（CDG 柴油机）自身过载惩罚（B6：2 秒确认警告 → 4 秒引信 → 爆炸）。
+  实现：`PhysicsBogeyDeadmanStressMixin` @ModifyReturnValue `calculateStressApplied()F`
+  把锁存转向架的 impact 读数替换为 `TrainDeadmanBrake` per-bogey 表中的强制值；
+  强制 impact 按网络当前总容量反算
+  `forced = (capacity × 1.5 + 1) / max(|theoreticalSpeed|, 1)`（Create 需求 =
+  缓存 impact × |理论转速|，容量与需求都随转速正比缩放，比值跨转速恒 ~1.5 倍；
+  max(...,1) 防零转速——锁存时网络若停转，一旦启动立即过载）；锁存瞬间无网络回退
+  65536（窗子原数，兜底）。路径选择：反算收敛在 `TrainDeadmanBrake.syncForcedImpacts`
+  （服务端主线程、锁存变化或扫描周期）存表 + 显式 `updateStressFor` 立即生效/恢复
+  （impact 入网络时缓存进 members，锁存/解除瞬间 Create 不会自动重算，必须显式推；
+  禁止逐 tick 推——sync 抖动），MRV 钩子只读表作 split/merge 重缓存路径兜底——
+  不在钩子内读网络容量：`calculateCapacity()` 迭代 sources 会顺手剔除失效 source
+  （javap 核实，有副作用），且钩子会被网络更新重入调用，不干净。多个锁存转向架
+  各自压自己所在网络，允许。**既定后果（拍板接受）**：过载期间整个网络停摆
+  （Create 原生语义，代价本身）；同网络 D8 发电机会跟着解列（预期联动）；玩家抢救
+  窗口 = 过载确认 2 秒（红石脉冲解锁/把转向架断网），引信点燃后不可挽回；过载只压
+  getSpeed 读数，不影响 E7 锁存自身逻辑（用 sable 物理 m/s 速度）与红石脉冲解除路径。
+  已知接受项：强制值按进入锁存时容量快照反算，之后网络拓扑变化（增源扩容 >1.5 倍）
+  可能不再过量，不追踪刷新；维度卸载/重进时表随 BE 清，扫描周期内补算（至多 0.5 秒
+  窗口按真实 impact 计）。不加配置键（E7' 总开关 trainDeadmanBrake 覆盖）。
   锁存车厢 UUID 完整快照经 `DeadmanLatchPayload` S2C 广播（协议版本 2；进服/换维度由 `TrainDeadmanSync`
   补发），锁存期间客户端仅在已锁存车厢的转向架播 `PORTAL` 粒子（E6 同参数：y-1 上方 5x5、
   每格每 tick 40%、下坠初速 -0.25——2026-10-15 用户拍板范围 3x3→5x5、密度翻倍，两功能同步改）。新开关 `trainDeadmanBrake`（默认开；
@@ -808,6 +830,7 @@
 | compat.simurail.PhysicsBogeyWideGaugeParticleMixin | Simurail 物理转向架 BE | E6 | simurail 在场（client 数组） |
 | compat.simurail.AutomaticCouplerPartnerAccessor | Simurail 自动车钩 BE（只读连接车厢 UUID，避免查询缺席伙伴触发加载或空值异常） | E7' | simurail 在场 |
 | compat.simurail.PhysicsBogeyDeadmanBrakeMixin | Simurail 物理转向架 BE（tick 速度/信号采样 + `getBrakeStrength` RETURN 锁存满刹） | E7' | simurail 在场 |
+| compat.simurail.PhysicsBogeyDeadmanStressMixin | Simurail 物理转向架 BE（`calculateStressApplied` RETURN 锁存强制过载 impact，读 `TrainDeadmanBrake` 表） | E7' | simurail 在场 |
 | compat.simurail.PhysicsBogeyDeadmanParticleMixin | Simurail 物理转向架 BE（锁存期间 portal 粒子，E6 同参数） | E7' | simurail 在场（client 数组） |
 | compat.simurail.AutomaticCouplerRedstoneMixin | Simurail 自动车钩方块 | E5 | simurail 在场 |
 | compat.copycats.CopycatsObsidianHardnessMixin | Copycats+ 两根基类 | C0 | copycats 在场 |

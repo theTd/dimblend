@@ -160,7 +160,9 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue TRAIN_DEADMAN_BRAKE = BUILDER
             .comment("E 板块 E7'：旋转维度内编组在动（存在 >4 m/s 车架）且编组上离每个玩家最近的"
                     + "车架都超出半径时，该编组全列车架强制满刹锁存；任意车架红石信号等级变化"
-                    + "即解除所在编组全部紧急刹车（上升、下降、正强度间变化均有效）。需要 Simurail+Sable 在场")
+                    + "即解除所在编组全部紧急刹车（上升、下降、正强度间变化均有效）。"
+                    + "锁存期间强制驱动网络过载（按网络容量×1.5 反算转向架应力），触发动力源"
+                    + "柴油机过载惩罚——掉下车=事故。需要 Simurail+Sable 在场")
             .define("trainDeadmanBrake", true);
 
     public static final ModConfigSpec.DoubleValue TRAIN_DEADMAN_RADIUS = BUILDER
