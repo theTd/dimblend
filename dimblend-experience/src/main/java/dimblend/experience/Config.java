@@ -150,7 +150,7 @@ public final class Config {
             .defineInRange("trainBrakeSoundSpeedThreshold", 2.0D, 0.0D, 64.0D);
 
     public static final ModConfigSpec.BooleanValue WIDE_GAUGE_PARTICLES = BUILDER
-            .comment("E 板块 E6：幻纱宽轨上的车架在其 y-1 3x3 范围生成下落的末地烛粒子（纯客户端视觉）。需要 Simurail 在场")
+            .comment("E 板块 E6：幻纱宽轨上的车架在其 y-1 5x5 范围生成下落的末地烛粒子（纯客户端视觉）。需要 Simurail 在场")
             .define("wideGaugeParticles", true);
 
     // 键名 offStructureTeleport（v1.8 E7 离结构传送）随 v1.18 机制重做废弃：旧键被自动清除，

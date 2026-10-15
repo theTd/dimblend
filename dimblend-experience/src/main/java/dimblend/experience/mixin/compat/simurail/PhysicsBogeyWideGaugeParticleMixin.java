@@ -22,8 +22,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * <p>每客户端 tick：取转向架所在子层级，把其局部坐标经
  * {@code logicalPose().transformPosition} 换到世界坐标；脚下（y-1）是
  * 幻纱宽轨（{@code railways:track_phantom_wide}，注册表名精确比对、无 Railways
- * 编译依赖；其他宽轨不播）时，在 y-1 上方 3x3 平面生成下落的末地烛粒子
- * （{@code END_ROD} 加下坠初速，每格每 tick 20% 概率，动静都播）。
+ * 编译依赖；其他宽轨不播）时，在 y-1 上方 5x5 平面生成下落的末地烛粒子
+ * （{@code END_ROD} 加下坠初速，每格每 tick 40% 概率，动静都播）。
  * 世界坐标查询与粒子生成走客户端世界（{@code Minecraft.level}），
  * 转向架 level（子层级门面）只用来取局部坐标与子层级归属。</p>
  */
@@ -32,8 +32,8 @@ public abstract class PhysicsBogeyWideGaugeParticleMixin {
 
     /** 粒子抬升：y-1 平面上方，避免埋进轨道里看不见。 */
     private static final double PARTICLE_LIFT = 0.3;
-    /** 每格每 tick 生成概率（9 格期望约 1.8 个/tick/车架）。 */
-    private static final float DENSITY = 0.2F;
+    /** 每格每 tick 生成概率（25 格期望约 10 个/tick/车架；2026-10-15 拍板：范围 3x3→5x5、密度 0.2→0.4 翻倍，与 E7 同步改）。 */
+    private static final float DENSITY = 0.4F;
     private static final double FALL_SPEED = -0.25;
 
     @Inject(method = "tick()V", at = @At("RETURN"))
@@ -63,8 +63,8 @@ public abstract class PhysicsBogeyWideGaugeParticleMixin {
         double baseY = center.y - 1.0 + PARTICLE_LIFT;
         int baseX = (int) Math.floor(center.x);
         int baseZ = (int) Math.floor(center.z);
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dz = -1; dz <= 1; dz++) {
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dz = -2; dz <= 2; dz++) {
                 if (world.random.nextFloat() >= DENSITY) {
                     continue;
                 }

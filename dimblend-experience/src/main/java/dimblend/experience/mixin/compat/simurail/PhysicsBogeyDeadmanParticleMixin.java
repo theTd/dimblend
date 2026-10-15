@@ -19,7 +19,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  *
  * <p>锁存是服务端状态，经 {@code DeadmanLatchPayload} S2C 同步到
  * {@link ClientDeadmanLatch}；当前车厢处于锁存时，每个转向架按 E6
- * 幻纱宽轨粒子的同一组参数（y-1 上方 3x3 平面、每格每 tick 20% 概率、
+ * 幻纱宽轨粒子的同一组参数（y-1 上方 5x5 平面、每格每 tick 40% 概率、
  * 下坠初速）生成 {@code PORTAL} 粒子——锁存期间常播，与列车动停无关。</p>
  */
 @Mixin(PhysicsBogeyBlockEntity.class)
@@ -28,8 +28,8 @@ public abstract class PhysicsBogeyDeadmanParticleMixin {
     // 以下三参数与 E6（PhysicsBogeyWideGaugeParticleMixin）保持一致，仅粒子 id 不同
     /** 粒子抬升：y-1 平面上方，避免埋进轨道里看不见。 */
     private static final double PARTICLE_LIFT = 0.3;
-    /** 每格每 tick 生成概率（9 格期望约 1.8 个/tick/车架）。 */
-    private static final float DENSITY = 0.2F;
+    /** 每格每 tick 生成概率（25 格期望约 10 个/tick/车架；2026-10-15 拍板：范围 3x3→5x5、密度 0.2→0.4 翻倍，与 E6 同步改）。 */
+    private static final float DENSITY = 0.4F;
     private static final double FALL_SPEED = -0.25;
 
     @Inject(method = "tick()V", at = @At("RETURN"), remap = false)
@@ -52,8 +52,8 @@ public abstract class PhysicsBogeyDeadmanParticleMixin {
         double baseY = center.y - 1.0 + PARTICLE_LIFT;
         int baseX = (int) Math.floor(center.x);
         int baseZ = (int) Math.floor(center.z);
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dz = -1; dz <= 1; dz++) {
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dz = -2; dz <= 2; dz++) {
                 if (world.random.nextFloat() >= DENSITY) {
                     continue;
                 }
