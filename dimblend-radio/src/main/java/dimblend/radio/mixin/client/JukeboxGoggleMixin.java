@@ -6,6 +6,7 @@ import org.spongepowered.asm.mixin.Mixin;
 
 import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
 
+import dimblend.radio.client.JukeboxGoggleLayout;
 import dimblend.radio.client.RadioLibrary;
 import dimblend.radio.client.RadioController;
 import dimblend.radio.net.ClientRadioState;
@@ -38,11 +39,14 @@ import net.minecraft.world.level.block.entity.JukeboxBlockEntity;
  * 全行统一基线、文字块整体右移，不是只给首行加），value 行 = GUTTER + INDENT
  * （6 空格）、首行 = GUTTER（4 空格）；非默认字体下与 catnip 快路径同为近似值。</p>
  *
- * <p><b>2026-10-15 二次修复（实机 InvalidMixinException）</b>：排版行构造全部收敛到
- * {@link JukeboxGoggleLayout}（包可见纯函数类，兼作单测接缝）——mixin 类禁含非
- * private static 字段/方法（GUTTER/INDENT 为测试降级后启动即炸；非私有 static
- * 方法还会被 merge 进 JukeboxBlockEntity 造成污染，单测不应用 mixin 抓不到），
- * 本类只留注入胶水与 private 成员。</p>
+ * <p><b>2026-10-15 二次/三次修复（两轮实机事故）</b>：排版行构造全部收敛到
+ * {@link JukeboxGoggleLayout}（{@code dimblend.radio.client} 层纯函数类，兼作单测
+ * 接缝）——①mixin 类禁含非 private static 字段/方法（GUTTER/INDENT 为测试降级后
+ * 启动即 InvalidMixinException；非私有 static 方法还会被 merge 进 JukeboxBlockEntity
+ * 造成污染，单测不应用 mixin 抓不到）；②拆出的 helper 类禁放 mixin 专用包
+ * （dimblend_radio.mixins.json 声明 package=dimblend.radio.mixin，Mixin 禁包外类直接
+ * 引用包内类——merge 后的代码一引用就 IllegalClassLoadError，戴护目镜看唱片机才
+ * 触发，启动冒烟抓不到）。本类只留注入胶水与 private 成员。</p>
  *
  * <ul>
  *   <li>首行（GRAY）：{@code 电台 3台 · 音量 80%}</li>

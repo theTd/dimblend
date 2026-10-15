@@ -1,4 +1,4 @@
-package dimblend.radio.mixin.client;
+package dimblend.radio.client;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -15,8 +15,9 @@ import dimblend.radio.net.RadioStatePayload;
  * 护目镜弹窗排版（2026-10-15 修复首行被左上角 16×16 图标遮挡）：全行统一
  * {@link JukeboxGoggleLayout#GUTTER} 基线前导（对齐 catnip forGoggles 的
  * getIndents(font, 4) 口径，默认字体 16px），value 行再叠 {@link JukeboxGoggleLayout#INDENT}。
- * 排版逻辑收敛在 JukeboxGoggleLayout——mixin 类禁含非 private static 成员
- * （实机 InvalidMixinException 2026-10-15），本测试只碰纯函数布局类。
+ * 排版逻辑收敛在 JukeboxGoggleLayout（dimblend.radio.client 层）——mixin 类禁含非
+ * private static 成员、拆出的 helper 类禁放 mixin 专用包（两轮实机事故
+ * 2026-10-15），本测试只碰纯函数布局类。
  */
 class JukeboxGoggleLayoutTest {
 
