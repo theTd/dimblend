@@ -1,6 +1,8 @@
 package dimblend.experience.mixin.compat.cdg;
 
 import com.jesz.createdieselgenerators.content.diesel_engine.IEngine;
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.jesz.createdieselgenerators.content.diesel_engine.modular.ModularDieselEngineBlockEntity;
 import com.jesz.createdieselgenerators.content.diesel_engine.normal.DieselEngineBlockEntity;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
@@ -9,6 +11,7 @@ import dimblend.experience.Config;
 import dimblend.experience.compat.cdg.CdgAttachments;
 import dimblend.experience.compat.cdg.CdgBoostMath;
 import dimblend.experience.compat.cdg.CdgEngineState;
+import dimblend.experience.compat.cdg.CdgFluctuationMath;
 import dimblend.experience.compat.cdg.CdgKineticOverload;
 import dimblend.experience.compat.cdg.CdgLoadGrace;
 import dimblend.experience.compat.cdg.CdgOverloadFuse;
@@ -19,7 +22,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
@@ -28,7 +30,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * <li>B1 加燃油启动：转速从 16rpm 起每 4 秒（80gt）+2rpm 阶梯爬升到额定</li>
  * <li>B2 燃尽走原版停机（不干预）</li>
  * <li>B3 到额定后在 80%~100% 间随机跳变，每 1~3 秒取一次新值（计时在 tick
- * 状态机内推进，getter 纯读）</li>
+ * 状态机内推进，getter 纯读；2026-10-16 拍板：波动输出取整到整数 rpm，
+ * {@link CdgFluctuationMath}）</li>
  * <li>B9 boost 启动（2026-10-15 窗子拍板定稿）：运转且未达额定期间，每次点火会话
  * 仅一次——|网络转速|（普通/组合式读引擎 BE {@code getSpeed()}）&gt; 当前阶梯转速时，
  * 把 rampTicks 前推到 min(|网络转速|, 0.8×额定) 对应档位（{@link CdgBoostMath} 纯函数），
@@ -57,7 +60,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * 燃油当前照常消耗，属拍板停用状态，勿按本段旧描述理解。</p>
  * <p>1.3.15 口径对齐：两目标类的 {@code getGeneratedSpeed()} 均含
  * {@code * getThrottle()}（模拟信号调速，未开启时恒 1）。本 mixin 的额定饱和判定
- * 与运转判定同步乘 throttle——与 getter 同源，模拟调速 0 即视为停转复位。</p>
+ * 与运转判定同步乘 throttle——与 getter 同源。2026-10-16 起
+ * {@code EngineThrottleLockMixin} 把 throttle 恒锁 1（B11，忽略红石模拟调速，
+ * 用户实测拉杆摸到引擎致 HUD 消失+出力归零的根因修复），「模拟调速 0 视为停转
+ * 复位」路径随之消亡。</p>
  * <p>配置读取时机：所有 handler 先行 ServerLevel 守卫（双端方法），仅服务端
  * 读取 SERVER 配置——避免专用服务器客户端未加载该配置即抛异常。</p>
  * <p>状态持久化：附件带 codec 序列化，闩锁/引信与点火计时跨区块卸载/存档重启保持；
@@ -83,8 +89,8 @@ public abstract class DieselEngineRampMixin {
      * B1/B3：爬梯 + 额定波动。纯函数式：不推进任何计时（计时在 tick RETURN
      * 状态机内统一推进），同 tick 多次调用看到同一状态，无分裂值。
      */
-    @Inject(method = "getGeneratedSpeed", at = @At("RETURN"), cancellable = true)
-    public void dimblend$rampAndFluctuate(CallbackInfoReturnable<Float> cir) {
+    @Inject(method = "getGeneratedSpeed()F", at = @At("RETURN"), cancellable = true, require = 3, allow = 3)
+    private void dimblend$rampAndFluctuate(CallbackInfoReturnable<Float> cir) {
         KineticBlockEntity self = (KineticBlockEntity) (Object) this;
         if (!(self.getLevel() instanceof ServerLevel level)) {
             return;
@@ -107,8 +113,9 @@ public abstract class DieselEngineRampMixin {
                 dimblend$IGNITION_RPM + dimblend$RAMP_STEP_RPM * (state.rampTicks / dimblend$RAMP_STEP_TICKS),
                 rated);
         if (stepped >= rated) {
-            // B3：已到额定，按已抽取的波动系数缩放（系数抽取在 tick 状态机内）
-            stepped = rated * state.fluctFactor;
+            // B3：已到额定，按已抽取的波动系数缩放（系数抽取在 tick 状态机内）；
+            // 2026-10-16 拍板：波动输出取整到整数 rpm（Math.round，不超额定——系数恒 <1 且额定为整数）
+            stepped = CdgFluctuationMath.fluctuatedSpeed(rated, state.fluctFactor);
         }
         cir.setReturnValue(sign * stepped);
     }
@@ -119,16 +126,18 @@ public abstract class DieselEngineRampMixin {
      * 相对上次记录上升）→ 解除闩锁全新点火；运转中过载→累计首 tick 播警告音、
      * 满确认窗口<b>点引信</b>（出力归零，4 秒后自毁，失败回退闩锁；确认前解除过载
      * 即掐掉警告音，点引信后播完不掐）；运转中推进
-     * 爬梯计时与波动抽取计时（getGeneratedSpeed 纯读系数）；<b>停转（红石关停/
-     * 模拟调速归零）复位</b>——与燃尽/重新加油的"全新点火"语义一致（复核裁定，第 2 轮的
-     * 续转语义已回退）。
+     * 爬梯计时与波动抽取计时（getGeneratedSpeed 纯读系数）；<b>停转（无油/无效燃油）复位</b>
+     * ——与燃尽/重新加油的"全新点火"语义一致（复核裁定，第 2 轮的
+     * 续转语义已回退）。2026-10-16 B11 起 throttle 恒锁 1（EngineThrottleLockMixin），
+     * 原「模拟调速归零」停转路径消亡，运行判定中的 throttle>0 成为恒真。
      * 到额定窗口为确定性饱和判定：{@code 16 + 2×(rampTicks/80) >= rawRated}，
      * 与 getter 的阶梯公式同源（翻轉点=getter 开始应用波动系数的点），不依赖
      * 当前转速——无冻结/无爬梯段空转/无相位漂移。
      * 附件带序列化：闩锁/引信跨区块卸载/存档重启保持；跃迁标脏。
      */
-    @Inject(method = "tick", at = @At("RETURN"))
-    public void dimblend$updateIgnitionState(CallbackInfo ci) {
+    @WrapMethod(method = "tick()V", require = 1, allow = 1)
+    private void dimblend$updateIgnitionState(Operation<Void> original) {
+        original.call();
         KineticBlockEntity self = (KineticBlockEntity) (Object) this;
         if (!(self.getLevel() instanceof ServerLevel level)) {
             return; // 客户端无 SERVER 配置，不读
@@ -232,7 +241,8 @@ public abstract class DieselEngineRampMixin {
         CdgOverloadFuse.clearConfirmation(level, state);
         if (!state.overloadLatched) {
             // throttle 口径（1.3.15）：getter 额定 = upgrade.getSpeed * throttle，
-            // 饱和判定必须同源；throttle == 0（模拟调速关闭）视为停转复位
+            // 饱和判定必须同源；2026-10-16 B11 起 throttle 恒锁 1（EngineThrottleLockMixin），
+            // running 判定中的 throttle>0 恒真（原"模拟调速归零停转"路径消亡）
             float throttle = engine.getThrottle();
             boolean running = enabled && !overloaded && throttle > 0.0F;
             if (running) {
@@ -265,7 +275,7 @@ public abstract class DieselEngineRampMixin {
                     state.fluctTicksLeft = 0;
                 }
             } else {
-                // 停转（红石关停）复位——与燃尽/重新加油的"全新点火"语义一致（复核裁定）；
+                // 停转（无油/无效燃油）复位——与燃尽/重新加油的"全新点火"语义一致（复核裁定）；
                 // rampTicks 复位=点火会话结束，B9 boost 消费标志一并清除
                 state.rampTicks = 0;
                 state.fluctTicksLeft = 0;

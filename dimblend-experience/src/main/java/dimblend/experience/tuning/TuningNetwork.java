@@ -18,8 +18,8 @@ public final class TuningNetwork {
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
         // The snapshot carries one value per option: adding options changes the protocol.
-        // v17 adds the radio End voice volume alongside v16's deadman radius.
-        var registrar = event.registrar("17");
+        // v18 adds the copper sink infinity switch (32 options, including the sign bit).
+        var registrar = event.registrar("18");
         registrar.playToServer(TuningEditPayload.TYPE, TuningEditPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof ServerPlayer player) {

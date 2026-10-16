@@ -1,0 +1,35 @@
+{
+  "type": "minecraft:campfire_cooking",
+  "ingredient": {
+    "type": "neoforge:components",
+    "items": "minecraft:potion",
+    "components": {
+      "minecraft:potion_contents": {
+        "potion": "minecraft:water"
+      },
+      "minecraft:custom_data": "{Purity:0}"
+    },
+    "strict": false
+  },
+  "result": {
+    "id": "minecraft:potion",
+    "components": {
+      "minecraft:potion_contents": {
+        "potion": "minecraft:water"
+      },
+      "minecraft:custom_data": "{Purity:1}"
+    }
+  },
+  "experience": 0.35,
+  "cookingtime": 300,
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "create"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "yet_another_thirst"
+    }
+  ]
+}

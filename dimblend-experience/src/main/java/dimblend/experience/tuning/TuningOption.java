@@ -36,7 +36,8 @@ public enum TuningOption {
     SABLE_SLEEP_SKIP("sable_sleep_skip", 1.0D, "sable", Section.SABLE),
     SABLE_CONTACT_FORCE_EVENTS("sable_contact_force_events", 1.0D, "sable", Section.SABLE),
     SABLE_BIOME_PROJECTION_FAST_PATH("sable_biome_projection_fast_path", 1.0D, "sable", Section.SABLE),
-    SABLE_EMPTY_CONTAINER_FAST_PATH("sable_empty_container_fast_path", 1.0D, "sable", Section.SABLE);
+    SABLE_EMPTY_CONTAINER_FAST_PATH("sable_empty_container_fast_path", 1.0D, "sable", Section.SABLE),
+    COPPER_SINK_INFINITE("copper_sink_infinite", 0.0D, "fluid");
 
     /** Display pages of the tuning screen; the snapshot still carries every option. */
     public enum Section { MAIN, SABLE }

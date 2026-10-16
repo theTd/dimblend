@@ -1,0 +1,40 @@
+{
+  "type": "create:mixing",
+  "ingredients": [
+    {
+      "type": "neoforge:components",
+      "fluids": "minecraft:water",
+      "components": {
+        "minecraft:custom_data": "{Purity:1}"
+      },
+      "strict": false,
+      "amount": 1000
+    },
+    {
+      "item": "minecraft:blaze_powder"
+    }
+  ],
+  "results": [
+    {
+      "id": "minecraft:water",
+      "amount": 500,
+      "components": {
+        "minecraft:custom_data": "{Purity:2}"
+      }
+    },
+    {
+      "id": "minecraft:blaze_powder"
+    }
+  ],
+  "heat_requirement": "none",
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "create"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "yet_another_thirst"
+    }
+  ]
+}

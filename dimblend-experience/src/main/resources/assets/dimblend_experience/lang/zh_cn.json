@@ -39,6 +39,8 @@
 	"screen.dimblend_experience.tuning.coupler_redstone.description": "默认：关闭。允许红石信号解锁自动车钩。",
 	"screen.dimblend_experience.tuning.coupler_survival": "允许生存模式右键车钩",
 	"screen.dimblend_experience.tuning.coupler_survival.description": "默认：关闭。允许生存模式玩家与自动车钩交互。",
+	"screen.dimblend_experience.tuning.copper_sink_infinite": "铜水槽无限水",
+	"screen.dimblend_experience.tuning.copper_sink_infinite.description": "默认：关闭。关闭后为 2000mB 有限储罐；开启还需 Create Fluid 的 infiniteWater 配置允许。",
 	"screen.dimblend_experience.tuning.limited_water": "有限水检测",
 	"screen.dimblend_experience.tuning.limited_water.description": "默认：开启。检测旋转维度中新写入的源水。冰块放置限制有独立开关。",
 	"screen.dimblend_experience.tuning.sable_void_fit": "载具结构空位拟合",
@@ -198,5 +200,7 @@
 	"hud.dimblend_experience.item_drain.no_water": "无水",
 	"hud.dimblend_experience.item_drain.next_boost": "下次催熟：%s 秒",
 	"hud.dimblend_experience.item_drain.insufficient_water": "水量不足（%s/%s mb）",
+	"hud.dimblend_experience.diesel_engine_no_fuel": "提供燃料起转 需要时间达到满功率",
+	"hud.dimblend_experience.diesel_engine_no_fuel_faster": "提供更高的转速以更快达到满功率",
 	"config.jade.plugin_dimblend_experience.item_drain_hud": "分液池灌溉状态"
 }

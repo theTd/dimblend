@@ -177,7 +177,7 @@
 
 - B1 加燃油启动：转速立即到 16rpm → 每 4 秒 +2rpm 阶梯爬升，直至额定转速
 - B2 燃油烧尽 → 正常停机流程
-- B3 达到额定后：在 80%~100% 额定区间随机跳变（实现拟每 1~3 秒取一次随机值，可调）
+- B3 达到额定后：在 80%~100% 额定区间随机跳变（实现拟每 1~3 秒取一次随机值，可调；2026-10-16 拍板：波动输出取整到整数 rpm，Math.round、不超额定——系数恒 <1 且额定为整数；纯函数 `CdgFluctuationMath` + 单测 `CdgFluctuationMathTest`，普通/组合式/巨型同口径）
 - B4 应力过载 → 爆机掉落（用户拍板变更，原"闩锁停机+重新加油重启"作废）：运转中过载连续 40 tick（2 秒）确认后破坏方块、按战利品表掉成物品，油箱余油不返还；加载期误报过滤（2026-09-29 修订）——缓存 `overStressed` 在 `addSilently` 改账后不 sync，会停在过载，而 `(stress, networkSize)` 可以一直不变；确认前若缓存位为真，用 `calculateCapacity/calculateStress` 的实时值复核（`capacity < stress` 才算），实时不成立则不累计并刷掉缓存位（2026-09-30 修订：先 `updateNetwork()`，再按 `calculateCapacity/calculateStress` 实时值经 `CdgOverloadMath.countsAsOverload` 判定，不再只重读缓存位——`updateNetwork()` 仅在网络缓存总量变化时 sync，总量未变时粘住的缓存位原样保留、会被当成过载累计；实时不过载就以实时值 `updateFromNetwork` 只刷本 BE，GameTest `CdgKineticOverloadGameTests` 2 条锁定）；实时过载仍须连续 40 tick，任一非过载 tick 清零（确认计数不序列化）；实时值本身的读档虚高（2026-09-30 修订）——爬梯/波动改转速会触发 Create reapply source（detach + attach）整网重建，已加载未 tick 的成员被 `add()` 收进 members、存档份额却仍留在 unloadedStress，首 tick 的 addSilently 因已在 members 提前 return 永不扣回，整网应力永久多算一份、实时复核照样判过载；由 `KineticUnloadedShareMixin` 在该成员首 tick 前首次换网/被拆时按 addSilently 同口径补扣（对全部 Create 网络生效、无开关），GameTest `KineticUnloadedShareGameTests` 3 条锁定；确认前爬梯/波动计时冻结；过载警告音 `diesel_overstress` 在确认累计首 tick 即播（2026-10-14 修订，原在点引信当 tick），点引信前解除过载（累计清零的一切复位路径）即掐掉、点引信后播完不掐——素材长 6.005 秒（≈120 tick），2 秒确认 + 4 秒引信刚好在爆炸瞬间播完；确认后 4 秒（80 tick）引信倒计时期间每 tick 在引擎中心播 minecraft:large_smoke（delta=0.2,0.2,0.2 / speed=0 / count=10）（引信时长：2026-10-14 修订 6 秒→2 秒，2026-10-15 修订 2 秒→4 秒——用户"再延后两秒"，较最初 6 秒口径仍提前 2 秒）；破坏失败（极端）回退闩锁逻辑；读档宽限（2026-10-01 新增）——开服（`MinecraftServer#getTickCount()` 从 0 起，单人暂停不走）后 `dieselLoadGraceSeconds`（默认 5 秒，0=关闭）内三类柴油机一律不判爆：不累计过载确认（计数保持 0，同未确认口径冻结爬梯/波动）、已在走的引信倒计时暂停，宽限过后重新累计（需再连续 40 tick）；仍照常执行实时复核以刷掉粘住的缓存位；判定为纯函数 `CdgOverloadMath.isWithinLoadGrace`，读配置/tick 封装在 `CdgLoadGrace`
 - B5 大型柴油引擎（v1.2 第二版新条目，用户标"未实现"）：热机爬梯 + 额定波动 + 过载损坏，
   与普通/组合式同口径（16/+2/4s，80%~100%/1~3s，爆机掉落余油不返还）。
@@ -264,6 +264,18 @@
   双端同值无分叉）。GameTest
   `CdgTankCapacityGameTests` 3 例（普通/组合式容量==配置值、配置 1000 恢复原生，
   需 `-PwithCdg`，仅 CDG 在场时注册）。待实测。
+- B11 柴油机忽略红石信号（2026-10-16 确认）：`EngineThrottleLockMixin`
+  双端锁定 `IEngine#getThrottle()=1`，并让 `IEngine#enabled()` 仅保留原生
+  `validFS()`（无油/无效燃油仍停机）；`ModularEngineRedstoneMixin` 同口径覆盖
+  组合式 override 的成员红石检查。模拟调速开/关、红石停机配置开/关均不影响结果。
+  随 `dieselEngineBehavior`，关闭恢复原生；配置未加载按默认开启；耗油倍率恒满档。
+- B12 空油箱护目镜提示：三种机型以 WrapMethod 包装 `addToGoggleTooltip(List,boolean)boolean`，
+  原始内容之后追加灰字「提供燃料起转 需要时间达到满功率」和
+  「提供更高的转速以更快达到满功率」。非 controller 的组合机跳过外层追加以避免委托重复。
+  每个包装恰好匹配一次；实际渲染仍待客户端验证。
+
+2026-10-16 净水、铜水槽/铜龙头、照片兼容的完整规则与验证见
+[本批兼容规格](compat-water-2026-10-16.md)。
 
 ## 3. 板块 C：创造模式伪装方块（Create + Copycats+ 扩展）
 
@@ -861,6 +873,8 @@
 | compat.cdg.DieselEngineRampMixin | CDG 普通/组合柴油机 BE | B | createdieselgenerators 在场 |
 | compat.cdg.CdgEngineTankCapacityMixin | CDG 普通柴油机 BE（addBehaviours 油箱容量 1000 常量 @ModifyConstant） | B10 | createdieselgenerators 在场 |
 | compat.cdg.CdgModularEngineTankCapacityMixin | CDG 组合柴油机 BE（构造器 + read 两处油箱容量 1000 常量 @ModifyConstant） | B10 | createdieselgenerators 在场 |
+| compat.cdg.EngineThrottleLockMixin | CDG IEngine 接口（throttle 恒 1、enabled 保留有效燃油检查） | B11 | createdieselgenerators 在场 |
+| compat.cdg.CdgEngineGoggleFuelHintMixin | CDG 三类柴油机 BE（包装 boolean tooltip，空箱追加两行） | B12 | createdieselgenerators 在场 |
 | compat.cdg.HugeDieselEngineMixin | CDG 巨型柴油机 BE | B5 | createdieselgenerators 在场 |
 | compat.cca.ElectricMotorMixin | CCA 电动马达 BE | D | createaddition 在场 |
 | compat.cca.ElectricMotorSoundClientMixin | CCA 电动马达 BE | D4 | createaddition 在场（client 数组） |

@@ -136,8 +136,7 @@ public final class RecipeEditRules {
                 ResultIdFilter.exact("createpropulsion:stirling_engine"), Set.of(), false));
 
         // —— 3.7 Create Fluid ——
-        edits.add(new RecipeEdit.DeleteByResultId("铜水槽",
-                ResultIdFilter.exact("fluid:copper_sink"), Set.of(), false));
+        // 铜水槽恢复上游配方；无限水由 experience 的 /dbx 开关控制。
 
         // —— 3.8 TACZ ——
         edits.add(new RecipeEdit.DeleteByRecipeId("弹药装配台",
@@ -224,6 +223,38 @@ public final class RecipeEditRules {
         // 删除石磨 燧石 => 火药（类型 kaleidoscope_cookery:millstone 的数据包配方）
         edits.add(new RecipeEdit.DeleteByRecipeId("石磨燧石磨火药",
                 Set.of(ResourceLocation.parse("kaleidoscope_cookery:millstone/gunpowder_from_flint"))));
+
+        // —— 3.16 YAT 净水链重做（2026-10-16 确认） ——
+        // 删除旧瓶/桶/碗净化及堵塞滤芯再生，保留滤芯制造、过滤器功能与新配方。
+        edits.add(new RecipeEdit.DeleteByRecipeId("旧净水与堵塞滤芯清洗配方",
+                Set.of(
+                        ResourceLocation.parse("yet_another_thirst:carbon_filter_core_from_campfire_cooking"),
+                        ResourceLocation.parse("yet_another_thirst:carbon_filter_core_from_smelting"),
+                        ResourceLocation.parse("yet_another_thirst:clean_fabric_filter"),
+                        ResourceLocation.parse("yet_another_thirst:terracotta_water_bowl_from_campfire_cooking_acceptable_purity_1"),
+                        ResourceLocation.parse("yet_another_thirst:terracotta_water_bowl_from_campfire_cooking_purified_purity_2"),
+                        ResourceLocation.parse("yet_another_thirst:terracotta_water_bowl_from_campfire_cooking_slightly_dirty_purity_-1"),
+                        ResourceLocation.parse("yet_another_thirst:terracotta_water_bowl_from_campfire_cooking_slightly_dirty_purity_0"),
+                        ResourceLocation.parse("yet_another_thirst:terracotta_water_bowl_from_smelting_acceptable_purity_-1"),
+                        ResourceLocation.parse("yet_another_thirst:terracotta_water_bowl_from_smelting_acceptable_purity_0"),
+                        ResourceLocation.parse("yet_another_thirst:terracotta_water_bowl_from_smelting_purified_purity_1"),
+                        ResourceLocation.parse("yet_another_thirst:terracotta_water_bowl_from_smelting_purified_purity_2"),
+                        ResourceLocation.parse("yet_another_thirst:water_bottle_from_campfire_cooking_acceptable_purity_1"),
+                        ResourceLocation.parse("yet_another_thirst:water_bottle_from_campfire_cooking_purified_purity_2"),
+                        ResourceLocation.parse("yet_another_thirst:water_bottle_from_campfire_cooking_slightly_dirty_purity_-1"),
+                        ResourceLocation.parse("yet_another_thirst:water_bottle_from_campfire_cooking_slightly_dirty_purity_0"),
+                        ResourceLocation.parse("yet_another_thirst:water_bottle_from_smelting_acceptable_purity_-1"),
+                        ResourceLocation.parse("yet_another_thirst:water_bottle_from_smelting_acceptable_purity_0"),
+                        ResourceLocation.parse("yet_another_thirst:water_bottle_from_smelting_purified_purity_1"),
+                        ResourceLocation.parse("yet_another_thirst:water_bottle_from_smelting_purified_purity_2"),
+                        ResourceLocation.parse("yet_another_thirst:water_bucket_from_campfire_cooking_acceptable_purity_1"),
+                        ResourceLocation.parse("yet_another_thirst:water_bucket_from_campfire_cooking_slight_dirty_purity_-1"),
+                        ResourceLocation.parse("yet_another_thirst:water_bucket_from_campfire_cooking_slight_dirty_purity_0"),
+                        ResourceLocation.parse("yet_another_thirst:water_bucket_from_campfire_purified_purity_2"),
+                        ResourceLocation.parse("yet_another_thirst:water_bucket_from_smelting_acceptable_purity_-1"),
+                        ResourceLocation.parse("yet_another_thirst:water_bucket_from_smelting_acceptable_purity_0"),
+                        ResourceLocation.parse("yet_another_thirst:water_bucket_from_smelting_purfied_purity_1"),
+                        ResourceLocation.parse("yet_another_thirst:water_bucket_from_smelting_purfied_purity_2"))));
 
         return edits.build();
     }

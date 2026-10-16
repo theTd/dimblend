@@ -59,7 +59,8 @@ public final class Config {
             .define("treasureShellX", true);
 
     public static final ModConfigSpec.BooleanValue DIESEL_ENGINE_BEHAVIOR = BUILDER
-            .comment("B 板块：CDG 柴油机转速行为（点火爬梯 16rpm→每4秒+2→额定；额定后 80%~100% 随机波动，应力容量随转速同比缩放；运转中过载持续2秒确认后爆机掉落）")
+            .comment("B 板块：CDG 柴油机转速行为（点火爬梯 16rpm→每4秒+2→额定；额定后 80%~100% 随机波动并取整到整数 rpm，"
+                    + "应力容量随转速同比缩放；运转中过载持续2秒确认后爆机掉落；忽略红石模拟调速——throttle 恒 1，B11）")
             .define("dieselEngineBehavior", true);
 
     public static final ModConfigSpec.BooleanValue DIESEL_PLACEMENT_GUARD = BUILDER
@@ -212,6 +213,10 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue PORTAL_BAN = BUILDER
             .comment("G 板块 G4：旋转维度内禁一切传送门生成与跨维度旅行；折跃门方块全局禁传送（留块）。回家通道不管")
             .define("portalBan", true);
+
+    public static final ModConfigSpec.BooleanValue COPPER_SINK_INFINITE = BUILDER
+            .comment("铜水槽无限水：默认关闭，关闭后沿用 Create Fluid 的 2000mB 有限储罐；开启还需要上游 infiniteWater 配置允许")
+            .define("copperSinkInfinite", false);
 
     public static final ModConfigSpec.BooleanValue LIMITED_WATER = BUILDER
             .comment("G 板块 G3 有限水：旋转维度内每次写入源水（water8），先看以该格为球心 8 格内最近的非旁观玩家——"

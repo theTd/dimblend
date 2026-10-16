@@ -2,10 +2,13 @@ package dimblend.experience.mixin.compat.cdg;
 
 import com.jesz.createdieselgenerators.content.diesel_engine.huge.HugeDieselEngineBlockEntity;
 import com.jesz.createdieselgenerators.content.diesel_engine.huge.PoweredEngineShaftBlockEntity;
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dimblend.experience.Config;
 import dimblend.experience.compat.cdg.CdgAttachments;
 import dimblend.experience.compat.cdg.CdgBoostMath;
 import dimblend.experience.compat.cdg.CdgEngineState;
+import dimblend.experience.compat.cdg.CdgFluctuationMath;
 import dimblend.experience.compat.cdg.CdgKineticOverload;
 import dimblend.experience.compat.cdg.CdgLoadGrace;
 import dimblend.experience.compat.cdg.CdgOverloadFuse;
@@ -16,12 +19,11 @@ import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * B5 大型柴油引擎：热机爬梯 + 额定波动 + 过载损坏（与普通/组合式同口径）。
+ * B5 大型柴油引擎：热机爬梯 + 额定波动（输出取整到整数 rpm，2026-10-16 拍板）
+ * + 过载损坏（与普通/组合式同口径）。
  * B9 boost 启动同口径覆盖（每会话一次，|轴转速| > 当前阶梯时前推 rampTicks 到
  * min(|轴转速|, 0.8×额定) 档位，见 tick RETURN 内联注释与 {@link CdgBoostMath}）。
  *
@@ -32,7 +34,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * 调速点 = 该调用的 speed 参数（index 3，{@link #dimblend$rampSpeed} 替换）；
  * 计时与波动抽取在 tick RETURN 推进（getter/参数替换保持纯函数）。
  * 饱和判定与该调用实参同源（{@code |getFuelSpeed * getThrottle|}，注意 1.3.15
- * 此处未乘 upgrade 倍率——与上游保持一致，不另做修正）。</p>
+ * 此处未乘 upgrade 倍率——与上游保持一致，不另做修正；2026-10-16 B11 起
+ * throttle 由 EngineThrottleLockMixin 恒锁 1，该项成为恒 1 因子）。</p>
  *
  * <p>B6 过载警告与引信（用户拍板，引信不可中断）：轴缓存 {@code overStressed} 为真时先按三关
  * 复核（见 {@code CdgKineticOverload}；2026-10-13 修订——整网实时账、已加载成员实时账、
@@ -76,7 +79,7 @@ public abstract class HugeDieselEngineMixin {
             at = @At(
                     value = "INVOKE",
                     target = "Lcom/jesz/createdieselgenerators/content/diesel_engine/huge/PoweredEngineShaftBlockEntity;update(Lnet/minecraft/core/BlockPos;IFF)V"),
-            index = 3)
+            index = 3, require = 1, allow = 1)
     private float dimblend$rampSpeed(float rated) {
         HugeDieselEngineBlockEntity self = (HugeDieselEngineBlockEntity) (Object) this;
         if (!(self.getLevel() instanceof ServerLevel)) {
@@ -94,12 +97,13 @@ public abstract class HugeDieselEngineMixin {
 
     /** B5 爬梯/波动转速（闩锁由调用方先判）。 */
     @Unique
-    private static float dimblend$steppedSpeed(CdgEngineState state, float rated) {
+    private float dimblend$steppedSpeed(CdgEngineState state, float rated) {
         float stepped = Math.min(
                 dimblend$IGNITION_RPM + dimblend$RAMP_STEP_RPM * (state.rampTicks / dimblend$RAMP_STEP_TICKS),
                 rated);
         if (stepped >= rated) {
-            stepped = rated * state.fluctFactor;
+            // B3 波动输出取整（2026-10-16 拍板，与 DieselEngineRampMixin 同口径）
+            stepped = CdgFluctuationMath.fluctuatedSpeed(rated, state.fluctFactor);
         }
         return stepped;
     }
@@ -111,8 +115,9 @@ public abstract class HugeDieselEngineMixin {
      * 轴过载 → 累计首 tick 播警告音（确认前解除即掐掉），满确认窗口摘登记 + 点引信。
      * 爬梯/波动计时与普通机同口径。
      */
-    @Inject(method = "tick()V", at = @At("RETURN"))
-    private void dimblend$hugeIgnitionAndOverload(CallbackInfo ci) {
+    @WrapMethod(method = "tick()V", require = 1, allow = 1)
+    private void dimblend$hugeIgnitionAndOverload(Operation<Void> original) {
+        original.call();
         HugeDieselEngineBlockEntity self = (HugeDieselEngineBlockEntity) (Object) this;
         if (!(self.getLevel() instanceof ServerLevel level)) {
             return;
@@ -177,9 +182,11 @@ public abstract class HugeDieselEngineMixin {
         }
         state.lastFuelAmount = fuelAmount;
         if (!self.enabled() || self.getThrottle() == 0.0F) {
-            // 未运行（无油/红石关停/燃尽/模拟调速归零）：复位计时，与普通机"停转复位"一致
+            // 未运行（无油/无效燃油/燃尽）：复位计时，与普通机"停转复位"一致
             // （rampTicks 复位=点火会话结束，B9 boost 消费标志一并清除）；
-            // 且轴过载此时与其他引擎有关，不得炸本机
+            // 且轴过载此时与其他引擎有关，不得炸本机。
+            // getThrottle()==0 分支自 2026-10-16 B11（EngineThrottleLockMixin 恒锁 1）起恒假，
+            // 仅作配置关总开关透传时的兜底保留
             CdgOverloadFuse.clearConfirmation(level, state);
             state.rampTicks = 0;
             state.fluctTicksLeft = 0;

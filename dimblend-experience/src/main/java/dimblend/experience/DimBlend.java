@@ -59,6 +59,9 @@ public class DimBlend {
         if (ModList.get().isLoaded("createdieselgenerators")) {
             CdgAttachments.ATTACHMENTS.register(modEventBus);
         }
+        if (ModList.get().isLoaded("yet_another_thirst")) {
+            modEventBus.addListener(dimblend.experience.compat.yat.ThirstFilterBalance::setup);
+        }
 
         // E8 横向力的 sable 力分组（Simulated 力示意图按分组绘制），条件与 E8 mixin 一致：仅 simurail 在场
         if (ModList.get().isLoaded("simurail")) {
@@ -87,6 +90,11 @@ public class DimBlend {
     }
 
     private static void onRegisterGameTests(RegisterGameTestsEvent event) {
+        if (ModList.get().isLoaded("createdieselgenerators") && ModList.get().isLoaded("fluid")
+                && ModList.get().isLoaded("yet_another_thirst") && ModList.get().isLoaded("create_connected")
+                && ModList.get().isLoaded("sable")) {
+            event.register(dimblend.experience.gametest.BatchWaterCompatGameTests.class);
+        }
         // G3 有限水/冰放置禁令（玩家半边）只用原版类型，无条件注册
         event.register(LimitedWaterGameTests.class);
         // A10 战利品地图过滤只碰原版战利品类型，无条件注册

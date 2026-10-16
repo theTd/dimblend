@@ -15,10 +15,25 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        if (mixinClassName.endsWith(".compat.connected.KineticBatteryLifecycleMixin")) {
+            return isLoaded("create_connected");
+        }
+        if (mixinClassName.endsWith(".compat.yat.CopperSinkBottlePurityMixin")) {
+            return isLoaded("fluid") && isLoaded("yet_another_thirst");
+        }
+        if (mixinClassName.endsWith(".compat.yat.WaterBottleDrainPurityMixin")) {
+            return isLoaded("create") && isLoaded("yet_another_thirst");
+        }
+        if (mixinClassName.endsWith(".compat.camerapture.PictureItemFrameMixin")) {
+            return isLoaded("camerapture");
+        }
         if (mixinClassName.endsWith(".compat.cdg.DieselEngineRampMixin")
                 || mixinClassName.endsWith(".compat.cdg.HugeDieselEngineMixin")
                 || mixinClassName.endsWith(".compat.cdg.CdgEngineTankCapacityMixin")
-                || mixinClassName.endsWith(".compat.cdg.CdgModularEngineTankCapacityMixin")) {
+                || mixinClassName.endsWith(".compat.cdg.CdgModularEngineTankCapacityMixin")
+                || mixinClassName.endsWith(".compat.cdg.EngineThrottleLockMixin")
+                || mixinClassName.endsWith(".compat.cdg.ModularEngineRedstoneMixin")
+                || mixinClassName.endsWith(".compat.cdg.CdgEngineGoggleFuelHintMixin")) {
             return isLoaded("createdieselgenerators");
         }
         if (mixinClassName.endsWith(".compat.cca.ElectricMotorMixin")
@@ -65,7 +80,10 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         }
         if (mixinClassName.endsWith(".compat.fluid.GutterOutletPrecipitationMixin")
                 || mixinClassName.endsWith(".compat.fluid.GutterOutletBiomeProjectionMixin")
-                || mixinClassName.endsWith(".compat.fluid.SmartGutterOutletBiomeProjectionMixin")) {
+                || mixinClassName.endsWith(".compat.fluid.SmartGutterOutletBiomeProjectionMixin")
+                || mixinClassName.endsWith(".compat.fluid.CopperSinkTankMixin")
+                || mixinClassName.endsWith(".compat.fluid.CopperSinkDisplayMixin")
+                || mixinClassName.endsWith(".compat.fluid.CopperTapLeakMixin")) {
             return isLoaded("fluid");
         }
         return true;

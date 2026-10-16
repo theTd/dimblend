@@ -39,6 +39,8 @@
   "screen.dimblend_experience.tuning.coupler_redstone.description": "Default: off. Allows redstone signals to unlock automatic couplers.",
   "screen.dimblend_experience.tuning.coupler_survival": "Allow Survival right-click on couplers",
   "screen.dimblend_experience.tuning.coupler_survival.description": "Default: off. Allows Survival players to interact with automatic couplers.",
+  "screen.dimblend_experience.tuning.copper_sink_infinite": "Infinite copper sink water",
+  "screen.dimblend_experience.tuning.copper_sink_infinite.description": "Default: off. Off uses a finite 2000 mB tank. Enabling also requires Create Fluid to allow infiniteWater.",
   "screen.dimblend_experience.tuning.limited_water": "Limited-water checks",
   "screen.dimblend_experience.tuning.limited_water.description": "Default: on. Checks new source water in the rotating dimension. The ice placement rule has its own setting.",
   "screen.dimblend_experience.tuning.sable_void_fit": "Structure-void fitting on vehicles",
@@ -198,5 +200,7 @@
   "hud.dimblend_experience.item_drain.no_water": "No water",
   "hud.dimblend_experience.item_drain.next_boost": "Next growth boost: %ss",
   "hud.dimblend_experience.item_drain.insufficient_water": "Insufficient water (%s/%s mb)",
+  "hud.dimblend_experience.diesel_engine_no_fuel": "Supply fuel to start — reaching full power takes time",
+  "hud.dimblend_experience.diesel_engine_no_fuel_faster": "Drive it with higher rotational speed to reach full power faster",
   "config.jade.plugin_dimblend_experience.item_drain_hud": "Item Drain Irrigation"
 }
