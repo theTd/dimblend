@@ -17,7 +17,7 @@ sourceSets.main.resources {
     exclude("src/generated/**/.cache") // datagen cache files
 }
 
-// Maven 仓库收敛到单仓根 build.gradle（本 mod 无第三方依赖，无需自家声明）。
+// Maven 仓库收敛到单仓根 build.gradle。
 
 base {
     archivesName = mod_id
@@ -104,9 +104,9 @@ configurations {
 }
 
 dependencies {
-    // This mod has no third-party dependencies by design (recipe edits match by
-    // id at datapack reload, no mod classes referenced). NeoForge itself is
-    // provided by the ModDevGradle plugin (neoForge.version above).
+    // 数据包编辑规则仍按ID匹配；仅森罗动态兜底配方过滤需编译期可见上游API。
+    // 可选兼容不打进产物，缺少森罗时由本模块的mixin plugin跳过。
+    compileOnly "maven.modrinth:kaleidoscope-cookery:TqaHu4Ma" // 1.4.1-neoforge+mc1.21.1
 }
 
 // 本 mod 的 neoforge.mods.toml 直接放在 src/main/resources（无 templates 目录沿用单仓前布局），

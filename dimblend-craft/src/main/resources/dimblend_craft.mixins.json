@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "package": "dimblend.craft.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "plugin": "dimblend.craft.mixin.MillstoneRecipeMixinPlugin",
+  "mixins": [
+    "compat.kaleidoscope.MillstoneMatchRecipeMixin",
+    "compat.kaleidoscope.MillstoneNativeRecipeMixin",
+    "compat.kaleidoscope.MillstoneSearchRecipeMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

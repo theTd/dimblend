@@ -18,8 +18,10 @@ TACZ** 的配方做批量修改与删除。规则明细见 `docs/配方修改需
   `RecipeJsonEditor`（机器配方的 Codec JSON 往返字段编辑），执行与日志在 `RecipeEditApplicator`。
 - 「新增」类需求（如超热黄铜搅拌、铂粒塑形）以随包数据包配方 JSON 提供
   （`data/dimblend_craft/recipe/`，带 `neoforge:mod_loaded` 条件），不经过运行时编辑。
-- 目标 mod 缺失的规则自然空转，仅输出「未命中」告警；规则按产物 ID / 配方 ID 匹配，
-  不依赖任何 mod 类，编译期只有 vanilla + NeoForge 依赖。
+- 数据包规则按产物 ID / 配方 ID 匹配，目标 mod 缺失时自然空转并输出「未命中」告警。
+- 森罗石磨配方精简也归本模块：原生与 Create 动态兜底共用过滤，机械动力小石磨保持不变。
+  仅此可选兼容使用森罗厨房编译期依赖，由本模块 mixin plugin 门控；不依赖 experience。
+  规则和验证边界见 `docs/millstone-recipes.md`。
 
 ## 环境要求
 
