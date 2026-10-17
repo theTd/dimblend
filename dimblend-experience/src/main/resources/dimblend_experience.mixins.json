@@ -62,6 +62,9 @@
 	],
 	"client": [
 		"compat.camerapture.PictureItemFrameMixin",
+		"compat.camerapture.CameraPictureCropMixin",
+		"compat.camerapture.CameraViewfinderMixin",
+		"compat.camerapture.CameraPreGuiCaptureMixin",
 		"client.ItemStackNicknameMixin",
 		"compat.cca.ElectricMotorSoundClientMixin",
 		"compat.cca.ElectricMotorGoggleMixin",

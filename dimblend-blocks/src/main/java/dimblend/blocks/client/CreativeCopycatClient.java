@@ -83,7 +83,7 @@ public final class CreativeCopycatClient {
         if (!ModList.get().isLoaded("copycats")) {
             return;
         }
-        // C5 幽灵渲染：隐藏且持扳手时画物品形态；平时不画任何内容
+        // C5 幽灵渲染：隐藏且持扳手时按真实方块状态显现；平时不画任何内容
         event.registerBlockEntityRenderer(CreativeCopycats.CREATIVE_MULTI_STATE_COPYCAT.get(),
                 CreativeCopycatGhostRenderer::new);
         event.registerBlockEntityRenderer(CreativeCopycats.CREATIVE_CREATE_COPYCAT.get(),
@@ -99,7 +99,7 @@ public final class CreativeCopycatClient {
      * 后者第一次 {@code forEach} 就冻结登记表，客户端 setup 若晚于首次烘焙，
      * 之后的 register 会被静默丢掉，方块永远停在空气模型。
      *
-     * <p>板/半砖（含洁净变体）在最外层再包 {@link HidingCopycatModel} 承担 C5 隐藏；
+     * <p>板/半砖（含洁净变体）在伪装模型外再包 {@link HidingCopycatModel} 承担 C5 隐藏；
      * 粱无隐藏需求，维持单层包装。</p>
      */
     @SubscribeEvent

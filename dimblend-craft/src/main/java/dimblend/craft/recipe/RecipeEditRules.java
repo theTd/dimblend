@@ -136,7 +136,10 @@ public final class RecipeEditRules {
                 ResultIdFilter.exact("createpropulsion:stirling_engine"), Set.of(), false));
 
         // —— 3.7 Create Fluid ——
-        // 铜水槽恢复上游配方；无限水由 experience 的 /dbx 开关控制。
+        // 铜水槽中央水桶改为空桶；无限水仍由 experience 的 /dbx 开关控制。
+        edits.add(modify("铜水槽", "fluid:copper_sink")
+                .slot(5, RecipeIngredient.item("minecraft:bucket"))
+                .build());
 
         // —— 3.8 TACZ ——
         edits.add(new RecipeEdit.DeleteByRecipeId("弹药装配台",

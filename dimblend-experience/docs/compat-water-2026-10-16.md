@@ -14,6 +14,8 @@ YAT NeoForge 1.21-1.5.2（Modrinth version ID `xmk0FTsX`）。相同版本号有
 
 ## 铜水槽
 
+2026-10-17 补充：合成配方中央的水桶改为空桶，见 craft 的配方规则；下述容器功能不变。
+
 恢复 fluid:copper_sink 配方。`copperSinkInfinite` 默认关闭，在 /dbx 主面板可修改，服务端配置和快照双端同步。开启还需 Create Fluid 的 COMMON `infiniteWater` 为真；本开关只增加限制。
 
 沿用上游 2000mB 储罐、原有流体接口与保存方式。有限模式新槽为空，抽取实际扣量；普通 FluidStack 出入保留纯净度，不另建存储层。铜水槽右键水瓶采用相同 250mB 整瓶交换，补齐 Create 通用手持交换丢失纯净度的问题；未知纯净度水取瓶回退肮脏。普通药水、桶和其他物品沿用原路径。YAT 的 FluidTank 混合逻辑按较低纯净度合并。有限模式的资源型 drain 直接复用 SmartFluidTank 父类语义，修复上游先拒绝非水、造成茶装瓶不扣量的问题；模拟不扣量、执行按请求扣量，流体和组件不匹配则拒绝。开关不清空底层存水；从无限模式切回有限模式后恢复实际存量。水面插值每客户端 tick 追踪当前模式的真实填充比例，避免开关后显示滞留。
@@ -23,6 +25,8 @@ YAT NeoForge 1.21-1.5.2（Modrinth version ID `xmk0FTsX`）。相同版本号有
 沿用 `shouldDrip` 与粒子：开着、有来源、没有可灌注目标，连续 300 tick 后首次从来源扣 1mB，以后每 20 tick 扣 1mB。关上、正常灌注、来源不可用会复位计时。复用上游来源方向和空面回退；含水树叶/铜格栅没有真实流体 capability，不扣其虚拟无限来源。不增加粒子。
 
 ## 照片
+
+2026-10-17 后续规则：展示框改为居中裁剪至 4:3 并露出两侧框边；新拍照片与取景框采用同一比例，拍摄在 GUI 绘制前取图。详见 [camera-composition.md](camera-composition.md)，下段保留上一批实现记录。
 
 目标 Camerapture 1.10.12+mc1.21.1-neoforge（version ID `bCB7PwmA`）。复用 ClientPictureStore 的下载/缓存和纹理，原版普通/发光展示框采用地图满格框模型，照片按原始比例居中，横图左右顶满、上下留空；竖图保持在框内。未取得图片或无有效数据时保留原版物品渲染。仅在 Camerapture 在场时注册客户端 mixin；地图和其他物品走原路径。
 

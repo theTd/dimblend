@@ -24,8 +24,9 @@ public final class FramedPictureRenderer {
         if (picture.getStatus() != RemotePicture.Status.SUCCESS || picture.getWidth() <= 0 || picture.getHeight() <= 0) {
             return false;
         }
-        float width = Math.min(1.0F, (float) picture.getWidth() / picture.getHeight());
-        float height = Math.min(1.0F, (float) picture.getHeight() / picture.getWidth());
+        var framed = PictureAspect.framed(picture.getWidth(), picture.getHeight());
+        float width = framed.width();
+        float height = framed.height();
         poses.pushPose();
         // ItemFrameRenderer has already applied the ordinary item scale of 0.5.
         poses.scale(2.0F, 2.0F, 2.0F);
@@ -33,13 +34,13 @@ public final class FramedPictureRenderer {
         var pose = poses.last();
         VertexConsumer vertices = buffers.getBuffer(RenderType.entityCutoutNoCull(picture.getTextureIdentifier()));
         // The front of a native frame faces local -Z, so texture-left is local +X.
-        vertices.addVertex(pose.pose(), width / 2, -height / 2, 0).setColor(-1).setUv(0, 1)
+        vertices.addVertex(pose.pose(), width / 2, -height / 2, 0).setColor(-1).setUv(framed.u0(), framed.v1())
                 .setOverlay(overlay).setLight(light).setNormal(pose, 0, 0, -1);
-        vertices.addVertex(pose.pose(), width / 2, height / 2, 0).setColor(-1).setUv(0, 0)
+        vertices.addVertex(pose.pose(), width / 2, height / 2, 0).setColor(-1).setUv(framed.u0(), framed.v0())
                 .setOverlay(overlay).setLight(light).setNormal(pose, 0, 0, -1);
-        vertices.addVertex(pose.pose(), -width / 2, height / 2, 0).setColor(-1).setUv(1, 0)
+        vertices.addVertex(pose.pose(), -width / 2, height / 2, 0).setColor(-1).setUv(framed.u1(), framed.v0())
                 .setOverlay(overlay).setLight(light).setNormal(pose, 0, 0, -1);
-        vertices.addVertex(pose.pose(), -width / 2, -height / 2, 0).setColor(-1).setUv(1, 1)
+        vertices.addVertex(pose.pose(), -width / 2, -height / 2, 0).setColor(-1).setUv(framed.u1(), framed.v1())
                 .setOverlay(overlay).setLight(light).setNormal(pose, 0, 0, -1);
         poses.popPose();
         return true;

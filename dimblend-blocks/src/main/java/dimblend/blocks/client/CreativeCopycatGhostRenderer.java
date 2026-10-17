@@ -4,25 +4,27 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import dimblend.blocks.api.CreativeCopycatHidable;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.Sheets;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.client.resources.model.BakedModel;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.model.data.ModelData;
+import net.neoforged.neoforge.client.RenderTypeHelper;
 import net.neoforged.neoforge.common.Tags;
 
 /**
  * 隐藏伪装方块的「持扳手暂时显现」渲染：本地玩家主/副手持有扳手
- * （{@code c:tools/wrench}）时，把方块画成其物品形态（伪装基底外观）。
+ * （{@code c:tools/wrench}）时，按真实方块状态暂时画出伪装基底。
  *
- * <p>隐藏以「未贴材质」为前提，故基底外观就是该方块的正常外观；直接画物品模型，
- * 不依赖世界模型的内部数据流（Create 板与 Copycats+ 半砖的材质管线各异）。
- * 代价：幽灵不反映朝向/上下半等形态差异——定位与恢复不受影响（碰撞箱仍在）。</p>
+ * <p>复用最终世界模型及其材质数据，只在本次模型数据采集时绕过隐藏过滤，保留外部装饰包装，
+ * 以及板朝向、半砖上下半与轴向。
+ * 不修改 BE 隐藏标记或方块状态，避免触发同步、网格重建与 Sable 物理更新。</p>
  */
 public class CreativeCopycatGhostRenderer<T extends BlockEntity> implements BlockEntityRenderer<T> {
 
@@ -45,14 +47,20 @@ public class CreativeCopycatGhostRenderer<T extends BlockEntity> implements Bloc
         if (minecraft.level == null || minecraft.player == null || !holdsWrench(minecraft.player)) {
             return;
         }
+        Level level = blockEntity.getLevel();
+        if (level == null) {
+            return;
+        }
         BlockState state = blockEntity.getBlockState();
-        ItemStack itemForm = new ItemStack(state.getBlock());
-        BakedModel model = minecraft.getItemRenderer().getModel(itemForm, minecraft.level, null, 0);
         BlockRenderDispatcher dispatcher = minecraft.getBlockRenderer();
-        poseStack.pushPose();
-        dispatcher.getModelRenderer().renderModel(poseStack.last(),
-                bufferSource.getBuffer(Sheets.solidBlockSheet()), state, model, 1.0F, 1.0F, 1.0F,
-                packedLight, packedOverlay, ModelData.EMPTY, Sheets.solidBlockSheet());
-        poseStack.popPose();
+        BakedModel model = dispatcher.getBlockModel(state);
+        ModelData data = model.getModelData(level, blockEntity.getBlockPos(), state,
+                HidingCopycatModel.previewData(blockEntity.getModelData()));
+        RandomSource random = RandomSource.create(state.getSeed(blockEntity.getBlockPos()));
+        for (RenderType layer : model.getRenderTypes(state, random, data)) {
+            dispatcher.getModelRenderer().renderModel(poseStack.last(),
+                    bufferSource.getBuffer(RenderTypeHelper.getEntityRenderType(layer, false)),
+                    state, model, 1.0F, 1.0F, 1.0F, packedLight, packedOverlay, data, layer);
+        }
     }
 }

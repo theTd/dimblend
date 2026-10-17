@@ -17,7 +17,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 
 /**
- * 隐藏感知包装：套在伪装模型最外层（材质/CT 装饰仍在内层原样工作）。
+ * 隐藏感知包装：套在伪装模型外层（材质/CT 装饰仍在内层原样工作，外部可继续叠加脏污等装饰）。
  * 隐藏时整块不产出任何面——不走方块状态，Sable 子关卡不触发物理更新；
  * 状态来源是 BE 的 {@link dimblend.blocks.api.CreativeCopycatHidable} 标记，
  * 在烘焙数据收集时现场读取（与 Copycats+ 读材质同一时机，网格线程安全）。
@@ -25,16 +25,22 @@ import java.util.List;
 public class HidingCopycatModel extends BakedModelWrapper<BakedModel> {
 
     public static final ModelProperty<Boolean> HIDDEN = new ModelProperty<>();
+    private static final ModelProperty<Boolean> PREVIEW = new ModelProperty<>();
 
     public HidingCopycatModel(BakedModel originalModel) {
         super(originalModel);
+    }
+
+    /** 仅用于一次 BER 的模型数据采集，不写回 BE 或区块模型数据缓存。 */
+    static ModelData previewData(ModelData blockEntityData) {
+        return blockEntityData.derive().with(PREVIEW, Boolean.TRUE).build();
     }
 
     @Override
     public ModelData getModelData(BlockAndTintGetter level, BlockPos pos, BlockState state,
             ModelData blockEntityData) {
         // 隐藏时其余数据全部无关（反正不产面），只打 HIDDEN 标记
-        if (CreativeCopycatHiding.isHidden(level, pos)) {
+        if (CreativeCopycatHiding.isHidden(level, pos) && !Boolean.TRUE.equals(blockEntityData.get(PREVIEW))) {
             return ModelData.builder().with(HIDDEN, Boolean.TRUE).build();
         }
         return super.getModelData(level, pos, state, blockEntityData);

@@ -24,7 +24,7 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.endsWith(".compat.yat.WaterBottleDrainPurityMixin")) {
             return isLoaded("create") && isLoaded("yet_another_thirst");
         }
-        if (mixinClassName.endsWith(".compat.camerapture.PictureItemFrameMixin")) {
+        if (mixinClassName.contains(".compat.camerapture.")) {
             return isLoaded("camerapture");
         }
         if (mixinClassName.endsWith(".compat.cdg.DieselEngineRampMixin")
