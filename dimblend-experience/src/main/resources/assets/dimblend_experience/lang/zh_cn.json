@@ -21,6 +21,7 @@
 	"force_group.dimblend_experience.lateral_force": "横向力",
 	"key.dimblend_experience.tuning": "参数调节",
 	"screen.dimblend_experience.tuning": "参数调节",
+	"message.dimblend_experience.chassis.casing_recovery": "此处禁止扳手拆卸，挖掘可回收为列车机壳",
 	"screen.dimblend_experience.tuning.shake_interval": "列车随机晃动抽签间隔",
 	"screen.dimblend_experience.tuning.shake_interval.description": "默认：2.0 秒。范围：0.1-60.0 秒，精度：0.1。设为 0 时不进行抽签。",
 	"screen.dimblend_experience.tuning.shake_force": "列车随机晃动附加横向力",

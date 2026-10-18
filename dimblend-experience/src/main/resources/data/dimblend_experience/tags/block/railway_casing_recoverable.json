@@ -1,0 +1,13 @@
+{
+  "replace": false,
+  "values": [
+    { "id": "create:controls", "required": false },
+    { "id": "create:track_station", "required": false },
+    { "id": "create:track_signal", "required": false },
+    { "id": "create:track_observer", "required": false },
+    { "id": "create:train_door", "required": false },
+    { "id": "create:train_trapdoor", "required": false },
+    { "id": "railways:portable_fuel_interface", "required": false },
+    { "id": "railways:track_coupler", "required": false }
+  ]
+}

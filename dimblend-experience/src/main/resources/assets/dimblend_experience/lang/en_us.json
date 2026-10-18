@@ -1,4 +1,5 @@
 {
+  "message.dimblend_experience.chassis.casing_recovery": "Wrench pickup is disabled here; mine this part to recover a Railway Casing",
   "screen.dimblend_experience.tuning.sable_headlight": "Sable headlight dynamic lighting",
   "screen.dimblend_experience.tuning.sable_headlight.description": "Default: on. Design n' Decor vehicle frontlights use the same Veil area-light API as Searchlights. Requires Veil and Sable-capable Create Dynamic Lights. No visible air beam. With Iris installed, lamps keep their original behavior.",
   "screen.dimblend_experience.tuning.sable_headlight_radius": "Sable headlight lighting distance",
