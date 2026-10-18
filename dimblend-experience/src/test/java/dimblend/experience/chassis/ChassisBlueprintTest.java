@@ -4,12 +4,17 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ChassisBlueprintTest {
-    @Test void correctedCarriageHasOnlyTwoVisibleBogeysAndEightCleanPanels() {
+    @Test void correctedCarriageHasOnlyTwoVisibleBogeysAndFourteenCleanSlabs() {
         var plan = ChassisBlueprint.CARRIAGE;
         assertEquals(2, count(plan, 'W'));
         assertEquals(0, count(plan, 'I'));
         assertEquals(0, count(plan, 'S'));
-        assertEquals(8, count(plan, 'N'));
+        assertEquals(14, count(plan, 'N'));
+        assertEquals("HNNNH", plan.row(8));
+        assertEquals("HNNNH", plan.row(36));
+        for (int row : new int[] {3, 4, 6, 7, 37, 38, 40, 41}) {
+            assertEquals("P.N.P", plan.row(row));
+        }
         assertEquals("P.W.P", plan.row(5));
         assertEquals("P.W.P", plan.row(39));
     }

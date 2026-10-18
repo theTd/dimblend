@@ -22,11 +22,11 @@ public final class ChassisBlocks {
             case 'C' -> block("simurail:automatic_coupler").setValue(BlockStateProperties.HORIZONTAL_FACING,
                     cell.x() < 0 ? Direction.WEST : Direction.EAST);
             case 'B' -> block("dimblend_blocks:creative_copycat_beam").setValue(BlockStateProperties.AXIS, Direction.Axis.X);
-            case 'H', 'D' -> block("dimblend_blocks:creative_copycat_slab")
+            case 'H', 'D', 'N' -> block(cell.symbol() == 'N' ? "dimblend_blocks:creative_clean_copycat_slab"
+                    : "dimblend_blocks:creative_copycat_slab")
                     .setValue(BlockStateProperties.AXIS, Direction.Axis.Y)
                     .setValue(BlockStateProperties.SLAB_TYPE, cell.symbol() == 'D' ? SlabType.DOUBLE : SlabType.TOP);
-            case 'P', 'N' -> block(cell.symbol() == 'P' ? "dimblend_blocks:creative_copycat_panel"
-                    : "dimblend_blocks:creative_clean_copycat_panel").setValue(BlockStateProperties.FACING, Direction.UP);
+            case 'P' -> block("dimblend_blocks:creative_copycat_panel").setValue(BlockStateProperties.FACING, Direction.UP);
             case 'S' -> block("dimblend_blocks:creative_shaft").setValue(BlockStateProperties.AXIS, Direction.Axis.X);
             case 'W', 'I' -> block("simurail:physics_bogey").setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.EAST);
             default -> throw new IllegalArgumentException("Unknown chassis symbol " + cell.symbol());

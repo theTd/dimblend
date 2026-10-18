@@ -12,11 +12,11 @@ public enum ChassisBlueprint {
             "H...H", "H...H", "H...H", "H...H", "P...P", "P...P", "P.W.P", "P.S.P", "P.S.P",
             "P.I.P", "P.S.P", "P.S.P", "P.W.P", "P.S.P", "P.S.P", "HHDHH", "..B..", "..C..")),
     CARRIAGE(List.of(
-            "..C..", "..B..", "HHDHH", "P.N.P", "P.N.P", "P.W.P", "P.N.P", "P.N.P", "HHHHH",
+            "..C..", "..B..", "HHDHH", "P.N.P", "P.N.P", "P.W.P", "P.N.P", "P.N.P", "HNNNH",
             "H...H", "H...H", "H...H", "H...H", "H...H", "H...H", "H...H", "H...H", "H...H",
             "H...H", "H...H", "H...H", "H...H", "H...H", "H...H", "H...H", "H...H", "H...H",
             "H...H", "H...H", "H...H", "H...H", "H...H", "H...H", "H...H", "H...H", "H...H",
-            "HHHHH", "P.N.P", "P.N.P", "P.W.P", "P.N.P", "P.N.P", "HHDHH", "..B..", "..C.."));
+            "HNNNH", "P.N.P", "P.N.P", "P.W.P", "P.N.P", "P.N.P", "HHDHH", "..B..", "..C.."));
 
     public static final int LENGTH = 45;
     public static final int HALF_LENGTH = 22;

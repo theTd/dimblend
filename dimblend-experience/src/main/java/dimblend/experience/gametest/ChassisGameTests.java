@@ -17,10 +17,13 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.SlabType;
 import net.minecraft.core.Direction;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -121,6 +124,28 @@ public final class ChassisGameTests {
             int poweredBogeys = 0;
             int carriageBogeys = 0;
             for (var car : container.collectForceLoadedSubLevels()) {
+                ChassisBlueprint blueprint = car.logicalPose().position().x() < 224
+                        ? ChassisBlueprint.POWER : ChassisBlueprint.CARRIAGE;
+                BlockPos plotCenter = car.getPlot().getCenterBlock();
+                for (var cell : blueprint.cells()) {
+                    if (cell.symbol() != 'N') continue;
+                    BlockPos panelPos = plotCenter.offset(cell.x(), 0, cell.z());
+                    var panel = level.getBlockState(panelPos);
+                    helper.assertTrue(BuiltInRegistries.BLOCK.getKey(panel.getBlock()).equals(
+                            ResourceLocation.parse("dimblend_blocks:creative_clean_copycat_slab")),
+                            "every clean carriage cell must be a creative clean copycat slab");
+                    helper.assertTrue(panel.getValue(BlockStateProperties.AXIS) == Direction.Axis.Y
+                            && panel.getValue(BlockStateProperties.SLAB_TYPE) == SlabType.TOP,
+                            "clean carriage slabs must be horizontal top slabs");
+                    var shape = panel.getShape(level, panelPos);
+                    var collision = panel.getCollisionShape(level, panelPos);
+                    helper.assertTrue(Math.abs(shape.min(Direction.Axis.Y) - 0.5D) < 1e-6
+                            && Math.abs(shape.max(Direction.Axis.Y) - 1) < 1e-6,
+                            "clean slabs must occupy the upper half");
+                    helper.assertTrue(Math.abs(collision.min(Direction.Axis.Y) - 0.5D) < 1e-6
+                            && Math.abs(collision.max(Direction.Axis.Y) - 1) < 1e-6,
+                            "clean slab collision must align with the top of the chassis deck");
+                }
                 int count = 0;
                 for (var actor : car.getPlot().getBlockEntityActors()) {
                     if (actor instanceof PhysicsBogeyBlockEntity bogey) {
