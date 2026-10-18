@@ -109,6 +109,7 @@ dependencies {
     compileOnly project(":dimblend-carwash")
     // Same for radio: only its api package (reception noise, End voice frequency, acoustic intensity).
     compileOnly project(":dimblend-radio")
+    compileOnly project(":dimblend")
     // A11 贝壳 X 标记：编译期零依赖（TreasureShellMarker 按注册名运行时查
     // dimblend_blocks:shell_marker），dev run / GameTest 需要方块真的在场
     localRuntime project(":dimblend-blocks")
@@ -185,6 +186,20 @@ dependencies {
     if (project.hasProperty('withJade')) {
         localRuntime "maven.modrinth:jade:15.10.5+neoforge"
     }
+    // Only the standard-chassis integration tests, with the actual physics/block stack.
+    if (project.hasProperty('withChassis')) {
+        localRuntime project(":dimblend")
+        localRuntime project(":dimblend-craft")
+        localRuntime files("libs/simurail-1.21.1-0.0.0-a+ecd2dd3.jar")
+        localRuntime "maven.modrinth:copycats:3.0.4+mc.1.21.1-neoforge"
+        localRuntime "maven.modrinth:create-steam-n-rails-1.21.1:0.2.0-beta.2+neoforge-mc1.21.1"
+        // Supply the installed pack's required dimension mods without machine-specific paths.
+        if (providers.gradleProperty('chassisModsDir').isPresent()) {
+            localRuntime fileTree(dir: providers.gradleProperty('chassisModsDir').get(), includes: [
+                    'aether-*.jar', 'BiomesOPlenty-*.jar', 'GlitchCore-*.jar', 'deeperdarker-*.jar',
+                    'Voidscape-*.jar', 'owo-lib-*.jar', 'create-aeronautics-bundled-*.jar', 'TerraBlender-*.jar'])
+        }
+    }
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
     testImplementation 'com.google.code.gson:gson:2.10.1'
     testRuntimeOnly 'com.mojang:datafixerupper:8.0.16'
@@ -193,6 +208,49 @@ dependencies {
 
 if (project.hasProperty('withBatchCompat')) {
     neoForge.runs.gameTestServer.systemProperty 'neoforge.enabledGameTestNamespaces', 'dimblend_compat_batch'
+}
+if (project.hasProperty('withChassis')) {
+    neoForge.runs.gameTestServer.systemProperty 'neoforge.enabledGameTestNamespaces', 'dimblend_chassis'
+    def chassisRunDir = layout.buildDirectory.dir('chassis-gametest-run')
+    neoForge.runs.gameTestServer.gameDirectory = chassisRunDir
+    tasks.named('runGameTestServer').configure {
+        doFirst {
+            // The depot intentionally never refills; this new-world fixture needs a fresh save.
+            def worldDir = new File(chassisRunDir.get().asFile, 'world').canonicalFile
+            if (worldDir.parentFile != chassisRunDir.get().asFile.canonicalFile) {
+                throw new GradleException('Chassis test world escaped its generated run directory')
+            }
+            if (worldDir.exists() && !worldDir.deleteDir()) {
+                throw new GradleException('Could not reset the generated chassis test world')
+            }
+        }
+    }
+    // GameTestServer bakes only minecraft:flat, ignoring additional datapack dimensions.
+    // Add the real rotating definition to that preset in this test run only.
+    def chassisPreset = tasks.register('generateChassisTestPreset') {
+        def sourceDimension = rootProject.file('dimblend/src/main/resources/data/dimblend/dimension/rotating.json')
+        def outputDir = layout.buildDirectory.dir('generated/chassis-test-preset')
+        inputs.file(sourceDimension)
+        outputs.dir(outputDir)
+        doLast {
+            def rotating = new groovy.json.JsonSlurper().parse(sourceDimension, 'UTF-8')
+            def dimensions = [
+                    'minecraft:overworld': [type: 'minecraft:overworld', generator: [type: 'minecraft:flat', settings: [
+                            biome: 'minecraft:plains', features: false, lakes: false, structure_overrides: [],
+                            layers: [[block: 'minecraft:bedrock', height: 1], [block: 'minecraft:dirt', height: 2],
+                                     [block: 'minecraft:grass_block', height: 1]]]]],
+                    'minecraft:the_nether': [type: 'minecraft:the_nether', generator: rotating.generator.delegates[3]],
+                    'minecraft:the_end': [type: 'minecraft:the_end', generator: rotating.generator.delegates[2]],
+                    'dimblend:rotating': rotating]
+            // The chassis sites are all in the surface band. Twilight's terrain-data registry
+            // is bound after presets decode, so it cannot be embedded in a test preset.
+            rotating.generator.delegates = rotating.generator.delegates.take(4)
+            def output = outputDir.get().file('data/minecraft/worldgen/world_preset/flat.json').asFile
+            output.parentFile.mkdirs()
+            output.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([dimensions: dimensions])), 'UTF-8')
+        }
+    }
+    sourceSets.main.resources.srcDir(chassisPreset)
 }
 
 tasks.named('test', Test).configure {

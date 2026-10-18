@@ -67,6 +67,11 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
 
     private final List<ChunkGenerator> delegates;
     private final int bandSize;
+    private volatile boolean starterDepot;
+
+    public boolean hasStarterDepot() { return starterDepot; }
+
+    public void setStarterDepot(boolean enabled) { starterDepot = enabled; }
     @Nullable
     private volatile RuntimeState runtime;
 
@@ -544,6 +549,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         OakTrackCorridor.placeLoadedVaultNeighbors(level, chunk.getPos());
         // After the corridor: the wall/gate overwrites boundary columns (track, roadbed).
         RegionBoundaryWall.place(level, chunk);
+        if (starterDepot) StarterDepot.place(chunk);
     }
 
     @Override

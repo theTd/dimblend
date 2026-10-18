@@ -202,5 +202,15 @@
   "hud.dimblend_experience.item_drain.insufficient_water": "Insufficient water (%s/%s mb)",
   "hud.dimblend_experience.diesel_engine_no_fuel": "Supply fuel to start — reaching full power takes time",
   "hud.dimblend_experience.diesel_engine_no_fuel_faster": "Drive it with higher rotational speed to reach full power faster",
-  "config.jade.plugin_dimblend_experience.item_drain_hud": "Item Drain Irrigation"
+  "config.jade.plugin_dimblend_experience.item_drain_hud": "Item Drain Irrigation",
+  "screen.dimblend_experience.chassis": "Choose a standard train chassis",
+  "chassis.dimblend_experience.power": "Powered chassis",
+  "chassis.dimblend_experience.carriage": "Carriage chassis",
+  "chassis.dimblend_experience.power.description": "Powered chassis: 41-block deck, 2 groups of 6 bogeys in total that can receive power.",
+  "chassis.dimblend_experience.carriage.description": "Carriage chassis: 41-block deck, 2 bogeys that cannot receive power.",
+  "screen.dimblend_experience.chassis.irreversible": "This action is irreversible",
+  "screen.dimblend_experience.chassis.confirm": "Click again to confirm",
+  "message.dimblend_experience.chassis.track_required": "Place this on the generated wide-gauge main line",
+  "message.dimblend_experience.chassis.unsafe": "The surrounding area is obstructed and unsafe",
+  "message.dimblend_experience.chassis.choose": "Right-click to choose a chassis type"
 }

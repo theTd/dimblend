@@ -45,6 +45,16 @@ public final class RecipeEditApplicator {
 
         for (RecipeHolder<?> holder : List.copyOf(recipeManager.getRecipes())) {
             Recipe<?> recipe = holder.value();
+            RecipeEdit ingredientDeletion = edits.stream()
+                    .filter(edit -> edit instanceof RecipeEdit.DeleteByIngredientId delete
+                            && RecipeInputMatcher.consumes(recipe, delete.ingredientId(), registries))
+                    .findFirst().orElse(null);
+            if (ingredientDeletion != null) {
+                statsByIdentity.get(ingredientDeletion).matchedIds.add(holder.id());
+                removedCount++;
+                DimblendCraft.LOGGER.info("[配方] 删除 {}（规则：{}）", holder.id(), ingredientDeletion.label());
+                continue;
+            }
             // 产物解析失败（如某下游配方 getResultItem 抛异常）时保留该配方、仅告警，
             // 避免单条异常配方中断整轮 apply。
             ResourceLocation resultId;

@@ -202,5 +202,15 @@
 	"hud.dimblend_experience.item_drain.insufficient_water": "水量不足（%s/%s mb）",
 	"hud.dimblend_experience.diesel_engine_no_fuel": "提供燃料起转 需要时间达到满功率",
 	"hud.dimblend_experience.diesel_engine_no_fuel_faster": "提供更高的转速以更快达到满功率",
-	"config.jade.plugin_dimblend_experience.item_drain_hud": "分液池灌溉状态"
+	"config.jade.plugin_dimblend_experience.item_drain_hud": "分液池灌溉状态",
+  "screen.dimblend_experience.chassis": "选择标准列车底盘",
+  "chassis.dimblend_experience.power": "动力底盘",
+  "chassis.dimblend_experience.carriage": "车厢底盘",
+  "chassis.dimblend_experience.power.description": "动力底盘：车长41，含有2组共计6个可接入动力的车架",
+  "chassis.dimblend_experience.carriage.description": "车厢底盘：车长41，含有2个不可接入动力的车架",
+  "screen.dimblend_experience.chassis.irreversible": "该操作不可逆",
+  "screen.dimblend_experience.chassis.confirm": "再次点击确认",
+  "message.dimblend_experience.chassis.track_required": "需要放置在宽轨上",
+  "message.dimblend_experience.chassis.unsafe": "附近不空旷 不安全",
+  "message.dimblend_experience.chassis.choose": "右键选择底盘类型"
 }

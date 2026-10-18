@@ -262,6 +262,11 @@ public final class RecipeEditRules {
         return edits.build();
     }
 
+    /** 原料删除依赖本轮标签，统一在服务端标签绑定后执行。 */
+    public static List<RecipeEdit> ingredientEdits() {
+        return List.of(new RecipeEdit.DeleteByIngredientId("列车机壳参与的配方", ResourceLocation.parse("create:railway_casing")));
+    }
+
     /**
      * 服务器启动后阶段（{@code ServerStartedEvent}）应用的规则：作用于上游在数据包
      * 重载之外动态注入的配方。本阶段规则在初始加载与 /reload 的重载阶段一律不参与，
@@ -271,7 +276,8 @@ public final class RecipeEditRules {
         // —— 3.15 哨兵机械臂弹药切削（2026-10-14 修订） ——
         // 切削材料 铜板 -> 黄铜板：上游按 TACZ 弹药表动态注入 sentrymechanicalarm:ammo_cutting/*
         //（create:cutting，铜板 => 待加工弹壳），前缀匹配覆盖全部弹药种类
-        return List.of(new RecipeEdit.ModifyRecipeFieldsByIdPrefix("弹药切削铜板改黄铜板",
+        return List.of(new RecipeEdit.DeleteByIngredientId("列车机壳参与的配方", ResourceLocation.parse("create:railway_casing")),
+                new RecipeEdit.ModifyRecipeFieldsByIdPrefix("弹药切削铜板改黄铜板",
                 "sentrymechanicalarm:ammo_cutting/",
                 Map.of("ingredients.0.item", new JsonPrimitive("create:brass_sheet"))));
     }

@@ -109,7 +109,7 @@ public final class OakTrackCorridor {
             CorridorTrackProfile profile = CorridorTrackProfile.forDelegate(delegate);
             Block trackBlock = trackBlock(access, trackBlocks, profile);
             boolean carveBedrock = BandLayout.isVoidscape(delegate);
-            if (chunkZ == 0) {
+            if (chunkZ == 0 && !(rotating.hasStarterDepot() && StarterDepot.removesTrack(x))) {
                 writeTrack(chunk, cursor, x, trackBlock, carveBedrock, live);
             }
             int maxDy = vaultMaxDy(delegate);
@@ -117,7 +117,8 @@ public final class OakTrackCorridor {
                 continue;
             }
             carved[x - minX] = true;
-            clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, maxDy, carveBedrock, live);
+            clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, maxDy, carveBedrock,
+                    rotating.hasStarterDepot(), live);
             stabilizeVaultCeiling(chunk, cursor, x, vaultMinZ, vaultMaxZ, maxDy, live);
             writeRoadbed(profile.hasRoadbed(), chunk, cursor, x, minZ, maxZ, live);
         }
@@ -309,6 +310,7 @@ public final class OakTrackCorridor {
             Block trackBlock,
             int maxDy,
             boolean carveBedrock,
+            boolean starterDepot,
             @javax.annotation.Nullable ServerLevel live
     ) {
         for (int z = vaultMinZ; z <= vaultMaxZ; z++) {
@@ -318,7 +320,11 @@ public final class OakTrackCorridor {
                     continue;
                 }
                 int y = TRACK_Y + dy;
+                if (starterDepot && StarterDepot.ownsCell(x, y, z)) continue;
                 if (z == CORRIDOR_Z && y == TRACK_Y) {
+                    if (starterDepot && StarterDepot.removesTrack(x)) {
+                        setCell(chunk, live, cursor.set(x, y, z), Blocks.AIR.defaultBlockState());
+                    }
                     continue;
                 }
                 clearTunnelCell(chunk, cursor, x, y, z, trackBlock, carveBedrock, live);

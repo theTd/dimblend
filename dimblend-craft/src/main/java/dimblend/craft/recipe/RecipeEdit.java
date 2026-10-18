@@ -28,6 +28,10 @@ public sealed interface RecipeEdit {
     record DeleteByRecipeId(String label, Set<ResourceLocation> recipeIds) implements RecipeEdit {
     }
 
+    /** Remove every recipe consuming this item, including machine and nested assembly inputs. */
+    record DeleteByIngredientId(String label, ResourceLocation ingredientId) implements RecipeEdit {
+    }
+
     /**
      * 按产物删除配方：合成台配方（{@code CraftingRecipe}，含 Create 机械合成等实现类）
      * 及 {@code recipeTypeIds} 额外指定的配方类型。

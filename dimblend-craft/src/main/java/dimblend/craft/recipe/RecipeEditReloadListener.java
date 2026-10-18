@@ -32,5 +32,6 @@ public final class RecipeEditReloadListener extends SimplePreparableReloadListen
     @Override
     protected void apply(Void prepared, ResourceManager resourceManager, ProfilerFiller profiler) {
         RecipeEditApplicator.apply(this.recipeManager, this.registries, RecipeEditRules.edits());
+        RecipeIngredientReloadFilter.defer(this.recipeManager, this.registries);
     }
 }
