@@ -36,6 +36,20 @@ Missing optional mods leave their controls disabled.
 | Radio End voice volume | 0.75 | 0.00-2.00, step 0.01; 0.5 = former hard-coded loudness, 0 = no voices (music not ducked) | radio |
 | Radio acoustic simulation intensity | 1.00 | 0.00-2.00, step 0.01; 0 = no simulated echo | radio |
 | Experience clear ratio on respawn | 1.00 | 0.00-1.00, step 0.01; rotating dimension only, ignores keepInventory, no experience orb drops | experience |
+| Sable headlight dynamic lighting | true | Checkbox; affects vehicle-mounted `dndecor:*_frontlight` and `bellsandwhistles:headlight` only | experience |
+| Sable headlight lighting distance | 7.75 blocks | 1.00-32.00, step 0.01; spherical falloff, refreshes old and new footprints | experience |
+| Sable headlight brightness cap | 15 | 0-15, step 1; 0 disables surrounding illumination, lamp appearance unchanged | experience |
+
+These three headlight controls are server-owned and broadcast to every player on
+login and after edits. Their client effect requires the Sable-capable Create
+Dynamic Lights and Sodium Dynamic Lights; no client renderer API is loaded on
+the dedicated server. Lamps placed outside Sable, ordinary vehicle lamps and
+Create contraptions retain their original behavior. Existing local dynamic-light
+toggles and brightness multipliers still apply. This is visual lighting, without
+world light-level or spawning changes, directional beams or wall occlusion.
+The tuning protocol is now v19, with a 64-bit availability mask; both sides must
+update experience together. Larger radii increase the number of render sections
+rebuilt when a lamp moves. Defaults retain the original 7.75-block, level-15 effect.
 
 ## Ownership and Persistence
 

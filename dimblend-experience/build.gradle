@@ -154,6 +154,8 @@ dependencies {
     // Jade HUD 集成（分液池灌溉/催熟状态）：定点 15.10.5 与 TrainTripWorld 实例一致；
     // compileOnly——Jade 缺席时 @WailaPlugin 类不被加载（注解 value 门控），无类加载风险。
     compileOnly "maven.modrinth:jade:15.10.5+neoforge"
+    // Client-only optional compat, pinned to the pack's Sodium Dynamic Lights build.
+    compileOnly "maven.modrinth:sodium-dynamic-lights:XI0WLXdn"
     // sable 的 companion 类型（ActiveSableCompanion 继承链）在独立 companion jar 中
     compileOnly "dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:${project.sable_companion_version}"
     // runData 需要完整构造 mod：StructureBedGuard 等 @EventBusSubscriber

@@ -318,6 +318,18 @@ public final class Config {
             .comment("探索限制规则（A1-A6）生效的维度 id，必须带命名空间（缺命名空间将回退默认 dimblend:rotating 并记错误日志）")
             .define("rotatingDimensionId", "dimblend:rotating");
 
+    public static final ModConfigSpec.BooleanValue SABLE_HEADLIGHT = BUILDER
+            .comment("Enable dynamic lighting for dndecor:*_frontlight and bellsandwhistles:headlight on Sable structures.")
+            .define("sableHeadlight", true);
+
+    public static final ModConfigSpec.DoubleValue SABLE_HEADLIGHT_RADIUS = BUILDER
+            .comment("Sable headlight radius in blocks; changes refresh both the old and new lit regions.")
+            .defineInRange("sableHeadlightRadius", 7.75D, 1.0D, 32.0D);
+
+    public static final ModConfigSpec.IntValue SABLE_HEADLIGHT_BRIGHTNESS = BUILDER
+            .comment("Sable headlight dynamic brightness cap, 0-15. Does not turn off the lamp's own texture.")
+            .defineInRange("sableHeadlightBrightness", 15, 0, 15);
+
     static final ModConfigSpec SPEC = BUILDER.build();
 
     /**

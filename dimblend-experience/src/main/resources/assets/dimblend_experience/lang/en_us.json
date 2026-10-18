@@ -1,4 +1,10 @@
 {
+  "screen.dimblend_experience.tuning.sable_headlight": "Sable headlight dynamic lighting",
+  "screen.dimblend_experience.tuning.sable_headlight.description": "Default: on. Controls surrounding illumination from Design n' Decor frontlights and Bells & Whistles headlights on vehicles, leaving their appearance unchanged. Requires the Sable-capable Create Dynamic Lights and Sodium Dynamic Lights on each client.",
+  "screen.dimblend_experience.tuning.sable_headlight_radius": "Sable headlight lighting distance",
+  "screen.dimblend_experience.tuning.sable_headlight_radius.description": "Default: 7.75 blocks. Range: 1.00-32.00, step: 0.01. Lights all directions around each selected lamp. Longer distances require more render sections to refresh.",
+  "screen.dimblend_experience.tuning.sable_headlight_brightness": "Sable headlight brightness cap",
+  "screen.dimblend_experience.tuning.sable_headlight_brightness.description": "Default: 15. Range: 0-15, step: 1. Reduces surrounding illumination; 0 disables it. Lamps must be lit. Each client's existing dynamic-light brightness setting still applies.",
   "message.dimblend_experience.nickname.empty": "§cNickname cannot be empty",
   "message.dimblend_experience.nickname.too_long": "§cNickname is limited to %s characters",
   "message.dimblend_experience.nickname.no_item_form": "§cThe block you are looking at has no item form",
