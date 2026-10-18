@@ -40,6 +40,8 @@ public final class TuningSettings {
             case SABLE_HEADLIGHT -> Config.SABLE_HEADLIGHT.get() ? 1.0D : 0.0D;
             case SABLE_HEADLIGHT_RADIUS -> Config.SABLE_HEADLIGHT_RADIUS.get();
             case SABLE_HEADLIGHT_BRIGHTNESS -> Config.SABLE_HEADLIGHT_BRIGHTNESS.get();
+            case SABLE_HEADLIGHT_ANGLE -> Config.SABLE_HEADLIGHT_ANGLE.get();
+            case SABLE_HEADLIGHT_OCCLUSION -> Config.SABLE_HEADLIGHT_OCCLUSION.get() ? 1.0D : 0.0D;
             case SABLE_VOID_FIT -> Config.SABLE_STRUCTURE_VOID_FIT.get() ? 1.0D : 0.0D;
             case SABLE_LAVA_MELT -> Config.SABLE_LAVA_MELT.get() ? 1.0D : 0.0D;
             case SABLE_LAVA_MELT_SPEED -> Config.SABLE_LAVA_MELT_SPEED.get();
@@ -89,6 +91,8 @@ public final class TuningSettings {
             case SABLE_HEADLIGHT -> Config.SABLE_HEADLIGHT.set(enabled);
             case SABLE_HEADLIGHT_RADIUS -> Config.SABLE_HEADLIGHT_RADIUS.set(value);
             case SABLE_HEADLIGHT_BRIGHTNESS -> Config.SABLE_HEADLIGHT_BRIGHTNESS.set((int) value);
+            case SABLE_HEADLIGHT_ANGLE -> Config.SABLE_HEADLIGHT_ANGLE.set(value);
+            case SABLE_HEADLIGHT_OCCLUSION -> Config.SABLE_HEADLIGHT_OCCLUSION.set(enabled);
             case SABLE_VOID_FIT -> Config.SABLE_STRUCTURE_VOID_FIT.set(enabled);
             case SABLE_LAVA_MELT -> Config.SABLE_LAVA_MELT.set(enabled);
             case SABLE_LAVA_MELT_SPEED -> Config.SABLE_LAVA_MELT_SPEED.set(value);

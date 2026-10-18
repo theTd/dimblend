@@ -1,25 +1,23 @@
 package dimblend.experience.compat.dynlight;
 
-/** Headlight selection and falloff, independent of the client renderer. */
+import org.joml.Quaternionf;
+import org.joml.Vector3dc;
+
+/** Headlight selection, brightness and orientation, independent of the client renderer. */
 public final class HeadlightMath {
     private HeadlightMath() {}
 
     public static boolean matches(String namespace, String path) {
-        return (namespace.equals("dndecor") && path.endsWith("_frontlight"))
-                || (namespace.equals("bellsandwhistles") && path.equals("headlight"));
+        return namespace.equals("dndecor") && path.endsWith("_frontlight");
     }
 
-    public static double light(double distanceSquared, double radius, int brightness) {
-        if (brightness <= 0 || distanceSquared >= radius * radius) return 0;
-        return (1.0D - Math.sqrt(distanceSquared) / radius) * brightness;
+    public static float brightness(boolean enabled, int emission, int cap) {
+        return enabled ? Math.min(emission, cap) * (4.0F / 15.0F) : 0;
     }
 
-    // A one-block halo covers samples at the boundary of neighboring render sections.
-    public static int minimumSection(double coordinate, double radius) {
-        return (int) Math.floor((coordinate - radius - 1.0D) / 16.0D);
-    }
-
-    public static int maximumSection(double coordinate, double radius) {
-        return (int) Math.floor((coordinate + radius + 1.0D) / 16.0D);
+    public static void worldToLight(Vector3dc direction, Quaternionf rotation) {
+        // JOML's antiparallel branch can return a very short, unnormalised axis
+        // when Sable slightly tilts a north-facing lamp. Veil needs a unit rotation.
+        rotation.rotationTo((float) direction.x(), (float) direction.y(), (float) direction.z(), 0, 0, 1).normalize();
     }
 }

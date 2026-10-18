@@ -156,6 +156,9 @@ dependencies {
     compileOnly "maven.modrinth:jade:15.10.5+neoforge"
     // Client-only optional compat, pinned to the pack's Sodium Dynamic Lights build.
     compileOnly "maven.modrinth:sodium-dynamic-lights:XI0WLXdn"
+    // The same public area-light API used by Searchlights 1.3.1; bundled by Sable at runtime.
+    compileOnly "maven.modrinth:veil:EcZhFl38"
+    compileOnly "gg.moonflower:molang-compiler:3.1.1.19"
     // sable 的 companion 类型（ActiveSableCompanion 继承链）在独立 companion jar 中
     compileOnly "dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:${project.sable_companion_version}"
     // runData 需要完整构造 mod：StructureBedGuard 等 @EventBusSubscriber

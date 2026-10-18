@@ -12,6 +12,15 @@ the server validates bounds and precision, saves it, then broadcasts the current
 values. Changes also reach other open panels and client-side coupler prediction.
 Missing optional mods leave their controls disabled.
 
+With a compatible dimblend core installed, the main panel also includes **Sky/time
+diagnostics (this client only)**. This checkbox is separate from the server
+settings below: it defaults to off, applies immediately, and persists in the local
+`config/dimblend-client.toml` (`skyTimeTrace`). It sends no tuning request and does
+not consume a snapshot mask bit or change the network protocol. Reset switches it
+off. The existing permission requirement to open the panel still applies; once
+open, this local row remains usable even in a read-only server snapshot. See
+the core module's `docs/sky-time-trace.md` for the diagnostic records.
+
 | Setting | Default | Valid values | Owner |
 | --- | --- | --- | --- |
 | Train shaking draw interval | 2.0 seconds | 0 = disabled; 0.1-60.0, step 0.1 | experience |
@@ -36,20 +45,37 @@ Missing optional mods leave their controls disabled.
 | Radio End voice volume | 0.75 | 0.00-2.00, step 0.01; 0.5 = former hard-coded loudness, 0 = no voices (music not ducked) | radio |
 | Radio acoustic simulation intensity | 1.00 | 0.00-2.00, step 0.01; 0 = no simulated echo | radio |
 | Experience clear ratio on respawn | 1.00 | 0.00-1.00, step 0.01; rotating dimension only, ignores keepInventory, no experience orb drops | experience |
-| Sable headlight dynamic lighting | true | Checkbox; affects vehicle-mounted `dndecor:*_frontlight` and `bellsandwhistles:headlight` only | experience |
-| Sable headlight lighting distance | 7.75 blocks | 1.00-32.00, step 0.01; spherical falloff, refreshes old and new footprints | experience |
+| Sable headlight dynamic lighting | true | Checkbox; affects vehicle-mounted `dndecor:*_frontlight` only | experience |
+| Sable headlight lighting distance | 7.75 blocks | 1.00-32.00, step 0.01 | experience |
 | Sable headlight brightness cap | 15 | 0-15, step 1; 0 disables surrounding illumination, lamp appearance unchanged | experience |
+| Sable headlight cone angle | 60 degrees | 5-160, step 1; full angle | experience |
+| Sable headlight occlusion | true | Checkbox; Veil's existing voxel shadows, switch off to reduce GPU work | experience |
 
-These three headlight controls are server-owned and broadcast to every player on
-login and after edits. Their client effect requires the Sable-capable Create
-Dynamic Lights and Sodium Dynamic Lights; no client renderer API is loaded on
-the dedicated server. Lamps placed outside Sable, ordinary vehicle lamps and
-Create contraptions retain their original behavior. Existing local dynamic-light
-toggles and brightness multipliers still apply. This is visual lighting, without
-world light-level or spawning changes, directional beams or wall occlusion.
-The tuning protocol is now v19, with a 64-bit availability mask; both sides must
-update experience together. Larger radii increase the number of render sections
-rebuilt when a lamp moves. Defaults retain the original 7.75-block, level-15 effect.
+These five headlight controls are server-owned and broadcast to every player on
+login and after edits. Create Dynamic Lights' Sable sources provide lamp discovery
+and lifecycle. The client supplies `AreaLightData` to Veil, using the same public
+API and 0.3-plane size as Searchlights 1.3.1. No Searchlights implementation class
+or custom shader is used, and its own lamp blocks do not need to be installed.
+The lamp's Sable render pose rotates the light with the vehicle. Its former Sodium
+point source is suppressed to avoid spherical light leaking outside the cone.
+Brightness 15 maps to Searchlights' default Veil brightness 4; existing Create
+Dynamic Lights luminance multipliers no longer scale this Veil source.
+
+For Veil 4.3.2, the integration matches the light framebuffer to a stencil-enabled
+main target, corrects packed depth-stencil allocation, and resolves unknown wrapped
+depth formats from the GPU. The framebuffer definition is restored when unused.
+Light rotations are normalized, including the nearly opposite-direction case that
+occurs when a north-facing Sable lamp tilts slightly.
+
+Bells & Whistles headlights, static lamps, ordinary vehicle lamps and Create
+contraptions retain their own lighting. The integration needs Veil (bundled by
+Sable), Sodium Dynamic Lights and the Sable-capable Create Dynamic Lights build.
+With Iris or without that stack, the original lamp behavior is retained. Rendering
+and voxel shadows are provided by Veil, including its existing limitations; no
+air-visible volume, custom shadow renderer or world light/spawning changes are
+added. The occlusion switch permits disabling that extra GPU work. The tuning
+protocol is v20, with a 64-bit availability mask; both sides must update experience
+together.
 
 ## Ownership and Persistence
 

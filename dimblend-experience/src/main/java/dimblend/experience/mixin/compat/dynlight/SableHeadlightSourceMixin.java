@@ -18,19 +18,27 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class SableHeadlightSourceMixin implements SableHeadlightSource {
     @Shadow @Final private BlockPos plotPos;
     @Unique private volatile boolean dimblend$headlight;
+    @Unique private int dimblend$emission;
 
     @Inject(method = "<init>", at = @At("TAIL"), require = 1, allow = 1)
     private void dimblend$classifyInitial(Level level, Object subLevel, BlockPos pos, int luminance, CallbackInfo ci) {
         dimblend$headlight = SableHeadlightLighting.matches(level, pos);
+        dimblend$emission = luminance;
+        SableHeadlightLighting.update(this);
     }
 
     @Inject(method = "update", at = @At("TAIL"), require = 1, allow = 1)
     private void dimblend$classifyUpdated(Level level, Object subLevel, int luminance, CallbackInfo ci) {
         dimblend$headlight = SableHeadlightLighting.matches(level, plotPos);
+        dimblend$emission = luminance;
+        SableHeadlightLighting.update(this);
     }
 
     @Override
     public boolean dimblend$isHeadlight() {
         return dimblend$headlight;
     }
+
+    @Override public BlockPos dimblend$plotPosition() { return plotPos; }
+    @Override public int dimblend$emission() { return dimblend$emission; }
 }
