@@ -534,7 +534,8 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
         if (!OakTrackCorridor.originFullyInsideNoStructureZone(pos.z)
                 && !RegionBoundaryNoStructureZone.originFullyInside(this, pos)) {
             int index = this.bandIndex(pos);
-            this.delegates.get(index).createStructures(access, this.delegateState(index), structures, chunk, templates);
+            StructureNoiseSetup.run(() -> this.delegates.get(index).createStructures(
+                    access, this.delegateState(index), structures, chunk, templates));
         }
         OakTrackCorridor.dropBlockedStarts(chunk);
         RegionBoundaryNoStructureZone.dropBlockedStarts(this, chunk);
