@@ -20,11 +20,10 @@ public final class DimBlendClient {
 
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
-        if (net.neoforged.fml.ModList.get().isLoaded("veil") && !net.neoforged.fml.ModList.get().isLoaded("iris")
-                && net.neoforged.fml.ModList.get().isLoaded("sable")
-                && net.neoforged.fml.ModList.get().isLoaded("sodiumdynamiclights")
-                && net.neoforged.fml.ModList.get().isLoaded("createdynlight")) {
-            event.enqueueWork(dimblend.experience.client.lighting.SableHeadlightLighting::initialize);
+        if (net.neoforged.fml.ModList.get().isLoaded("sable")
+                && net.neoforged.fml.ModList.get().isLoaded("veil")
+                && !net.neoforged.fml.ModList.get().isLoaded("iris")) {
+            event.enqueueWork(dimblend.experience.client.headlight.HeadlightRenderer::initialize);
         }
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(
                 (ClientPlayerNetworkEvent.LoggingOut logout) -> {

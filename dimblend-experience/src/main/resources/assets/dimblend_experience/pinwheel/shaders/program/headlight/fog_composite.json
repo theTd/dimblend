@@ -1,0 +1,4 @@
+{
+  "vertex": "veil:blit_screen",
+  "fragment": "dimblend_experience:headlight/fog_composite"
+}

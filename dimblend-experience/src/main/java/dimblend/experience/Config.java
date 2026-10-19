@@ -319,23 +319,28 @@ public final class Config {
             .define("rotatingDimensionId", "dimblend:rotating");
 
     public static final ModConfigSpec.BooleanValue SABLE_HEADLIGHT = BUILDER
-            .comment("Enable Veil area lights for dndecor:*_frontlight on Sable structures, using the Searchlights lighting API.")
+            .comment("Render custom headlight cones for dndecor frontlights on Sable vehicles (without Iris).")
             .define("sableHeadlight", true);
-
-    public static final ModConfigSpec.DoubleValue SABLE_HEADLIGHT_RADIUS = BUILDER
-            .comment("Sable headlight maximum illumination distance in blocks.")
-            .defineInRange("sableHeadlightRadius", 7.75D, 1.0D, 32.0D);
-
-    public static final ModConfigSpec.IntValue SABLE_HEADLIGHT_BRIGHTNESS = BUILDER
-            .comment("Sable headlight dynamic brightness cap, 0-15. Does not turn off the lamp's own texture.")
-            .defineInRange("sableHeadlightBrightness", 15, 0, 15);
-
+    public static final ModConfigSpec.DoubleValue SABLE_HEADLIGHT_RANGE = BUILDER
+            .comment("Maximum headlight reach in blocks.")
+            .defineInRange("sableHeadlightRange", 24.0D, 4.0D, 64.0D);
     public static final ModConfigSpec.DoubleValue SABLE_HEADLIGHT_ANGLE = BUILDER
-            .comment("Sable headlight full cone angle in degrees; supplied as a half-angle to Veil.")
-            .defineInRange("sableHeadlightAngle", 60.0D, 5.0D, 160.0D);
-
+            .comment("Full headlight cone angle in degrees.")
+            .defineInRange("sableHeadlightAngle", 50.0D, 10.0D, 120.0D);
+    public static final ModConfigSpec.DoubleValue SABLE_HEADLIGHT_INTENSITY = BUILDER
+            .comment("Headlight intensity, before soft exposure limiting.")
+            .defineInRange("sableHeadlightIntensity", 1.0D, 0.0D, 3.0D);
+    public static final ModConfigSpec.BooleanValue SABLE_HEADLIGHT_FOG = BUILDER
+            .comment("Render volumetric headlight haze.")
+            .define("sableHeadlightFog", true);
+    public static final ModConfigSpec.DoubleValue SABLE_HEADLIGHT_FOG_DENSITY = BUILDER
+            .comment("Headlight haze density; zero skips the volumetric pass.")
+            .defineInRange("sableHeadlightFogDensity", 0.35D, 0.0D, 2.0D);
+    public static final ModConfigSpec.IntValue SABLE_HEADLIGHT_FOG_SAMPLES = BUILDER
+            .comment("Ray-march samples per headlight at half width and half height.")
+            .defineInRange("sableHeadlightFogSamples", 8, 4, 24);
     public static final ModConfigSpec.BooleanValue SABLE_HEADLIGHT_OCCLUSION = BUILDER
-            .comment("Use Veil's existing voxel occlusion for Sable headlights. Disable to reduce rendering cost.")
+            .comment("Block-grid shadows for headlight surface light and haze (walls, pillars, vehicles).")
             .define("sableHeadlightOcclusion", true);
 
     static final ModConfigSpec SPEC = BUILDER.build();

@@ -18,8 +18,8 @@ public final class TuningNetwork {
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
         // The snapshot carries one value per option: adding options changes the protocol.
-        // v20 adds Veil headlight cone angle and occlusion.
-        var registrar = event.registrar("20");
+        // v23 adds the server-owned headlight occlusion option (64-bit availability mask).
+        var registrar = event.registrar("23");
         registrar.playToServer(TuningEditPayload.TYPE, TuningEditPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof ServerPlayer player) {

@@ -38,11 +38,14 @@ public enum TuningOption {
     SABLE_BIOME_PROJECTION_FAST_PATH("sable_biome_projection_fast_path", 1.0D, "sable", Section.SABLE),
     SABLE_EMPTY_CONTAINER_FAST_PATH("sable_empty_container_fast_path", 1.0D, "sable", Section.SABLE),
     COPPER_SINK_INFINITE("copper_sink_infinite", 0.0D, "fluid"),
-    SABLE_HEADLIGHT("sable_headlight", 1.0D, "sable"),
-    SABLE_HEADLIGHT_RADIUS("sable_headlight_radius", 7.75D, 1.0D, 32.0D, 2, "sable", Section.MAIN),
-    SABLE_HEADLIGHT_BRIGHTNESS("sable_headlight_brightness", 15.0D, 0.0D, 15.0D, 0, "sable", Section.MAIN),
-    SABLE_HEADLIGHT_ANGLE("sable_headlight_angle", 60.0D, 5.0D, 160.0D, 0, "sable", Section.MAIN),
-    SABLE_HEADLIGHT_OCCLUSION("sable_headlight_occlusion", 1.0D, "sable");
+    SABLE_HEADLIGHT("sable_headlight", 1.0D, "sable", Section.SABLE),
+    SABLE_HEADLIGHT_RANGE("sable_headlight_range", 24.0D, 4.0D, 64.0D, 1, "sable", Section.SABLE, 0.5D),
+    SABLE_HEADLIGHT_ANGLE("sable_headlight_angle", 50.0D, 10.0D, 120.0D, 0, "sable", Section.SABLE),
+    SABLE_HEADLIGHT_INTENSITY("sable_headlight_intensity", 1.0D, 0.0D, 3.0D, 2, "sable", Section.SABLE, 0.05D),
+    SABLE_HEADLIGHT_FOG("sable_headlight_fog", 1.0D, "sable", Section.SABLE),
+    SABLE_HEADLIGHT_FOG_DENSITY("sable_headlight_fog_density", 0.35D, 0.0D, 2.0D, 2, "sable", Section.SABLE),
+    SABLE_HEADLIGHT_FOG_SAMPLES("sable_headlight_fog_samples", 8.0D, 4.0D, 24.0D, 0, "sable", Section.SABLE),
+    SABLE_HEADLIGHT_OCCLUSION("sable_headlight_occlusion", 1.0D, "sable", Section.SABLE);
 
     /** Display pages of the tuning screen; the snapshot still carries every option. */
     public enum Section { MAIN, SABLE }
@@ -55,6 +58,7 @@ public enum TuningOption {
     private final int decimals;
     private final String modId;
     private final Section section;
+    private final double step;
 
     TuningOption(String id, double defaultValue, String modId) {
         this(id, defaultValue, 0.0D, 1.0D, -1, modId, Section.MAIN);
@@ -74,6 +78,12 @@ public enum TuningOption {
 
     TuningOption(String id, double defaultValue, double minimum, double maximum, int decimals, String modId,
                  Section section) {
+        this(id, defaultValue, minimum, maximum, decimals, modId, section,
+                Math.pow(10.0D, -Math.max(0, decimals)));
+    }
+
+    TuningOption(String id, double defaultValue, double minimum, double maximum, int decimals, String modId,
+                 Section section, double step) {
         this.id = id;
         this.defaultValue = defaultValue;
         this.minimum = minimum;
@@ -81,6 +91,7 @@ public enum TuningOption {
         this.decimals = decimals;
         this.modId = modId;
         this.section = section;
+        this.step = step;
     }
 
     public String id() { return id; }
@@ -89,7 +100,7 @@ public enum TuningOption {
     public Section section() { return section; }
     public double defaultValue() { return defaultValue; }
     public boolean isCheckbox() { return decimals < 0; }
-    public double step() { return Math.pow(10.0D, -Math.max(0, decimals)); }
+    public double step() { return step; }
     public double minimum() { return minimum; }
     public double maximum() { return maximum; }
     /** Settings owned by dimblend_radio, which every client applies to its own audio. */
@@ -97,8 +108,16 @@ public enum TuningOption {
         return this == RADIO_STATIC || this == RADIO_END_VOICE_FREQUENCY || this == RADIO_END_VOICE_VOLUME
                 || this == RADIO_ACOUSTIC_INTENSITY;
     }
-    /** Settings on the Sable page, owned by sable's server config. */
-    public boolean sable() { return section == Section.SABLE; }
+    /** Headlights appear on the Sable page but belong to experience's server config. */
+    public boolean headlight() {
+        return this == SABLE_HEADLIGHT || this == SABLE_HEADLIGHT_RANGE
+                || this == SABLE_HEADLIGHT_ANGLE || this == SABLE_HEADLIGHT_INTENSITY
+                || this == SABLE_HEADLIGHT_FOG || this == SABLE_HEADLIGHT_FOG_DENSITY
+                || this == SABLE_HEADLIGHT_FOG_SAMPLES || this == SABLE_HEADLIGHT_OCCLUSION;
+    }
+
+    /** Settings owned by sable's server config; page placement does not imply ownership. */
+    public boolean sable() { return section == Section.SABLE && !headlight(); }
 
     public boolean isValid(double value) {
         if (!Double.isFinite(value) || value < minimum || value > maximum) {

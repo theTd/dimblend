@@ -15,11 +15,9 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        if (mixinClassName.contains(".compat.dynlight.")) {
-            var dynamicLights = net.neoforged.fml.loading.FMLLoader.getLoadingModList().getModFileById("createdynlight");
-            return isLoaded("sable") && isLoaded("sodiumdynamiclights") && isLoaded("veil") && !isLoaded("iris") && dynamicLights != null
-                    && java.nio.file.Files.isRegularFile(dynamicLights.getFile().findResource(
-                            "top/leonx/dynlight/sodium/sable/SableDynLightSource.class"));
+        if (mixinClassName.endsWith(".client.FrontlightBlockChangeMixin")
+                || mixinClassName.endsWith(".client.VeilWrappedDepthStencilMixin")) {
+            return isLoaded("sable") && isLoaded("veil") && !isLoaded("iris");
         }
         if (mixinClassName.endsWith(".compat.connected.KineticBatteryLifecycleMixin")) {
             return isLoaded("create_connected");

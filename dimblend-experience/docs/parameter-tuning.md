@@ -12,15 +12,6 @@ the server validates bounds and precision, saves it, then broadcasts the current
 values. Changes also reach other open panels and client-side coupler prediction.
 Missing optional mods leave their controls disabled.
 
-With a compatible dimblend core installed, the main panel also includes **Sky/time
-diagnostics (this client only)**. This checkbox is separate from the server
-settings below: it defaults to off, applies immediately, and persists in the local
-`config/dimblend-client.toml` (`skyTimeTrace`). It sends no tuning request and does
-not consume a snapshot mask bit or change the network protocol. Reset switches it
-off. The existing permission requirement to open the panel still applies; once
-open, this local row remains usable even in a read-only server snapshot. See
-the core module's `docs/sky-time-trace.md` for the diagnostic records.
-
 | Setting | Default | Valid values | Owner |
 | --- | --- | --- | --- |
 | Train shaking draw interval | 2.0 seconds | 0 = disabled; 0.1-60.0, step 0.1 | experience |
@@ -45,37 +36,149 @@ the core module's `docs/sky-time-trace.md` for the diagnostic records.
 | Radio End voice volume | 0.75 | 0.00-2.00, step 0.01; 0.5 = former hard-coded loudness, 0 = no voices (music not ducked) | radio |
 | Radio acoustic simulation intensity | 1.00 | 0.00-2.00, step 0.01; 0 = no simulated echo | radio |
 | Experience clear ratio on respawn | 1.00 | 0.00-1.00, step 0.01; rotating dimension only, ignores keepInventory, no experience orb drops | experience |
-| Sable headlight dynamic lighting | true | Checkbox; affects vehicle-mounted `dndecor:*_frontlight` only | experience |
-| Sable headlight lighting distance | 7.75 blocks | 1.00-32.00, step 0.01 | experience |
-| Sable headlight brightness cap | 15 | 0-15, step 1; 0 disables surrounding illumination, lamp appearance unchanged | experience |
-| Sable headlight cone angle | 60 degrees | 5-160, step 1; full angle | experience |
-| Sable headlight occlusion | true | Checkbox; Veil's existing voxel shadows, switch off to reduce GPU work | experience |
 
-These five headlight controls are server-owned and broadcast to every player on
-login and after edits. Create Dynamic Lights' Sable sources provide lamp discovery
-and lifecycle. The client supplies `AreaLightData` to Veil, using the same public
-API and 0.3-plane size as Searchlights 1.3.1. No Searchlights implementation class
-or custom shader is used, and its own lamp blocks do not need to be installed.
-The lamp's Sable render pose rotates the light with the vehicle. Its former Sodium
-point source is suppressed to avoid spherical light leaking outside the cone.
-Brightness 15 maps to Searchlights' default Veil brightness 4; existing Create
-Dynamic Lights luminance multipliers no longer scale this Veil source.
+## Vehicle headlights (surface and volumetric haze)
 
-For Veil 4.3.2, the integration matches the light framebuffer to a stencil-enabled
-main target, corrects packed depth-stencil allocation, and resolves unknown wrapped
-depth formats from the GPU. The framebuffer definition is restored when unused.
-Light rotations are normalized, including the nearly opposite-direction case that
-occurs when a north-facing Sable lamp tilts slightly.
+The Sable page includes eight **experience-owned, server-authoritative** options.
+Edits persist in `serverconfig/dimblend_experience-server.toml` and broadcast to
+all clients through the tuning snapshot (protocol 23, 64-bit availability mask).
 
-Bells & Whistles headlights, static lamps, ordinary vehicle lamps and Create
-contraptions retain their own lighting. The integration needs Veil (bundled by
-Sable), Sodium Dynamic Lights and the Sable-capable Create Dynamic Lights build.
-With Iris or without that stack, the original lamp behavior is retained. Rendering
-and voxel shadows are provided by Veil, including its existing limitations; no
-air-visible volume, custom shadow renderer or world light/spawning changes are
-added. The occlusion switch permits disabling that extra GPU work. The tuning
-protocol is v20, with a 64-bit availability mask; both sides must update experience
-together.
+| `/dbx` option | Config key | Default | Range / step |
+|---|---|---|---|
+| `sable_headlight` | `sableHeadlight` | on | boolean |
+| `sable_headlight_range` | `sableHeadlightRange` | 24 blocks | 4–64 / 0.5 |
+| `sable_headlight_angle` | `sableHeadlightAngle` | 50 degrees (full cone) | 10–120 / 1 |
+| `sable_headlight_intensity` | `sableHeadlightIntensity` | 1.00 | 0–3 / 0.05 |
+| `sable_headlight_fog` | `sableHeadlightFog` | on | boolean |
+| `sable_headlight_fog_density` | `sableHeadlightFogDensity` | 0.35 | 0–2 / 0.01 |
+| `sable_headlight_fog_samples` | `sableHeadlightFogSamples` | 8 | 4–24 / 1 |
+| `sable_headlight_occlusion` | `sableHeadlightOcclusion` | on | boolean |
+
+Only lit `dndecor:*_frontlight` blocks on Sable sublevels participate. The lens
+is at block center, shifted 0.25 blocks opposite facing for `no_base`. Interpolated
+render poses transform both the lens and facing. The nearest eight eligible
+lamps are used, with conservative frustum/range culling. Static-world lamps are
+excluded. Veil and Sable are required; Iris disables this renderer. No Create
+Dynamic Lights, Sodium Dynamic Lights, or Veil area lights are used.
+
+The surface pass runs after block entities, before translucency. Veil's dynamic
+albedo and view-space normal buffers are sampled through shader texture sources
+`veil:dynamic_buffer/albedo` and `veil:dynamic_buffer/normal`. The main depth is
+reconstructed using the render event's inverse projection/view matrices, in
+camera-relative world axes. Empty albedo falls back to a clamped copy of scene
+color; missing normals use depth derivatives. Light uses a warm cone with a soft
+shoulder over the outer radius and a gently brighter centre (no crisp rim),
+exponential and squared-distance attenuation (`exp(-d/range) / (1 + (d / 0.6range)^2)`),
+a soft exposure knee, wrapped Lambert, range fade and vanilla fog. Multiple lamps
+still add together. Shadows come from block-grid occlusion (below).
+
+Volumetric haze runs at `AFTER_TRANSLUCENT_BLOCKS`, so it composites in front of
+water and stained glass instead of being painted over by them. Right after the
+surface pass a tiny half-resolution pass captures the opaque scene distance; the
+march runs to that opaque surface and samples behind the front-most (translucent)
+depth count at 60%, so a beam seen through a window or under water is dimmed, not
+dropped. (Fabulous graphics draws translucency into its own target; there the haze
+behaves as before and is covered by translucent surfaces.) A half-width ×
+half-height RGBA16F target stores warm in-scatter in RGB and the front-most scene
+distance in alpha. Each ray is clipped to the opaque distance, the lamps' range
+spheres and forward cones, then sampled equi-angularly about its closest approach
+to the lens (samples crowd where in-scatter peaks; a static per-pixel offset, since
+nothing accumulates frames). The haze model is art-directed and mirrored by
+`HeadlightVolumeMath`: exponential falloff along the beam (`exp(-2d/range)`, soft
+end at range) with a near-lens boost (`1 + 2 / (1 + (d/1.25)^2)`) so the shaft
+visibly leaves the lamp and thins out along its length (from the driver's seat it
+reads as a beam going forward, not a disc floating ahead), a cross-section
+feathered over the whole cone radius and weighted towards the axis (bright core),
+phase = 70% isotropic + 30% Henyey–Greenstein lobe (g = 0.85) so side views keep a
+visible shaft while looking into a lamp gives a concentrated glow, in-scatter faded
+out within 4 blocks of the camera only while the camera stands in the (slightly
+widened) cone (standing in a beam must not veil the whole screen and sky; behind or
+beside the lamp nothing is faded), sample-position vanilla fog fading, and a
+Reinhard-style soft cap (exposure 0.65, cap 0.5) that keeps gradation in long paths
+down the beam and keeps overlaps from blowing out. The cone clip uses plain
+quadratic roots: the `-(b + sign(b)·sqrt(d))` form collapsed on the GPU for rays
+through the apex and left a black spot at the lamp. Each sample is multiplied by the
+occlusion `visibility(position, lamp)` (below), so shafts end at walls and pillars
+cast dark shafts through the haze. A four-tap joint bilateral upsample weights low-resolution
+distances against full-resolution depth (falling back to the texel with the most
+similar distance at thin silhouettes instead of leaving a black hole), then adds
+RGB onto a color-only main-target view without changing alpha. The same
+full-resolution composite draws a subtle lens glow: a lens-sized core plus a soft
+halo (measured in blocks at the lens, with an angular floor so distant lamps keep
+a few pixels), only towards the lamp's front, and hidden per pixel where the scene
+lies more than ~0.7 blocks in front of the lens (an occluded lens shows no glow).
+The glow needs the haze option on. Fog off, zero density, or no eligible beams
+frees the fog targets and skips all fog draws. Resize, disconnect and dimension
+unload release/recreate targets.
+
+### Occlusion (`sable_headlight_occlusion`)
+
+Block-grid (voxel) shadows, independent of which renderer drew the terrain
+(Sodium, Sable, Flywheel); no shadow-map re-rendering of geometry.
+
+- **Occluders**: cached per `BlockState`: `canOcclude()` and an occlusion shape
+  covering at least 75% of the cell (full cubes, stairs). Glass/panes, leaves,
+  fluids, plants, slabs, air and the frontlights themselves let light through.
+- **World clipmap**: one camera-centred 128×64×128 R8 3D texture shared by all lamps,
+  addressed toroidally (world coordinate mod size) in 16³ bricks = chunk sections. The
+  window recentres per brick; a slot whose brick changed is zeroed at once
+  (unoccluded, never stale) and refilled nearest-first under a 32,768-voxel-read budget
+  per frame (palette-pruned air/transparent sections cost almost nothing). Client block
+  writes patch single texels (through the existing `FrontlightBlockChangeMixin` hook);
+  chunk load/unload refills the column; level change clears everything. Sable plot
+  chunks are never written; outside the window counts as unoccluded.
+- **Vehicle grids**: the lamps' own sub-levels first, then other sub-levels whose bounds
+  touch a lamp's range sphere (at most four), each in a 64³ slot of a 64×64×256 R8
+  texture, in plot space: the occluding sections of the loaded plot chunks, clamped to
+  64 blocks per axis around the lamp. Rebuilt only when the vehicle changes outside the
+  covered box (in-box writes patch one texel). Per frame a camera-relative world→plot
+  matrix comes from the interpolated render pose.
+- **Distance maps**: per lamp and frame a 256×256 R32F tile (atlas 256×2048) maps
+  directions in the lamp's cone (tangent-plane projection, cone + 2°) to the distance
+  of the first occluder, found by a 3D DDA from the lens through the world grid and
+  each vehicle grid (lens cell skipped; ≤ 192 steps; mirrored and unit-tested by
+  `HeadlightOcclusionMath`). Surface and haze test `distance <= map + 0.06` with a 2×2
+  percentage-closer filter; the surface lifts the lookup 0.08 blocks along its normal
+  so a lit face never shadows itself. This replaces a per-pixel/per-sample march: the
+  trace costs ~65k short DDAs per lamp, and each haze sample costs four texel fetches.
+- **Off**: no grids, textures or map are allocated or filled; visibility is 1.
+- Limits: block resolution (partial blocks are all-or-nothing); entities and
+  block-entity models do not cast shadows; lamps whose cone leaves the ±64/±32-block
+  window (camera-centred) are unoccluded there; vehicles larger than 64 blocks are
+  clipped around the lamp.
+
+Radial streaks seen around the glow from the driver's seat in the 2026-10-19
+captures were scene geometry, not sampling noise: the stepped walls of a tunnel
+along the beam axis converge on the vanishing point (`/dbxheadlight debug albedo`
+shows the steps; `debug fog` shows a smooth haze there).
+
+Buffers are requested before world rendering while eligible lit lamps exist,
+and released when none remain or the setting/intensity disables lighting. A
+color-only framebuffer view composites onto main, with a separate scene snapshot
+to avoid feedback; no depth/stencil texture is allocated by this pass. A gated
+Veil compatibility mixin resolves wrapped depth formats before stencil detection
+and supplies packed depth-stencil allocation arguments for Veil's first-person
+target. This fixes its invalid depth-only texture clear when main uses stencil,
+without changing the `veil:light` framebuffer definition. Veil may
+compile shader variants when the buffer mask changes. First activation and
+resource reload behavior still require runtime verification.
+
+Client-only diagnostics: `/dbxheadlight debug off|albedo|normal|depth|light|fog|occlusion`;
+`/dbxheadlight list` prints active beams' world lens positions and axes (chat and
+log), `/dbxheadlight reload` reloads resource packs (shader iteration via a pack).
+`off` restores additive lighting; the other modes replace the opaque scene with
+the selected data while an eligible lamp is active. Normal colors show view-space
+normals; depth shows reconstructed distance divided by headlight range. `light`
+shows only the added, fog-faded surface light; `fog` shows only the upsampled haze
+and lens glow on black (black if fog is disabled); `occlusion` paints the cones'
+surfaces white where lit and red where shadowed, over a dimmed scene. Later translucent geometry may
+still draw over the diagnostic view.
+
+Runtime checks: verify moving/rotating vehicles and all six facings, `no_base`,
+placement/removal/redstone changes, chunk replacement, disconnect and dimension
+changes, nearest-eight selection, fog, resize and F3+T. Use albedo/normal modes to
+check Sable blocks and Create/Flywheel visuals; their actual coverage cannot be
+proven by unit tests. Check Iris and missing optional dependencies as well.
 
 ## Ownership and Persistence
 
@@ -95,7 +198,7 @@ Radio follows the same pattern through `dimblend.radio.api.RadioTuning` and its
 own `serverconfig/dimblend_radio-server.toml`. Its settings are heard on each
 client, so remote clients also apply the broadcast radio values in memory
 (NeoForge already sends the config at login). The snapshot carries one value
-per option, so each added or removed option bumps the protocol version (now `17`; see the
+per option, so each added or removed option bumps the protocol version (now `22`; see the
 performance checklist below).
 
 The existing `couplerRedstone` config uses the inverse meaning: true blocks
@@ -192,7 +295,7 @@ server's results are shown (same JVM); a client connected to a remote server
 also lists its own collector, heap and memory. Server steps and the spark fix use
 the same permission gate as the panel (level 2) and travel on two extra payloads
 (`perf_check_request`, `perf_check_report`), which also bumped the tuning
-protocol version (now `16`, see above). The thresholds live in `PerfRules` and are unit-tested;
+protocol version (now `22`, see above). The thresholds live in `PerfRules` and are unit-tested;
 `PerfChecklistTranslationsTest` checks both languages cover every step, advice
 and fix label.
 
