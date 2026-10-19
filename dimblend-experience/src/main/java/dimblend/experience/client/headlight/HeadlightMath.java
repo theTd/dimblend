@@ -17,15 +17,16 @@ public final class HeadlightMath {
         return t * t * (3.0 - 2.0 * t);
     }
 
+    /** beam.glsl coneFactor: soft shoulder over the outer radius and a gently brighter centre (cosine space). */
     public static double cone(double cosine, double fullAngleDegrees) {
-        double half = Math.toRadians(fullAngleDegrees * 0.5);
-        return smoothstep(Math.cos(half), Math.cos(half * 0.75), cosine)
-                * (0.85 + 0.15 * Math.pow(Math.max(cosine, 0.0), 16.0));
+        double outer = Math.cos(Math.toRadians(fullAngleDegrees * 0.5));
+        double t = Math.clamp((cosine - outer) / Math.max(1.0 - outer, 1e-4), 0.0, 1.0);
+        return smoothstep(0.0, 0.75, t) * (0.8 + 0.2 * t * t);
     }
 
     public static double attenuation(double distance, double range, double intensity) {
         double d = Math.max(0.0, distance);
-        double scaled = d / (range * 0.5);
+        double scaled = d / (range * 0.6);
         double linear = Math.max(0.0, intensity) * Math.exp(-d / range) / (1.0 + scaled * scaled);
         return -Math.expm1(-linear) * (1.0 - smoothstep(range * 0.8, range, d));
     }

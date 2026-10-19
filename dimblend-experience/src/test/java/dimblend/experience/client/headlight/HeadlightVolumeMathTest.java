@@ -120,6 +120,42 @@ class HeadlightVolumeMathTest {
     }
 
     @Test
+    void nearFadeOnlyAppliesWhileTheCameraStandsInTheBeam() {
+        // Lens at the origin facing +z: in front on the axis = inside; behind (driver) or beside = outside.
+        assertEquals(1, HeadlightVolumeMath.cameraInside(1, COS), 1e-12);
+        assertEquals(0, HeadlightVolumeMath.cameraInside(-1, COS), 1e-12);
+        assertEquals(0, HeadlightVolumeMath.cameraInside(0, COS), 1e-12);
+        assertEquals(1, HeadlightVolumeMath.nearFade(0.5, 0), 1e-12);
+        assertEquals(0, HeadlightVolumeMath.nearFade(0, 1), 1e-12);
+        // From behind the lamp the shaft starts at the lens: the first blocks of the beam contribute fully.
+        Vec3 driver = new Vec3(0, 1.5, -2);
+        Vec3 ray = new Vec3(0, -1.2, 3).normalize();
+        double nearLens = HeadlightVolumeMath.march(driver, ray, Vec3.ZERO, AXIS, 24, 1, COS, 4, 8, 0.5);
+        assertTrue(nearLens > 0.3, "near lens " + nearLens);
+    }
+
+    @Test
+    void hazeBehindATranslucentSurfaceIsDimmedNotDropped() {
+        Vec3 side = new Vec3(-10, 0, 6);
+        Vec3 ray = new Vec3(1, 0, 0);
+        double open = march(side, ray, 8);
+        double glazed = HeadlightVolumeMath.march(side, ray, Vec3.ZERO, AXIS, 24, 1, COS, 1000, 2, 8, 0.5);
+        assertEquals(open * HeadlightVolumeMath.BEHIND_TRANSLUCENT, glazed, open * 1e-9);
+        double inFront = HeadlightVolumeMath.march(side, ray, Vec3.ZERO, AXIS, 24, 1, COS, 1000, 1000, 8, 0.5);
+        assertEquals(open, inFront, 1e-12);
+    }
+
+    @Test
+    void beamIsBrightestNearTheLensAndOnItsAxis() {
+        assertTrue(HeadlightVolumeMath.beamFalloff(0.5, 24, 1) > 2 * HeadlightVolumeMath.beamFalloff(6, 24, 1));
+        assertEquals(0, HeadlightVolumeMath.beamFalloff(24, 24, 1), 1e-12);
+        assertEquals(1, HeadlightVolumeMath.fogCone(1, COS), 1e-12);
+        assertEquals(0, HeadlightVolumeMath.fogCone(COS, COS), 1e-12);
+        double half = Math.cos(Math.toRadians(12.5));
+        assertTrue(HeadlightVolumeMath.fogCone(half, COS) < 0.45, "core " + HeadlightVolumeMath.fogCone(half, COS));
+    }
+
+    @Test
     void equiAngularMarchTracksDenseReference() {
         Vec3[][] views = {
             {new Vec3(-10, 0, 10), new Vec3(1, 0, 0)},
@@ -155,6 +191,7 @@ class HeadlightVolumeMathTest {
     private static double reference(Vec3 origin, Vec3 ray) {
         var segment = clip(origin, ray, 1000);
         if (segment == null) return 0;
+        double inside = HeadlightVolumeMath.cameraInside(origin.dot(AXIS) / origin.length(), COS);
         int steps = 20000;
         double step = (segment.end() - segment.start()) / steps;
         double sum = 0;
@@ -164,7 +201,7 @@ class HeadlightVolumeMathTest {
             double distance = offset.length();
             Vec3 direction = offset.scale(1 / distance);
             sum += HeadlightVolumeMath.fogCone(direction.dot(AXIS), COS) * HeadlightVolumeMath.beamFalloff(distance, 24, 1)
-                    * HeadlightVolumeMath.scatterPhase(-direction.dot(ray)) * HeadlightVolumeMath.nearFade(t) * step;
+                    * HeadlightVolumeMath.scatterPhase(-direction.dot(ray)) * HeadlightVolumeMath.nearFade(t, inside) * step;
         }
         return sum;
     }

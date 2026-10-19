@@ -17,6 +17,7 @@ final class HeadlightTargets implements AutoCloseable {
     private int albedoTexture;
     private int normalTexture;
     private AdvancedFbo fog;
+    private AdvancedFbo opaque;
 
     void prepareDynamicBuffers(RenderTarget main) {
         // Veil normally clears at endFrame; freshly allocated/resized textures have no previous frame.
@@ -61,6 +62,18 @@ final class HeadlightTargets implements AutoCloseable {
     void clearOutput() { output.clear(0, 0, 0, 0, GL11.GL_COLOR_BUFFER_BIT); }
 
     void bindFog(RenderTarget main) {
+        ensureFog(main);
+        // Every texel is overwritten by the fullscreen pass, including ray misses.
+        fog.bind(true);
+    }
+
+    /** Half-resolution opaque scene distance, captured before translucent terrain writes its depth. */
+    void bindOpaque(RenderTarget main) {
+        ensureFog(main);
+        opaque.bind(true);
+    }
+
+    private void ensureFog(RenderTarget main) {
         int width = Math.max(1, (main.width + 1) / 2);
         int height = Math.max(1, (main.height + 1) / 2);
         if (fog == null || fog.getWidth() != width || fog.getHeight() != height) {
@@ -68,10 +81,12 @@ final class HeadlightTargets implements AutoCloseable {
             // RGB = scatter; A = scene distance used by the march. No depth/stencil attachment.
             fog = AdvancedFbo.withSize(width, height).setFormat(GL11.GL_RGBA, GL30.GL_RGBA16F)
                     .addColorTextureBuffer().setDebugLabel("dimblend headlight fog").build(true);
+            opaque = AdvancedFbo.withSize(width, height).setFormat(GL11.GL_RED, GL30.GL_R32F)
+                    .addColorTextureBuffer().setDebugLabel("dimblend headlight opaque distance").build(true);
         }
-        // Every texel is overwritten by the fullscreen pass, including ray misses.
-        fog.bind(true);
     }
+
+    int opaqueTexture() { return opaque.getColorTextureAttachment(0).getId(); }
 
     int fogTexture() { return fog.getColorTextureAttachment(0).getId(); }
 
@@ -81,7 +96,9 @@ final class HeadlightTargets implements AutoCloseable {
 
     void closeFog() {
         if (fog != null) fog.free();
+        if (opaque != null) opaque.free();
         fog = null;
+        opaque = null;
     }
 
     @Override

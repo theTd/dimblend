@@ -65,32 +65,55 @@ albedo and view-space normal buffers are sampled through shader texture sources
 `veil:dynamic_buffer/albedo` and `veil:dynamic_buffer/normal`. The main depth is
 reconstructed using the render event's inverse projection/view matrices, in
 camera-relative world axes. Empty albedo falls back to a clamped copy of scene
-color; missing normals use depth derivatives. Light uses a warm cone, exponential
-and squared-distance attenuation, a soft exposure knee, wrapped Lambert, range
-fade and vanilla fog. Multiple lamps still add together. There is **no shadow
-occlusion** yet, so light can cross walls; scene depth only stops the view ray.
+color; missing normals use depth derivatives. Light uses a warm cone with a soft
+shoulder over the outer radius and a gently brighter centre (no crisp rim),
+exponential and squared-distance attenuation (`exp(-d/range) / (1 + (d / 0.6range)^2)`),
+a soft exposure knee, wrapped Lambert, range fade and vanilla fog. Multiple lamps
+still add together. There is **no shadow occlusion** yet, so light can cross walls;
+scene depth only stops the view ray.
 
-Volumetric haze follows the surface pass at the same `AFTER_BLOCK_ENTITIES` stage.
-Opaque depth is ready there, while later translucent geometry can cover the haze;
-correct scattering through glass/water is not implemented. A half-width ×
-half-height RGBA16F target stores warm in-scatter in RGB and the exact sampled
-scene distance in alpha. Each ray is clipped to scene depth, the lamps' range
+Volumetric haze runs at `AFTER_TRANSLUCENT_BLOCKS`, so it composites in front of
+water and stained glass instead of being painted over by them. Right after the
+surface pass a tiny half-resolution pass captures the opaque scene distance; the
+march runs to that opaque surface and samples behind the front-most (translucent)
+depth count at 60%, so a beam seen through a window or under water is dimmed, not
+dropped. (Fabulous graphics draws translucency into its own target; there the haze
+behaves as before and is covered by translucent surfaces.) A half-width ×
+half-height RGBA16F target stores warm in-scatter in RGB and the front-most scene
+distance in alpha. Each ray is clipped to the opaque distance, the lamps' range
 spheres and forward cones, then sampled equi-angularly about its closest approach
 to the lens (samples crowd where in-scatter peaks; a static per-pixel offset, since
 nothing accumulates frames). The haze model is art-directed and mirrored by
 `HeadlightVolumeMath`: exponential falloff along the beam (`exp(-2d/range)`, soft
-end at range), a cross-section feathered over the whole cone radius, phase = 70%
-isotropic + 30% Henyey–Greenstein lobe (g = 0.85) so side views keep a visible
-shaft while looking into a lamp gives a concentrated glow, in-scatter faded out
-within 4 blocks of the camera (standing in a beam must not veil the whole screen
-and sky), sample-position vanilla fog fading, and a soft exposure cap (0.5) that
-keeps overlaps from blowing out. The cone clip uses plain quadratic roots: the
-`-(b + sign(b)·sqrt(d))` form collapsed on the GPU for rays through the apex and
-left a black spot at the lamp. The `visibility(position)` hook currently returns 1. A four-tap joint
-bilateral upsample weights low-resolution distances against full-resolution
-depth, then adds RGB onto a color-only main-target view without changing alpha.
-Fog off, zero density, or no eligible beams frees the fog target and skips both
-fog draws. Resize, disconnect and dimension unload release/recreate targets.
+end at range) with a near-lens boost (`1 + 2 / (1 + (d/1.25)^2)`) so the shaft
+visibly leaves the lamp and thins out along its length (from the driver's seat it
+reads as a beam going forward, not a disc floating ahead), a cross-section
+feathered over the whole cone radius and weighted towards the axis (bright core),
+phase = 70% isotropic + 30% Henyey–Greenstein lobe (g = 0.85) so side views keep a
+visible shaft while looking into a lamp gives a concentrated glow, in-scatter faded
+out within 4 blocks of the camera only while the camera stands in the (slightly
+widened) cone (standing in a beam must not veil the whole screen and sky; behind or
+beside the lamp nothing is faded), sample-position vanilla fog fading, and a
+Reinhard-style soft cap (exposure 0.65, cap 0.5) that keeps gradation in long paths
+down the beam and keeps overlaps from blowing out. The cone clip uses plain
+quadratic roots: the `-(b + sign(b)·sqrt(d))` form collapsed on the GPU for rays
+through the apex and left a black spot at the lamp. The `visibility(position)` hook
+currently returns 1. A four-tap joint bilateral upsample weights low-resolution
+distances against full-resolution depth (falling back to the texel with the most
+similar distance at thin silhouettes instead of leaving a black hole), then adds
+RGB onto a color-only main-target view without changing alpha. The same
+full-resolution composite draws a subtle lens glow: a lens-sized core plus a soft
+halo (measured in blocks at the lens, with an angular floor so distant lamps keep
+a few pixels), only towards the lamp's front, and hidden per pixel where the scene
+lies more than ~0.7 blocks in front of the lens (an occluded lens shows no glow).
+The glow needs the haze option on. Fog off, zero density, or no eligible beams
+frees the fog targets and skips all fog draws. Resize, disconnect and dimension
+unload release/recreate targets.
+
+Radial streaks seen around the glow from the driver's seat in the 2026-10-19
+captures were scene geometry, not sampling noise: the stepped walls of a tunnel
+along the beam axis converge on the vanishing point (`/dbxheadlight debug albedo`
+shows the steps; `debug fog` shows a smooth haze there).
 
 Buffers are requested before world rendering while eligible lit lamps exist,
 and released when none remain or the setting/intensity disables lighting. A
@@ -110,7 +133,7 @@ log), `/dbxheadlight reload` reloads resource packs (shader iteration via a pack
 the selected data while an eligible lamp is active. Normal colors show view-space
 normals; depth shows reconstructed distance divided by headlight range. `light`
 shows only the added, fog-faded surface light; `fog` shows only the upsampled haze
-on black (black if fog is disabled). Later translucent geometry may
+and lens glow on black (black if fog is disabled). Later translucent geometry may
 still draw over the diagnostic view.
 
 Runtime checks: verify moving/rotating vehicles and all six facings, `no_base`,

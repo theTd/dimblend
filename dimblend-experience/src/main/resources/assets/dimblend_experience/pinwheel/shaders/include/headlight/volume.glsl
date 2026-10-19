@@ -72,37 +72,58 @@ float scatterPhase(float cosine) {
     return (1.0 - PhaseForward) + PhaseForward * 12.5663706144 * phase(cosine, PhaseG);
 }
 
-// Fog-only radial falloff: exponential along the beam with a soft end at Range. The surface pass keeps
-// its own flatter attenuation; haze needs the stronger falloff so the far cone does not read as a wall.
+// Fog-only radial falloff: exponential along the beam with a soft end at Range, plus a boost near the lens so
+// the shaft visibly leaves the lamp and thins out along its length (from the driver's seat the beam reads as
+// going forward, not as a disc floating ahead). The surface pass keeps its own flatter attenuation; haze needs
+// the stronger falloff so the far cone does not read as a wall.
 const float FalloffRate = 2.0;
+const float NearBoost = 2.0;
+const float NearBoostRadius = 1.25;
 
 float beamFalloff(float distance) {
-    return Intensity * exp(-FalloffRate * distance / Range) * (1.0 - smoothstep(Range * 0.85, Range, distance));
+    float near = distance / NearBoostRadius;
+    return Intensity * exp(-FalloffRate * distance / Range) * (1.0 + NearBoost / (1.0 + near * near))
+        * (1.0 - smoothstep(Range * 0.85, Range, distance));
 }
 
-// Fades in-scatter within this many blocks of the camera. Inside a beam this nearby, direction-independent
-// segment would otherwise veil the whole screen (including sky) in uniform grey.
+// Fades in-scatter within this many blocks of the camera while the camera stands in (or near) a beam. Inside a
+// beam this nearby, direction-independent segment would otherwise veil the whole screen (including sky) in grey.
+// Behind or beside the lamp (the driver's seat) there is no veil to hide, and fading there would cut the first
+// blocks of the shaft so the beam would start as a floating disc instead of leaving the lens.
 const float NearFade = 4.0;
 
-float nearFade(float t) { return smoothstep(0.0, NearFade, t); }
+// How much the camera stands inside the lamp's forward cone (slightly widened), from the lens-to-camera cosine.
+float cameraInside(float cosine) { return smoothstep(ConeCosines.x - 0.15, ConeCosines.x + 0.05, cosine); }
 
-// Fog cross-section: feathered across the whole cone radius (the surface pass keeps a crisp edge) so the
-// shaft reads as soft light with a brighter core instead of a hard-edged solid.
+float nearFade(float t, float inside) { return mix(1.0, smoothstep(0.0, NearFade, t), inside); }
+
+// Fog cross-section: feathered across the whole cone radius (the surface pass keeps a crisp edge), with extra
+// weight towards the axis (cubic) so the shaft reads as a defined core in soft light, also from the side.
+const float CoreFloor = 0.15;
+
 float fogCone(float cosine) {
     float t = clamp((cosine - ConeCosines.x) / max(1.0 - ConeCosines.x, 1e-4), 0.0, 1.0);
-    return t * t * (3.0 - 2.0 * t);
+    return t * t * (3.0 - 2.0 * t) * (CoreFloor + (1.0 - CoreFloor) * t * t * t);
 }
 
 // Floor for the lens-to-ray distance in equi-angular sampling (rays through the lens itself).
 const float MinAxisDistance = 0.05;
 
-// Exposure and soft cap of the scattered haze.
-const float HazeExposure = 0.4;
+// Exposure and soft cap of the scattered haze: a Reinhard-style knee keeps gradation in long, bright paths
+// (looking down the beam) where an exponential knee flattened everything near the cap into a uniform disc.
+const float HazeExposure = 0.65;
 const float HazeCap = 0.5;
 
 float haze(float density, float scatter) {
-    return HazeCap * (1.0 - exp(-HazeExposure * density * scatter / HazeCap));
+    float x = HazeExposure * density * scatter / HazeCap;
+    return HazeCap * x / (1.0 + x);
 }
+
+// In-scatter behind a translucent surface (water, stained glass) is seen through it: kept, but dimmed, since
+// its colour and opacity are unknown here.
+const float BehindTranslucent = 0.6;
+
+float translucentDimming(float t, float frontDistance) { return t > frontDistance ? BehindTranslucent : 1.0; }
 
 // Next milestone: sample the world-space voxel visibility volume here.
 float visibility(vec3 position) { return 1.0; }

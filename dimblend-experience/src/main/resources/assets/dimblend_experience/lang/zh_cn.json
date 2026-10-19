@@ -49,7 +49,7 @@
 	"screen.dimblend_experience.tuning.sable_headlight_intensity": "前照灯亮度倍率",
 	"screen.dimblend_experience.tuning.sable_headlight_intensity.description": "默认：1.00。范围 0–3，步长 0.05；设为零时停用照明渲染，灯自身贴图仍可点亮。",
 	"screen.dimblend_experience.tuning.sable_headlight_fog": "前照灯体积光雾",
-	"screen.dimblend_experience.tuning.sable_headlight_fog.description": "默认：开启。在前照灯光锥内显示暖色光雾，暂不计算遮挡阴影。",
+	"screen.dimblend_experience.tuning.sable_headlight_fog.description": "默认：开启。在前照灯光锥内显示暖色光雾，并在灯头处显示柔和光晕；暂不计算遮挡阴影。",
 	"screen.dimblend_experience.tuning.sable_headlight_fog_density": "前照灯光雾浓度",
 	"screen.dimblend_experience.tuning.sable_headlight_fog_density.description": "默认：0.35。范围 0–2，步长 0.01；设为零时跳过光雾渲染。",
 	"screen.dimblend_experience.tuning.sable_headlight_fog_samples": "前照灯光雾采样数",

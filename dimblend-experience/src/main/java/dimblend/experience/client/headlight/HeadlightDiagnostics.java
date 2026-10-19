@@ -140,6 +140,13 @@ final class HeadlightDiagnostics {
         }
     }
 
+    /** Always on, once: a missing helper program disables the haze. */
+    static void missingProgram(Object program) {
+        if (missingWarned) return;
+        missingWarned = true;
+        LOGGER.warn("Headlight fog disabled: program {} unavailable; see Veil shader errors above", program);
+    }
+
     /** Always on: a missing program (e.g. shader compile failure) otherwise disables fog silently. */
     static void missingProgram(boolean fog, boolean composite) {
         if (missingWarned) return;
