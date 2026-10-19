@@ -61,6 +61,8 @@
 		"compat.simurail.AutomaticCouplerPartnerAccessor"
 	],
 	"client": [
+		"client.FrontlightBlockChangeMixin",
+		"client.VeilWrappedDepthStencilMixin",
 		"compat.camerapture.PictureItemFrameMixin",
 		"compat.camerapture.CameraPictureCropMixin",
 		"compat.camerapture.CameraViewfinderMixin",

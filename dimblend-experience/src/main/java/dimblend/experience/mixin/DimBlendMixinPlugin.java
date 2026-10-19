@@ -15,6 +15,10 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        if (mixinClassName.endsWith(".client.FrontlightBlockChangeMixin")
+                || mixinClassName.endsWith(".client.VeilWrappedDepthStencilMixin")) {
+            return isLoaded("sable") && isLoaded("veil") && !isLoaded("iris");
+        }
         if (mixinClassName.endsWith(".compat.connected.KineticBatteryLifecycleMixin")) {
             return isLoaded("create_connected");
         }

@@ -18,8 +18,8 @@ public final class TuningNetwork {
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
         // The snapshot carries one value per option: adding options changes the protocol.
-        // v18 adds the copper sink infinity switch (32 options, including the sign bit).
-        var registrar = event.registrar("18");
+        // v22 adds the three server-owned headlight fog options (64-bit availability mask).
+        var registrar = event.registrar("22");
         registrar.playToServer(TuningEditPayload.TYPE, TuningEditPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof ServerPlayer player) {
@@ -91,10 +91,10 @@ public final class TuningNetwork {
     }
 
     public static void send(ServerPlayer player, boolean open, String acknowledged, String message) {
-        int mask = 0;
+        long mask = 0;
         for (TuningOption option : TuningOption.values()) {
             if (TuningSettings.available(option)) {
-                mask |= 1 << option.ordinal();
+                mask |= 1L << option.ordinal();
             }
         }
         PacketDistributor.sendToPlayer(player, new TuningSnapshotPayload(open, player.hasPermissions(2), mask,

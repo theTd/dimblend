@@ -37,6 +37,13 @@ public final class TuningSettings {
             case COUPLER_SURVIVAL -> Config.ALLOW_SURVIVAL_COUPLER_INTERACTION.get() ? 1.0D : 0.0D;
             case LIMITED_WATER -> Config.LIMITED_WATER.get() ? 1.0D : 0.0D;
             case COPPER_SINK_INFINITE -> Config.COPPER_SINK_INFINITE.get() ? 1.0D : 0.0D;
+            case SABLE_HEADLIGHT -> Config.SABLE_HEADLIGHT.get() ? 1.0D : 0.0D;
+            case SABLE_HEADLIGHT_RANGE -> Config.SABLE_HEADLIGHT_RANGE.get();
+            case SABLE_HEADLIGHT_ANGLE -> Config.SABLE_HEADLIGHT_ANGLE.get();
+            case SABLE_HEADLIGHT_INTENSITY -> Config.SABLE_HEADLIGHT_INTENSITY.get();
+            case SABLE_HEADLIGHT_FOG -> Config.SABLE_HEADLIGHT_FOG.get() ? 1.0D : 0.0D;
+            case SABLE_HEADLIGHT_FOG_DENSITY -> Config.SABLE_HEADLIGHT_FOG_DENSITY.get();
+            case SABLE_HEADLIGHT_FOG_SAMPLES -> Config.SABLE_HEADLIGHT_FOG_SAMPLES.get();
             case SABLE_VOID_FIT -> Config.SABLE_STRUCTURE_VOID_FIT.get() ? 1.0D : 0.0D;
             case SABLE_LAVA_MELT -> Config.SABLE_LAVA_MELT.get() ? 1.0D : 0.0D;
             case SABLE_LAVA_MELT_SPEED -> Config.SABLE_LAVA_MELT_SPEED.get();
@@ -83,6 +90,13 @@ public final class TuningSettings {
             case COUPLER_SURVIVAL -> Config.ALLOW_SURVIVAL_COUPLER_INTERACTION.set(enabled);
             case LIMITED_WATER -> Config.LIMITED_WATER.set(enabled);
             case COPPER_SINK_INFINITE -> Config.COPPER_SINK_INFINITE.set(enabled);
+            case SABLE_HEADLIGHT -> Config.SABLE_HEADLIGHT.set(enabled);
+            case SABLE_HEADLIGHT_RANGE -> Config.SABLE_HEADLIGHT_RANGE.set(value);
+            case SABLE_HEADLIGHT_ANGLE -> Config.SABLE_HEADLIGHT_ANGLE.set(value);
+            case SABLE_HEADLIGHT_INTENSITY -> Config.SABLE_HEADLIGHT_INTENSITY.set(value);
+            case SABLE_HEADLIGHT_FOG -> Config.SABLE_HEADLIGHT_FOG.set(enabled);
+            case SABLE_HEADLIGHT_FOG_DENSITY -> Config.SABLE_HEADLIGHT_FOG_DENSITY.set(value);
+            case SABLE_HEADLIGHT_FOG_SAMPLES -> Config.SABLE_HEADLIGHT_FOG_SAMPLES.set((int) value);
             case SABLE_VOID_FIT -> Config.SABLE_STRUCTURE_VOID_FIT.set(enabled);
             case SABLE_LAVA_MELT -> Config.SABLE_LAVA_MELT.set(enabled);
             case SABLE_LAVA_MELT_SPEED -> Config.SABLE_LAVA_MELT_SPEED.set(value);

@@ -5,6 +5,12 @@
 
 subprojects {
     repositories {
+        exclusiveContent {
+            forRepository {
+                maven { url = "https://maven.blamejared.com" }
+            }
+            filter { includeGroup("gg.moonflower") }
+        }
         // Sable Companion（dimblend 的软依赖 shim）。exclusive 保证该 group
         // 永远只从此仓库解析，单仓时代的原样保留。
         exclusiveContent {
