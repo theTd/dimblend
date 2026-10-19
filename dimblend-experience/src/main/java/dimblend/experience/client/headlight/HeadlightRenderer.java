@@ -36,6 +36,7 @@ public final class HeadlightRenderer {
     private static final ResourceLocation FOG = ResourceLocation.fromNamespaceAndPath(DimBlend.MODID, "headlight/fog");
     private static final ResourceLocation OPAQUE_DISTANCE = ResourceLocation.fromNamespaceAndPath(DimBlend.MODID, "headlight/opaque_distance");
     private static final ResourceLocation FOG_COMPOSITE = ResourceLocation.fromNamespaceAndPath(DimBlend.MODID, "headlight/fog_composite");
+    private static final ResourceLocation OCCLUSION_TRACE = ResourceLocation.fromNamespaceAndPath(DimBlend.MODID, "headlight/occlusion_trace");
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final HeadlightTargets TARGETS = new HeadlightTargets();
     private static boolean buffers;
@@ -43,11 +44,13 @@ public final class HeadlightRenderer {
     /** Beams handed from the surface stage to the haze stage of the same frame. */
     private static List<HeadlightBeam> fogBeams = List.of();
 
-    private enum DebugView { OFF, ALBEDO, NORMAL, DEPTH, LIGHT, FOG }
+    private enum DebugView { OFF, ALBEDO, NORMAL, DEPTH, LIGHT, FOG, OCCLUSION }
 
     public static void initialize() {
         NeoForge.EVENT_BUS.addListener(FrontlightIndex::onLoad);
         NeoForge.EVENT_BUS.addListener(FrontlightIndex::onUnload);
+        NeoForge.EVENT_BUS.addListener(HeadlightOcclusion::onChunkLoad);
+        NeoForge.EVENT_BUS.addListener(HeadlightOcclusion::onChunkUnload);
         NeoForge.EVENT_BUS.addListener(HeadlightRenderer::beforeFrame);
         NeoForge.EVENT_BUS.addListener(HeadlightRenderer::render);
         NeoForge.EVENT_BUS.addListener(HeadlightRenderer::commands);
@@ -69,6 +72,10 @@ public final class HeadlightRenderer {
                 && value(TuningOption.SABLE_HEADLIGHT_FOG_DENSITY) > 0.0;
     }
 
+    private static boolean occlusionEnabled() {
+        return value(TuningOption.SABLE_HEADLIGHT_OCCLUSION) == 1.0;
+    }
+
     private static void beforeFrame(RenderFrameEvent.Pre event) {
         var mc = Minecraft.getInstance();
         // Acquire before any world drawing/clearing, not halfway through the terrain pass.
@@ -84,11 +91,14 @@ public final class HeadlightRenderer {
         }
         if (active) TARGETS.prepareDynamicBuffers(mc.getMainRenderTarget());
         if (!active || !fogEnabled()) TARGETS.closeFog();
+        // Off = no grids allocated or filled; they are rebuilt from chunk data when re-enabled.
+        if ((!active || !occlusionEnabled()) && HeadlightOcclusion.allocated()) HeadlightOcclusion.close();
     }
 
     private static void reset() {
         HeadlightDiagnostics.close();
         FrontlightIndex.clear();
+        HeadlightOcclusion.close();
         if (buffers) VeilRenderSystem.renderer().disableBuffers(PROGRAM);
         buffers = false;
         TARGETS.close();
@@ -123,9 +133,12 @@ public final class HeadlightRenderer {
         source.sendSuccess(() -> Component.literal("Headlight beams: " + beams.size()), false);
         for (int i = 0; i < beams.size(); i++) {
             var beam = beams.get(i);
-            String line = String.format(java.util.Locale.ROOT, "#%d lens=(%.2f, %.2f, %.2f) dir=(%.3f, %.3f, %.3f) dist=%.1f",
+            // Plot (sub-level) coordinates of the lens: where /setblock edits the vehicle itself.
+            Vec3 plot = beam.owner() == null ? Vec3.ZERO : beam.owner().renderPose().transformPositionInverse(beam.lens());
+            String line = String.format(java.util.Locale.ROOT, "#%d lens=(%.2f, %.2f, %.2f) dir=(%.3f, %.3f, %.3f) dist=%.1f plot=(%.2f, %.2f, %.2f)",
                     i, beam.lens().x, beam.lens().y, beam.lens().z,
-                    beam.direction().x, beam.direction().y, beam.direction().z, beam.lens().distanceTo(camera));
+                    beam.direction().x, beam.direction().y, beam.direction().z, beam.lens().distanceTo(camera),
+                    plot.x, plot.y, plot.z);
             LOGGER.info("[headlight-list] {}", line);
             source.sendSuccess(() -> Component.literal(line), false);
         }
@@ -162,6 +175,7 @@ public final class HeadlightRenderer {
         // Resolve the program every frame: Veil resource reload replaces it.
         ShaderProgram shader = VeilRenderSystem.renderer().getShaderManager().getShader(PROGRAM);
         if (shader == null && debug != DebugView.FOG) return;
+        boolean haze = fogEnabled() && (debug == DebugView.OFF || debug == DebugView.FOG);
         try (var ignored = new HeadlightRenderState()) {
             GL11.glDisable(GL11.GL_SCISSOR_TEST);
             GL11.glDisable(GL11.GL_STENCIL_TEST);
@@ -171,10 +185,17 @@ public final class HeadlightRenderer {
             RenderSystem.depthMask(false);
             RenderSystem.colorMask(true, true, true, true);
             RenderSystem.disableCull();
+            HeadlightDiagnostics.beginSurface();
+            try {
+                traceOcclusion(event, beams, range);
+            } finally {
+                if (debug == DebugView.FOG) HeadlightDiagnostics.endSurface();
+            }
             if (debug == DebugView.FOG) {
+                TARGETS.bindOutput();
                 TARGETS.clearOutput();
             } else {
-                HeadlightDiagnostics.beginSurface();
+                TARGETS.bindOutput();
                 try {
                     if (debug == DebugView.OFF) additiveBlend();
                     else RenderSystem.disableBlend();
@@ -182,6 +203,7 @@ public final class HeadlightRenderer {
                     shader.setTexture("SceneSampler", GL11.GL_TEXTURE_2D, TARGETS.sceneTexture());
                     shader.setTexture("DepthSampler", GL11.GL_TEXTURE_2D, mc.getMainRenderTarget().getDepthTextureId());
                     // Albedo/normal come from Veil's dynamic-buffer sources in the program JSON.
+                    HeadlightOcclusion.bindLookup(shader, TARGETS.sceneTexture());
                     shader.bindSamplers(0);
                     shader.getUniformSafe("DebugView").setInt(debug.ordinal());
                     try {
@@ -189,6 +211,7 @@ public final class HeadlightRenderer {
                     } finally {
                         shader.removeTexture("SceneSampler");
                         shader.removeTexture("DepthSampler");
+                        HeadlightOcclusion.unbindLookup(shader);
                     }
                 } finally {
                     HeadlightDiagnostics.endSurface();
@@ -197,10 +220,26 @@ public final class HeadlightRenderer {
             // Haze waits for translucent terrain so it composites in front of water/glass instead of being painted
             // over. The march still runs to the opaque surface captured here; the part behind a translucent
             // surface is dimmed, so a beam seen through a window or under water does not vanish.
-            if (fogEnabled() && (debug == DebugView.OFF || debug == DebugView.FOG) && captureOpaqueDistance(event)) {
+            if (haze && captureOpaqueDistance(event)) {
                 fogBeams = beams;
             } else TARGETS.closeFog();
         }
+    }
+
+    /** Refreshes the occupancy grids and traces each beam's distance map (no-op with the option off). */
+    private static void traceOcclusion(RenderLevelStageEvent event, List<HeadlightBeam> beams, double range) {
+        HeadlightOcclusion.skip();
+        if (!occlusionEnabled()) return;
+        var mc = Minecraft.getInstance();
+        Vec3 camera = event.getCamera().getPosition();
+        HeadlightOcclusion.update(mc.level, camera, beams, range);
+        ShaderProgram trace = VeilRenderSystem.renderer().getShaderManager().getShader(OCCLUSION_TRACE);
+        if (trace == null) {
+            HeadlightDiagnostics.missingProgram(OCCLUSION_TRACE);
+            return;
+        }
+        bindBeamUniforms(trace, event, beams, range);
+        HeadlightOcclusion.trace(trace, camera, beams.size(), value(TuningOption.SABLE_HEADLIGHT_ANGLE));
     }
 
     private static boolean captureOpaqueDistance(RenderLevelStageEvent event) {
@@ -288,6 +327,7 @@ public final class HeadlightRenderer {
         bindBeamUniforms(fog, event, beams, range);
         fog.setTexture("DepthSampler", GL11.GL_TEXTURE_2D, main.getDepthTextureId());
         fog.setTexture("OpaqueSampler", GL11.GL_TEXTURE_2D, TARGETS.opaqueTexture());
+        HeadlightOcclusion.bindLookup(fog, TARGETS.opaqueTexture());
         fog.bindSamplers(0);
         fog.getUniformSafe("Density").setFloat((float) value(TuningOption.SABLE_HEADLIGHT_FOG_DENSITY));
         fog.getUniformSafe("Samples").setInt((int) value(TuningOption.SABLE_HEADLIGHT_FOG_SAMPLES));
@@ -299,6 +339,7 @@ public final class HeadlightRenderer {
         } finally {
             fog.removeTexture("DepthSampler");
             fog.removeTexture("OpaqueSampler");
+            HeadlightOcclusion.unbindLookup(fog);
         }
         boolean diag = HeadlightDiagnostics.due();
         if (diag) {

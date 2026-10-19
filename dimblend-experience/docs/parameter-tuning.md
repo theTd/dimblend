@@ -39,9 +39,9 @@ Missing optional mods leave their controls disabled.
 
 ## Vehicle headlights (surface and volumetric haze)
 
-The Sable page includes seven **experience-owned, server-authoritative** options.
+The Sable page includes eight **experience-owned, server-authoritative** options.
 Edits persist in `serverconfig/dimblend_experience-server.toml` and broadcast to
-all clients through the tuning snapshot (protocol 22, 64-bit availability mask).
+all clients through the tuning snapshot (protocol 23, 64-bit availability mask).
 
 | `/dbx` option | Config key | Default | Range / step |
 |---|---|---|---|
@@ -52,6 +52,7 @@ all clients through the tuning snapshot (protocol 22, 64-bit availability mask).
 | `sable_headlight_fog` | `sableHeadlightFog` | on | boolean |
 | `sable_headlight_fog_density` | `sableHeadlightFogDensity` | 0.35 | 0–2 / 0.01 |
 | `sable_headlight_fog_samples` | `sableHeadlightFogSamples` | 8 | 4–24 / 1 |
+| `sable_headlight_occlusion` | `sableHeadlightOcclusion` | on | boolean |
 
 Only lit `dndecor:*_frontlight` blocks on Sable sublevels participate. The lens
 is at block center, shifted 0.25 blocks opposite facing for `no_base`. Interpolated
@@ -69,8 +70,7 @@ color; missing normals use depth derivatives. Light uses a warm cone with a soft
 shoulder over the outer radius and a gently brighter centre (no crisp rim),
 exponential and squared-distance attenuation (`exp(-d/range) / (1 + (d / 0.6range)^2)`),
 a soft exposure knee, wrapped Lambert, range fade and vanilla fog. Multiple lamps
-still add together. There is **no shadow occlusion** yet, so light can cross walls;
-scene depth only stops the view ray.
+still add together. Shadows come from block-grid occlusion (below).
 
 Volumetric haze runs at `AFTER_TRANSLUCENT_BLOCKS`, so it composites in front of
 water and stained glass instead of being painted over by them. Right after the
@@ -97,8 +97,9 @@ beside the lamp nothing is faded), sample-position vanilla fog fading, and a
 Reinhard-style soft cap (exposure 0.65, cap 0.5) that keeps gradation in long paths
 down the beam and keeps overlaps from blowing out. The cone clip uses plain
 quadratic roots: the `-(b + sign(b)·sqrt(d))` form collapsed on the GPU for rays
-through the apex and left a black spot at the lamp. The `visibility(position)` hook
-currently returns 1. A four-tap joint bilateral upsample weights low-resolution
+through the apex and left a black spot at the lamp. Each sample is multiplied by the
+occlusion `visibility(position, lamp)` (below), so shafts end at walls and pillars
+cast dark shafts through the haze. A four-tap joint bilateral upsample weights low-resolution
 distances against full-resolution depth (falling back to the texel with the most
 similar distance at thin silhouettes instead of leaving a black hole), then adds
 RGB onto a color-only main-target view without changing alpha. The same
@@ -109,6 +110,42 @@ lies more than ~0.7 blocks in front of the lens (an occluded lens shows no glow)
 The glow needs the haze option on. Fog off, zero density, or no eligible beams
 frees the fog targets and skips all fog draws. Resize, disconnect and dimension
 unload release/recreate targets.
+
+### Occlusion (`sable_headlight_occlusion`)
+
+Block-grid (voxel) shadows, independent of which renderer drew the terrain
+(Sodium, Sable, Flywheel); no shadow-map re-rendering of geometry.
+
+- **Occluders**: cached per `BlockState`: `canOcclude()` and an occlusion shape
+  covering at least 75% of the cell (full cubes, stairs). Glass/panes, leaves,
+  fluids, plants, slabs, air and the frontlights themselves let light through.
+- **World clipmap**: one camera-centred 128×64×128 R8 3D texture shared by all lamps,
+  addressed toroidally (world coordinate mod size) in 16³ bricks = chunk sections. The
+  window recentres per brick; a slot whose brick changed is zeroed at once
+  (unoccluded, never stale) and refilled nearest-first under a 32,768-voxel-read budget
+  per frame (palette-pruned air/transparent sections cost almost nothing). Client block
+  writes patch single texels (through the existing `FrontlightBlockChangeMixin` hook);
+  chunk load/unload refills the column; level change clears everything. Sable plot
+  chunks are never written; outside the window counts as unoccluded.
+- **Vehicle grids**: the lamps' own sub-levels first, then other sub-levels whose bounds
+  touch a lamp's range sphere (at most four), each in a 64³ slot of a 64×64×256 R8
+  texture, in plot space: the occluding sections of the loaded plot chunks, clamped to
+  64 blocks per axis around the lamp. Rebuilt only when the vehicle changes outside the
+  covered box (in-box writes patch one texel). Per frame a camera-relative world→plot
+  matrix comes from the interpolated render pose.
+- **Distance maps**: per lamp and frame a 256×256 R32F tile (atlas 256×2048) maps
+  directions in the lamp's cone (tangent-plane projection, cone + 2°) to the distance
+  of the first occluder, found by a 3D DDA from the lens through the world grid and
+  each vehicle grid (lens cell skipped; ≤ 192 steps; mirrored and unit-tested by
+  `HeadlightOcclusionMath`). Surface and haze test `distance <= map + 0.06` with a 2×2
+  percentage-closer filter; the surface lifts the lookup 0.08 blocks along its normal
+  so a lit face never shadows itself. This replaces a per-pixel/per-sample march: the
+  trace costs ~65k short DDAs per lamp, and each haze sample costs four texel fetches.
+- **Off**: no grids, textures or map are allocated or filled; visibility is 1.
+- Limits: block resolution (partial blocks are all-or-nothing); entities and
+  block-entity models do not cast shadows; lamps whose cone leaves the ±64/±32-block
+  window (camera-centred) are unoccluded there; vehicles larger than 64 blocks are
+  clipped around the lamp.
 
 Radial streaks seen around the glow from the driver's seat in the 2026-10-19
 captures were scene geometry, not sampling noise: the stepped walls of a tunnel
@@ -126,14 +163,15 @@ without changing the `veil:light` framebuffer definition. Veil may
 compile shader variants when the buffer mask changes. First activation and
 resource reload behavior still require runtime verification.
 
-Client-only diagnostics: `/dbxheadlight debug off|albedo|normal|depth|light|fog`;
+Client-only diagnostics: `/dbxheadlight debug off|albedo|normal|depth|light|fog|occlusion`;
 `/dbxheadlight list` prints active beams' world lens positions and axes (chat and
 log), `/dbxheadlight reload` reloads resource packs (shader iteration via a pack).
 `off` restores additive lighting; the other modes replace the opaque scene with
 the selected data while an eligible lamp is active. Normal colors show view-space
 normals; depth shows reconstructed distance divided by headlight range. `light`
 shows only the added, fog-faded surface light; `fog` shows only the upsampled haze
-and lens glow on black (black if fog is disabled). Later translucent geometry may
+and lens glow on black (black if fog is disabled); `occlusion` paints the cones'
+surfaces white where lit and red where shadowed, over a dimmed scene. Later translucent geometry may
 still draw over the diagnostic view.
 
 Runtime checks: verify moving/rotating vehicles and all six facings, `no_base`,

@@ -1,7 +1,7 @@
 // Mirrored by HeadlightVolumeMath. Sphere bounds match the surface pass's radial range.
 // Veil prepends every #include to the top of the including file, so two sibling includes end up in
-// reverse order. Pull beam in here (nested, deduplicated) and have programs include only this file.
-#include dimblend_experience:headlight/beam
+// reverse order. Pull occlusion (which nests beam) in here and have programs include only this file.
+#include dimblend_experience:headlight/occlusion
 // Below this the quadratic is treated as linear; its far root lies beyond any range sphere.
 const float ConeLinearEpsilon = 1e-4;
 
@@ -124,6 +124,3 @@ float haze(float density, float scatter) {
 const float BehindTranslucent = 0.6;
 
 float translucentDimming(float t, float frontDistance) { return t > frontDistance ? BehindTranslucent : 1.0; }
-
-// Next milestone: sample the world-space voxel visibility volume here.
-float visibility(vec3 position) { return 1.0; }

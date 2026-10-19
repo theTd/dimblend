@@ -1,6 +1,6 @@
 package dimblend.experience.mixin.client;
 
-import dimblend.experience.client.headlight.FrontlightIndex;
+import dimblend.experience.client.headlight.HeadlightBlockUpdates;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
@@ -17,7 +17,7 @@ public abstract class FrontlightBlockChangeMixin {
                                           CallbackInfoReturnable<BlockState> cir) {
         LevelChunk chunk = (LevelChunk) (Object) this;
         if (chunk.getLevel() instanceof ClientLevel && cir.getReturnValue() != null) {
-            FrontlightIndex.blockChanged(chunk, pos, chunk.getBlockState(pos));
+            HeadlightBlockUpdates.clientBlockChanged(chunk, pos, chunk.getBlockState(pos));
         }
     }
 }

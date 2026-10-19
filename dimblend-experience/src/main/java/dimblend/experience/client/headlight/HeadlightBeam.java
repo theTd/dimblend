@@ -1,7 +1,11 @@
 package dimblend.experience.client.headlight;
 
+import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import net.minecraft.world.phys.Vec3;
 
-/** World-space frame input, independent of discovery and the eventual occlusion/volume passes. */
-public record HeadlightBeam(Vec3 lens, Vec3 direction) {
+/** World-space frame input; {@code owner} is the vehicle carrying the lamp (null in pure-math tests). */
+public record HeadlightBeam(Vec3 lens, Vec3 direction, ClientSubLevel owner) {
+    public HeadlightBeam(Vec3 lens, Vec3 direction) {
+        this(lens, direction, null);
+    }
 }

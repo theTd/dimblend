@@ -23,7 +23,8 @@ class TuningSignBitTest {
     @Test
     void snapshotRoundTripPreservesHighBitsAndEveryValue() {
         long mask = (1L << TuningOption.COPPER_SINK_INFINITE.ordinal())
-                | (1L << TuningOption.SABLE_HEADLIGHT_FOG_SAMPLES.ordinal());
+                | (1L << TuningOption.SABLE_HEADLIGHT_FOG_SAMPLES.ordinal())
+                | (1L << TuningOption.SABLE_HEADLIGHT_OCCLUSION.ordinal());
         var original = new TuningSnapshotPayload(true, true, mask,
                 Arrays.stream(TuningOption.values()).map(TuningOption::defaultValue).toList(), "sable_headlight_fog_samples", "saved");
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
@@ -66,5 +67,8 @@ class TuningSignBitTest {
         assertFalse(TuningOption.SABLE_HEADLIGHT_FOG_SAMPLES.isValid(3));
         assertFalse(TuningOption.SABLE_HEADLIGHT_FOG_SAMPLES.isValid(25));
         assertFalse(TuningOption.SABLE_HEADLIGHT_FOG_SAMPLES.isValid(8.5));
+        assertTrue(TuningOption.SABLE_HEADLIGHT_OCCLUSION.isCheckbox());
+        assertEquals(1.0, TuningOption.SABLE_HEADLIGHT_OCCLUSION.defaultValue());
+        assertTrue(TuningOption.SABLE_HEADLIGHT_OCCLUSION.headlight());
     }
 }

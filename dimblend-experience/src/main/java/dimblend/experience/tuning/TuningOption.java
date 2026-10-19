@@ -44,7 +44,8 @@ public enum TuningOption {
     SABLE_HEADLIGHT_INTENSITY("sable_headlight_intensity", 1.0D, 0.0D, 3.0D, 2, "sable", Section.SABLE, 0.05D),
     SABLE_HEADLIGHT_FOG("sable_headlight_fog", 1.0D, "sable", Section.SABLE),
     SABLE_HEADLIGHT_FOG_DENSITY("sable_headlight_fog_density", 0.35D, 0.0D, 2.0D, 2, "sable", Section.SABLE),
-    SABLE_HEADLIGHT_FOG_SAMPLES("sable_headlight_fog_samples", 8.0D, 4.0D, 24.0D, 0, "sable", Section.SABLE);
+    SABLE_HEADLIGHT_FOG_SAMPLES("sable_headlight_fog_samples", 8.0D, 4.0D, 24.0D, 0, "sable", Section.SABLE),
+    SABLE_HEADLIGHT_OCCLUSION("sable_headlight_occlusion", 1.0D, "sable", Section.SABLE);
 
     /** Display pages of the tuning screen; the snapshot still carries every option. */
     public enum Section { MAIN, SABLE }
@@ -112,7 +113,7 @@ public enum TuningOption {
         return this == SABLE_HEADLIGHT || this == SABLE_HEADLIGHT_RANGE
                 || this == SABLE_HEADLIGHT_ANGLE || this == SABLE_HEADLIGHT_INTENSITY
                 || this == SABLE_HEADLIGHT_FOG || this == SABLE_HEADLIGHT_FOG_DENSITY
-                || this == SABLE_HEADLIGHT_FOG_SAMPLES;
+                || this == SABLE_HEADLIGHT_FOG_SAMPLES || this == SABLE_HEADLIGHT_OCCLUSION;
     }
 
     /** Settings owned by sable's server config; page placement does not imply ownership. */

@@ -339,6 +339,9 @@ public final class Config {
     public static final ModConfigSpec.IntValue SABLE_HEADLIGHT_FOG_SAMPLES = BUILDER
             .comment("Ray-march samples per headlight at half width and half height.")
             .defineInRange("sableHeadlightFogSamples", 8, 4, 24);
+    public static final ModConfigSpec.BooleanValue SABLE_HEADLIGHT_OCCLUSION = BUILDER
+            .comment("Block-grid shadows for headlight surface light and haze (walls, pillars, vehicles).")
+            .define("sableHeadlightOcclusion", true);
 
     static final ModConfigSpec SPEC = BUILDER.build();
 

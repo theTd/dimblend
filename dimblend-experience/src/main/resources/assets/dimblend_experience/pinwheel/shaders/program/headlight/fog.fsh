@@ -1,6 +1,6 @@
 #version 410 core
 
-// volume includes beam itself; listing both here would reorder them (see volume.glsl).
+// volume includes occlusion and beam itself; listing them here would reorder them (see volume.glsl).
 #include dimblend_experience:headlight/volume
 
 in vec2 texCoord;
@@ -52,7 +52,7 @@ void main() {
             float weight = angleRange * (axisDistance * axisDistance + along * along) / (axisDistance * float(Samples));
             // Positive HG g emphasizes light travelling toward the viewer (looking into a beam).
             radiance += cone * beamFalloff(distance) * scatterPhase(dot(direction, -ray)) * nearFade(t, inside)
-                * visibility(position) * fogFade(position) * translucentDimming(t, sceneDistance) * weight;
+                * visibility(position, lamp) * fogFade(position) * translucentDimming(t, sceneDistance) * weight;
         }
     }
     // A non-finite texel would poison the 2x2 upsample and turn black after additive blending.

@@ -32,8 +32,8 @@ final class HeadlightRenderState implements AutoCloseable {
     private final ShaderInstance shader = RenderSystem.getShader();
     private final int[] viewport = new int[4];
     private final int[] colorMask = new int[4];
-    private final int[] textures = new int[4];
-    private final int[] samplers = new int[4];
+    private final int[] textures = new int[8];
+    private final int[] samplers = new int[8];
 
     HeadlightRenderState() {
         GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport);

@@ -1,6 +1,7 @@
 package dimblend.experience.client.headlight;
 
 import dev.ryanhcode.sable.Sable;
+import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;
@@ -32,7 +33,8 @@ public final class HeadlightCollector {
                 if (lens.distanceToSqr(camera) > Math.pow(range + Minecraft.getInstance().options.getEffectiveRenderDistance() * 16.0, 2)) continue;
                 if (frustum != null && !frustum.isVisible(new AABB(lens, lens).inflate(range))) continue;
                 Vector3d rotated = pose.orientation().transform(new Vector3d(localDirection.x, localDirection.y, localDirection.z));
-                beams.add(new HeadlightBeam(lens, new Vec3(rotated.x, rotated.y, rotated.z).normalize()));
+                beams.add(new HeadlightBeam(lens, new Vec3(rotated.x, rotated.y, rotated.z).normalize(),
+                        sub instanceof ClientSubLevel client ? client : null));
             }
         }
         return HeadlightMath.nearest(beams, camera);

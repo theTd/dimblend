@@ -30,6 +30,8 @@ final class HeadlightDiagnostics {
         private static final GpuPass FOG = new GpuPass();
         private static long frame, nextFile, nextLog;
         private static int beams;
+        private static long fillSamples, fillReads;
+        private static double fillSum, fillMax, fillLatest;
         private static boolean writeWarned;
         private static Path file;
     }
@@ -91,6 +93,19 @@ final class HeadlightDiagnostics {
     }
 
     static void beams(int count) { if (ENABLED) Timing.beams = count; }
+
+    /** CPU time of one occlusion grid refresh (world clipmap + vehicle grids) and the voxels it read. */
+    static void occlusionFill(long nanos, int reads) {
+        if (!ENABLED) return;
+        double ms = nanos / 1_000_000.0;
+        Timing.fillLatest = ms;
+        Timing.fillSum += ms;
+        Timing.fillMax = Math.max(Timing.fillMax, ms);
+        Timing.fillReads += reads;
+        Timing.fillSamples++;
+    }
+
+    private static double fillAverage() { return Timing.fillSamples == 0 ? 0 : Timing.fillSum / Timing.fillSamples; }
     static void beginSurface() { if (ENABLED) Timing.SURFACE.begin(); }
     static void endSurface() { if (ENABLED) Timing.SURFACE.end(); }
     static void beginFog() { if (ENABLED) Timing.FOG.begin(); }
@@ -111,10 +126,12 @@ final class HeadlightDiagnostics {
             String json = String.format(Locale.ROOT,
                     "{\"timestamp\":%d,\"frame\":%d,\"beams\":%d,\"surface_ms\":%.6f,\"fog_ms\":%.6f,"
                     + "\"surface_avg_ms\":%.6f,\"surface_max_ms\":%.6f,\"surface_samples\":%d,"
-                    + "\"fog_avg_ms\":%.6f,\"fog_max_ms\":%.6f,\"fog_samples\":%d}%n",
+                    + "\"fog_avg_ms\":%.6f,\"fog_max_ms\":%.6f,\"fog_samples\":%d,"
+                    + "\"occlusion_fill_ms\":%.6f,\"occlusion_fill_avg_ms\":%.6f,\"occlusion_fill_max_ms\":%.6f}%n",
                     now, Timing.frame, Timing.beams, Timing.SURFACE.latest, Timing.FOG.latest,
                     Timing.SURFACE.average(), Timing.SURFACE.max, Timing.SURFACE.samples,
-                    Timing.FOG.average(), Timing.FOG.max, Timing.FOG.samples);
+                    Timing.FOG.average(), Timing.FOG.max, Timing.FOG.samples,
+                    Timing.fillLatest, fillAverage(), Timing.fillMax);
             try {
                 Files.createDirectories(Timing.file.getParent());
                 Path tmp = Timing.file.resolveSibling("headlight_frame.json.tmp");
@@ -132,9 +149,15 @@ final class HeadlightDiagnostics {
         if (now >= Timing.nextLog) {
             Timing.nextLog = now + 2000;
             LOGGER.info(String.format(Locale.ROOT,
-                    "[headlight-diag] frame=%d beams=%d surface_ms avg/max=%.4f/%.4f fog_ms avg/max=%.4f/%.4f samples=%d/%d",
+                    "[headlight-diag] frame=%d beams=%d surface_ms avg/max=%.4f/%.4f fog_ms avg/max=%.4f/%.4f samples=%d/%d"
+                    + " occlusion_fill_ms avg/max=%.4f/%.4f fills=%d voxel_reads=%d",
                     Timing.frame, Timing.beams, Timing.SURFACE.average(), Timing.SURFACE.max,
-                    Timing.FOG.average(), Timing.FOG.max, Timing.SURFACE.samples, Timing.FOG.samples));
+                    Timing.FOG.average(), Timing.FOG.max, Timing.SURFACE.samples, Timing.FOG.samples,
+                    fillAverage(), Timing.fillMax, Timing.fillSamples, Timing.fillReads));
+            Timing.fillSamples = 0;
+            Timing.fillReads = 0;
+            Timing.fillSum = 0;
+            Timing.fillMax = 0;
             Timing.SURFACE.clearWindow();
             Timing.FOG.clearWindow();
         }
