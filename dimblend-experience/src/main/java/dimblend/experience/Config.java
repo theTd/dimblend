@@ -318,26 +318,6 @@ public final class Config {
             .comment("探索限制规则（A1-A6）生效的维度 id，必须带命名空间（缺命名空间将回退默认 dimblend:rotating 并记错误日志）")
             .define("rotatingDimensionId", "dimblend:rotating");
 
-    public static final ModConfigSpec.BooleanValue SABLE_HEADLIGHT = BUILDER
-            .comment("Enable Veil area lights for dndecor:*_frontlight on Sable structures, using the Searchlights lighting API.")
-            .define("sableHeadlight", true);
-
-    public static final ModConfigSpec.DoubleValue SABLE_HEADLIGHT_RADIUS = BUILDER
-            .comment("Sable headlight maximum illumination distance in blocks.")
-            .defineInRange("sableHeadlightRadius", 7.75D, 1.0D, 32.0D);
-
-    public static final ModConfigSpec.IntValue SABLE_HEADLIGHT_BRIGHTNESS = BUILDER
-            .comment("Sable headlight dynamic brightness cap, 0-15. Does not turn off the lamp's own texture.")
-            .defineInRange("sableHeadlightBrightness", 15, 0, 15);
-
-    public static final ModConfigSpec.DoubleValue SABLE_HEADLIGHT_ANGLE = BUILDER
-            .comment("Sable headlight full cone angle in degrees; supplied as a half-angle to Veil.")
-            .defineInRange("sableHeadlightAngle", 60.0D, 5.0D, 160.0D);
-
-    public static final ModConfigSpec.BooleanValue SABLE_HEADLIGHT_OCCLUSION = BUILDER
-            .comment("Use Veil's existing voxel occlusion for Sable headlights. Disable to reduce rendering cost.")
-            .define("sableHeadlightOcclusion", true);
-
     static final ModConfigSpec SPEC = BUILDER.build();
 
     /**

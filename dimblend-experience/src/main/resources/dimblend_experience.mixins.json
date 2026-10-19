@@ -61,9 +61,6 @@
 		"compat.simurail.AutomaticCouplerPartnerAccessor"
 	],
 	"client": [
-		"compat.dynlight.SableHeadlightSourceMixin",
-		"compat.dynlight.SableHeadlightRefreshMixin",
-		"compat.dynlight.VeilDepthStencilTextureMixin",
 		"compat.camerapture.PictureItemFrameMixin",
 		"compat.camerapture.CameraPictureCropMixin",
 		"compat.camerapture.CameraViewfinderMixin",

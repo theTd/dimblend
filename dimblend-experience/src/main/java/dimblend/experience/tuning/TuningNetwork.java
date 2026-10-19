@@ -18,8 +18,8 @@ public final class TuningNetwork {
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
         // The snapshot carries one value per option: adding options changes the protocol.
-        // v20 adds Veil headlight cone angle and occlusion.
-        var registrar = event.registrar("20");
+        // v18 adds the copper sink infinity switch (32 options, including the sign bit).
+        var registrar = event.registrar("18");
         registrar.playToServer(TuningEditPayload.TYPE, TuningEditPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof ServerPlayer player) {
@@ -91,10 +91,10 @@ public final class TuningNetwork {
     }
 
     public static void send(ServerPlayer player, boolean open, String acknowledged, String message) {
-        long mask = 0;
+        int mask = 0;
         for (TuningOption option : TuningOption.values()) {
             if (TuningSettings.available(option)) {
-                mask |= 1L << option.ordinal();
+                mask |= 1 << option.ordinal();
             }
         }
         PacketDistributor.sendToPlayer(player, new TuningSnapshotPayload(open, player.hasPermissions(2), mask,

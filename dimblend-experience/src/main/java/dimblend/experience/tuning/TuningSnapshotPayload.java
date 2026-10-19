@@ -8,7 +8,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
-public record TuningSnapshotPayload(boolean open, boolean editable, long availableMask,
+public record TuningSnapshotPayload(boolean open, boolean editable, int availableMask,
                                     List<Double> values, String acknowledged, String message) implements CustomPacketPayload {
     public static final Type<TuningSnapshotPayload> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(DimBlend.MODID, "tuning_snapshot"));
@@ -16,7 +16,7 @@ public record TuningSnapshotPayload(boolean open, boolean editable, long availab
             (buffer, payload) -> {
                 buffer.writeBoolean(payload.open);
                 buffer.writeBoolean(payload.editable);
-                buffer.writeLong(payload.availableMask);
+                buffer.writeInt(payload.availableMask);
                 for (double value : payload.values) {
                     buffer.writeDouble(value);
                 }
@@ -25,7 +25,7 @@ public record TuningSnapshotPayload(boolean open, boolean editable, long availab
             }, buffer -> {
                 boolean open = buffer.readBoolean();
                 boolean editable = buffer.readBoolean();
-                long availableMask = buffer.readLong();
+                int availableMask = buffer.readInt();
                 List<Double> values = new ArrayList<>();
                 for (TuningOption option : TuningOption.values()) {
                     values.add(buffer.readDouble());
@@ -42,7 +42,7 @@ public record TuningSnapshotPayload(boolean open, boolean editable, long availab
     }
 
     public double value(TuningOption option) { return values.get(option.ordinal()); }
-    public boolean available(TuningOption option) { return (availableMask & (1L << option.ordinal())) != 0; }
+    public boolean available(TuningOption option) { return (availableMask & (1 << option.ordinal())) != 0; }
 
     @Override
     public Type<? extends CustomPacketPayload> type() { return TYPE; }

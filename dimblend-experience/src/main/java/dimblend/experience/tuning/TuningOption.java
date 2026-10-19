@@ -37,12 +37,7 @@ public enum TuningOption {
     SABLE_CONTACT_FORCE_EVENTS("sable_contact_force_events", 1.0D, "sable", Section.SABLE),
     SABLE_BIOME_PROJECTION_FAST_PATH("sable_biome_projection_fast_path", 1.0D, "sable", Section.SABLE),
     SABLE_EMPTY_CONTAINER_FAST_PATH("sable_empty_container_fast_path", 1.0D, "sable", Section.SABLE),
-    COPPER_SINK_INFINITE("copper_sink_infinite", 0.0D, "fluid"),
-    SABLE_HEADLIGHT("sable_headlight", 1.0D, "sable"),
-    SABLE_HEADLIGHT_RADIUS("sable_headlight_radius", 7.75D, 1.0D, 32.0D, 2, "sable", Section.MAIN),
-    SABLE_HEADLIGHT_BRIGHTNESS("sable_headlight_brightness", 15.0D, 0.0D, 15.0D, 0, "sable", Section.MAIN),
-    SABLE_HEADLIGHT_ANGLE("sable_headlight_angle", 60.0D, 5.0D, 160.0D, 0, "sable", Section.MAIN),
-    SABLE_HEADLIGHT_OCCLUSION("sable_headlight_occlusion", 1.0D, "sable");
+    COPPER_SINK_INFINITE("copper_sink_infinite", 0.0D, "fluid");
 
     /** Display pages of the tuning screen; the snapshot still carries every option. */
     public enum Section { MAIN, SABLE }
