@@ -26,7 +26,8 @@ public final class ChassisBlocks {
                     : "dimblend_blocks:creative_copycat_slab")
                     .setValue(BlockStateProperties.AXIS, Direction.Axis.Y)
                     .setValue(BlockStateProperties.SLAB_TYPE, cell.symbol() == 'D' ? SlabType.DOUBLE : SlabType.TOP);
-            case 'P' -> block("dimblend_blocks:creative_copycat_panel").setValue(BlockStateProperties.FACING, Direction.UP);
+            // Create's UP shape occupies the bottom 3 pixels; DOWN puts the deck at the top.
+            case 'P' -> block("dimblend_blocks:creative_copycat_panel").setValue(BlockStateProperties.FACING, Direction.DOWN);
             case 'S' -> block("dimblend_blocks:creative_shaft").setValue(BlockStateProperties.AXIS, Direction.Axis.X);
             case 'W', 'I' -> block("simurail:physics_bogey").setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.EAST);
             default -> throw new IllegalArgumentException("Unknown chassis symbol " + cell.symbol());

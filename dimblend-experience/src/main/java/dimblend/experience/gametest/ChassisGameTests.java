@@ -128,23 +128,26 @@ public final class ChassisGameTests {
                         ? ChassisBlueprint.POWER : ChassisBlueprint.CARRIAGE;
                 BlockPos plotCenter = car.getPlot().getCenterBlock();
                 for (var cell : blueprint.cells()) {
-                    if (cell.symbol() != 'N') continue;
+                    if (cell.symbol() != 'P' && cell.symbol() != 'N') continue;
                     BlockPos panelPos = plotCenter.offset(cell.x(), 0, cell.z());
                     var panel = level.getBlockState(panelPos);
-                    helper.assertTrue(BuiltInRegistries.BLOCK.getKey(panel.getBlock()).equals(
-                            ResourceLocation.parse("dimblend_blocks:creative_clean_copycat_slab")),
-                            "every clean carriage cell must be a creative clean copycat slab");
-                    helper.assertTrue(panel.getValue(BlockStateProperties.AXIS) == Direction.Axis.Y
-                            && panel.getValue(BlockStateProperties.SLAB_TYPE) == SlabType.TOP,
-                            "clean carriage slabs must be horizontal top slabs");
+                    if (cell.symbol() == 'N') {
+                        helper.assertTrue(BuiltInRegistries.BLOCK.getKey(panel.getBlock()).equals(
+                                ResourceLocation.parse("dimblend_blocks:creative_clean_copycat_slab")),
+                                "every clean carriage cell must be a creative clean copycat slab");
+                        helper.assertTrue(panel.getValue(BlockStateProperties.AXIS) == Direction.Axis.Y
+                                && panel.getValue(BlockStateProperties.SLAB_TYPE) == SlabType.TOP,
+                                "clean carriage slabs must be horizontal top slabs");
+                    }
+                    double expectedBottom = cell.symbol() == 'N' ? 0.5D : 13.0D / 16;
                     var shape = panel.getShape(level, panelPos);
                     var collision = panel.getCollisionShape(level, panelPos);
-                    helper.assertTrue(Math.abs(shape.min(Direction.Axis.Y) - 0.5D) < 1e-6
+                    helper.assertTrue(Math.abs(shape.min(Direction.Axis.Y) - expectedBottom) < 1e-6
                             && Math.abs(shape.max(Direction.Axis.Y) - 1) < 1e-6,
-                            "clean slabs must occupy the upper half");
-                    helper.assertTrue(Math.abs(collision.min(Direction.Axis.Y) - 0.5D) < 1e-6
+                            "panels occupy the top three pixels; clean slabs occupy the upper half");
+                    helper.assertTrue(Math.abs(collision.min(Direction.Axis.Y) - expectedBottom) < 1e-6
                             && Math.abs(collision.max(Direction.Axis.Y) - 1) < 1e-6,
-                            "clean slab collision must align with the top of the chassis deck");
+                            "panel collision must align with the top of the chassis deck");
                 }
                 int count = 0;
                 for (var actor : car.getPlot().getBlockEntityActors()) {

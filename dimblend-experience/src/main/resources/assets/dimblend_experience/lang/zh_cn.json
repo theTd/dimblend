@@ -225,8 +225,8 @@
   "chassis.dimblend_experience.carriage": "车厢底盘",
   "chassis.dimblend_experience.power.description": "动力底盘：车长41，含有2组共计6个可接入动力的车架",
   "chassis.dimblend_experience.carriage.description": "车厢底盘：车长41，含有2个不可接入动力的车架",
-  "screen.dimblend_experience.chassis.irreversible": "该操作不可逆",
-  "screen.dimblend_experience.chassis.confirm": "再次点击确认",
+  "screen.dimblend_experience.chassis.irreversible": "该操作不可逆 请谨慎考虑 稍候",
+  "screen.dimblend_experience.chassis.confirm": "再次点击 确认打印",
   "message.dimblend_experience.chassis.track_required": "需要放置在宽轨上",
   "message.dimblend_experience.chassis.unsafe": "附近不空旷 不安全",
   "message.dimblend_experience.chassis.choose": "右键选择底盘类型"
