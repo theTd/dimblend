@@ -8,8 +8,11 @@ import com.jesz.createdieselgenerators.CDGBlocks;
 import com.jesz.createdieselgenerators.content.diesel_engine.IEngine;
 import com.hlysine.create_connected.content.kineticbattery.KineticBatteryBlockEntity;
 import com.simibubi.create.AllItems;
+import com.simibubi.create.AllBlocks;
 import com.simibubi.create.AllFluids;
 import com.simibubi.create.content.kinetics.mixer.MixingRecipe;
+import com.simibubi.create.content.processing.basin.BasinBlockEntity;
+import com.simibubi.create.content.processing.basin.BasinRecipe;
 import com.jesz.createdieselgenerators.content.diesel_engine.normal.DieselEngineBlockEntity;
 import com.jesz.createdieselgenerators.content.diesel_engine.modular.ModularDieselEngineBlockEntity;
 import com.jesz.createdieselgenerators.content.diesel_engine.huge.HugeDieselEngineBlockEntity;
@@ -167,7 +170,35 @@ public final class BatchWaterCompatGameTests {
                 "dirty water bottle must match smoking");
         helper.assertTrue(!cooking.matches(new SingleRecipeInput(new ItemStack(ModItems.TERRACOTTA_WATER_BOWL.get())), helper.getLevel()),
                 "bowls must not participate in purification");
-        helper.succeed();
+        helper.setBlock(MID, AllBlocks.BASIN.getDefaultState());
+        helper.runAfterDelay(2, () -> {
+            var basin = (BasinBlockEntity) helper.getBlockEntity(MID);
+            helper.assertTrue(basin.inputTank.getCapability().fill(water(1, 1000), FluidAction.EXECUTE) == 1000,
+                    "basin must accept 1000mB slightly dirty water");
+            helper.assertTrue(basin.getInputInventory().insertItem(0, new ItemStack(Items.BLAZE_POWDER), false).isEmpty(),
+                    "basin must accept the catalyst");
+            helper.assertTrue(BasinRecipe.match(basin, recipe), "the loaded recipe must match an actual basin");
+            helper.assertTrue(basin.inputTank.getPrimaryHandler().getFluidAmount() == 1000
+                            && basin.getInputInventory().getStackInSlot(0).getCount() == 1,
+                    "matching must not consume water or catalyst");
+            helper.assertTrue(BasinRecipe.apply(basin, recipe), "the basin must execute purification");
+            var output = basin.getTanks().getSecond().getPrimaryHandler().getFluid();
+            helper.assertTrue(basin.inputTank.isEmpty() && output.getAmount() == 500
+                            && FluidPurityHelper.hasPurity(output) && FluidPurityHelper.getPurity(output) == 2,
+                    "actual basin output must be 500mB explicitly acceptable water: " + output);
+            int returnedCatalysts = 0;
+            for (int slot = 0; slot < basin.getOutputInventory().getSlots(); slot++) {
+                var stack = basin.getOutputInventory().getStackInSlot(slot);
+                if (stack.is(Items.BLAZE_POWDER)) returnedCatalysts += stack.getCount();
+            }
+            helper.assertTrue(basin.getInputInventory().isEmpty() && returnedCatalysts == 1,
+                    "actual processing must return exactly one catalyst");
+            var extracted = basin.getTanks().getSecond().getCapability().drain(500, FluidAction.EXECUTE);
+            helper.assertTrue(extracted.getAmount() == 500 && FluidPurityHelper.getPurity(extracted) == 2
+                            && basin.getTanks().getSecond().isEmpty(),
+                    "fluid extraction must retain the produced purity and consume the stored output");
+            helper.succeed();
+        });
     }
 
     private static Block block(String id) {
