@@ -16,6 +16,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class PlayerBedRestMixin {
     @Unique
     private int dimblend$bedRestTicks;
+    @Unique
+    private boolean dimblend$bedRestWarmedUp;
 
     @WrapOperation(method = "tick", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/world/food/FoodData;tick(Lnet/minecraft/world/entity/player/Player;)V"),
@@ -23,13 +25,26 @@ public abstract class PlayerBedRestMixin {
     private void dimblend$restInsteadOfHungerTick(FoodData food, Player player, Operation<Void> original) {
         if (!BedRestRules.isResting(player)) {
             this.dimblend$bedRestTicks = 0;
+            this.dimblend$bedRestWarmedUp = false;
             original.call(food, player);
             return;
         }
         if (++this.dimblend$bedRestTicks >= BedRestRules.HEAL_INTERVAL_TICKS) {
             this.dimblend$bedRestTicks = 0;
+            this.dimblend$bedRestWarmedUp = true;
             player.heal(BedRestRules.HEAL_AMOUNT);
         }
+        if (this.dimblend$bedRestWarmedUp && (player.getHealth() < player.getMaxHealth()
+                ? this.dimblend$bedRestTicks % BedRestRules.WOUNDED_PARTICLE_INTERVAL_TICKS == 0
+                : this.dimblend$bedRestTicks == 0)) {
+            BedRestRules.showRestHearts(player);
+        }
+    }
+
+    @Inject(method = "stopSleepInBed", at = @At("HEAD"), require = 1, allow = 1)
+    private void dimblend$resetRestOnWake(boolean wakeImmediately, boolean updateSleepingList, CallbackInfo ci) {
+        this.dimblend$bedRestTicks = 0;
+        this.dimblend$bedRestWarmedUp = false;
     }
 
     @Inject(method = "causeFoodExhaustion", at = @At("HEAD"), cancellable = true, require = 1, allow = 1)

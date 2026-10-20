@@ -3,14 +3,19 @@ package dimblend.experience.gametest;
 import com.mojang.authlib.GameProfile;
 import dimblend.experience.Config;
 import dimblend.experience.exploration.BedRestRules;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket;
 import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
@@ -156,6 +161,97 @@ public final class BedRestGameTests {
     }
 
     @GameTest(template = "empty", templateNamespace = "dimblend_sleep", timeoutTicks = 60)
+    public static void heartsWaitForHealingAndContinueLessOftenAtFullHealth(GameTestHelper helper) {
+        var level = helper.getLevel();
+        List<ClientboundLevelParticlesPacket> hearts = new ArrayList<>();
+        var player = player(helper, packet -> {
+            if (packet instanceof ClientboundLevelParticlesPacket particles
+                    && particles.getParticle().getType() == ParticleTypes.HEART) hearts.add(particles);
+        });
+        var pos = placeBed(helper);
+        player.setHealth(10);
+        level.players().add(player);
+        try {
+            helper.assertTrue(player.startSleepInBed(pos).right().isPresent(), "rest must start");
+            tick(player, 99);
+            helper.assertTrue(hearts.isEmpty() && player.getHealth() == 10,
+                    "healing and heart feedback must both wait the first five seconds");
+            tick(player, 1);
+            helper.assertTrue(player.getHealth() == 11 && hearts.size() == 1 && hearts.getFirst().getCount() == 3,
+                    "first healing pulse emits three hearts after exactly 100 ticks");
+            var burst = hearts.getFirst();
+            helper.assertTrue(player.position().add(0.0, 0.6, 0.0)
+                            .distanceToSqr(burst.getX(), burst.getY(), burst.getZ()) < 1.0e-6,
+                    "feedback must originate above the resting body");
+            tick(player, 19);
+            helper.assertTrue(hearts.size() == 1, "wounded heart bursts must be spaced one second apart");
+            tick(player, 1);
+            helper.assertTrue(hearts.size() == 2 && hearts.getLast().getCount() == 3 && player.getHealth() == 11,
+                    "wounded rest shows periodic hearts between healing pulses");
+
+            player.setHealth(player.getMaxHealth());
+            tick(player, 79);
+            helper.assertTrue(hearts.size() == 2, "full health must reduce particle frequency");
+            tick(player, 1);
+            helper.assertTrue(hearts.size() == 3 && hearts.getLast().getCount() == 1,
+                    "full health retains one heart at the next five-second pulse");
+            tick(player, 100);
+            helper.assertTrue(hearts.size() == 4 && hearts.getLast().getCount() == 1
+                            && player.getHealth() == player.getMaxHealth(),
+                    "full-health heart feedback continues without increasing health past its maximum");
+            helper.succeed();
+        } finally {
+            if (player.isSleeping()) player.stopSleepInBed(true, true);
+            level.players().remove(player);
+            level.updateSleepingPlayerList();
+        }
+    }
+
+    @GameTest(template = "empty", templateNamespace = "dimblend_sleep", timeoutTicks = 60)
+    public static void wakingAndImmediateReentryResetHealingAndHeartWarmup(GameTestHelper helper) {
+        var level = helper.getLevel();
+        List<ClientboundLevelParticlesPacket> hearts = new ArrayList<>();
+        var player = player(helper, packet -> {
+            if (packet instanceof ClientboundLevelParticlesPacket particles
+                    && particles.getParticle().getType() == ParticleTypes.HEART) hearts.add(particles);
+        });
+        var pos = placeBed(helper);
+        player.setHealth(10);
+        level.players().add(player);
+        try {
+            player.startSleepInBed(pos);
+            tick(player, 150);
+            helper.assertTrue(player.getHealth() == 11 && hearts.size() == 3,
+                    "fixture must reach warmed-up rest with a partial healing interval");
+            player.stopSleepInBed(true, true);
+            int previous = hearts.size();
+            // Re-enter without an intervening awake tick: the wake hook must clear both timers.
+            player.startSleepInBed(pos);
+            tick(player, 99);
+            helper.assertTrue(hearts.size() == previous && player.getHealth() == 11,
+                    "immediate reentry must wait another complete warmup for healing and hearts");
+            tick(player, 1);
+            helper.assertTrue(hearts.size() == previous + 1 && player.getHealth() == 12,
+                    "the new rest starts healing and heart feedback at its own 100th tick");
+            player.stopSleepInBed(true, true);
+            previous = hearts.size();
+            tick(player, 20);
+            helper.assertTrue(hearts.size() == previous, "awake players must not retain rest particles");
+
+            player.startSleepInBed(pos);
+            player.setHealth(0);
+            tick(player, 100);
+            helper.assertTrue(hearts.size() == previous && player.getHealth() == 0,
+                    "rest must neither revive dead players nor emit recovery feedback for them");
+            helper.succeed();
+        } finally {
+            if (player.isSleeping()) player.stopSleepInBed(true, true);
+            level.players().remove(player);
+            level.updateSleepingPlayerList();
+        }
+    }
+
+    @GameTest(template = "empty", templateNamespace = "dimblend_sleep", timeoutTicks = 60)
     public static void fullSleepQuorumNeverSkipsTimeOrForcesWakeUp(GameTestHelper helper) {
         var level = helper.getLevel();
         var rules = level.getGameRules();
@@ -247,12 +343,16 @@ public final class BedRestGameTests {
     }
 
     static ServerPlayer player(GameTestHelper helper) {
+        return player(helper, packet -> { });
+    }
+
+    private static ServerPlayer player(GameTestHelper helper, Consumer<Packet<?>> packets) {
         var level = helper.getLevel();
         var player = new ServerPlayer(level.getServer(), level,
                 new GameProfile(UUID.randomUUID(), "bed-rest-test"), ClientInformation.createDefault());
         new ServerGamePacketListenerImpl(level.getServer(), new Connection(PacketFlow.SERVERBOUND), player,
                 CommonListenerCookie.createInitial(player.getGameProfile(), false)) {
-            @Override public void send(Packet<?> packet) { }
+            @Override public void send(Packet<?> packet) { packets.accept(packet); }
         };
         player.gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
         player.setPos(helper.absolutePos(HEAD).getCenter().add(0, 1, 0));

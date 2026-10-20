@@ -3,6 +3,8 @@ package dimblend.experience.client;
 import dimblend.experience.DimBlend;
 import dimblend.experience.compat.simurail.ClientDeadmanLatch;
 import dimblend.experience.exploration.ClientFarCurseTier;
+import dimblend.experience.exploration.BedRestRules;
+import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -34,6 +36,11 @@ public final class DimBlendClient {
 
     @SubscribeEvent
     public static void onRegisterGuiLayers(RegisterGuiLayersEvent event) {
+        event.wrapLayer(VanillaGuiLayers.SLEEP_OVERLAY, layer -> (graphics, partialTick) -> {
+            var level = Minecraft.getInstance().level;
+            // Keep the vanilla sleep timer intact; only omit its dark screen overlay in rest worlds.
+            if (level == null || !BedRestRules.applies(level)) layer.render(graphics, partialTick);
+        });
         // 包住盔甲层、在盔甲行渲染完立刻画条，
         // render 内读到的 leftHeight 即盔甲行刚用过的值，不跨层漂移。
         event.wrapLayer(VanillaGuiLayers.ARMOR_LEVEL, layer -> (graphics, partialTick) -> {
