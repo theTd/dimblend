@@ -27,6 +27,11 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.endsWith(".compat.connected.KineticBatteryLifecycleMixin")) {
             return isLoaded("create_connected");
         }
+        // 消防水带放置/拆卸数量守恒：目标为 Create: Fire Fighting Add 的水带方块实体
+        // 与放置包（该 addon 硬依赖 create，在场即蕴含 create 在场）
+        if (mixinClassName.contains(".compat.firefightingadd.")) {
+            return isLoaded("createfirefightingadd");
+        }
         if (mixinClassName.endsWith(".compat.yat.CopperSinkBottlePurityMixin")) {
             return isLoaded("fluid") && isLoaded("yet_another_thirst");
         }

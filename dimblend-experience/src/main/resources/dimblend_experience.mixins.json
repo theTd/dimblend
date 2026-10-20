@@ -52,6 +52,8 @@
 		"compat.yat.CopperSinkBottlePurityMixin",
 		"compat.connected.KineticBatteryLifecycleMixin",
 		"compat.create.SteamEngineOverloadMixin",
+		"compat.firefightingadd.FireHoseExtraDropMixin",
+		"compat.firefightingadd.FireHosePlacementCostMixin",
 		"compat.simurail.PhysicsBogeyBrakeSoundMixin",
 		"compat.simurail.PhysicsBogeyBrakeSignalCapMixin",
 		"compat.simurail.PhysicsBogeyDeadmanBrakeMixin",
