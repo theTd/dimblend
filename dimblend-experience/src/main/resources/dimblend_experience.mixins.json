@@ -4,6 +4,10 @@
 	"compatibilityLevel": "JAVA_21",
 	"plugin": "dimblend.experience.mixin.DimBlendMixinPlugin",
 	"mixins": [
+		"PlayerBedRestMixin",
+		"ServerLevelBedRestMixin",
+		"compat.yat.SleepThirstSuspensionMixin",
+		"compat.dndecor.FrontlightSpotlightStateMixin",
 		"BeaconBlockEntityMixin",
 		"CopycatBlockStateBaseMixin",
 		"CopycatBlockStateExtensionMixin",

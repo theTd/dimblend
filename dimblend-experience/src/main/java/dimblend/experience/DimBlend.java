@@ -91,6 +91,10 @@ public class DimBlend {
     }
 
     private static void onRegisterGameTests(RegisterGameTestsEvent event) {
+        event.register(dimblend.experience.gametest.BedRestGameTests.class);
+        if (ModList.get().isLoaded("yet_another_thirst")) {
+            event.register(dimblend.experience.gametest.ThirstBedRestGameTests.class);
+        }
         if (ModList.get().isLoaded("createdieselgenerators") && ModList.get().isLoaded("fluid")
                 && ModList.get().isLoaded("yet_another_thirst") && ModList.get().isLoaded("create_connected")
                 && ModList.get().isLoaded("sable")) {
@@ -128,6 +132,12 @@ public class DimBlend {
         // 引用 Create: Fire Fighting Add 类：仅该 addon 在场（dev 下 -PwithFireHose）时注册
         if (ModList.get().isLoaded("createfirefightingadd")) {
             event.register(FireHoseDropGameTests.class);
+        }
+        if (ModList.get().isLoaded("simurail")) {
+            event.register(dimblend.experience.gametest.SimurailBogeyInteractionGameTests.class);
+        }
+        if (ModList.get().isLoaded("dndecor") && ModList.get().isLoaded("sable")) {
+            event.register(dimblend.experience.gametest.FrontlightActivationGameTests.class);
         }
     }
 }

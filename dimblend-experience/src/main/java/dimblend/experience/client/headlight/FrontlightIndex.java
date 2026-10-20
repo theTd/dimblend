@@ -1,7 +1,7 @@
 package dimblend.experience.client.headlight;
 
-import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
+import dimblend.experience.compat.dndecor.FrontlightSpotlight;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -10,26 +10,25 @@ import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 
-/** Indexes lit AND unlit frontlights, exclusively in loaded Sable plot chunks. Client thread only. */
+/** Indexes lit and unlit frontlights in loaded world and Sable plot chunks. Client thread only. */
 public final class FrontlightIndex {
     private static final Map<LevelChunk, Set<BlockPos>> LAMPS = new IdentityHashMap<>();
     private static ClientLevel level;
+    private static boolean bootstrapNeeded = true;
 
     public static boolean isFrontlight(BlockState state) {
-        var id = BuiltInRegistries.BLOCK.getKey(state.getBlock());
-        return id.getNamespace().equals("dndecor") && id.getPath().endsWith("_frontlight")
-                && state.hasProperty(BlockStateProperties.FACING) && state.hasProperty(BlockStateProperties.LIT);
+        return FrontlightSpotlight.isFrontlight(state);
     }
 
     public static void onLoad(ChunkEvent.Load event) {
-        if (event.getLevel() == Minecraft.getInstance().level && event.getChunk() instanceof LevelChunk chunk
-                && Sable.HELPER.getContainingClient(chunk.getPos().getWorldPosition()) != null) {
+        if (event.getLevel() == Minecraft.getInstance().level && event.getChunk() instanceof LevelChunk chunk) {
             ensureLevel(Minecraft.getInstance().level);
             scan(chunk); // A packet can replace the contents of an existing chunk object.
         }
@@ -42,6 +41,7 @@ public final class FrontlightIndex {
     public static void clear() {
         LAMPS.clear();
         level = null;
+        bootstrapNeeded = true;
     }
 
     private static void ensureLevel(ClientLevel current) {
@@ -52,8 +52,22 @@ public final class FrontlightIndex {
     }
 
     /** Bootstraps loads before sublevel registration, and removes chunks without Sable unload events. */
-    public static Map<LevelChunk, Set<BlockPos>> reconcile(ClientLevel current) {
+    public static Map<LevelChunk, Set<BlockPos>> reconcile(ClientLevel current, Vec3 camera) {
         ensureLevel(current);
+        if (bootstrapNeeded) {
+            // Some world chunks arrive before Minecraft.level is assigned. Bootstrap once;
+            // subsequent arrivals and replacements are handled by ChunkEvent.Load.
+            var mc = Minecraft.getInstance();
+            ChunkPos center = mc.player == null ? new ChunkPos(BlockPos.containing(camera)) : mc.player.chunkPosition();
+            int radius = mc.options.getEffectiveRenderDistance() + 3;
+            for (int z = center.z - radius; z <= center.z + radius; z++) {
+                for (int x = center.x - radius; x <= center.x + radius; x++) {
+                    LevelChunk chunk = current.getChunkSource().getChunk(x, z, ChunkStatus.FULL, false);
+                    if (chunk != null && !LAMPS.containsKey(chunk)) scan(chunk);
+                }
+            }
+            bootstrapNeeded = false;
+        }
         Set<LevelChunk> live = Collections.newSetFromMap(new IdentityHashMap<>());
         for (var sub : SubLevelContainer.getContainer(current).getAllSubLevels()) {
             for (var holder : sub.getPlot().getLoadedChunks()) {
@@ -63,7 +77,8 @@ public final class FrontlightIndex {
                 if (!LAMPS.containsKey(chunk)) scan(chunk);
             }
         }
-        LAMPS.keySet().retainAll(live);
+        LAMPS.keySet().removeIf(chunk -> !live.contains(chunk)
+                && current.getChunkSource().getChunk(chunk.getPos().x, chunk.getPos().z, ChunkStatus.FULL, false) != chunk);
         return LAMPS;
     }
 

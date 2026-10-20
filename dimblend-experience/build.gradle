@@ -197,10 +197,21 @@ dependencies {
         localRuntime files("libs/fluid-2.0.1.jar")
         localRuntime project(":dimblend-craft")
     }
+    // Rest-only sleeping and the optional YAT suspension hook.
+    if (project.hasProperty('withSleepRest')) {
+        localRuntime "maven.modrinth:yet-another-thirst:xmk0FTsX"
+    }
     // Jade HUD 的实际观感验证：-PwithJade 时把 Jade 提升进 dev 运行，默认仍 compileOnly。
     // 用法：./gradlew :dimblend-experience:runClient -PwithJade
     if (project.hasProperty('withJade')) {
         localRuntime "maven.modrinth:jade:15.10.5+neoforge"
+    }
+    // Exercise the optional DnDecor state mixin against an explicitly supplied mod jar.
+    if (project.hasProperty('withHeadlights')) {
+        if (!providers.gradleProperty('headlightDecorJar').isPresent()) {
+            throw new GradleException('withHeadlights requires -PheadlightDecorJar=<Design-n-Decor jar>')
+        }
+        localRuntime files(providers.gradleProperty('headlightDecorJar').get())
     }
     // Only the standard-chassis integration tests, with the actual physics/block stack.
     if (project.hasProperty('withChassis')) {
@@ -224,6 +235,14 @@ dependencies {
 
 if (project.hasProperty('withBatchCompat')) {
     neoForge.runs.gameTestServer.systemProperty 'neoforge.enabledGameTestNamespaces', 'dimblend_compat_batch'
+}
+if (project.hasProperty('withSleepRest')) {
+    neoForge.runs.gameTestServer.systemProperty 'neoforge.enabledGameTestNamespaces', 'dimblend_sleep'
+    neoForge.runs.gameTestServer.gameDirectory = layout.buildDirectory.dir('sleep-rest-gametest-run')
+}
+if (project.hasProperty('withHeadlights')) {
+    neoForge.runs.gameTestServer.systemProperty 'neoforge.enabledGameTestNamespaces', 'dimblend_headlights'
+    neoForge.runs.gameTestServer.gameDirectory = layout.buildDirectory.dir('headlight-gametest-run')
 }
 if (project.hasProperty('withChassis')) {
     neoForge.runs.gameTestServer.systemProperty 'neoforge.enabledGameTestNamespaces', 'dimblend_chassis'

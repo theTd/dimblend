@@ -9,13 +9,14 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.common.util.TriState;
 import net.neoforged.neoforge.event.level.ExplosionEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 
 /**
  * E1 Simurail 自带方块保护（用户拍板口径：Simurail 自带方块防爆防拆，
- * 仅创造模式可编辑）。
+ * 仅创造模式可拆改；生存模式可以打开物理转向架的原生设置界面）。
  *
  * <p><b>覆盖面（如实）</b>：玩家破坏（BreakEvent）/挖掘（LeftClickBlock）/交互
  * （RightClickBlock）/爆炸（Detonate）——四处理器全部覆盖且经复核闭环核证。
@@ -72,6 +73,12 @@ public final class SimurailBlockGuard {
             boolean survival = player instanceof ServerPlayer serverPlayer
                     ? serverPlayer.gameMode.getGameModeForPlayer() == GameType.SURVIVAL
                     : !player.isSpectator() && player.getAbilities().mayBuild;
+            if (survival && SimurailBlocksHolder.isBogey(state)) {
+                // Let Simurail's block interaction open its own menu, but keep item hooks
+                // disabled: in particular, sneak-wrenching must not pick up the bogey.
+                event.setUseItem(TriState.FALSE);
+                return;
+            }
             if (survival
                     && Config.ALLOW_SURVIVAL_COUPLER_INTERACTION.get() && SimurailBlocksHolder.isCoupler(state)) {
                 return;

@@ -126,7 +126,7 @@ public final class Config {
             .define("alternatorOverstressLatch", true);
 
     public static final ModConfigSpec.BooleanValue SIMURAIL_PROTECT = BUILDER
-            .comment("E 板块：Simurail 自带方块防爆防拆，仅创造模式可编辑。"
+            .comment("E 板块：Simurail 自带方块防爆防拆，仅创造模式可拆改；生存模式可右键打开物理转向架设置，不能用扳手拆卸。"
                     + "例外：create:non_breakable tag 补强为静态数据包资源，不受本开关控制（Create 机械侧防护始终生效）")
             .define("simurailProtect", true);
 
@@ -319,7 +319,7 @@ public final class Config {
             .define("rotatingDimensionId", "dimblend:rotating");
 
     public static final ModConfigSpec.BooleanValue SABLE_HEADLIGHT = BUILDER
-            .comment("Render custom headlight cones for dndecor frontlights on Sable vehicles (without Iris).")
+            .comment("Render custom headlight cones for amethyst-activated dndecor frontlights in the world and on Sable vehicles (without Iris).")
             .define("sableHeadlight", true);
     public static final ModConfigSpec.DoubleValue SABLE_HEADLIGHT_RANGE = BUILDER
             .comment("Maximum headlight reach in blocks.")

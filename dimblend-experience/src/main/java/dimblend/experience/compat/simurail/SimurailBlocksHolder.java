@@ -32,6 +32,10 @@ final class SimurailBlocksHolder {
         return state.is(SimurailBlocks.AUTOMATIC_COUPLER.get());
     }
 
+    static boolean isBogey(BlockState state) {
+        return state.is(SimurailBlocks.PHYSICS_BOGEY.get());
+    }
+
     private SimurailBlocksHolder() {
     }
 }

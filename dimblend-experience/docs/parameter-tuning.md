@@ -39,6 +39,13 @@ Missing optional mods leave their controls disabled.
 
 ## Vehicle headlights (surface and volumetric haze)
 
+DnDecor frontlights start with the spotlight disabled. Right-click a placed lamp
+with an amethyst shard to enable it (the shard is not consumed). Activation plays
+the end portal frame eye-insertion sound and one burst of redstone particles.
+The spotlight works in the world and on Sable vehicles whenever the lamp is lit.
+Breaking or wrenching the lamp yields an ordinary item that needs activation again;
+chunk reloads and vehicle assembly retain activation. Iris still disables this renderer.
+
 The Sable page includes eight **experience-owned, server-authoritative** options.
 Edits persist in `serverconfig/dimblend_experience-server.toml` and broadcast to
 all clients through the tuning snapshot (protocol 23, 64-bit availability mask).

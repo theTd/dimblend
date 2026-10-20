@@ -15,6 +15,12 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        if (mixinClassName.endsWith(".compat.yat.SleepThirstSuspensionMixin")) {
+            return isLoaded("yet_another_thirst");
+        }
+        if (mixinClassName.endsWith(".compat.dndecor.FrontlightSpotlightStateMixin")) {
+            return isLoaded("dndecor");
+        }
         if (mixinClassName.endsWith(".client.FrontlightBlockChangeMixin")
                 || mixinClassName.endsWith(".client.VeilWrappedDepthStencilMixin")) {
             return isLoaded("sable") && isLoaded("veil") && !isLoaded("iris");

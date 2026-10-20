@@ -15,6 +15,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
@@ -130,7 +131,19 @@ public final class HeadlightRenderer {
         if (mc.level == null) return 0;
         Vec3 camera = mc.gameRenderer.getMainCamera().getPosition();
         List<HeadlightBeam> beams = HeadlightCollector.collect(mc.level, camera, null, value(TuningOption.SABLE_HEADLIGHT_RANGE));
-        source.sendSuccess(() -> Component.literal("Headlight beams: " + beams.size()), false);
+        var indexed = FrontlightIndex.reconcile(mc.level, camera);
+        int lamps = indexed.values().stream().mapToInt(java.util.Set::size).sum();
+        String summary = "Headlight beams: " + beams.size() + "; indexed lamps: " + lamps;
+        LOGGER.info("[headlight-list] {}", summary);
+        source.sendSuccess(() -> Component.literal(summary), false);
+        if (mc.hitResult instanceof BlockHitResult hit) {
+            var pos = hit.getBlockPos();
+            var state = mc.level.getBlockState(pos);
+            boolean tracked = indexed.values().stream().anyMatch(positions -> positions.contains(pos));
+            String target = "Target " + pos.toShortString() + ": " + state + "; indexed=" + tracked;
+            LOGGER.info("[headlight-target] {}", target);
+            source.sendSuccess(() -> Component.literal(target), false);
+        }
         for (int i = 0; i < beams.size(); i++) {
             var beam = beams.get(i);
             // Plot (sub-level) coordinates of the lens: where /setblock edits the vehicle itself.
