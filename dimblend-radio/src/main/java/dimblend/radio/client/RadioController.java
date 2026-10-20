@@ -382,9 +382,6 @@ public final class RadioController {
                     LIVE.put(key, new Live(instance, local, feed, gain, pcm.boost()));
                     DimBlendRadio.LOGGER.info("[radio] playing station={} pos={} hash={} nonce={} start={} offset={} duration={}",
                             current.station(), key.pos(), shortHash(state.trackHash()), state.nonce(), state.startMillis(), offset, local.duration());
-                    if (first) {
-                        announceTrack(mc, current.station(), state.trackHash());
-                    }
                 } finally {
                     REQUESTS.remove(key, request);
                 }
@@ -412,22 +409,6 @@ public final class RadioController {
                     "[radio] missing track {} for station {} — put the file in dimblend_radio/{}/",
                     state.trackHash(), state.station(), state.station());
         }
-    }
-
-    /**
-     * 切曲 actionbar：曲名取元数据标题（无则文件名去扩展名），与护目镜弹窗同口径。
-     * 缺文件时 displayName 为 null，不弹 actionbar（看唱片机时护目镜会 RED 提示）。
-     */
-    private static void announceTrack(Minecraft mc, int station, String trackHash) {
-        if (mc.player == null) {
-            return;
-        }
-        String name = RadioLibrary.displayName(trackHash);
-        if (name == null) {
-            return;
-        }
-        mc.player.displayClientMessage(
-                net.minecraft.network.chat.Component.literal("[电台 " + station + "台] " + name), true);
     }
 
     private static String shortHash(String hash) {
