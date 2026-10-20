@@ -18,6 +18,7 @@
 		"client.SoundEngineAccessor",
 		"client.SoundEngineReloadMixin",
 		"client.MusicDuckingMixin",
+		"client.SoundEngineMusicDuckingMixin",
 		"client.JukeboxGoggleMixin"
 	],
 	"injectors": {
