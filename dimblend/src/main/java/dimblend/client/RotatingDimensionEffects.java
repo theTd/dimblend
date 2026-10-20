@@ -188,7 +188,12 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
                 ClientBandLane.voidscape(),
                 ClientBandLane.endSky(),
                 ClientBandLane.netherSky());
-        lastOverlay = RotatingSkyOverlay.holdIfUnloaded(level.isLoaded(pos), sampled, lastOverlay);
+        boolean loaded = level.isLoaded(pos);
+        RotatingSkyOverlay previous = lastOverlay;
+        lastOverlay = RotatingSkyOverlay.holdIfUnloaded(loaded, sampled, previous);
+        if (previous != lastOverlay) {
+            ClientSkyTimeTrace.overlayChanged(previous, lastOverlay, pos, loaded);
+        }
         return lastOverlay;
     }
 
@@ -196,6 +201,11 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
         if (event.getLevel().isClientSide()) {
             lastOverlay = RotatingSkyOverlay.NONE;
         }
+    }
+
+    /** Already sampled by the renderer; diagnostics must not resample or recurse into the effects. */
+    static RotatingSkyOverlay lastOverlay() {
+        return lastOverlay;
     }
 
     /**

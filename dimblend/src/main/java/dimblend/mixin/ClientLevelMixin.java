@@ -1,6 +1,9 @@
 package dimblend.mixin;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dimblend.DimBlendRegistries;
+import dimblend.client.ClientSkyTimeTrace;
 import dimblend.client.ClientTimeLock;
 import net.minecraft.client.multiplayer.ClientLevel;
 import org.spongepowered.asm.mixin.Mixin;
@@ -20,6 +23,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(ClientLevel.class)
 public abstract class ClientLevelMixin {
+    @WrapOperation(method = "tickTime", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/multiplayer/ClientLevel;setDayTime(J)V"), require = 1, allow = 1)
+    private void dimblend$traceNaturalAdvance(ClientLevel self, long time, Operation<Void> original) {
+        if (!ClientSkyTimeTrace.enabled()) {
+            original.call(self, time);
+            return;
+        }
+        long before = self.getDayTime();
+        original.call(self, time);
+        ClientSkyTimeTrace.naturalAdvance(self, before, self.getDayTime());
+    }
+
     @Inject(method = "tickTime", at = @At("HEAD"), cancellable = true)
     private void dimblend$freezeDaylightCycle(CallbackInfo ci) {
         ClientLevel self = (ClientLevel) (Object) this;

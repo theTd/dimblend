@@ -29,10 +29,16 @@ public final class ClientTimeLock {
     }
 
     public static synchronized void apply(TimeLockTarget.Mode mode, long time) {
+        TimeLockTarget previous = target;
         if (mode == TimeLockTarget.Mode.TWILIGHT_JITTER && target.mode() != mode) {
             twilightWander = twilightMid();
         }
         target = new TimeLockTarget(mode, time);
+        ClientSkyTimeTrace.timeLockChanged(previous, target);
+    }
+
+    public static TimeLockTarget target() {
+        return target;
     }
 
     public static boolean active() {

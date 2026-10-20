@@ -57,6 +57,8 @@
   "screen.dimblend_experience.tuning.sable_headlight_occlusion": "Headlight shadows",
   "screen.dimblend_experience.tuning.sable_headlight_occlusion.description": "Default: on. Solid blocks of the world and of vehicles block headlight light and haze (glass, leaves and fluids let it through). Off saves a little CPU and GPU time.",
   "screen.dimblend_experience.tuning.copper_sink_infinite": "Infinite copper sink water",
+  "screen.dimblend_experience.tuning.sky_time_trace": "Sky/time diagnostics (this client)",
+  "screen.dimblend_experience.tuning.sky_time_trace.description": "Default: off. Record this client's sky/time changes in logs/latest.log. Changes apply immediately and are saved locally; other players are unaffected.",
   "screen.dimblend_experience.tuning.copper_sink_infinite.description": "Default: off. Off uses a finite 2000 mB tank. Enabling also requires Create Fluid to allow infiniteWater.",
   "screen.dimblend_experience.tuning.limited_water": "Limited-water checks",
   "screen.dimblend_experience.tuning.limited_water.description": "Default: on. Checks new source water in the rotating dimension. The ice placement rule has its own setting.",

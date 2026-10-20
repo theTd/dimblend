@@ -8,6 +8,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.nio.file.Files;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
@@ -18,6 +19,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.fml.ModList;
 
 public final class TuningScreen extends Screen {
     private static final String KEY = TuningOption.PREFIX;
@@ -40,6 +42,7 @@ public final class TuningScreen extends Screen {
     private boolean updating;
     private boolean draggingScrollbar;
     private TuningOption.Section section = TuningOption.Section.MAIN;
+    private Row skyTimeTraceRow;
 
     public TuningScreen(TuningSnapshotPayload snapshot) {
         super(Component.translatable("screen.dimblend_experience.tuning"));
@@ -53,6 +56,7 @@ public final class TuningScreen extends Screen {
         listTop = 34;
         listBottom = height - 60;
         rows.clear();
+        skyTimeTraceRow = null;
         contentHeight = 0;
         updating = true;
         for (TuningOption option : TuningOption.values()) {
@@ -103,6 +107,9 @@ public final class TuningScreen extends Screen {
                     .tooltip(Tooltip.create(Component.translatable(KEY + "reset_default"))).build(), editable);
             contentHeight += row.height;
         }
+        if (section == TuningOption.Section.MAIN && hasSkyTimeTraceApi()) {
+            addSkyTimeTraceRow();
+        }
         Row navigation = new Row(null, contentHeight, 30, 20, List.of(), List.of());
         rows.add(navigation);
         int navigationY = listTop + contentHeight - scroll;
@@ -128,6 +135,59 @@ public final class TuningScreen extends Screen {
         widget.active = editable;
         row.widgets.add(widget);
         addRenderableWidget(widget);
+    }
+
+    private void addSkyTimeTraceRow() {
+        String key = KEY + "sky_time_trace";
+        int labelWidth = panelWidth - 98;
+        var label = font.split(Component.translatable(key), Math.max(40, labelWidth));
+        var description = font.split(Component.translatable(key + ".description"), panelWidth - 20);
+        int topHeight = Math.max(22, label.size() * 10);
+        Row row = new Row(null, contentHeight, topHeight + 6 + description.size() * 10 + 10,
+                topHeight, label, description);
+        skyTimeTraceRow = row;
+        rows.add(row);
+        boolean loaded = SkyTimeTraceClientBridge.isLoaded();
+        int y = listTop + contentHeight - scroll;
+        row.checkbox = Checkbox.builder(Component.translatable(key), font).maxWidth(labelWidth)
+                .pos(left + 8, y).selected(SkyTimeTraceClientBridge.enabled())
+                .onValueChange((box, selected) -> {
+                    if (!updating) saveSkyTimeTrace(selected);
+                }).build();
+        add(row, row.checkbox, loaded);
+        add(row, Button.builder(Component.translatable("controls.reset"), button -> saveSkyTimeTrace(false))
+                .bounds(left + panelWidth - 56, y, 48, 20)
+                .tooltip(Tooltip.create(Component.translatable(KEY + "reset_default"))).build(), loaded);
+        contentHeight += row.height;
+    }
+
+    private static boolean hasSkyTimeTraceApi() {
+        var core = ModList.get().getModFileById("dimblend");
+        // Older core jars share the same version string; check the optional public API before loading the bridge.
+        return core != null && Files.isRegularFile(core.getFile().findResource("dimblend", "api", "SkyTimeTraceTuning.class"));
+    }
+
+    private void saveSkyTimeTrace(boolean enabled) {
+        try {
+            SkyTimeTraceClientBridge.setEnabled(enabled);
+            status = Component.translatable(KEY + "saved");
+        } catch (RuntimeException failure) {
+            dimblend.experience.DimBlend.LOGGER.error("Could not save local sky time trace setting", failure);
+            status = Component.translatable(KEY + "save_failed");
+        }
+        refreshSkyTimeTraceRow();
+    }
+
+    private void refreshSkyTimeTraceRow() {
+        if (skyTimeTraceRow == null) return;
+        boolean loaded = SkyTimeTraceClientBridge.isLoaded();
+        skyTimeTraceRow.widgets.forEach(widget -> widget.active = loaded);
+        boolean previousUpdating = updating;
+        updating = true;
+        if (skyTimeTraceRow.checkbox.selected() != SkyTimeTraceClientBridge.enabled()) {
+            skyTimeTraceRow.checkbox.onPress();
+        }
+        updating = previousUpdating;
     }
 
     private void switchSection() {
@@ -222,6 +282,7 @@ public final class TuningScreen extends Screen {
 
     @Override
     public void tick() {
+        refreshSkyTimeTraceRow();
         age++;
         if (inFlight != null && age - sentAt > 100) {
             inFlight = null;
@@ -348,11 +409,11 @@ public final class TuningScreen extends Screen {
         graphics.enableScissor(left, listTop, left + panelWidth, listBottom);
         for (Row row : rows) {
             int y = listTop + row.offset - scroll;
-            if (row.option == null) {
+            if (row.option == null && row.checkbox == null) {
                 continue;
             }
-            int labelX = left + (row.option.isCheckbox() ? 32 : 8);
-            if (!row.option.isCheckbox()) {
+            int labelX = left + (row.checkbox != null ? 32 : 8);
+            if (row.checkbox == null) {
                 for (int i = 0; i < row.label.size(); i++) {
                     graphics.drawString(font, row.label.get(i), labelX, y + 4 + i * 10, 0xFFFFFFFF);
                 }

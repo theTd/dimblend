@@ -48,6 +48,7 @@ public final class DimBlend {
         DimBlendRegistries.register(modBus);
         container.registerConfig(ModConfig.Type.SERVER, PregenConfig.SPEC);
         container.registerConfig(ModConfig.Type.SERVER, RegionPurgeConfig.SPEC, RegionPurgeConfig.FILE_NAME);
+        container.registerConfig(ModConfig.Type.CLIENT, dimblend.diagnostics.SkyTimeTraceSettings.SPEC);
         NeoForge.EVENT_BUS.register(PREGEN);
         NeoForge.EVENT_BUS.addListener(DimBlend::onRegisterCommands);
         modBus.addListener(DimBlend::onRegisterPayloads);

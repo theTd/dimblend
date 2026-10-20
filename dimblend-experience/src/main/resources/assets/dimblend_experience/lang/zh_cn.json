@@ -57,6 +57,8 @@
 	"screen.dimblend_experience.tuning.sable_headlight_occlusion": "前照灯遮挡阴影",
 	"screen.dimblend_experience.tuning.sable_headlight_occlusion.description": "默认：开启。世界与载具上的实心方块会遮挡前照灯的照明和光雾（玻璃、树叶、流体可透光）；关闭可略微节省处理器与显卡开销。",
 	"screen.dimblend_experience.tuning.copper_sink_infinite": "铜水槽无限水",
+	"screen.dimblend_experience.tuning.sky_time_trace": "天空时间诊断（仅本机）",
+	"screen.dimblend_experience.tuning.sky_time_trace.description": "默认：关闭。记录当前客户端的天空与时间变化到 logs/latest.log；切换后立即生效并保存，不影响其他玩家。",
 	"screen.dimblend_experience.tuning.copper_sink_infinite.description": "默认：关闭。关闭后为 2000mB 有限储罐；开启还需 Create Fluid 的 infiniteWater 配置允许。",
 	"screen.dimblend_experience.tuning.limited_water": "有限水检测",
 	"screen.dimblend_experience.tuning.limited_water.description": "默认：开启。检测旋转维度中新写入的源水。冰块放置限制有独立开关。",

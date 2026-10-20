@@ -2,12 +2,14 @@ package dimblend.mixin;
 
 import dimblend.DimBlendRegistries;
 import dimblend.client.ClientTimeLock;
+import dimblend.client.ClientSkyTimeTrace;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Read-side half of the per-player time lock. The celestial sphere does not
@@ -19,6 +21,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  */
 @Mixin(ClientLevel.ClientLevelData.class)
 public abstract class ClientLevelDataMixin {
+    @Inject(method = "setDayTime", at = @At("HEAD"), require = 1, allow = 1)
+    private void dimblend$traceDayTimeWrite(long time, CallbackInfo ci) {
+        if (!ClientSkyTimeTrace.enabled()) return;
+        ClientLevel level = Minecraft.getInstance().level;
+        if (level != null && level.getLevelData() == (Object) this) {
+            ClientSkyTimeTrace.dayTimeWrite(level, time);
+        }
+    }
+
     @Inject(method = "getDayTime", at = @At("HEAD"), cancellable = true)
     private void dimblend$readLockedDayTime(CallbackInfoReturnable<Long> cir) {
         ClientLevel level = Minecraft.getInstance().level;
