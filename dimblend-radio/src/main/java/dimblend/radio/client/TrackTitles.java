@@ -18,7 +18,7 @@ import java.nio.charset.StandardCharsets;
  * </ul>
  */
 public final class TrackTitles {
-    /** tooltip/actionbar 单行上限：超长标题截断加省略号。 */
+    /** 护目镜 tooltip 单行上限：超长标题截断加省略号。 */
     public static final int MAX_TITLE_LEN = 128;
 
     private static final int SCAN_BYTES_CAP = 4 << 20;
@@ -94,7 +94,7 @@ public final class TrackTitles {
             return null;
         }
         String t = title.trim();
-        // 内嵌换行（个别标签多行写）只取首行，tooltip/actionbar 都是单行
+        // 内嵌换行（个别标签多行写）只取首行，护目镜 tooltip 是单行
         int nl = t.indexOf('\n');
         if (nl >= 0) {
             t = t.substring(0, nl).trim();
