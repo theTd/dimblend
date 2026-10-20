@@ -62,6 +62,7 @@
 	],
 	"client": [
 		"client.FrontlightBlockChangeMixin",
+		"client.SableSubLevelSpriteAnimationMixin",
 		"client.VeilWrappedDepthStencilMixin",
 		"compat.camerapture.PictureItemFrameMixin",
 		"compat.camerapture.CameraPictureCropMixin",

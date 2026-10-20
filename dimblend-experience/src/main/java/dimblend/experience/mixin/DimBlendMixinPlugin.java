@@ -19,6 +19,11 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".client.VeilWrappedDepthStencilMixin")) {
             return isLoaded("sable") && isLoaded("veil") && !isLoaded("iris");
         }
+        // Sable 的 vanilla 子层级区块网格需要补 Sodium 的动画贴图活跃标记；Sable 缺席时
+        // 目标类不存在，mixin 不应用（Sodium 自身的动画剔除也就不影响任何子层级）。
+        if (mixinClassName.endsWith(".client.SableSubLevelSpriteAnimationMixin")) {
+            return isLoaded("sable");
+        }
         if (mixinClassName.endsWith(".compat.connected.KineticBatteryLifecycleMixin")) {
             return isLoaded("create_connected");
         }
