@@ -15,10 +15,12 @@ public class DimBlendBlocksMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        if (mixinClassName.endsWith(".compat.copycats.CopycatsObsidianHardnessMixin")) {
+        if (mixinClassName.endsWith(".compat.copycats.CopycatsObsidianHardnessMixin")
+                || mixinClassName.endsWith(".compat.copycats.CopycatsLoadRenderMixin")) {
             return isLoaded("copycats");
         }
-        if (mixinClassName.endsWith(".compat.create.CreateCopycatObsidianHardnessMixin")) {
+        if (mixinClassName.endsWith(".compat.create.CreateCopycatObsidianHardnessMixin")
+                || mixinClassName.endsWith(".compat.create.CreateCopycatLoadRenderMixin")) {
             return isLoaded("create");
         }
         return true;

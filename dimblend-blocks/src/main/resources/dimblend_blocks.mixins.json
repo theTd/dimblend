@@ -10,6 +10,8 @@
 		"compat.create.CreateCopycatObsidianHardnessMixin"
 	],
 	"client": [
+		"compat.create.CreateCopycatLoadRenderMixin",
+		"compat.copycats.CopycatsLoadRenderMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
