@@ -23,6 +23,7 @@ import dimblend.experience.gametest.SableLavaMeltGameTests;
 import dimblend.experience.gametest.SableVoidFitGameTests;
 import dimblend.experience.gametest.CopycatObsidianHardnessGameTests;
 import dimblend.experience.gametest.DeployerIcePlacementGameTests;
+import dimblend.experience.gametest.FireHoseDropGameTests;
 import dimblend.experience.gametest.LimitedWaterGameTests;
 import dimblend.experience.gametest.LootMapFilterGameTests;
 import dimblend.experience.gametest.ItemDrainPipeRefillGameTests;
@@ -123,6 +124,10 @@ public class DimBlend {
         if (ModList.get().isLoaded("createdieselgenerators")) {
             event.register(CdgPlacementGuardGameTests.class);
             event.register(CdgTankCapacityGameTests.class);
+        }
+        // 引用 Create: Fire Fighting Add 类：仅该 addon 在场（dev 下 -PwithFireHose）时注册
+        if (ModList.get().isLoaded("createfirefightingadd")) {
+            event.register(FireHoseDropGameTests.class);
         }
     }
 }

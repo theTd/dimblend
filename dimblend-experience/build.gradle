@@ -147,6 +147,11 @@ dependencies {
     // vendor 本地 jar：从运行实例 mods 目录原样复制到 ./libs（2.0.1，与实例一致），
     // compileOnly 编译可见、不进 runtimeClasspath；恢复步骤同 docs/requirements-spec.md「libs jar 清单」。
     compileOnly files("libs/fluid-2.0.1.jar")
+    // Create: Fire Fighting Add（消防水带放置/拆卸数量守恒修复）同样无公开 Maven，
+    // 从运行实例 mods 目录原样复制到 ./libs（0.2.1-beta，与实例一致）：compileOnly
+    // 只给 mixin/GameTest 编译可见，不进 runtimeClasspath；恢复步骤同 docs/requirements-spec.md
+    // 「libs jar 清单」。
+    compileOnly files("libs/createfirefightingadd-0.2.1-beta.jar")
     // Pinned to the supplied pack versions; compat classes load only behind mod gates.
     // Version numbers can be shared by Forge/Fabric files: use hash-verified NeoForge version IDs.
     compileOnly "maven.modrinth:yet-another-thirst:xmk0FTsX" // NeoForge 1.21-1.5.2
@@ -176,6 +181,13 @@ dependencies {
     // 用法：./gradlew :dimblend-experience:runGameTestServer -PwithFluid
     if (project.hasProperty('withFluid')) {
         localRuntime files("libs/fluid-2.0.1.jar")
+    }
+    // 消防水带数量守恒 Mixin 的运行时验证：-PwithFireHose 时把 Fire Fighting Add
+    // 提升进 dev 运行（FireHose*Mixin 与 FireHoseDropGameTests 才会加载），默认仍
+    // compileOnly，dev 运行与实例对齐。
+    // 用法：./gradlew :dimblend-experience:runGameTestServer -PwithFireHose
+    if (project.hasProperty('withFireHose')) {
+        localRuntime files("libs/createfirefightingadd-0.2.1-beta.jar")
     }
     // Focused 2026-10-16 compatibility GameTests, selected by their own template namespace.
     if (project.hasProperty('withBatchCompat')) {
