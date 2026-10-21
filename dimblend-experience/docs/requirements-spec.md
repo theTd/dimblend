@@ -885,7 +885,7 @@
 | sableLavaMelt | G6（岩浆按 sableLavaMeltSpeed 倍率（默认 4 倍徒手速）熔毁 sable 结构方块并掉落） | true |
 | sableLavaMeltSpeed | G6 配套（熔毁速度倍率 0.5–64.0 步进 0.1，运行中即时生效；经 /dbx 面板可调） | 4.0 |
 | steamEngineOverload | H（蒸汽引擎过载两阶段） | true |
-| trainHorn{Steam,Diesel,Elec}Pitch{Small,Medium,Large} | L（列车汽笛 9 键：音效×汽笛尺寸各自 pitch，0.5–2.0，服务端权威随包下发；无功能开关） | 0.5 / 1.0 / 1.5 |
+| trainHorn{Steam,Diesel,Elec}Pitch{Small,Medium,Large} | L（列车汽笛 9 键：音效×汽笛尺寸各自 pitch，0.5–2.0，服务端权威随包下发；无功能开关） | 小 1.5 / 中 1.0 / 大 0.5（小笛高音、大笛低音） |
 | rotatingDimensionId | A1–A6 作用域维度 id | "dimblend:rotating" |
 
 ### Mixin 清单（`dimblend_experience.mixins.json`，plugin 按模组存在性过滤）
@@ -1126,7 +1126,7 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
 > 来源：2026-10-21 用户追加需求 + 两轮拍板澄清（电池组答②按 CCA 1.5.10 实际注册
 > 更正为电动马达+模块化电池；多引擎方向优先级「都可以」→ 定 前→后→左→右→上→下；
 > 范围仅静止世界+Sable 结构；距离 256 全音量/512 衰减至零、立体声、无视遮挡；
-> 音符粒子方案；忽略延长管长度，音阶默认 0.5/1.0/1.5；无功能开关、9 键 pitch 独立配置）。
+> 音符粒子方案；忽略延长管长度，音阶默认 小 1.5/中 1.0/大 0.5（小笛高音、大笛低音）；无功能开关、9 键 pitch 独立配置）。
 
 - L1 触发语义：蒸汽笛六面邻接引擎方块时，**不管所附储罐有无热源**，收到红石
   上升沿播放对应音效一次。实现挂 `WhistleBlock.neighborChanged` TAIL

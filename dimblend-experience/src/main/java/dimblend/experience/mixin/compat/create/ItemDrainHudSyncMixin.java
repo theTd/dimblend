@@ -22,7 +22,8 @@ import net.minecraft.world.level.Level;
  * {@code gameTime + countdown*10} 的精确时刻（10-tick 节拍制），客户端用自身
  * {@code level.getGameTime()} 差值即可平滑倒计时，无需逐拍发包；sendData 只在
  * 上弦/击发/水量变化等已有时机发生（{@code ItemDrainGrowthBoost} 已在上弦分支与
- * 击发点重新上弦处补 sendData，后者覆盖扣水/免费/无目标等全部击发分支）。</p>
+ * 击发点各分支补 sendData——重新上弦与无目标卸弦（写键 -1）都覆盖，
+ * 含扣水/免费/判定未生效等全部击发走向）。</p>
  *
  * <p>只在 {@code clientPacket=true} 时写键，存档 NBT 不污染；倒计时是内存态，
  * 重载后由服务端重新上弦并经下一次 sendData 刷新。服务端不读此键——

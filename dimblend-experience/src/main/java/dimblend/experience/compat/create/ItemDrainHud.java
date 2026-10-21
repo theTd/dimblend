@@ -22,7 +22,7 @@ import net.minecraft.network.chat.Component;
  * （保湿无最低水量门槛，见 {@link ItemDrainIrrigation}）。</li>
  * <li>催熟行（{@code ITEM_DRAIN_GROWTH} 开）：水量 &lt; 阈值 → 水量不足（x/y mb）；
  * 剩余 tick ≥ 0 → 下次催熟：X 秒（向上取整，与服务端节拍口径一致）；
- * 否则（刚复位尚未上弦、同步未达）→ 不出行。</li>
+ * 否则（范围内无可催熟作物停走、刚复位尚未上弦、同步未达）→ 不出行。</li>
  * </ul>
  */
 public final class ItemDrainHud {

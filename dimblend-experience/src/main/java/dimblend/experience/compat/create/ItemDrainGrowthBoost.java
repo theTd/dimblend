@@ -24,7 +24,9 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler.FluidAction;
  *
  * <p>规则（需求口径）：存水不低于阈值（默认 200mb）时，每周期（默认 30 秒）在
  * 覆盖范围内<b>随机挑一株</b>植物走原版骨粉逻辑催熟；催熟<b>生效才扣</b>
- * 10mb 存水。低于阈值停止催熟（保湿不受影响），回水后自动恢复。</p>
+ * 10mb 存水。低于阈值停止催熟（保湿不受影响），回水后自动恢复。范围内
+ * <b>无可催熟作物时倒计时停走</b>（不上弦/击发点卸弦），作物出现后下一拍
+ * 自动重新计时。</p>
  *
  * <p>“原版骨粉逻辑”= {@code BonemealableBlock} 三段式：
  * {@code isValidBonemealTarget} 筛候选 → {@code isBonemealSuccess} 判生效 →
@@ -64,24 +66,39 @@ public final class ItemDrainGrowthBoost {
 
     /**
      * 催熟推进（调用方保证：服务端、总开关已开、约每 10 tick 一次）。
-     * 刚启动/复位后先上弦满一个周期才首催（防止区块重载刷催熟）；
-     * 到点后低于阈值/无目标/骨粉判定未生效/水不足都只跳过本拍，下一周期重试。
+     * 刚启动/复位后先上弦满一个周期才首催（防止区块重载刷催熟），且仅当范围内
+     * 存在可催熟候选才上弦——无候选时倒计时保持停走，下一拍回本分支复扫（天然
+     * 轮询），作物出现后自动上弦。击发点无目标同样卸弦停走；低于阈值/骨粉判定
+     * 未生效/水不足只跳过本拍，下一周期重试。
      * 热改周期配置只在下次上弦/击发重置时取新值，已上弦的倒计时沿用旧值到本次击发为止。
      */
     public static void tick(ServerLevel level, ItemDrainBlockEntity be, State state) {
         int beats = IrrigationMath.intervalBeats(Config.ITEM_DRAIN_GROWTH_INTERVAL_SECONDS.get() * 20);
+        int radius = Config.ITEM_DRAIN_COVERAGE_RADIUS.get();
         if (state.countdown <= 0) {
-            state.countdown = beats;
-            // 上弦无流体变化、Create 侧不会自行 sendData，这里主动同步一次，
+            // 无候选不上弦（倒计时停走，HUD 无倒计时行）；有候选才上弦并同步，
             // 让 HUD（护目镜/Jade）拿到下次击发时刻（见 ItemDrainHudSyncMixin）
+            if (!hasCandidate(level, be.getBlockPos(), radius)) {
+                return;
+            }
+            state.countdown = beats;
             be.sendData();
             return;
         }
         if (--state.countdown > 0) {
             return;
         }
+        RandomSource random = level.getRandom();
+        Target target = randomTarget(level, be.getBlockPos(), radius, random);
+        if (target == null) {
+            // 击发点无目标：卸弦停走而非空转下一周期（倒计时停走即“范围内无可催熟
+            // 作物”的用户可见信号）；同步一次让客户端清掉 HUD 倒计时
+            state.countdown = 0;
+            be.sendData();
+            return;
+        }
         state.countdown = beats;
-        // 击发点重新上弦后同步一次（无目标/判定未生效等提前 return 的分支也要覆盖），
+        // 击发点重新上弦后同步一次（判定未生效/水不足等提前 return 的分支也要覆盖），
         // 否则 HUD 倒计时走到 0 后会停在旧值（见 ItemDrainHudSyncMixin）
         be.sendData();
         IFluidHandler handler = level.getCapability(Capabilities.FluidHandler.BLOCK, be.getBlockPos(), Direction.DOWN);
@@ -91,11 +108,6 @@ public final class ItemDrainGrowthBoost {
         FluidStack stored = handler.getFluidInTank(0);
         if (stored.isEmpty() || !stored.is(Fluids.WATER)
                 || IrrigationMath.belowThreshold(stored.getAmount(), Config.ITEM_DRAIN_GROWTH_MIN_MB.get())) {
-            return;
-        }
-        RandomSource random = level.getRandom();
-        Target target = randomTarget(level, be.getBlockPos(), Config.ITEM_DRAIN_COVERAGE_RADIUS.get(), random);
-        if (target == null) {
             return;
         }
         // 生效才扣：扣水门 = isBonemealSuccess 通过（performBonemeal 被调用）；
@@ -165,6 +177,27 @@ public final class ItemDrainGrowthBoost {
             }
         }
         return candidates.isEmpty() ? null : candidates.get(random.nextInt(candidates.size()));
+    }
+
+    /** 覆盖柱体内是否存在任一骨粉候选（范围与判定同 {@link #randomTarget}，找到即短路）。 */
+    private static boolean hasCandidate(ServerLevel level, BlockPos center, int radius) {
+        int[] cells = IrrigationMath.coverageCells(center.getX(), center.getY(), center.getZ(), radius);
+        for (int y = cells[1]; y <= cells[1] + 1; y++) {
+            for (int x = cells[0]; x <= cells[3]; x++) {
+                for (int z = cells[2]; z <= cells[4]; z++) {
+                    BlockPos pos = new BlockPos(x, y, z);
+                    if (!level.isLoaded(pos)) {
+                        continue;
+                    }
+                    BlockState state = level.getBlockState(pos);
+                    if (state.getBlock() instanceof BonemealableBlock plant
+                            && plant.isValidBonemealTarget(level, pos, state)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /** 复位（开关关闭/BE 销毁时调用，多次调用安全）：丢弃倒计时，恢复后重新上弦满周期。 */

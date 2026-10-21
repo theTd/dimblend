@@ -10,6 +10,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
@@ -25,9 +26,14 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
  * 而非定点值，规避断言拍与上弦拍的相对位置不确定。开关关闭时 countdown 被
  * {@link ItemDrainGrowthBoost#reset} 清零，写键恒为 -1（未在计时）。</p>
  *
- * <p>同批次用例并发执行（vanilla GameTest 语义），两条用例都翻转共享全局配置，
+ * <p>上弦/续弦以“范围内存在可催熟候选”为前提（无可催熟作物时倒计时停走）：
+ * 上弦用例需在覆盖柱体内放一株小麦（农田 + 小麦，y+1 层）；无目标用例保持
+ * 空平台，断言不上弦且写键 -1；卸弦用例先种小麦上弦再收掉，断言击发点
+ * countdown 归零且写键 -1。</p>
+ *
+ * <p>同批次用例并发执行（vanilla GameTest 语义），各用例都翻转共享全局配置，
  * 必须各放独立批次串行（同 {@code pipe_refill_toggle} 先例）；各用例开头显式 set
- * 期望值、收尾还原。模板复用 {@code item_drain_refill} 空平台（本测试无需水源与作物）。
+ * 期望值、收尾还原。模板复用 {@code item_drain_refill} 空平台（本测试无需水源）。
  * 仅 Create 在场时注册（见 {@code DimBlend#onRegisterGameTests} 的 ModList 守卫）。</p>
  */
 @GameTestHolder("dimblend_experience")
@@ -37,6 +43,27 @@ public final class ItemDrainHudSyncGameTests {
     private ItemDrainHudSyncGameTests() {
     }
 
+    /** 覆盖柱体内放一株可催熟小麦（农田在池体同层 y，小麦在 y+1 层）。 */
+    private static void plantWheat(GameTestHelper helper) {
+        helper.setBlock(new BlockPos(2, 1, 1), Blocks.FARMLAND.defaultBlockState());
+        helper.setBlock(new BlockPos(2, 2, 1), Blocks.WHEAT.defaultBlockState());
+    }
+
+    private static int countdownOf(GameTestHelper helper, BlockPos rel) {
+        BlockEntity be = helper.getBlockEntity(rel);
+        helper.assertTrue(be instanceof ItemDrainBlockEntity, "item drain block entity missing");
+        return ((ItemDrainGrowthBoost.HasState) be).dimblend$growthState().countdown;
+    }
+
+    private static long nextBoostAtOf(GameTestHelper helper, BlockPos rel) {
+        BlockEntity be = helper.getBlockEntity(rel);
+        CompoundTag tag = new CompoundTag();
+        ((ItemDrainBlockEntity) be).write(tag, helper.getLevel().registryAccess(), true);
+        helper.assertTrue(tag.contains(ItemDrainHud.TAG_NEXT_BOOST_AT),
+                "client packet must carry " + ItemDrainHud.TAG_NEXT_BOOST_AT);
+        return tag.getLong(ItemDrainHud.TAG_NEXT_BOOST_AT);
+    }
+
     @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience",
             timeoutTicks = 200, batch = "item_drain_hud_armed")
     public static void writeContainsNextBoostAtWhenArmed(GameTestHelper helper) {
@@ -44,19 +71,13 @@ public final class ItemDrainHudSyncGameTests {
         Config.ITEM_DRAIN_GROWTH_INTERVAL_SECONDS.set(1);
         BlockPos rel = new BlockPos(1, 1, 1);
         helper.setBlock(rel, AllBlocks.ITEM_DRAIN.get().defaultBlockState());
+        plantWheat(helper);
 
         helper.runAfterDelay(15, () -> {
-            BlockEntity be = helper.getBlockEntity(rel);
-            helper.assertTrue(be instanceof ItemDrainBlockEntity,
-                    "item drain block entity missing");
-            int countdown = ((ItemDrainGrowthBoost.HasState) be).dimblend$growthState().countdown;
+            int countdown = countdownOf(helper, rel);
             helper.assertTrue(countdown > 0, "growth countdown must be armed after a beat, got " + countdown);
 
-            CompoundTag tag = new CompoundTag();
-            ((ItemDrainBlockEntity) be).write(tag, helper.getLevel().registryAccess(), true);
-            helper.assertTrue(tag.contains(ItemDrainHud.TAG_NEXT_BOOST_AT),
-                    "client packet must carry " + ItemDrainHud.TAG_NEXT_BOOST_AT);
-            long nextBoostAt = tag.getLong(ItemDrainHud.TAG_NEXT_BOOST_AT);
+            long nextBoostAt = nextBoostAtOf(helper, rel);
             long now = helper.getLevel().getGameTime();
             helper.assertTrue(nextBoostAt > now && nextBoostAt <= now + 20,
                     "next boost at must be within (now, now+20], got delta " + (nextBoostAt - now));
@@ -74,19 +95,63 @@ public final class ItemDrainHudSyncGameTests {
         helper.setBlock(rel, AllBlocks.ITEM_DRAIN.get().defaultBlockState());
 
         helper.runAfterDelay(15, () -> {
-            BlockEntity be = helper.getBlockEntity(rel);
-            helper.assertTrue(be instanceof ItemDrainBlockEntity,
-                    "item drain block entity missing");
-
-            CompoundTag tag = new CompoundTag();
-            ((ItemDrainBlockEntity) be).write(tag, helper.getLevel().registryAccess(), true);
-            helper.assertTrue(tag.contains(ItemDrainHud.TAG_NEXT_BOOST_AT),
-                    "client packet must carry " + ItemDrainHud.TAG_NEXT_BOOST_AT + " even when disabled");
-            helper.assertTrue(tag.getLong(ItemDrainHud.TAG_NEXT_BOOST_AT) == -1,
-                    "next boost at must be -1 when growth disabled, got "
-                            + tag.getLong(ItemDrainHud.TAG_NEXT_BOOST_AT));
+            long nextBoostAt = nextBoostAtOf(helper, rel);
+            helper.assertTrue(nextBoostAt == -1,
+                    "next boost at must be -1 when growth disabled, got " + nextBoostAt);
 
             Config.ITEM_DRAIN_GROWTH.set(true); // 还原默认，防影响后续批次/复跑
+            helper.succeed();
+        });
+    }
+
+    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience",
+            timeoutTicks = 200, batch = "item_drain_hud_no_target")
+    public static void writeContainsMinusOneWhenNoTarget(GameTestHelper helper) {
+        Config.ITEM_DRAIN_GROWTH.set(true);
+        Config.ITEM_DRAIN_GROWTH_INTERVAL_SECONDS.set(1);
+        BlockPos rel = new BlockPos(1, 1, 1);
+        helper.setBlock(rel, AllBlocks.ITEM_DRAIN.get().defaultBlockState());
+        // 空平台无可催熟作物：倒计时保持停走（不上弦）
+
+        helper.runAfterDelay(25, () -> {
+            int countdown = countdownOf(helper, rel);
+            helper.assertTrue(countdown == 0,
+                    "growth countdown must stay disarmed without any crop, got " + countdown);
+            long nextBoostAt = nextBoostAtOf(helper, rel);
+            helper.assertTrue(nextBoostAt == -1,
+                    "next boost at must be -1 without any crop, got " + nextBoostAt);
+
+            Config.ITEM_DRAIN_GROWTH_INTERVAL_SECONDS.set(30); // 还原默认，防影响后续批次/复跑
+            helper.succeed();
+        });
+    }
+
+    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience",
+            timeoutTicks = 200, batch = "item_drain_hud_disarm")
+    public static void disarmWhenNoTargetAtFire(GameTestHelper helper) {
+        Config.ITEM_DRAIN_GROWTH.set(true);
+        Config.ITEM_DRAIN_GROWTH_INTERVAL_SECONDS.set(1);
+        BlockPos rel = new BlockPos(1, 1, 1);
+        helper.setBlock(rel, AllBlocks.ITEM_DRAIN.get().defaultBlockState());
+        plantWheat(helper);
+
+        helper.runAfterDelay(15, () -> {
+            int countdown = countdownOf(helper, rel);
+            helper.assertTrue(countdown > 0, "growth countdown must be armed with crop, got " + countdown);
+            // 收掉作物：击发点无目标应卸弦停走而非空转下一周期
+            helper.setBlock(new BlockPos(2, 2, 1), Blocks.AIR.defaultBlockState());
+        });
+
+        // 1 秒周期 = 2 节拍：击发落在上弦后约 20 tick；留足余量再等约 3 拍
+        helper.runAfterDelay(50, () -> {
+            int countdown = countdownOf(helper, rel);
+            helper.assertTrue(countdown == 0,
+                    "growth countdown must disarm when fire finds no target, got " + countdown);
+            long nextBoostAt = nextBoostAtOf(helper, rel);
+            helper.assertTrue(nextBoostAt == -1,
+                    "next boost at must be -1 after disarm, got " + nextBoostAt);
+
+            Config.ITEM_DRAIN_GROWTH_INTERVAL_SECONDS.set(30); // 还原默认，防影响后续批次/复跑
             helper.succeed();
         });
     }
