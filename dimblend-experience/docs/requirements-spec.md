@@ -173,6 +173,19 @@
 - 仅对新探索区块生效：旧存档已生成的藏宝箱不补标记
 - 新开关 `treasureShellX`（默认开）
 
+### A12 旋转维度怪物密度上限压制（2026-10-21 用户拍板）
+- 起因：用户实测体感 rotating 怪物密度约为原版两倍，要求压回一半；只做新机制，
+  不动「睡觉清雨」等既有行为
+- 实现：`NaturalSpawnerCapMixin` 包 `spawnForChunk` 内对
+  `SpawnState.canSpawnForCategory` 的调用——rotating 维度且类别为 MONSTER 时，
+  全局上限改按 `70×倍率取整 × 可刷区块数/289` 判定（289=NaturalSpawner.MAGIC_NUMBER，
+  包私有只能复刻），当前怪物数达缩放上限本轮不刷；未达上限交回原判定
+  （原版全局+单玩家局部上限照跑）
+- 只压全局密度上限，不改单次刷怪概率；被动/水生等其它类别与其它维度完全走原版；
+  纯函数 `RotatingMonsterCap.scaledCap` + 单测
+- 新配置 `rotatingMonsterCapMultiplier`（DoubleValue，默认 0.5，范围 0-1；
+  1.0 等效原版、0=不自然刷怪）
+
 ## 2. 板块 B：CDG 柴油机行为
 
 - B1 加燃油启动：转速立即到 16rpm → 每 4 秒 +2rpm 阶梯爬升，直至额定转速

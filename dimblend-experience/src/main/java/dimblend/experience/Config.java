@@ -30,6 +30,12 @@ public final class Config {
             .comment("探索限制 A6：|z|≤64 安全区内拦截自然类生成（放行刷怪笼/刷怪蛋/繁殖等玩家侧与机器间接生成）")
             .define("safeZone", true);
 
+    public static final ModConfigSpec.DoubleValue ROTATING_MONSTER_CAP_MULTIPLIER = BUILDER
+            .comment("探索限制 A12：旋转维度自然刷怪的怪物（MONSTER 类别）全局密度上限倍率（0-1，默认 0.5）；"
+                    + "上限 = 原版上限 70×倍率取整 × 可刷区块数/289，超上限本轮不刷；只压全局上限，"
+                    + "单次刷怪概率与单玩家局部上限不动；1.0 等效原版，0=旋转维度不自然刷怪；其它维度不受影响")
+            .defineInRange("rotatingMonsterCapMultiplier", 0.5D, 0.0D, 1.0D);
+
     public static final ModConfigSpec.BooleanValue GLOBAL_BEACON = BUILDER
             .comment("信标全图广播（A7，全局功能不受维度约束）：激活的信标效果广播至其所在维度的全体玩家")
             .define("globalBeacon", true);

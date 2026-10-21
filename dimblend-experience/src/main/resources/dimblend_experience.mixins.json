@@ -9,6 +9,7 @@
 		"compat.yat.SleepThirstSuspensionMixin",
 		"compat.dndecor.FrontlightSpotlightStateMixin",
 		"BeaconBlockEntityMixin",
+		"NaturalSpawnerCapMixin",
 		"CopycatBlockStateBaseMixin",
 		"CopycatBlockStateExtensionMixin",
 		"MerchantOfferAccessor",
