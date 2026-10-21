@@ -9,10 +9,12 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.neoforge.event.RegisterGameTestsEvent;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import dimblend.blocks.compat.copycats.CreativeCopycats;
 import dimblend.blocks.compat.create.CreativeKinetics;
 import dimblend.blocks.fragile.FragileStones;
+import dimblend.blocks.gametest.CreativeCopycatHidingGameTest;
 import dimblend.blocks.treasure.ShellMarker;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
@@ -55,6 +57,16 @@ public class DimBlendBlocks {
         // 与 C 板块守卫独立——copycats 缺席时传动件仍应可用）
         if (ModList.get().isLoaded("create")) {
             CreativeKinetics.register(modEventBus);
+        }
+
+        modEventBus.addListener(DimBlendBlocks::onRegisterGameTests);
+    }
+
+    private static void onRegisterGameTests(RegisterGameTestsEvent event) {
+        // C5 隐藏 GameTest：类内硬引用 CreativeCopycats（Copycats+ 类型），
+        // 仅 copycats 在场（dev 下 -PwithCopycats）时注册
+        if (ModList.get().isLoaded("copycats")) {
+            event.register(CreativeCopycatHidingGameTest.class);
         }
     }
 

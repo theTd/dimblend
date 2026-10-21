@@ -127,6 +127,12 @@ dependencies {
     // MDG 会把 implementation 的 mod 装进每个 dev run；需要运行时联测时临时提升为 localRuntime。
     // 开源 mod 走 Modrinth Maven 定点版本，不 vendor blob。
     compileOnly "maven.modrinth:copycats:3.0.4+mc.1.21.1-neoforge"
+    // C5 隐藏手势的运行时验证：-PwithCopycats 时把 Copycats+ 提升进 dev 运行
+    // （CreativeCopycatHidingGameTest 才会注册），默认仍 compileOnly，dev 运行与实例对齐。
+    // 用法：./gradlew :dimblend-blocks:runGameTestServer -PwithCopycats
+    if (project.hasProperty('withCopycats')) {
+        localRuntime "maven.modrinth:copycats:3.0.4+mc.1.21.1-neoforge"
+    }
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.

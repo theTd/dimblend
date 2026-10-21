@@ -41,7 +41,8 @@ import java.util.function.Supplier;
  * <li>扳手只能撕掉贴的材质（普通/潜行都一样），本体永不可拆</li>
  * <li>蓝图取材返回 NONE，避免 schematicannon 索要无法获取的物品</li>
  * <li>不可破坏/防爆/仅创造可放置由方块 Properties 与 {@link CreativeOnlyBlockItem} 承担</li>
- * <li>C5 隐藏：未贴材质时创造玩家空手右键隐藏、扳手右键恢复，语义同
+ * <li>C5 隐藏：未贴材质时空手右键隐藏、扳手右键恢复（2026-10-22 拍板放开生存，
+ * 原为仅创造；放置/破坏仍仅创造），语义同
  * {@link CreativeCopycatPanelBlock}；有材质时保留上游空手 toggleCT 行为</li>
  * </ul>
  */
@@ -77,11 +78,11 @@ public class CreativeCopycatSlabBlock extends CopycatSlabBlock {
 
     @Override
     public InteractionResult onWrenched(BlockState state, UseOnContext context) {
-        // 隐藏优先：扳手右键恢复正常（仅创造玩家），其余维持上游撕材质语义
+        // 隐藏优先：扳手右键恢复正常（2026-10-22 起生存同权），其余维持上游撕材质语义
         Level level = context.getLevel();
         BlockPos pos = context.getClickedPos();
         Player player = context.getPlayer();
-        if (player != null && player.isCreative() && CreativeCopycatHiding.isHidden(level, pos)) {
+        if (player != null && CreativeCopycatHiding.isHidden(level, pos)) {
             CreativeCopycatHiding.setHidden(level, pos, false);
             IWrenchable.playRotateSound(level, pos);
             return InteractionResult.SUCCESS;
@@ -94,11 +95,12 @@ public class CreativeCopycatSlabBlock extends CopycatSlabBlock {
             BlockHitResult hitResult) {
         // 上游（Copycats+ 多状态块）的 useWithoutItem 是空手 toggleCT；未贴材质时
         // CT 无从谈起，隐藏手势优先；有材质时保留 toggleCT。
+        // 2026-10-22 拍板放开生存（原为创造玩家限定）。
         // 隐藏块对空手交互完全惰性（先短路，不落到上游 toggleCT 改写 BE 状态）。
         if (CreativeCopycatHiding.isHidden(level, pos)) {
             return InteractionResult.PASS;
         }
-        if (player != null && player.isCreative() && player.getMainHandItem().isEmpty()
+        if (player != null && player.getMainHandItem().isEmpty()
                 && hasNoMaterial(level, pos)) {
             CreativeCopycatHiding.setHidden(level, pos, true);
             return InteractionResult.sidedSuccess(level.isClientSide());

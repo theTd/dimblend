@@ -9,7 +9,8 @@ ModDevGradle 2.0.147 / Gradle 9.2.1，与 `dimblend`、`dimblend-craft`、
 - C 板块·创造模式伪装方块（自 `dimblend-experience` v1.6 迁出）——伪装半砖/伪装粱
   （Copycats+ 基类）+ 伪装板（Create 本体基底）+ 自有 BE 类型 + C0 全体伪装方块硬度
   统一黑曜石 mixin；C4 洁净伪装板/半砖（永不积脏，洗车死角用）+ C5 伪装板/半砖隐藏
-  （未贴材质空手右键隐藏、持扳手幽灵显现、扳手恢复、隐藏期洗车脏值冻结；隐藏状态挂
+  （未贴材质空手右键隐藏、持扳手幽灵显现（冷蓝着色区分普通伪装块）、扳手恢复、
+  隐藏/恢复生存同权（2026-10-22 拍板，放置/破坏仍仅创造）、隐藏期洗车脏值冻结；隐藏状态挂
   BE NBT 不走方块状态）。仅在 Copycats+ 在场时激活（mods.toml optional 依赖 + mixin plugin 过滤）。
 - K 板块·Create 创造模式传动件——创造模式传动杆/齿轮（同 create:shaft / create:cogwheel，
   生存不可破坏、生存扳手不可拆、可套壳、潜行扳手拆壳、蒸汽引擎天然不接入；扳手按模式

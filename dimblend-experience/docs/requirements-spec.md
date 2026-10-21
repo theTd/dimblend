@@ -316,12 +316,16 @@
   永不积脏；BE 用独立的洁净类型（`creative_clean_create_copycat` /
   `creative_clean_multi_state_copycat`），洗车脏值行为绑定不到。洁净=无脏值概念，
   不是「脏值锁定为 0」。
-- C5 伪装板/半砖隐藏（v1.11 新增，粱不适用）：
-  - 手势：未贴材质（板：无自定义材质；半砖：全部件无自定义材质）时，创造玩家主手空手
-    右键 → 隐藏；隐藏时扳手（`c:tools/wrench`）右键 → 恢复正常。隐藏/恢复仅创造玩家
-    （与放置/破坏同权）；有材质时空手行为保持上游语义（半砖 toggleCT 不动）。
+- C5 伪装板/半砖隐藏（v1.11 新增，粱不适用；2026-10-22 修订放开生存）：
+  - 手势：未贴材质（板：无自定义材质；半砖：全部件无自定义材质）时，主手空手
+    右键 → 隐藏；隐藏时扳手（`c:tools/wrench`）右键 → 恢复正常。2026-10-22 用户拍板：
+    隐藏/恢复放开生存模式（原仅创造玩家、与放置/破坏同权）；冒险模式同权
+    （不加模式判断，复核在案）；放置/破坏仍仅创造。
+    有材质时空手行为保持上游语义（半砖 toggleCT 不动）。
   - 隐藏期间：不渲染（手持扳手时客户端按真实方块状态幽灵显现、恢复选中框；未持扳手连
-    选中框也抑制）；碰撞箱保留；一切物品交互穿透（贴材质/连放禁用）；洗车脏值冻结
+    选中框也抑制）；幽灵显现带冷蓝着色（`CreativeCopycatGhostRenderer.GHOST_TINT`，
+    0.5/0.75/1.0），与未贴材质的普通伪装方块肉眼区分（2026-10-22 拍板）；
+    碰撞箱保留；一切物品交互穿透（贴材质/连放禁用）；洗车脏值冻结
     （增长总闸在 `ChassisGrimeBehaviour.changeDirt` 的 `delta>0` 分支；已有脏值保留、
     隐藏期不渲染，渲染抑制口在 `ChassisGrimeBehaviour.visualAt`）。
   - 不变量「隐藏 ⇒ 无材质」由手势前置条件 + 隐藏期禁贴材质共同维持。
@@ -329,6 +333,8 @@
     `dimblend.blocks.api.CreativeCopycatHiding` 静态查询口），不走方块状态——Sable
     子关卡里改 BlockState 会触发物理碰撞体/质量更新（carwash 既定约束）；同步走 Create
     `sendData` + 客户端区段重绘（同脏值纪律）。carwash 只 import `dimblend.blocks.api`。
+    服务端 GameTest `CreativeCopycatHidingGameTest` 6 条（生存/创造隐藏、持物不误触、
+    生存扳手恢复板与半砖），需 `-PwithCopycats` 把 Copycats+ 提升进 dev 运行。
 
 ## 4. 板块 D：CCA 电动马达
 
