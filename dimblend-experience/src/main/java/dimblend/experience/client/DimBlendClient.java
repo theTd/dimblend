@@ -31,6 +31,7 @@ public final class DimBlendClient {
                 (ClientPlayerNetworkEvent.LoggingOut logout) -> {
                     ClientFarCurseTier.reset();
                     ClientDeadmanLatch.reset();
+                    TrainHornClient.reset();
                 }));
     }
 

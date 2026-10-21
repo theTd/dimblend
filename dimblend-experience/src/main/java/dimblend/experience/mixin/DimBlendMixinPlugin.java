@@ -95,7 +95,10 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".compat.create.KineticNetworkUnloadedAccessor")
                 || mixinClassName.endsWith(".compat.create.KineticUnloadedShareMixin")
                 || mixinClassName.endsWith(".compat.create.KineticNetworkLedgerTraceMixin")
-                || mixinClassName.endsWith(".compat.create.SteamEngineOverloadMixin")) {
+                || mixinClassName.endsWith(".compat.create.SteamEngineOverloadMixin")
+                || mixinClassName.endsWith(".compat.create.WhistleHornBlockMixin")
+                || mixinClassName.endsWith(".compat.create.WhistleHornBlockEntityMixin")
+                || mixinClassName.endsWith(".compat.create.WhistleHornClientMixin")) {
             return isLoaded("create");
         }
         if (mixinClassName.endsWith(".compat.fluid.GutterOutletPrecipitationMixin")

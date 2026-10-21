@@ -885,6 +885,7 @@
 | sableLavaMelt | G6（岩浆按 sableLavaMeltSpeed 倍率（默认 4 倍徒手速）熔毁 sable 结构方块并掉落） | true |
 | sableLavaMeltSpeed | G6 配套（熔毁速度倍率 0.5–64.0 步进 0.1，运行中即时生效；经 /dbx 面板可调） | 4.0 |
 | steamEngineOverload | H（蒸汽引擎过载两阶段） | true |
+| trainHorn{Steam,Diesel,Elec}Pitch{Small,Medium,Large} | L（列车汽笛 9 键：音效×汽笛尺寸各自 pitch，0.5–2.0，服务端权威随包下发；无功能开关） | 0.5 / 1.0 / 1.5 |
 | rotatingDimensionId | A1–A6 作用域维度 id | "dimblend:rotating" |
 
 ### Mixin 清单（`dimblend_experience.mixins.json`，plugin 按模组存在性过滤）
@@ -906,6 +907,9 @@
 | compat.cca.ElectricMotorGoggleMixin | CCA 电动马达 BE | D6 能耗行 | createaddition 在场（client 数组） |
 | compat.create.ElectricMotorGeneratorStatsMixin | Create GeneratingKineticBlockEntity | D6 应力量行 | createaddition 在场（client 数组；handler instanceof 限定马达） |
 | compat.create.SteamEngineOverloadMixin | Create 蒸汽引擎 BE（tick RETURN） | H | create 在场 |
+| compat.create.WhistleHornBlockMixin | Create 蒸汽笛方块（neighborChanged TAIL 上升沿识别） | L | create 在场 |
+| compat.create.WhistleHornBlockEntityMixin | Create 蒸汽笛 BE（鸣笛锁定纯内存字段，经 TrainHornStateAccess 访问） | L | create 在场 |
+| compat.create.WhistleHornClientMixin | Create 蒸汽笛 BE（tick 张嘴驱动 + tickAudio HEAD 音符粒子/原生循环门控） | L | create 在场（client 数组） |
 | compat.create.PortableEngineAttachMixin | Create RotationPropagator（`handleAdded` HEAD，只登记维度/引擎） | F2 | create 在场 |
 | compat.create.RotationPropagatorInvoker | Create RotationPropagator（`getPotentialNeighbourLocations` 静态 invoker） | F2 | create 在场 |
 | compat.create.KineticUnloadedShareMixin | Create KineticBlockEntity（`read` RETURN 快照存档份额；`initialize`/`setNetwork`/`remove` HEAD 结算） | B4 读档账本修正 | create 在场 |
@@ -978,6 +982,7 @@
 - 启动验证（2026-09-19，TrainTripWorld 实例实测两轮）：mod 加载、common setup、全部 mixin 应用（defaultRequire:1 下存活即实证）、0 ERROR/FATAL 到主菜单；期间修复 NeoForge 版本范围硬阻塞（[21.1.251,)→[21.1.249,) 解耦）与 example 脚手架残留
 - 启动验证（2026-09-23 v1.7 批次，dev runClient + CCA 临时 localRuntime）：createaddition 1.5.10 加载、CCA Initialized、Sound engine started 到主菜单，0 ERROR/FATAL/InvalidMixin；本批 4 个 mixin（SoundClient 改版 + AlternatorIdleDrain + Goggle + GeneratorStats）随 CCA BE 注册完成 apply；dev 环境 mixin 库为 sponge-mixin 0.15.2+mixin.0.8.7（fabric fork）。实机听音/看数仍在待办
 - G7 实机项（2026-10-15 验收通过）：TrainTripWorld 实例放产蛋器于 sable 结构内（单块/多块子层级各一）与主世界各一，确认玻璃内嵌鸡可见、明暗与周围方块一致、玻璃仍半透明、孵化器不受影响、物品栏图标正常
+- L 板块实机项：储罐+汽笛（无热源）邻接蒸汽引擎/柴油机/电动马达各放红石，验证鸣笛音效对应、张嘴+音符前冲、播放期再输入无效、断电再上电再鸣；256/512 距离衰减与左右方向感听音；Sable 结构上同验（声音随结构当前位置）；9 键 pitch 配置各改一档实测
 
 ### 复核闭环状态（截至第 19 轮）
 
@@ -1115,3 +1120,46 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
   服务端 GameTest `CreativeKineticsGameTest`（11 条：生存互转双向、生存潜行不拆、
   生存潜行拆壳、守卫负向分支、创造旋转×3、创造潜行拆卸、encased 齿轮创造端面翻转、
   生存 encased 无效）常驻防回归。
+
+## 13. 板块 L：列车汽笛（2026-10-21 新增）
+
+> 来源：2026-10-21 用户追加需求 + 两轮拍板澄清（电池组答②按 CCA 1.5.10 实际注册
+> 更正为电动马达+模块化电池；多引擎方向优先级「都可以」→ 定 前→后→左→右→上→下；
+> 范围仅静止世界+Sable 结构；距离 256 全音量/512 衰减至零、立体声、无视遮挡；
+> 音符粒子方案；忽略延长管长度，音阶默认 0.5/1.0/1.5；无功能开关、9 键 pitch 独立配置）。
+
+- L1 触发语义：蒸汽笛六面邻接引擎方块时，**不管所附储罐有无热源**，收到红石
+  上升沿播放对应音效一次。实现挂 `WhistleBlock.neighborChanged` TAIL
+  （`WhistleHornBlockMixin`）对比 POWERED 前后值得严格上升沿；播放期间（BE 锁定
+  窗口内）新上升沿无视，播完须信号断开再次输入（上升沿语义天然满足：信号保持
+  高位不产生新沿）。锁定存服务端 BE 纯内存字段（`TrainHornStateAccess`，
+  卸载/重进清零，不落盘）。
+- L2 引擎映射：Create 蒸汽引擎 → `train_horn_steam`；CDG 三种柴油机
+  （普通/巨型/组合，instanceof 三类）→ `train_horn_diesel`；CCA 电动马达/模块化
+  电池 → `train_horn_elec`（CCA 1.5.10 旧 `accumulator` 已从注册表移除，字节码
+  核实，电动组仅此两种）。多引擎邻接按方向优先级取第一个命中：以汽笛朝向为基准
+  正面→背面→左→右→上→下（附着储罐一面永不命中）。不考虑 Create: Sound of Steam。
+- L3 播放表现：客户端窗口内汽笛张嘴（`WhistleHornClientMixin` 驱动
+  `LerpedFloat animation.chase(1.0, …)`）+ 音符粒子沿汽笛朝向锯齿推进前冲
+  （每 12 tick 一脉冲、脉冲内前移 0.12/tick；NoteParticle 第一槽为颜色参数，
+  按音效种类配色 steam 0.6/diesel 0.08/elec 0.35）；`POWERED` 期间原生循环汽笛音
+  与蒸汽粒子保留（锅炉激活时叠加，符合「机车汽笛」观感）。
+- L4 声音路由：服务端自定义 payload（`train_horn`，pos+kind+pitch）按 Sable 投影
+  后世界坐标广播 528 格内玩家；客户端 `TrainHornSoundInstance`（Attenuation.NONE，
+  OpenAL 不做距离衰减但保留世界坐标声像=立体声方向性）每 tick 手算音量曲线：
+  ≤256 格全音量、256→512 线性衰减、≥512 静音（初始 512 外不起播）；无视遮挡。
+  **在案口径**：广播只在触发瞬间按距离过滤——触发时刻 528 格外的玩家中途走近
+  不补播残段（3 秒一次性音效，持续追踪玩家 proximity 的代价不成比例）。
+  素材已降混单声道（立体声源 OpenAL 不做空间化，同 D4 先例）。pitch 服务端权威
+  （SERVER 配置 9 键随包下发，客户端不读本地配置，无双端漂移），引擎钳 [0.5,2.0]。
+- L5 距离/时长常量：锁定时长=素材实测（ffprobe 单声道版 steam 2.60s→55 tick、
+  diesel 3.04s→64、elec 3.06s→64），换素材须同步改 `TrainHorn.HornKind`。
+- L6 范围：静止世界 + Sable 结构（声音按结构当前世界位置路由，粒子/声像每 tick
+  重投影跟随）；Create contraption（活塞/轴承上的汽笛）不管。**在案限制**：Sable
+  结构旋转（yaw）后音符粒子的「前冲」方向取 plot 坐标系的汽笛 FACING，不随结构
+  姿态旋转（位置投影正确、方向不投影）——需求口径只对声音承诺结构路由，粒子
+  方向不在承诺内；如实机观感明显再取 subLevel 姿态旋转向量。
+- 运行验证：`TrainHornGameTests`（create 组：蒸汽触发+kind 断言/无引擎静默/播放期
+  无视输入/结束后重新装备）、`TrainHornCdgGameTests`（-PwithCdg：三种柴油引擎各自
+  触发、方向优先级 背面>左侧 / 正面>背面）、`TrainHornCcaGameTests`（-PwithCca：
+  电动马达、模块化电池各自触发）。

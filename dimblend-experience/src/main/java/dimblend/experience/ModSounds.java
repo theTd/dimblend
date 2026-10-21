@@ -45,6 +45,15 @@ public final class ModSounds {
     /** H：蒸汽引擎断轴排气（满 16 秒过载断轴时服务端 1 次）。 */
     public static final DeferredHolder<SoundEvent, SoundEvent> STEAM_EXHAUST =
             register("steam_exhaust");
+    /** 列车汽笛·蒸汽（汽笛六面邻接蒸汽引擎、红石上升沿触发，单次；自定义客户端实例做 256/512 距离曲线）。 */
+    public static final DeferredHolder<SoundEvent, SoundEvent> TRAIN_HORN_STEAM =
+            register("train_horn_steam");
+    /** 列车汽笛·柴油（邻接 CDG 三种柴油机任一）。 */
+    public static final DeferredHolder<SoundEvent, SoundEvent> TRAIN_HORN_DIESEL =
+            register("train_horn_diesel");
+    /** 列车汽笛·电动（邻接 CCA 电动马达/模块化电池）。 */
+    public static final DeferredHolder<SoundEvent, SoundEvent> TRAIN_HORN_ELEC =
+            register("train_horn_elec");
 
     private static DeferredHolder<SoundEvent, SoundEvent> register(String name) {
         return SOUNDS.register(name, () ->

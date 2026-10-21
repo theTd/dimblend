@@ -78,5 +78,17 @@
         "attenuation_distance": 32
       }
     ]
+  },
+  "train_horn_steam": {
+    "category": "blocks",
+    "sounds": ["dimblend_experience:train_horn_steam"]
+  },
+  "train_horn_diesel": {
+    "category": "blocks",
+    "sounds": ["dimblend_experience:train_horn_diesel"]
+  },
+  "train_horn_elec": {
+    "category": "blocks",
+    "sounds": ["dimblend_experience:train_horn_elec"]
   }
 }

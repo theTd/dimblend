@@ -30,6 +30,9 @@ import dimblend.experience.gametest.ItemDrainPipeRefillGameTests;
 import dimblend.experience.gametest.ItemDrainHudSyncGameTests;
 import dimblend.experience.gametest.KineticComponentScanGameTests;
 import dimblend.experience.gametest.KineticUnloadedShareGameTests;
+import dimblend.experience.gametest.TrainHornCcaGameTests;
+import dimblend.experience.gametest.TrainHornCdgGameTests;
+import dimblend.experience.gametest.TrainHornGameTests;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.event.RegisterGameTestsEvent;
 
@@ -113,6 +116,7 @@ public class DimBlend {
             event.register(KineticComponentScanGameTests.class);
             event.register(KineticUnloadedShareGameTests.class);
             event.register(CdgKineticOverloadGameTests.class);
+            event.register(TrainHornGameTests.class);
         }
         // 引用 Sable 类：仅 Sable 在场时注册（dev 下 localRuntime 常驻）
         if (ModList.get().isLoaded("sable")) {
@@ -128,6 +132,11 @@ public class DimBlend {
         if (ModList.get().isLoaded("createdieselgenerators")) {
             event.register(CdgPlacementGuardGameTests.class);
             event.register(CdgTankCapacityGameTests.class);
+            event.register(TrainHornCdgGameTests.class);
+        }
+        // 引用 CCA 类：仅 CCA 在场（dev 下 -PwithCca）时注册
+        if (ModList.get().isLoaded("createaddition")) {
+            event.register(TrainHornCcaGameTests.class);
         }
         // 引用 Create: Fire Fighting Add 类：仅该 addon 在场（dev 下 -PwithFireHose）时注册
         if (ModList.get().isLoaded("createfirefightingadd")) {
