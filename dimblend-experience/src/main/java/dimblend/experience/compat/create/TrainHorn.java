@@ -47,8 +47,8 @@ import org.jetbrains.annotations.Nullable;
  * <li>音高：按汽笛尺寸（小/中/大）读 Config 每音效独立 9 键，服务端取值随包下发，
  * 客户端不读本地配置（无双端漂移）；引擎钳制区间 [0.5, 2.0] 与
  * {@code SoundEngine.calculatePitch} 一致。</li>
- * <li>锁定：时长 = 素材实测时长（ffprobe：steam 2.60s / diesel 3.04s / elec 3.06s，
- * 换素材须同步改 {@link HornKind#durationTicks}），存服务端 BE（{@link TrainHornStateAccess}，
+ * <li>锁定：时长 = 素材实测时长（ffprobe：steam 2.60s / diesel 3.04s / elec 3.43s
+ * （2026-10-22 换正确素材），换素材须同步改 {@link HornKind#durationTicks}），存服务端 BE（{@link TrainHornStateAccess}，
  * 纯内存不落盘，区块卸载/重进清零——同 SteamEngineOverload 口径）。</li>
  * <li>声音下发：自定义 payload 广播到投影后世界坐标 528 格内玩家；客户端
  * {@code TrainHornSoundInstance} 每 tick 按 256 格全音量 / 512 格衰减至零的曲线
@@ -69,7 +69,7 @@ public final class TrainHorn {
     public enum HornKind {
         STEAM(ModSounds.TRAIN_HORN_STEAM, 55, 0.60D),
         DIESEL(ModSounds.TRAIN_HORN_DIESEL, 64, 0.08D),
-        ELEC(ModSounds.TRAIN_HORN_ELEC, 64, 0.35D);
+        ELEC(ModSounds.TRAIN_HORN_ELEC, 72, 0.35D);
 
         private final DeferredHolder<SoundEvent, SoundEvent> sound;
         /** 锁定/张嘴时长（tick）：素材时长上取整 + 少量收尾余量。 */

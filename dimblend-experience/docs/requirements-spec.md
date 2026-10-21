@@ -1172,7 +1172,9 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
   素材已降混单声道（立体声源 OpenAL 不做空间化，同 D4 先例）。pitch 服务端权威
   （SERVER 配置 9 键随包下发，客户端不读本地配置，无双端漂移），引擎钳 [0.5,2.0]。
 - L5 距离/时长常量：锁定时长=素材实测（ffprobe 单声道版 steam 2.60s→55 tick、
-  diesel 3.04s→64、elec 3.06s→64），换素材须同步改 `TrainHorn.HornKind`。
+  diesel 3.04s→64、elec 3.43s→72），换素材须同步改 `TrainHorn.HornKind`。
+  （2026-10-22 elec 换正确素材：用户补供 `TrainHorn_Elec (1).ogg` 3.43s，
+  原 `TrainHorn_Elec.ogg` 3.04s 为发错的素材，已降混单声道入库替换。）
 - L6 范围：静止世界 + Sable 结构（声音按结构当前世界位置路由，粒子/声像每 tick
   重投影跟随）；Create contraption（活塞/轴承上的汽笛）不管。**在案限制**：Sable
   结构旋转（yaw）后音符粒子的「前冲」方向取 plot 坐标系的汽笛 FACING，不随结构
