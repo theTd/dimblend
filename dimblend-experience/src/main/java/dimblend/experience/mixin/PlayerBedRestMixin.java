@@ -3,6 +3,8 @@ package dimblend.experience.mixin;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dimblend.experience.exploration.BedRestRules;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.food.FoodData;
 import org.spongepowered.asm.mixin.Mixin;
@@ -29,14 +31,16 @@ public abstract class PlayerBedRestMixin {
             original.call(food, player);
             return;
         }
-        if (++this.dimblend$bedRestTicks >= BedRestRules.HEAL_INTERVAL_TICKS) {
-            this.dimblend$bedRestTicks = 0;
+        int ticks = ++this.dimblend$bedRestTicks;
+        if (!this.dimblend$bedRestWarmedUp && ticks >= BedRestRules.REST_WARMUP_TICKS) {
+            // 预热完成后给一次 30 秒生命恢复 II（amplifier 1），本段睡眠不再重复给；
+            // 血量交给效果自然结算，不做任何血量检测
             this.dimblend$bedRestWarmedUp = true;
-            player.heal(BedRestRules.HEAL_AMOUNT);
+            player.addEffect(new MobEffectInstance(MobEffects.REGENERATION,
+                    BedRestRules.REST_REGENERATION_DURATION_TICKS, 1));
         }
-        if (this.dimblend$bedRestWarmedUp && (player.getHealth() < player.getMaxHealth()
-                ? this.dimblend$bedRestTicks % BedRestRules.WOUNDED_PARTICLE_INTERVAL_TICKS == 0
-                : this.dimblend$bedRestTicks == 0)) {
+        if (this.dimblend$bedRestWarmedUp
+                && ticks % BedRestRules.HEART_PARTICLE_INTERVAL_TICKS == 0) {
             BedRestRules.showRestHearts(player);
         }
     }

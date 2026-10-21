@@ -97,7 +97,7 @@ public final class BedRestGameTests {
     }
 
     @GameTest(template = "empty", templateNamespace = "dimblend_sleep", timeoutTicks = 60)
-    public static void peacefulRestStillUsesOnlySlowHealing(GameTestHelper helper) {
+    public static void peacefulRestWaitsWarmupThenGrantsRegeneration(GameTestHelper helper) {
         var level = helper.getLevel();
         var difficulty = level.getDifficulty();
         var player = player(helper);
@@ -107,9 +107,19 @@ public final class BedRestGameTests {
             player.setHealth(10);
             player.startSleepInBed(pos);
             tick(player, 99);
-            helper.assertTrue(player.getHealth() == 10, "peaceful automatic healing must wait during rest");
+            helper.assertTrue(player.getHealth() == 10 && !player.hasEffect(MobEffects.REGENERATION),
+                    "peaceful automatic healing must wait during rest");
             tick(player, 1);
-            helper.assertTrue(player.getHealth() == 11, "peaceful rest heals half a heart per 100 ticks");
+            var granted = player.getEffect(MobEffects.REGENERATION);
+            helper.assertTrue(granted != null && granted.getAmplifier() == 1,
+                    "rest grants regeneration II after the 100-tick warmup");
+            helper.assertTrue(granted.getDuration() > 550 && granted.getDuration() <= 600,
+                    "rest regeneration lasts thirty seconds, got " + granted.getDuration());
+            tick(player, 1);
+            helper.assertTrue(player.getHealth() == 11,
+                    "the first regeneration pulse lands on the tick right after the grant");
+            tick(player, 25);
+            helper.assertTrue(player.getHealth() == 12, "regeneration II pulses every 25 ticks");
             helper.succeed();
         } finally {
             if (player.isSleeping()) player.stopSleepInBed(true, true);
@@ -118,7 +128,7 @@ public final class BedRestGameTests {
     }
 
     @GameTest(template = "empty", templateNamespace = "dimblend_sleep", timeoutTicks = 60)
-    public static void restFreezesHungerAndHealsSlowlyThenAwakeDepletionResumes(GameTestHelper helper) {
+    public static void restFreezesHungerAndRegeneratesThenAwakeDepletionResumes(GameTestHelper helper) {
         var level = helper.getLevel();
         var player = player(helper);
         var pos = placeBed(helper);
@@ -131,9 +141,11 @@ public final class BedRestGameTests {
         try {
             helper.assertTrue(player.startSleepInBed(pos).right().isPresent(), "rest must start");
             tick(player, 99);
-            helper.assertTrue(player.getHealth() == 10, "rest must not use fast saturation regeneration");
+            helper.assertTrue(player.getHealth() == 10 && !player.hasEffect(MobEffects.REGENERATION),
+                    "rest grants no regeneration before the warmup completes");
             tick(player, 1);
-            helper.assertTrue(player.getHealth() == 11, "100 sleep ticks restore exactly half a heart");
+            helper.assertTrue(player.hasEffect(MobEffects.REGENERATION),
+                    "rest grants regeneration II at its 100th tick");
             helper.assertTrue(food.getFoodLevel() == 20 && food.getSaturationLevel() == 5
                             && food.getExhaustionLevel() == 6,
                     "sleep freezes hunger, saturation and exhaustion even with the hunger effect");
@@ -141,7 +153,7 @@ public final class BedRestGameTests {
             food.setFoodLevel(0);
             food.setSaturation(0);
             tick(player, 100);
-            helper.assertTrue(player.getHealth() == 12 && food.getFoodLevel() == 0,
+            helper.assertTrue(player.getHealth() == 14 && food.getFoodLevel() == 0,
                     "rest regeneration works at zero hunger without starvation damage");
 
             player.stopSleepInBed(true, true);
@@ -153,7 +165,13 @@ public final class BedRestGameTests {
             player.setHealth(10);
             helper.assertTrue(player.startSleepInBed(pos).right().isPresent(), "player can rest again");
             tick(player, 99);
-            helper.assertTrue(player.getHealth() == 10, "a new rest must wait another full healing interval");
+            var lingering = player.getEffect(MobEffects.REGENERATION);
+            helper.assertTrue(lingering == null || lingering.getDuration() < 500,
+                    "a new rest must wait another full warmup before re-granting regeneration");
+            tick(player, 1);
+            var refreshed = player.getEffect(MobEffects.REGENERATION);
+            helper.assertTrue(refreshed != null && refreshed.getDuration() > 550,
+                    "the new rest re-grants a full thirty seconds at its own 100th tick");
             helper.succeed();
         } finally {
             if (player.isSleeping()) player.stopSleepInBed(true, true);
@@ -161,7 +179,7 @@ public final class BedRestGameTests {
     }
 
     @GameTest(template = "empty", templateNamespace = "dimblend_sleep", timeoutTicks = 60)
-    public static void heartsWaitForHealingAndContinueLessOftenAtFullHealth(GameTestHelper helper) {
+    public static void heartsWaitForWarmupAndPulseAtTheBedFoot(GameTestHelper helper) {
         var level = helper.getLevel();
         List<ClientboundLevelParticlesPacket> hearts = new ArrayList<>();
         var player = player(helper, packet -> {
@@ -175,28 +193,29 @@ public final class BedRestGameTests {
             helper.assertTrue(player.startSleepInBed(pos).right().isPresent(), "rest must start");
             tick(player, 99);
             helper.assertTrue(hearts.isEmpty() && player.getHealth() == 10,
-                    "healing and heart feedback must both wait the first five seconds");
+                    "regeneration and heart feedback must both wait the first five seconds");
             tick(player, 1);
-            helper.assertTrue(player.getHealth() == 11 && hearts.size() == 1 && hearts.getFirst().getCount() == 3,
-                    "first healing pulse emits three hearts after exactly 100 ticks");
+            helper.assertTrue(hearts.size() == 1 && hearts.getFirst().getCount() == 3,
+                    "the warmed-up rest emits three hearts every second");
             var burst = hearts.getFirst();
-            helper.assertTrue(player.position().add(0.0, 0.6, 0.0)
-                            .distanceToSqr(burst.getX(), burst.getY(), burst.getZ()) < 1.0e-6,
-                    "feedback must originate above the resting body");
+            // 床 FACING=EAST：脚在西侧一格；散发中心须落在床尾上方，第一人称才看得到
+            var footCenter = helper.absolutePos(HEAD).west().getCenter().add(0.0, 0.6, 0.0);
+            helper.assertTrue(footCenter.distanceToSqr(burst.getX(), burst.getY(), burst.getZ()) < 1.0e-6,
+                    "feedback must originate above the foot of the bed");
             tick(player, 19);
-            helper.assertTrue(hearts.size() == 1, "wounded heart bursts must be spaced one second apart");
+            helper.assertTrue(hearts.size() == 1, "heart bursts must be spaced one second apart");
             tick(player, 1);
-            helper.assertTrue(hearts.size() == 2 && hearts.getLast().getCount() == 3 && player.getHealth() == 11,
-                    "wounded rest shows periodic hearts between healing pulses");
+            helper.assertTrue(hearts.size() == 2 && hearts.getLast().getCount() == 3,
+                    "rest shows periodic hearts between regeneration pulses");
 
             player.setHealth(player.getMaxHealth());
             tick(player, 79);
-            helper.assertTrue(hearts.size() == 2, "full health must reduce particle frequency");
+            helper.assertTrue(hearts.size() == 2 + 3, "full health must not reduce particle frequency");
             tick(player, 1);
-            helper.assertTrue(hearts.size() == 3 && hearts.getLast().getCount() == 1,
-                    "full health retains one heart at the next five-second pulse");
+            helper.assertTrue(hearts.size() == 2 + 4 && hearts.getLast().getCount() == 3,
+                    "full health retains three hearts per pulse");
             tick(player, 100);
-            helper.assertTrue(hearts.size() == 4 && hearts.getLast().getCount() == 1
+            helper.assertTrue(hearts.size() == 2 + 4 + 5
                             && player.getHealth() == player.getMaxHealth(),
                     "full-health heart feedback continues without increasing health past its maximum");
             helper.succeed();
@@ -208,7 +227,7 @@ public final class BedRestGameTests {
     }
 
     @GameTest(template = "empty", templateNamespace = "dimblend_sleep", timeoutTicks = 60)
-    public static void wakingAndImmediateReentryResetHealingAndHeartWarmup(GameTestHelper helper) {
+    public static void wakingAndImmediateReentryResetWarmupAndHearts(GameTestHelper helper) {
         var level = helper.getLevel();
         List<ClientboundLevelParticlesPacket> hearts = new ArrayList<>();
         var player = player(helper, packet -> {
@@ -221,18 +240,18 @@ public final class BedRestGameTests {
         try {
             player.startSleepInBed(pos);
             tick(player, 150);
-            helper.assertTrue(player.getHealth() == 11 && hearts.size() == 3,
-                    "fixture must reach warmed-up rest with a partial healing interval");
+            helper.assertTrue(hearts.size() == 3 && player.getHealth() == 12,
+                    "fixture must reach warmed-up rest with regeneration running");
             player.stopSleepInBed(true, true);
             int previous = hearts.size();
             // Re-enter without an intervening awake tick: the wake hook must clear both timers.
             player.startSleepInBed(pos);
             tick(player, 99);
-            helper.assertTrue(hearts.size() == previous && player.getHealth() == 11,
-                    "immediate reentry must wait another complete warmup for healing and hearts");
+            helper.assertTrue(hearts.size() == previous,
+                    "immediate reentry must wait another complete warmup for hearts");
             tick(player, 1);
-            helper.assertTrue(hearts.size() == previous + 1 && player.getHealth() == 12,
-                    "the new rest starts healing and heart feedback at its own 100th tick");
+            helper.assertTrue(hearts.size() == previous + 1,
+                    "the new rest restarts heart feedback at its own 100th tick");
             player.stopSleepInBed(true, true);
             previous = hearts.size();
             tick(player, 20);
