@@ -9,9 +9,11 @@ import dimblend.experience.compat.create.ItemDrainHud;
 import dimblend.experience.compat.create.ItemDrainPipeRefill;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.CropBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -26,8 +28,9 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
  * 分液池催熟「击发点之后」路径的运行时覆盖（{@link ItemDrainHudSyncGameTests} 只到
  * 上弦/卸弦状态机为止，capability 注水→扣水→作物 age 增长此前零覆盖，见 2026-10-22
  * 新存档“倒计时走但不催不扣”排查）：注 1000mb 水 + 1 秒周期 + 一株小麦，击发后断言
- * 作物 age 增长且水箱恰扣 10mb；另锁定候选口径——草方块不算候选（户外农田恒有草，
- * 算候选则“无作物停走”永不触发且击发抽中草白扣水）。
+ * 作物 age 增长且水箱恰扣 10mb；带数据组件的存水（供水链路差异会附加组件，裸探头
+ * 匹配失配致 "cannot drain" 空走，2026-10-23 实机事故）同样击发扣水；另锁定候选口径——
+ * 草方块不算候选（户外农田恒有草，算候选则“无作物停走”永不触发且击发抽中草白扣水）。
  *
  * <p>节拍时序：击发 = 上弦（首个节拍）后 2 节拍 ≈ 20 tick，最晚 30 tick；35 tick 处
  * 断言恰好接住唯一一次击发（第二次击发最早 41 tick）。配置翻转约定同
@@ -53,8 +56,12 @@ public final class ItemDrainGrowthFireGameTests {
                 Capabilities.FluidHandler.BLOCK, helper.absolutePos(DRAIN), Direction.DOWN);
         helper.assertTrue(handler != null && handler.getTanks() >= 1,
                 "item drain must expose a DOWN fluid capability");
-        int filled = handler.fill(new FluidStack(Fluids.WATER, mb), IFluidHandler.FluidAction.EXECUTE);
+        int filled = handler.fill(water(mb), IFluidHandler.FluidAction.EXECUTE);
         helper.assertTrue(filled == mb, "tank must accept " + mb + " mb water, filled " + filled);
+    }
+
+    private static FluidStack water(int mb) {
+        return new FluidStack(Fluids.WATER, mb);
     }
 
     private static int storedWater(GameTestHelper helper) {
@@ -86,6 +93,42 @@ public final class ItemDrainGrowthFireGameTests {
         helper.runAfterDelay(35, () -> {
             int age = helper.getBlockState(CROP).getValue(CropBlock.AGE);
             helper.assertTrue(age > 0, "wheat age must grow after the boost fires, got " + age);
+            int stored = storedWater(helper);
+            helper.assertTrue(stored == 990, "one fire must drain exactly 10 mb, stored " + stored);
+
+            Config.ITEM_DRAIN_GROWTH_INTERVAL_SECONDS.set(30); // 还原默认，防影响后续批次/复跑
+            helper.succeed();
+        });
+    }
+
+    /**
+     * 回归（2026-10-23 实机 "cannot drain 10 mb" 事故）：存水带数据组件时（供水链路
+     * 差异会给水栈附加组件），裸 {@code FluidStack(WATER)} 探头在
+     * {@code FluidTank.drain} 的类型+组件匹配下失配，倒计时空走、不催不扣；探头
+     * 必须派生自水箱实存 stack。
+     */
+    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience",
+            timeoutTicks = 200, batch = "item_drain_fire_components")
+    public static void fireDrainsComponentCarryingWater(GameTestHelper helper) {
+        Config.ITEM_DRAIN_GROWTH.set(true);
+        Config.ITEM_DRAIN_GROWTH_INTERVAL_SECONDS.set(1);
+        Config.ITEM_DRAIN_GROWTH_COST_MB.set(10);
+        helper.setBlock(DRAIN, AllBlocks.ITEM_DRAIN.get().defaultBlockState());
+        helper.setBlock(FARMLAND, Blocks.FARMLAND.defaultBlockState());
+        helper.setBlock(CROP, Blocks.WHEAT.defaultBlockState());
+        ItemDrainPipeRefill.openInsertion((ItemDrainBlockEntity) helper.getBlockEntity(DRAIN));
+        IFluidHandler handler = helper.getLevel().getCapability(
+                Capabilities.FluidHandler.BLOCK, helper.absolutePos(DRAIN), Direction.DOWN);
+        helper.assertTrue(handler != null && handler.getTanks() >= 1,
+                "item drain must expose a DOWN fluid capability");
+        FluidStack stack = water(1000);
+        stack.set(DataComponents.CUSTOM_NAME, Component.literal("well water"));
+        int filled = handler.fill(stack, IFluidHandler.FluidAction.EXECUTE);
+        helper.assertTrue(filled == 1000, "tank must accept 1000 mb component water, filled " + filled);
+
+        helper.runAfterDelay(35, () -> {
+            int age = helper.getBlockState(CROP).getValue(CropBlock.AGE);
+            helper.assertTrue(age > 0, "wheat age must grow with component-carrying water, got " + age);
             int stored = storedWater(helper);
             helper.assertTrue(stored == 990, "one fire must drain exactly 10 mb, stored " + stored);
 

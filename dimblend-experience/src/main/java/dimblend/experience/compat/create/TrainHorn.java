@@ -10,6 +10,7 @@ import com.simibubi.create.content.decoration.steamWhistle.WhistleBlock.WhistleS
 import com.simibubi.create.content.kinetics.steamEngine.SteamEngineBlock;
 
 import dimblend.experience.Config;
+import dimblend.experience.DimBlend;
 import dimblend.experience.ModSounds;
 import dimblend.experience.compat.sable.SableWorldPosition;
 import net.minecraft.core.BlockPos;
@@ -115,7 +116,10 @@ public final class TrainHorn {
         }
         access.dimblend$setHornLock(now + kind.durationTicks(), kind.ordinal());
         WhistleSize size = state.getValue(WhistleBlock.SIZE);
-        TrainHornPayload payload = new TrainHornPayload(pos, (byte) kind.ordinal(), pitchFor(kind, size));
+        float pitch = pitchFor(kind, size);
+        // 实机排障（2026-10-23 报"音高仍反"）：留下服务端权威的 尺寸→音高 证据
+        DimBlend.LOGGER.debug("train horn at {}: kind={}, size={}, pitch={}", pos, kind, size, pitch);
+        TrainHornPayload payload = new TrainHornPayload(pos, (byte) kind.ordinal(), pitch);
         Vec3 world = SableWorldPosition.project(level, pos.getCenter());
         Packet<?> packet = new ClientboundCustomPayloadPacket(payload);
         level.getServer().getPlayerList()

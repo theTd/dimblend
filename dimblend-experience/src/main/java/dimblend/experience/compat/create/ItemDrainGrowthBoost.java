@@ -60,8 +60,10 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler.FluidAction;
  *
  * <p>消耗口径：只认水（与保湿同一水箱，非水时保湿/催熟都不工作）；扣水走公开
  * capability（DOWN 面，理由同 {@link ItemDrainIrrigation}），SIMULATE 先验、
- * 不足则本拍不催不扣；扣水后手动标脏 + 同步（capability 排液不走 behaviour 的
- * updateFluids）。成本 0 = 免费催熟。每次周期只催一株，无论成功与否不重试。</p>
+ * 不足则本拍不催不扣；探头派生自水箱实存 stack（保数据组件）——{@code FluidTank}
+ * 按类型+组件匹配，存水带组件时裸水探头抽不出。扣水后手动标脏 + 同步（capability
+ * 排液不走 behaviour 的 updateFluids）。成本 0 = 免费催熟。每次周期只催一株，
+ * 无论成功与否不重试。</p>
  */
 public final class ItemDrainGrowthBoost {
 
@@ -137,11 +139,14 @@ public final class ItemDrainGrowthBoost {
         }
         int cost = Config.ITEM_DRAIN_GROWTH_COST_MB.get();
         if (cost > 0) {
-            // SIMULATE 先验再 EXECUTE：并发抽水导致不足时本拍不催不扣，残水留给后续周期
-            FluidStack probe = new FluidStack(Fluids.WATER, cost);
+            // SIMULATE 先验再 EXECUTE：并发抽水导致不足时本拍不催不扣，残水留给后续周期。
+            // 探头必须派生自 stored 保数据组件：FluidTank.drain(FluidStack) 按
+            // isSameFluidSameComponents 匹配，存水一旦带组件（供水链路差异，
+            // 2026-10-23 实机 "cannot drain 10 mb" 事故）裸探头失配、永远抽不出
+            FluidStack probe = stored.copyWithAmount(cost);
             if (handler.drain(probe.copy(), FluidAction.SIMULATE).getAmount() < cost) {
-                DimBlend.LOGGER.debug("drain growth skipped at {}: cannot drain {} mb",
-                        be.getBlockPos(), cost);
+                DimBlend.LOGGER.debug("drain growth skipped at {}: cannot drain {} mb of {} (components={})",
+                        be.getBlockPos(), cost, stored.getFluid(), stored.getComponentsPatch());
                 return;
             }
             grow(level, random, target);
