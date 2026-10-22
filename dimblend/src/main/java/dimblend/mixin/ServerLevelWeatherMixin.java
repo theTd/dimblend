@@ -39,7 +39,10 @@ public abstract class ServerLevelWeatherMixin {
         // The Overworld is already constructed here; rotating's own storage is not yet available.
         var weather = server.overworld().getDataStorage().computeIfAbsent(
                 RotatingWeatherData.factory(data), "dimblend_rotating_weather");
-        return new RotatingLevelData(server.getWorldData(), data, weather);
+        // Wrap the overworld primary data directly (not the vanilla DerivedLevelData in `data`):
+        // reads are identical either way, and RotatingLevelData.setDayTime must reach the primary
+        // for sleeping-through-the-night to advance the shared clock.
+        return new RotatingLevelData(server.getWorldData(), server.getWorldData().overworldData(), weather);
     }
 
     @Inject(method = "advanceWeatherCycle", at = @At("HEAD"), cancellable = true)

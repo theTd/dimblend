@@ -76,6 +76,7 @@
 - [x] 生成轨道：**桦木宽轨**，有路基（`CorridorTrackProfile.SURFACE`）
 - [x] 时间恢复正常流逝
 - [x] 天气走原版（全维度唯一保留天气的 band；除地表外所有 band 一律锁定晴，机制见「地下」条目）
+- [x] 世界时钟与主世界共享且可写（2026-10-23 修订）：`RotatingLevelData.setDayTime` 穿透写主世界 PrimaryLevelData——原版 `DerivedLevelData` 该 setter 为空，曾致 rotating 睡觉跳夜静默失效；rotating 自身不会叠速——`MinecraftServer.createLevels` 以 `tickTime=false` 构造非主世界维度，`ServerLevel.tickTime()` 体不执行，共享时钟推进完全来自主世界自身逐 tick 自增。`/time add` 对全维度做相对写，rotating 穿透会与主世界回声叠成 +2X，由 `TimeCommandMixin` 跳过 rotating 那一笔（`/time set` 绝对幂等写不受影响）。地表 band 时间不锁，睡觉跳夜、`/time` 在 rotating 由此生效（写的就是共享时钟，主世界同步到早晨）
 - [x] 地表 band 不再切深度（`OverworldSlice.SURFACE`：源 Y-64–320，offset 0，无顶/底封）；Y32 以下的石头/深板岩替换为基岩（严格 y<32，仅 `STONE`/`DEEPSLATE`，空气/流体/矿石/结构保留，洞穴仍可走）
 - [x] 仅生成 煤 / 铜 / 铁 / 金 / 锌 五种矿石（地表 lane 上其它矿物堆直接取消；锌走 `c:ores/zinc` + 方块 id）
 - [x] 取消晶洞类 feature（地表 lane 在 `ConfiguredFeature.place` 拦截 `GeodeConfiguration`，原版紫水晶及走同一配置的模组晶洞一并取消；地下及其它 lane 不拦）

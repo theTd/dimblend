@@ -39,6 +39,7 @@
     "SectionStorageAccessor",
     "ServerLevelCachesAccessor",
     "ServerLevelWeatherMixin",
+    "TimeCommandMixin",
     "SimpleRegionStorageAccessor",
     "StructureCheckAccessor",
     "ChunkMapAccessor",

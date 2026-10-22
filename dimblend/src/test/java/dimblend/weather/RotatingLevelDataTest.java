@@ -3,6 +3,7 @@ package dimblend.weather;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.lang.reflect.Proxy;
+import java.util.concurrent.atomic.AtomicLong;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.storage.DerivedLevelData;
 import net.minecraft.world.level.storage.ServerLevelData;
@@ -11,14 +12,17 @@ import org.junit.jupiter.api.Test;
 class RotatingLevelDataTest {
     @Test
     void clearsDerivedWeatherWithoutWritingToOverworld() {
-        ServerLevelData overworld = rainingOverworld();
+        AtomicLong overworldDayTime = new AtomicLong(12345L);
+        ServerLevelData overworld = rainingOverworld(overworldDayTime);
         ServerLevelData derived = new DerivedLevelData(null, overworld);
         // Reproduce the original bug: vanilla custom-dimension setters silently do nothing.
         derived.setRaining(false);
+        derived.setDayTime(42L);
         assertTrue(derived.isRaining());
+        assertEquals(12345L, derived.getDayTime());
 
         RotatingWeatherData weather = RotatingWeatherData.copyOf(derived);
-        ServerLevelData rotating = new RotatingLevelData(null, derived, weather);
+        ServerLevelData rotating = new RotatingLevelData(null, overworld, weather);
         weather.setDirty(false);
         setWeather(rotating, 6000, 0, false, false);
 
@@ -26,19 +30,22 @@ class RotatingLevelDataTest {
         assertTrue(weather.isDirty());
         assertWeather(overworld, 0, 12000, 18000, true, true);
         assertEquals(12345L, rotating.getDayTime());
+        // Deliberate time writes in rotating (sleep time-skip, /time set) reach the shared clock.
         rotating.setDayTime(42L);
-        assertEquals(12345L, rotating.getDayTime(), "Non-weather derived behavior must stay intact");
+        assertEquals(42L, rotating.getDayTime(), "rotating day-time writes must land on the shared overworld clock");
+        assertEquals(42L, overworldDayTime.get(), "write-through must target the overworld primary data");
     }
 
     @Test
     void weatherRemainsWritableAfterSaveAndReload() {
-        ServerLevelData derived = new DerivedLevelData(null, rainingOverworld());
+        ServerLevelData overworld = rainingOverworld(new AtomicLong(12345L));
+        ServerLevelData derived = new DerivedLevelData(null, overworld);
         RotatingWeatherData weather = RotatingWeatherData.copyOf(derived);
-        ServerLevelData rotating = new RotatingLevelData(null, derived, weather);
+        ServerLevelData rotating = new RotatingLevelData(null, overworld, weather);
         setWeather(rotating, 6000, 0, false, false);
 
         RotatingWeatherData loaded = RotatingWeatherData.load(weather.save(new CompoundTag(), null));
-        ServerLevelData reloaded = new RotatingLevelData(null, derived, loaded);
+        ServerLevelData reloaded = new RotatingLevelData(null, overworld, loaded);
         assertWeather(reloaded, 6000, 0, 0, false, false);
         assertFalse(loaded.isDirty());
 
@@ -50,28 +57,33 @@ class RotatingLevelDataTest {
         reloaded.setThundering(true);
         assertTrue(loaded.isDirty());
         RotatingWeatherData rainy = RotatingWeatherData.load(loaded.save(new CompoundTag(), null));
-        assertWeather(new RotatingLevelData(null, derived, rainy), 0, 700, 900, true, true);
+        assertWeather(new RotatingLevelData(null, overworld, rainy), 0, 700, 900, true, true);
     }
 
     @Test
     void repeatedClearDoesNotDirtyUnchangedSavedWeather() {
-        ServerLevelData derived = new DerivedLevelData(null, rainingOverworld());
+        ServerLevelData overworld = rainingOverworld(new AtomicLong(12345L));
+        ServerLevelData derived = new DerivedLevelData(null, overworld);
         RotatingWeatherData weather = RotatingWeatherData.copyOf(derived);
-        ServerLevelData rotating = new RotatingLevelData(null, derived, weather);
+        ServerLevelData rotating = new RotatingLevelData(null, overworld, weather);
         setWeather(rotating, 6000, 0, false, false);
         weather.setDirty(false);
         setWeather(rotating, 6000, 0, false, false);
         assertFalse(weather.isDirty());
     }
 
-    private static ServerLevelData rainingOverworld() {
+    private static ServerLevelData rainingOverworld(AtomicLong dayTime) {
         return (ServerLevelData) Proxy.newProxyInstance(ServerLevelData.class.getClassLoader(),
                 new Class<?>[]{ServerLevelData.class}, (proxy, method, args) -> switch (method.getName()) {
                     case "getClearWeatherTime" -> 0;
                     case "getRainTime" -> 12000;
                     case "getThunderTime" -> 18000;
                     case "isRaining", "isThundering" -> true;
-                    case "getDayTime" -> 12345L;
+                    case "getDayTime" -> dayTime.get();
+                    case "setDayTime" -> {
+                        dayTime.set((Long) args[0]);
+                        yield null;
+                    }
                     default -> throw new AssertionError("Unexpected access to Overworld: " + method.getName());
                 });
     }
