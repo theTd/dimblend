@@ -68,6 +68,7 @@
 - [x] 折越门对未授权实体是墙、对 Sable（含列车）是空气（`WarpGateBlock.getCollisionShape` 按 CollisionContext 分流；生存玩家需站在 Sable 结构上，创造/旁观/Create 车厢放行；`WarpGatePassageGuard` 只处理卡进门板）
 - [x] 走廊拱洞外 1 格壳内流体替换为玻璃（`OakTrackCorridor.sealVaultShell` / `glassForFluid`：与拱洞空气相邻的流体格全部玻璃化，含顶部 dy=maxDy+1；水/岩浆用蓝/红染色玻璃，其余流体用普通玻璃；不替换路基（Y=63）及以下）
 - [x] 左下角物品栏左侧显示当前区域序号 + 以玩家当前位置为准的行进进度（`BandProgressHud`：护甲行上方的进度条，区域序号居中，`BandInfoSync` 推送 band_size；生存/冒险/创造显示，旁观隐藏）
+- [x] 进度条正上方再挂两行居中文字（2026-10-23）：上「当前区域编号-区域名」、下「前方到达：…」；区域名映射 地表/地下/下界/天域/暮色/星光/末地/深暗/虚空（`BandLaneNames`，不识别的 mod 区域兜底「异界」）。「前方」只按位置取远离出生点一格（0→+1、负→-1、正→+1），与移动方向无关；下一格是固定剧本（0-20/32/33）或刚开地表连段的强制收尾格 → 显示具体名，随机抽选 → 显示「未知」（`BandLaneAssigner.scriptedOutwardDelegate`，随机结果不下发客户端）；`BandLaneSync` 按区域变化推送 当前lane+下一lane
 
 ## 三、分纬度规则
 

@@ -9,12 +9,12 @@ import org.junit.jupiter.api.Test;
 class ClientBandLaneTest {
     @AfterEach
     void resetLane() {
-        ClientBandLane.apply("unknown");
+        ClientBandLane.apply("unknown", "");
     }
 
     @Test
     void endLaneIsEnd() {
-        ClientBandLane.apply("end");
+        ClientBandLane.apply("end", "");
         assertTrue(ClientBandLane.end());
         assertFalse(ClientBandLane.underground());
     }
@@ -22,7 +22,7 @@ class ClientBandLaneTest {
     @Test
     void otherLanesAreNotEnd() {
         for (String lane : new String[]{"surface", "underground", "nether", "twilight", "starlight", "unknown"}) {
-            ClientBandLane.apply(lane);
+            ClientBandLane.apply(lane, "");
             assertFalse(ClientBandLane.end(), lane);
         }
     }
@@ -30,7 +30,7 @@ class ClientBandLaneTest {
     @Test
     void endSkyLanesUseEndSkybox() {
         for (String lane : new String[]{"end", "deeperdarker"}) {
-            ClientBandLane.apply(lane);
+            ClientBandLane.apply(lane, "");
             assertTrue(ClientBandLane.endSky(), lane);
             assertFalse(ClientBandLane.netherSky(), lane);
             assertFalse(ClientBandLane.voidscape(), lane);
@@ -40,7 +40,7 @@ class ClientBandLaneTest {
     @Test
     void netherSkyLanesUseNetherEffects() {
         for (String lane : new String[]{"underground", "nether"}) {
-            ClientBandLane.apply(lane);
+            ClientBandLane.apply(lane, "");
             assertTrue(ClientBandLane.netherSky(), lane);
             assertFalse(ClientBandLane.endSky(), lane);
             assertFalse(ClientBandLane.voidscape(), lane);
@@ -49,7 +49,7 @@ class ClientBandLaneTest {
 
     @Test
     void voidscapeLaneUsesVoidscapeSkyNotEndOrNetherSkybox() {
-        ClientBandLane.apply("voidscape");
+        ClientBandLane.apply("voidscape", "");
         assertTrue(ClientBandLane.voidscape());
         assertFalse(ClientBandLane.endSky());
         assertFalse(ClientBandLane.netherSky());
@@ -59,7 +59,7 @@ class ClientBandLaneTest {
     @Test
     void otherLanesDoNotUseEndOrNetherSkybox() {
         for (String lane : new String[]{"surface", "twilight", "starlight", "aether", "voidscape", "unknown"}) {
-            ClientBandLane.apply(lane);
+            ClientBandLane.apply(lane, "");
             assertFalse(ClientBandLane.endSky(), lane);
             assertFalse(ClientBandLane.netherSky(), lane);
         }

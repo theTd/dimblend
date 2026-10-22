@@ -8,16 +8,23 @@ package dimblend.client;
  */
 public final class ClientBandLane {
     private static volatile String lane = "unknown";
+    private static volatile String nextLane = "";
 
     private ClientBandLane() {
     }
 
-    public static void apply(String lane) {
+    public static void apply(String lane, String nextLane) {
         ClientBandLane.lane = lane;
+        ClientBandLane.nextLane = nextLane;
     }
 
     public static String lane() {
         return lane;
+    }
+
+    /** Scripted outward-neighbor lane, "" = random draw (HUD 显示"未知")。 */
+    public static String nextLane() {
+        return nextLane;
     }
 
     /** True while the player stands in an underground slice band. */

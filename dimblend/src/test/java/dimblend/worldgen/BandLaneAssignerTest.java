@@ -92,6 +92,57 @@ class BandLaneAssignerTest {
     }
 
     @Test
+    void scriptedOutwardFollowsFixedScriptOnBothSides() {
+        BandLaneAssigner assigner = new BandLaneAssigner(PRODUCTION_KINDS, 7L);
+        // 0 → 1（固定地表）；19 → 20（固定地表）；31 → 32（固定末地，delegate 3）；32 → 33（固定虚空，delegate 8）
+        assertEquals(assigner.delegateIndex(1), assigner.scriptedOutwardDelegate(0));
+        assertEquals(assigner.delegateIndex(20), assigner.scriptedOutwardDelegate(19));
+        assertEquals(3, assigner.scriptedOutwardDelegate(31));
+        assertEquals(8, assigner.scriptedOutwardDelegate(32));
+        // 负侧镜像同一剧本：-19 → -20；-31 → -32；-32 → -33
+        assertEquals(assigner.delegateIndex(-20), assigner.scriptedOutwardDelegate(-19));
+        assertEquals(3, assigner.scriptedOutwardDelegate(-31));
+        assertEquals(8, assigner.scriptedOutwardDelegate(-32));
+    }
+
+    @Test
+    void scriptedOutwardIsMinusOneForRandomDraws() {
+        // 固定地表 20 向外不强制连段（附着只是可选项），21 为随机抽选 → -1
+        BandLaneAssigner assigner = new BandLaneAssigner(PRODUCTION_KINDS, 7L);
+        assertEquals(-1, assigner.scriptedOutwardDelegate(20));
+        assertEquals(-1, assigner.scriptedOutwardDelegate(-20));
+    }
+
+    @Test
+    void scriptedOutwardFollowsFreshSurfaceRunsAcrossSeeds() {
+        for (long seed = 0; seed < 64; seed++) {
+            assertFreshSurfaceRunsCloseOutward(new BandLaneAssigner(PRODUCTION_KINDS, seed), 21, 30, seed);
+            assertFreshSurfaceRunsCloseOutward(new BandLaneAssigner(PRODUCTION_KINDS, seed), -21, -30, seed);
+        }
+    }
+
+    /** 正侧 from=21,to=30；负侧 from=-21,to=-30。开段格 = 本地表且靠出生点侧邻居非地表。 */
+    private static void assertFreshSurfaceRunsCloseOutward(BandLaneAssigner assigner, int from, int to, long seed) {
+        int step = from < 0 ? -1 : 1;
+        for (int region = from; ; region += step) {
+            int here = assigner.delegateIndex(region);
+            int inward = assigner.delegateIndex(region - step);
+            int outward = assigner.scriptedOutwardDelegate(region);
+            if (PRODUCTION_KINDS[here] == BandLaneAssigner.SURFACE
+                    && PRODUCTION_KINDS[inward] != BandLaneAssigner.SURFACE) {
+                // 刚开的地表连段第一格：向外一格被强制收尾为同一地表 delegate
+                assertEquals(here, outward, "seed " + seed + " region " + region);
+            } else {
+                // 其余随机格（含连段延续格）向外都是抽选 → -1
+                assertEquals(-1, outward, "seed " + seed + " region " + region);
+            }
+            if (region == to) {
+                return;
+            }
+        }
+    }
+
+    @Test
     void missingOptionalModFallsBackAndStillCoversRemaining() {
         byte[] kinds = {
             BandLaneAssigner.SURFACE,

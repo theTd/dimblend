@@ -126,6 +126,24 @@ public final class BandLaneAssigner {
     }
 
     /**
+     * Scripted outward-neighbor delegate: the region one step farther from spawn
+     * (0 steps toward +1) when its assignment is <b>not</b> a random draw — fixed
+     * script distances (0–20, 32, 33) or the forced closer of a freshly opened
+     * surface run. Returns -1 for random-drawn regions (callers display "unknown").
+     * The walk to the neighbor fills the cache first so {@link #mustClose} sees it.
+     */
+    public int scriptedOutwardDelegate(int region) {
+        synchronized (this.cache) {
+            int next = region + (region < 0 ? -1 : 1);
+            int index = this.delegateIndex(next);
+            if (fixedKind(Math.abs(next)) >= 0 || this.mustClose(next)) {
+                return index;
+            }
+            return -1;
+        }
+    }
+
+    /**
      * True when {@code region}'s spawn-side neighbor opened a surface run that is still
      * length 1. Fixed surface at |20| does not open a run: attaching there is optional,
      * and the attached cell already has a surface neighbor so the outward cell stays free.

@@ -15,7 +15,10 @@ import net.minecraft.world.level.GameType;
  * at an 8px step plus the 9px sprite width of the last icon). It sits in the
  * bottom strip next to the hotbar with a small hotbar-style edge margin
  * (3px off the screen bottom, 6px off the hotbar), so it never overlaps the
- * armor/health rows. The band number is drawn centered on the bar.
+ * armor/health rows. The band number is drawn centered on the bar, and two
+ * centered lines sit right above it: "编号-当前区域名" over "前方到达：…"
+ * (random-drawn neighbors show 未知; names come from {@code BandLaneSync}
+ * pushes, mapped by {@link BandLaneNames}).
  *
  * <p>Visible in survival, adventure and creative; hidden in spectator
  * (vanilla {@code canHurtPlayer} is survival/adventure-only, so the gate
@@ -87,5 +90,15 @@ public final class BandProgressHud {
         }
         int textY = barTop + (BAR_HEIGHT - mc.font.lineHeight) / 2;
         graphics.drawCenteredString(mc.font, Integer.toString(region), left + BAR_WIDTH / 2, textY, 0xFFFFFFFF);
+
+        // 区域名两行居中挂在进度条正上方：上 = 当前「编号-区域名」，下 = 「前方到达：…」；
+        // 前方区域为随机抽选（或服务端尚未推送）时显示「未知」
+        int centerX = left + BAR_WIDTH / 2;
+        String nextLane = ClientBandLane.nextLane();
+        String nextText = "前方到达：" + (nextLane.isEmpty() ? "未知" : BandLaneNames.display(nextLane));
+        int nextY = barTop - 2 - mc.font.lineHeight;
+        graphics.drawCenteredString(mc.font, region + "-" + BandLaneNames.display(ClientBandLane.lane()),
+                centerX, nextY - mc.font.lineHeight, 0xFFFFFFFF);
+        graphics.drawCenteredString(mc.font, nextText, centerX, nextY, 0xFFFFFFFF);
     }
 }

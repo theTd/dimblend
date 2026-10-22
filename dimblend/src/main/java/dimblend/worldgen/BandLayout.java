@@ -53,6 +53,17 @@ public final class BandLayout {
     }
 
     /**
+     * Lane name of the region one step farther from spawn than {@code region} when that
+     * neighbor is scripted (fixed 0–20/32–33 or the forced closer of a freshly opened
+     * surface run), or null when it is a random draw — the HUD shows "未知" then.
+     */
+    @javax.annotation.Nullable
+    public String scriptedOutwardLaneName(int region) {
+        int index = this.assigner.scriptedOutwardDelegate(region);
+        return index < 0 ? null : laneName(this.delegates.get(index));
+    }
+
+    /**
      * True when blockX is a region-boundary column (local X == 0) and both adjacent regions
      * share a {@link #laneName} identity, e.g. spawn-adjacent 0/1 (both surface), 5/6
      * (both underground), or 11/12 (both nether). Twilight vs starlight (or aether vs
