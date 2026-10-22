@@ -47,6 +47,8 @@ public final class FrontlightSpotlight {
         event.setCancellationResult(InteractionResult.sidedSuccess(level.isClientSide));
         if (state.getValue(ENABLED) || !(level instanceof ServerLevel server)) return;
         if (!server.setBlock(pos, state.setValue(ENABLED, true), Block.UPDATE_CLIENTS)) return;
+        // 激活消耗 1 个紫水晶（创造按惯例不消耗）；拆除掉落普通车灯、不返还水晶。
+        if (!player.getAbilities().instabuild) event.getItemStack().shrink(1);
 
         // Sable stores the lamp in a distant plot; feedback belongs at its world position.
         var center = SableWorldPosition.project(level, pos.getCenter());

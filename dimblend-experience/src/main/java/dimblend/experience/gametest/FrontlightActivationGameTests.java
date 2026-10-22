@@ -76,11 +76,12 @@ public final class FrontlightActivationGameTests {
                     helper.assertTrue(FrontlightSpotlight.isEnabled(activated), "amethyst must activate either hand");
                     helper.assertTrue(activated.setValue(FrontlightSpotlight.ENABLED, false).equals(state),
                             "activation must preserve facing, light, redstone and decoration states");
-                    helper.assertTrue(player.getItemInHand(hand).getCount() == 3, "amethyst is not consumed");
+                    helper.assertTrue(player.getItemInHand(hand).getCount() == 2, "activation consumes one amethyst");
                     helper.assertTrue(sounds[0] == before + 1, "activation plays the portal-frame sound once");
                     use(player, pos, hand);
                     helper.assertTrue(sounds[0] == before + 1 && level.getBlockState(pos).equals(activated),
                             "repeated clicks must neither replay feedback nor disable the spotlight");
+                    helper.assertTrue(player.getItemInHand(hand).getCount() == 2, "repeated clicks must not consume again");
                 }
             }
             helper.assertTrue(lamps > 1, "test must exercise the real DnDecor lamp variants");
@@ -98,12 +99,16 @@ public final class FrontlightActivationGameTests {
             for (var item : new ItemStack[] {ItemStack.EMPTY, new ItemStack(Items.QUARTZ),
                     new ItemStack(Items.AMETHYST_SHARD)}) {
                 helper.setBlock(MID, lamp());
+                boolean isAmethyst = item.is(Items.AMETHYST_SHARD);
+                int initialCount = item.getCount();
                 player.setItemInHand(InteractionHand.MAIN_HAND, item);
                 use(player, pos, InteractionHand.MAIN_HAND);
-                boolean expected = (mode == GameType.SURVIVAL || mode == GameType.CREATIVE)
-                        && item.is(Items.AMETHYST_SHARD);
+                boolean expected = (mode == GameType.SURVIVAL || mode == GameType.CREATIVE) && isAmethyst;
                 helper.assertTrue(FrontlightSpotlight.isEnabled(helper.getLevel().getBlockState(pos)) == expected,
-                        "activation must require an amethyst shard and build permission: " + mode + ", " + item);
+                        "activation must require an amethyst shard and build permission: " + mode);
+                int expectedCount = expected && mode == GameType.SURVIVAL ? initialCount - 1 : initialCount;
+                helper.assertTrue(player.getItemInHand(InteractionHand.MAIN_HAND).getCount() == expectedCount,
+                        "consumption only on successful survival activation, creative keeps the shard: " + mode);
             }
         }
         helper.succeed();
