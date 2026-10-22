@@ -296,7 +296,8 @@ public final class Config {
 
     public static final ModConfigSpec.BooleanValue ITEM_DRAIN_GROWTH = BUILDER
             .comment("分液池催熟（全局功能，不限维度）：存水不低于阈值时，每周期随机挑范围内一株植物"
-                    + "走原版骨粉逻辑催熟（一切骨粉目标都算，含草方块/苔藓蔓延型）；"
+                    + "走原版骨粉逻辑催熟（仅作物型骨粉目标；草方块/草丛/苔藓/菌岩/缠根泥土/"
+                    + "海草/粉红色花簇等蔓延/装饰型不算候选）；"
                     + "骨粉生效才扣水，范围内无目标或骨粉判定未生效时不扣；"
                     + "范围内无可催熟作物时倒计时停走，作物出现后自动恢复计时")
             .define("itemDrainGrowth", true);

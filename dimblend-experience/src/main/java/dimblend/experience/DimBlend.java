@@ -27,6 +27,7 @@ import dimblend.experience.gametest.FireHoseDropGameTests;
 import dimblend.experience.gametest.LimitedWaterGameTests;
 import dimblend.experience.gametest.LootMapFilterGameTests;
 import dimblend.experience.gametest.ItemDrainPipeRefillGameTests;
+import dimblend.experience.gametest.ItemDrainGrowthFireGameTests;
 import dimblend.experience.gametest.ItemDrainHudSyncGameTests;
 import dimblend.experience.gametest.KineticComponentScanGameTests;
 import dimblend.experience.gametest.KineticUnloadedShareGameTests;
@@ -113,6 +114,7 @@ public class DimBlend {
             event.register(DeployerIcePlacementGameTests.class);
             event.register(ItemDrainPipeRefillGameTests.class);
             event.register(ItemDrainHudSyncGameTests.class);
+            event.register(ItemDrainGrowthFireGameTests.class);
             event.register(KineticComponentScanGameTests.class);
             event.register(KineticUnloadedShareGameTests.class);
             event.register(CdgKineticOverloadGameTests.class);

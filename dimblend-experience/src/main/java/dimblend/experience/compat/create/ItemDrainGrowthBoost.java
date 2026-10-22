@@ -6,12 +6,20 @@ import java.util.List;
 import com.simibubi.create.content.fluids.drain.ItemDrainBlockEntity;
 
 import dimblend.experience.Config;
+import dimblend.experience.DimBlend;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.BonemealableBlock;
+import net.minecraft.world.level.block.GrassBlock;
 import net.minecraft.world.level.block.LevelEvent;
+import net.minecraft.world.level.block.MossBlock;
+import net.minecraft.world.level.block.NyliumBlock;
+import net.minecraft.world.level.block.PinkPetalsBlock;
+import net.minecraft.world.level.block.RootedDirtBlock;
+import net.minecraft.world.level.block.SeagrassBlock;
+import net.minecraft.world.level.block.TallGrassBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.Fluids;
 import net.neoforged.neoforge.capabilities.Capabilities;
@@ -34,17 +42,21 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler.FluidAction;
  * （即 {@code performBonemeal} 被调用），据此扣 10mb——注意两点：
  * ① 这与原版骨粉物品的消耗时机不同（原版对有效目标无论 success 与否都消耗骨粉），
  * 此处是“生效才扣”的需求口径；② 已知限制：个别 {@code performBonemeal} 实现
- * 可能零世界变化仍被计为生效并扣水（如高草上方被挡、草方块 128 次散布无蔓延位），
- * 严格“世界真变化才扣”需做前后快照检测，对蔓延型目标（变化发生在邻居）覆盖不全，
- * 故不采用。另：本路径不走物品/事件语义——不触发 NeoForge {@code BonemealEvent}，
- * 第三方靠骨粉事件拦截/联动的模组不会感知本催熟。催熟生效时在目标格发原版
+ * 可能零世界变化仍被计为生效并扣水（如竹子顶端上方被非空方块遮挡、树苗长成
+ * 阶段树生成失败（空间/上方被挡）），严格“世界真变化才扣”需做前后快照检测，
+ * 覆盖不全，故不采用。另：本路径不走物品/事件语义——不触发
+ * NeoForge {@code BonemealEvent}，第三方靠骨粉事件拦截/联动的模组不会感知本催熟。
+ * 催熟生效时在目标格发原版
  * {@link LevelEvent#PARTICLES_AND_SOUND_PLANT_GROWTH}（1505，与骨粉物品/发射器同一事件，
  * 客户端出绿色成长粒子 + 骨粉音效）。</p>
  *
  * <p>候选范围：“范围内一株植物”= 保湿同款 7x7（半径可配）柱体的
  * <b>池体同层 y 与其上一层 y+1</b>——作物长在同层土壤上方，只扫 y 层永远找不到
- * 作物；候选是两层内一切 {@code BonemealableBlock} 且
- * {@code isValidBonemealTarget} 的方块（含草方块/苔藓这类蔓延型，需求口径）。</p>
+ * 作物；候选是两层内一切<b>作物型</b> {@code BonemealableBlock} 且
+ * {@code isValidBonemealTarget} 的方块。草方块/草丛/苔藓/菌岩/
+ * 缠根泥土/海草/粉红色花簇这类蔓延/装饰型骨粉目标<b>不算候选</b>
+ * （2026-10-22 修订，见 {@link #isCropCandidate}）：户外农田四周几乎恒有草方块，
+ * 算候选时“无作物停走”永远不可观察，击发还会抽中草——照扣 10mb 却零可见变化。</p>
  *
  * <p>消耗口径：只认水（与保湿同一水箱，非水时保湿/催熟都不工作）；扣水走公开
  * capability（DOWN 面，理由同 {@link ItemDrainIrrigation}），SIMULATE 先验、
@@ -103,16 +115,24 @@ public final class ItemDrainGrowthBoost {
         be.sendData();
         IFluidHandler handler = level.getCapability(Capabilities.FluidHandler.BLOCK, be.getBlockPos(), Direction.DOWN);
         if (handler == null || handler.getTanks() < 1) {
+            // 击发点静默分支全部留一次性 DEBUG 日志（2026-10-22，实机定位"倒计时走但不催不扣"）；
+            // 正常池子不会命中这些分支，命中即配置/环境问题
+            DimBlend.LOGGER.debug("drain growth skipped at {}: no DOWN fluid capability", be.getBlockPos());
             return;
         }
         FluidStack stored = handler.getFluidInTank(0);
         if (stored.isEmpty() || !stored.is(Fluids.WATER)
                 || IrrigationMath.belowThreshold(stored.getAmount(), Config.ITEM_DRAIN_GROWTH_MIN_MB.get())) {
+            DimBlend.LOGGER.debug("drain growth skipped at {}: stored {} mb of {} (need water >= {} mb)",
+                    be.getBlockPos(), stored.getAmount(), stored.isEmpty() ? "empty" : stored.getFluid().toString(),
+                    Config.ITEM_DRAIN_GROWTH_MIN_MB.get());
             return;
         }
         // 生效才扣：扣水门 = isBonemealSuccess 通过（performBonemeal 被调用）；
         // 零世界变化的边界见类 javadoc“已知限制”。未生效本拍不催也不扣，下一周期重新抽目标
         if (!target.plant.isBonemealSuccess(level, random, target.pos, target.state)) {
+            DimBlend.LOGGER.debug("drain growth skipped at {}: isBonemealSuccess false for {} at {}",
+                    be.getBlockPos(), target.state.getBlock(), target.pos);
             return;
         }
         int cost = Config.ITEM_DRAIN_GROWTH_COST_MB.get();
@@ -120,6 +140,8 @@ public final class ItemDrainGrowthBoost {
             // SIMULATE 先验再 EXECUTE：并发抽水导致不足时本拍不催不扣，残水留给后续周期
             FluidStack probe = new FluidStack(Fluids.WATER, cost);
             if (handler.drain(probe.copy(), FluidAction.SIMULATE).getAmount() < cost) {
+                DimBlend.LOGGER.debug("drain growth skipped at {}: cannot drain {} mb",
+                        be.getBlockPos(), cost);
                 return;
             }
             grow(level, random, target);
@@ -154,6 +176,24 @@ public final class ItemDrainGrowthBoost {
     }
 
     /**
+     * 候选必须是作物型骨粉目标（2026-10-22 修订）：蔓延/装饰型不算——草方块
+     * （长草长花）、草丛（拔高）、苔藓（蔓延）、菌岩（抽芽）、缠根泥土（垂根）、
+     * 海草/粉红色花簇（拔高/复制）。户外农田四周几乎恒有草方块，它们当候选时
+     * “无作物停走”永不触发，击发抽中草还白扣 10mb 零可见变化。作物（含模组
+     * {@code CropBlock} 子类）、茎、可可、浆果丛、树苗、海带、竹子等生长型目标
+     * 不受影响。
+     */
+    private static boolean isCropCandidate(BonemealableBlock plant) {
+        return !(plant instanceof GrassBlock)
+                && !(plant instanceof TallGrassBlock)
+                && !(plant instanceof MossBlock)
+                && !(plant instanceof NyliumBlock)
+                && !(plant instanceof RootedDirtBlock)
+                && !(plant instanceof SeagrassBlock)
+                && !(plant instanceof PinkPetalsBlock);
+    }
+
+    /**
      * 在覆盖柱体（7x7 的 y 与 y+1 两层，边界数学见
      * {@link IrrigationMath#coverageCells}）内随机挑一株骨粉候选；无候选返回 null。
      * 未加载格跳过（与保湿一致，中心区块必已加载）。
@@ -169,7 +209,7 @@ public final class ItemDrainGrowthBoost {
                         continue;
                     }
                     BlockState state = level.getBlockState(pos);
-                    if (state.getBlock() instanceof BonemealableBlock plant
+                    if (state.getBlock() instanceof BonemealableBlock plant && isCropCandidate(plant)
                             && plant.isValidBonemealTarget(level, pos, state)) {
                         candidates.add(new Target(pos, state, plant));
                     }
@@ -190,7 +230,7 @@ public final class ItemDrainGrowthBoost {
                         continue;
                     }
                     BlockState state = level.getBlockState(pos);
-                    if (state.getBlock() instanceof BonemealableBlock plant
+                    if (state.getBlock() instanceof BonemealableBlock plant && isCropCandidate(plant)
                             && plant.isValidBonemealTarget(level, pos, state)) {
                         return true;
                     }
