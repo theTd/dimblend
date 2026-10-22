@@ -54,6 +54,12 @@ public final class DimBlendClient {
             layer.render(graphics, partialTick);
             ZProgressHud.renderCreativeFallback(graphics);
         });
+        // hardcore_nvg 低电量白噪点：图层类引用其 PlayerVariables，仅在场时注册防类加载失败
+        if (net.neoforged.fml.ModList.get().isLoaded("hardcore_nvg")) {
+            event.registerAboveAll(
+                    net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(DimBlend.MODID, "nvg_battery_noise"),
+                    NvgBatteryNoiseLayer::render);
+        }
     }
 
     private DimBlendClient() {

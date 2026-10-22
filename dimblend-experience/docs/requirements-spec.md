@@ -1002,8 +1002,9 @@
 - 启动验证（2026-09-23 v1.7 批次，dev runClient + CCA 临时 localRuntime）：createaddition 1.5.10 加载、CCA Initialized、Sound engine started 到主菜单，0 ERROR/FATAL/InvalidMixin；本批 4 个 mixin（SoundClient 改版 + AlternatorIdleDrain + Goggle + GeneratorStats）随 CCA BE 注册完成 apply；dev 环境 mixin 库为 sponge-mixin 0.15.2+mixin.0.8.7（fabric fork）。实机听音/看数仍在待办
 - G7 实机项（2026-10-15 验收通过）：TrainTripWorld 实例放产蛋器于 sable 结构内（单块/多块子层级各一）与主世界各一，确认玻璃内嵌鸡可见、明暗与周围方块一致、玻璃仍半透明、孵化器不受影响、物品栏图标正常
 - L 板块实机项：储罐+汽笛（无热源）邻接蒸汽引擎/柴油机/电动马达各放红石，验证鸣笛音效对应、张嘴+音符前冲、播放期再输入无效、断电再上电再鸣；256/512 距离衰减与左右方向感听音；Sable 结构上同验（声音随结构当前位置）；9 键 pitch 配置各改一档实测
+- M 板块实机项：夜视仪开夜视后电量 50%/25%/10% 三档噪点密度观感校准（50% 应无噪点、10% 应严重干扰视线）、电量耗尽自动关夜视后噪点消失、F1 隐藏 HUD 时噪点随图层一同隐藏
 
-### 复核闭环状态（截至第 19 轮）
+### 复核闭环状态（截至第 20 轮）
 
 | 板块 | 首轮 | 增量验证 | 状态 |
 |---|---|---|---|
@@ -1019,6 +1020,7 @@
 | v1.1 增补（C0/C3/F1/E5/D4-64/E2新映射/A9） | 3低（ModSounds注释残留16、panel蓝图取材对齐、车钩客户端漂移；全属实，无高中） | 通道 B 回退（首轮 agent 结束）第 2 轮：2/3 全关，残留 ModSounds:27+过渡注释 → 修复；第 3 轮（原 agent 通道 A 复活验证）：残留清零、CCA 目录 16 零命中（B 板块 CDG 的 16rpm 为合法除外）、**终止条件达成**。panel 不对齐 beam 系核实后有意为之（Create 链无该接口）；车钩改双端 cancel；启动验证（21:56 新 jar，0 ERROR 到主菜单、panel 模型警告清零、defaultRequire:1 存活） | ✅ 闭环 |
 | B4 过载爆机（原闩锁作废） | 0 真实问题（首轮即通过）+ 2 处文档债（javadoc 仍写闩锁为主语） | 独立全量复核**通过**：RETURN 内 destroyBlock 无重入/更新风暴；false 基本不可达、E1 与 CDG 零交集、闩锁兜底自洽；单方块只破本体、升级件经 onRemove 另掉、两战利品表掉自身；B1-B3/守卫/门控完整。文档债已修（mixin+CdgEngineState 改"爆机为主、失败回退闩锁"表述）。待实机：爆机掉落/升级件 pop/余油不返还 | ✅ 闭环（待实机） |
 | v1.2 代码+B5 | 2中3低（全属实） | 首轮：中1 B5 计时无条件推进（停机照涨致重启丢爬梯）、中2 音量 3.0 只扩射程不提响度；低：B5 无闩锁回退、文档债×3、respawn 未清方向记忆。修复：enabled 门控+复位、过载后移（他人应力不牵连）、闩锁给0/加油解闩；ogg 本体线性增益归一 -1dBFS（brake+8.9/loop+11.1/stopping+6.5/train_brake+22.8，另二满幅未动，ffmpeg；3.0 保留射程）；回退对齐 B4；文档债+respawn 全清。第 2 轮（通道 A）：仅剩 spec E2 增益入库一行 → 第 3 轮补后**终止条件达成**。启动验证（23:12 新 jar，0 ERROR 到主菜单、defaultRequire:1 存活） | ✅ 闭环（待实机：B5 ramp/波动/爆机、音效听感、本底噪声） |
+| M 夜视低电量噪点 | 3低（全文档项，代码 6 风险点全无问题） | 首轮：P1 清单标题计数 6→7 未同步、P2 「libs/ 仅剩…」枚举漏 createfirefightingadd/hardcore_nvg、P3 缺 M 板块 spec 条目；已修（另顺修 build.gradle:141 同型过时枚举注释）。第 2 轮（通道 A，原 agent）：4/4 全关、常量逐项对账一致、无新增问题，**终止条件达成** | ✅ 闭环（待实机：50%/25%/10% 密度观感校准、耗尽消失、F1 随图层隐藏） |
 
 **审计链更正**：D 板块的"最小正确结构 6 条"提炼自 B 复核报告的经验教训（name-only target、ServerLevel 守卫前置、跃迁 setChanged、附件 codec 等），不宜记作复核侧"D 板块指引"；D 第 1 轮验证载荷曾误发 B 复核 agent（未达），已重发至 D 复核 agent（`adcc6814`）并确认送达。
 
@@ -1026,11 +1028,12 @@
 
 ## 7. 决策记录
 
-### libs jar 清单（6 个 addon 编译依赖）
+### libs jar 清单（7 个 addon 编译依赖）
 
 > 2026-09-25 单仓更新：开源三件（Copycats+ / CCA / CDG）与 sable-companion 已改走
 > Maven 定点版本（见 `dimblend-experience/build.gradle`、`dimblend-blocks/build.gradle`），
-> 不再需要本地 jar；`libs/` 仅剩无公开 Maven 的 simurail / sable cui-modded / fluid。
+> 不再需要本地 jar；`libs/` 仅剩无公开 Maven 的 simurail / sable cui-modded / fluid /
+> createfirefightingadd / hardcore_nvg。
 > 下表保留作运行时版本对账依据。
 
 2026-09-19 从实例 `E:\misc\TrainTripWorld\mods` 原样复制到 `./libs`（字节级一致，SHA-256 已核对）。
@@ -1050,6 +1053,7 @@ CDG 1.3.15 除外：2026-09-20 起 B 板块对齐最新版，jar 由同级源码
 | `simurail-1.21.1-0.0.0-a+ecd2dd3.jar` | Create Simurail | 0.0.0-a（本地构建） |
 | `sable-neoforge-1.21.1-2.0.5_cui-modded.jar` | Sable | 2.0.5（cui-modded 定制构建） |
 | `fluid-2.0.1.jar` | Create: Fluid | 2.0.1（CurseForge 包，无公开 Maven；从运行实例 mods 目录原样复制，与实例一致） |
+| `hardcore_nvg-1.1.2-neoforge-1.21.1.jar` | Hardcore Night Vision Goggles | 1.1.2（MCreator 模组，无公开 Maven；2026-10-23 从正式包 `D:\Downloads\TrainTripWorld_1.21.1-NeoForge_21.1.249\mods` 原样复制——注意 dev 实例 `E:\misc\TrainTripWorld\mods` 历史装的是 basic_nvg（无限夜视版），已对齐换为 hardcore 版） |
 
 依赖形态：`compileOnly files(...)`（编译可见、不进 runtimeClasspath、不进 POM）；
 需要运行测试时按需把相关 jar 临时提升为 `localRuntime`。CDG 已固化为开关：
@@ -1184,3 +1188,27 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
   无视输入/结束后重新装备）、`TrainHornCdgGameTests`（-PwithCdg：三种柴油引擎各自
   触发、方向优先级 背面>左侧 / 正面>背面）、`TrainHornCcaGameTests`（-PwithCca：
   电动马达、模块化电池各自触发）。
+
+## 14. 板块 M：夜视仪低电量白噪点（2026-10-23 新增）
+
+> 来源：2026-10-23 用户追加需求——夜视仪电量低于 50% 时，每次使用夜视功能增加白色
+> 噪点，噪点数量随 50%→0% 逐渐增多（增量参考：剩余 10% 时已会严重干扰视线）。
+> 用户确认包内装的是 hardcore_nvg（有电量版，非 basic_nvg 无限夜视版）。
+
+- M1 口径：夜视开启（`NightVision=true`）且剩余电量 `Percent<50` 时，客户端在 HUD
+  图层之上撒 1px 白色噪点；密度随电量线性——50% 起 0 个，0% 达满密度（=画面逻辑
+  像素总数的 2%），10% 时≈满密度的 80%（用户给的「严重干扰」参考点）；负电量按 0%
+  钳制。噪点白色 75% 不透明度（0xBFFFFFFF），每帧重随机产生闪烁感；仅客户端渲染，
+  不回写任何状态；无功能开关。
+- M2 读数来源：hardcore_nvg 的玩家附件 `hardcore_nvg:player_variables`
+  （`HardcoreNvgModVariables.PLAYER_VARIABLES`）——`Percent`（double 0–100）为剩余
+  电量（该 mod 电量即物品耐久，夜视生效期间每 tick 耐久 -1），`NightVision`
+  （boolean）为夜视开关；服务端每 tick `syncPlayerVariables` 同步到本人客户端，
+  图层直接读本地附件，无自定义网络包（反编译核实，证据 /tmp/hnvg/）。
+- M3 图层顺序：hardcore_nvg 绿滤镜走 `RenderGuiEvent.Pre`（先于所有 HUD 图层），
+  本图层 `registerAboveAll` 在其后 → 噪点压在绿滤镜之上可见（复核侧字节码核实）。
+  hardcore_nvg 缺席时 `ModList` 守卫不注册图层，lambda 的 invokedynamic 永不链接，
+  类加载安全。
+- 运行验证：`NvgBatteryNoiseLayerTest` 单测 4 条（≥50% 不出点、10% 锚点=满密度 80%、
+  50%→0% 单调递增、负值钳 0%+密度随面积缩放）；`:dimblend-experience:test` 全绿。
+  实机密度观感校准待用户（见「游戏内运行验证清单」M 板块实机项）。
