@@ -5,6 +5,8 @@ import dimblend.band.BandLaneSync;
 import dimblend.mixin.LevelWeatherAccessor;
 import net.minecraft.network.protocol.game.ClientboundGameEventPacket;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.storage.ServerLevelData;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
@@ -22,11 +24,19 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
  * player ticks: a rider sitting in a Sable vehicle sublevel has the sublevel
  * as {@code serverLevel}, so no player tick of theirs ever reaches the
  * rotating level, and spectators can skip ticks on unloaded chunks. An empty
- * rotating level counts as locked — with nobody around to want rain, rain
- * must never accumulate unobserved.
+ * rotating level is only frozen, not cleared (2026-10-22 revision): the cycle
+ * is skipped so timers never advance unobserved, but an ongoing rain keeps its
+ * state and resumes when someone returns — respawning or relogging must not
+ * stop the rain.
  *
  * <p>Cut rain does not resume when the player walks back to surface; the
- * vanilla cycle restarts from clear. This is accepted for simplicity.
+ * vanilla cycle restarts from clear. This is accepted for simplicity, but the
+ * restart must NOT go through {@code setWeatherParameters(clearTime, 0, ...)}:
+ * vanilla pins rainTime/thunderTime to 1 for the whole clear countdown and
+ * flips BOTH rain and thunder on the tick it ends, so every forced clear would
+ * schedule a guaranteed thunderstorm a few minutes later. {@link #forceClear}
+ * therefore arms fresh random delays in the vanilla {@code RAIN_DELAY} /
+ * {@code THUNDER_DELAY} range instead.
  */
 public final class ServerGlobalWeatherLock {
     private ServerGlobalWeatherLock() {
@@ -70,7 +80,8 @@ public final class ServerGlobalWeatherLock {
             return false;
         }
         if (level.players().isEmpty()) {
-            forceClear(level);
+            // 空 level 只冻结不清空（2026-10-22 修订）：天气循环继续被取消（计时器不走，
+            // 雨不会无人累积），但不再销毁雨状态——重生/退存档再回来后雨照常继续。
             return true;
         }
         for (var player : level.players()) {
@@ -88,7 +99,15 @@ public final class ServerGlobalWeatherLock {
         boolean changed = level.getLevelData().isRaining() || level.getLevelData().isThundering()
                 || level.getRainLevel(0.0F) > 0.0F || level.getRainLevel(1.0F) > 0.0F
                 || intensity.dimblend$oldThunderLevel() > 0.0F || intensity.dimblend$thunderLevel() > 0.0F;
-        level.setWeatherParameters(6000, 0, false, false);
+        // clearTime must stay 0: any positive countdown ends with rain+thunder
+        // toggling on together (see class javadoc). Fresh independent delays
+        // mirror what vanilla arms after natural rain.
+        var data = (ServerLevelData) level.getLevelData();
+        data.setClearWeatherTime(0);
+        data.setRainTime(freshWeatherDelay(level.getRandom()));
+        data.setThunderTime(freshWeatherDelay(level.getRandom()));
+        data.setRaining(false);
+        data.setThundering(false);
         level.setRainLevel(0.0F);
         level.setThunderLevel(0.0F);
         if (changed) {
@@ -98,5 +117,10 @@ public final class ServerGlobalWeatherLock {
             players.broadcastAll(new ClientboundGameEventPacket(ClientboundGameEventPacket.RAIN_LEVEL_CHANGE, 0.0F), level.dimension());
             players.broadcastAll(new ClientboundGameEventPacket(ClientboundGameEventPacket.THUNDER_LEVEL_CHANGE, 0.0F), level.dimension());
         }
+    }
+
+    /** Delay range identical to vanilla {@code ServerLevel#RAIN_DELAY}/{@code THUNDER_DELAY}. */
+    static int freshWeatherDelay(RandomSource random) {
+        return 12000 + random.nextInt(168001);
     }
 }

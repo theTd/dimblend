@@ -85,7 +85,7 @@
 - [x] 生成轨道：**深色橡木宽轨**，有路基（`CorridorTrackProfile.UNDERGROUND`）
 - [x] 时间锁定 18000
 - [x] 天空套用下界 Effects（与下界相同：`ClientBandLane.netherSky()` → `NetherEffects`：`SkyType.NONE` / 浓雾 / constantAmbientLight）
-- [x] 天气锁定晴（rotating 使用独立可写的天气数据，保存到主世界 `data/dimblend_rotating_weather.dat`，不修改主世界天气；原版自定义维度的 `DerivedLevelData` 天气 setter 为空，不能直接用来锁天。天气循环开始前与 level-tick 结束后扫全维度玩家，有一人在非地表 band 就全维度转晴，并清零服务端雨雷强度、向本维度客户端同步停雨和零强度。锁定时跳过原版天气循环；空 level 也转晴：无人时没人要雨，且坐车进 sublevel 的玩家不算在主 level 里；多玩家互顶不考虑。回地表后不恢复旧雨，保留 6000 tick 晴天缓冲后由原版循环重起。见 `ServerGlobalWeatherLock` / `RotatingLevelData`）
+- [x] 天气锁定晴（rotating 使用独立可写的天气数据，保存到主世界 `data/dimblend_rotating_weather.dat`，不修改主世界天气；原版自定义维度的 `DerivedLevelData` 天气 setter 为空，不能直接用来锁天。天气循环开始前与 level-tick 结束后扫全维度玩家，有一人在非地表 band 就全维度转晴，并清零服务端雨雷强度、向本维度客户端同步停雨和零强度。锁定时跳过原版天气循环；空 level 只冻结不清空（2026-10-22 修订）：跳过天气循环、计时器不走，但雨状态保留——重生/退存档再回来后雨照常继续，不再被销毁。多玩家互顶不考虑。回地表后不恢复旧雨：转晴不走 `setWeatherParameters(6000,…)`——原版晴天倒计时期间雨/雷计时器被钉在 1，倒计时归零后的下一 tick 雨+雷双双强制开启，等于每次清场 5 分钟后必排一场雷阵雨；改为按原版 RAIN_DELAY/THUNDER_DELAY 区间（12000–180000 tick）各自重掷延迟后由原版循环重起。见 `ServerGlobalWeatherLock` / `RotatingLevelData`）
 - [x] 将地下全部生物群系显示为「地下」（显示层方案：Biome Notifier 兼容 mixin 给群系名追加「地下」后缀，如 平原 → 平原地下；未装 Biome Notifier 时无此提示，真实 id 不变）
 
 ### 下界（Nether）
