@@ -15,7 +15,12 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.CanContinueSleepingEvent;
 import net.neoforged.neoforge.event.entity.player.CanPlayerSleepEvent;
 
-/** Beds provide rest, without advancing time, in the overworld and rotating world. */
+/**
+ * Beds provide rest, without advancing time, in the overworld and rotating world.
+ * rotating exception (2026-10-23): night/thunder sleep skips to morning vanilla-style again
+ * (daytime naps stay rest-only); the write lands on the shared overworld clock through
+ * RotatingLevelData. See {@link BedRestRules#suppressesTimeSkip(Level)}.
+ */
 @EventBusSubscriber(modid = DimBlend.MODID)
 public final class BedRestRules {
     /** 入睡预热：满 100 tick（5 秒）才给生命恢复与爱心粒子。 */
@@ -30,6 +35,25 @@ public final class BedRestRules {
     public static boolean applies(Level level) {
         return level.dimension().equals(Level.OVERWORLD)
                 || (Config.isLoaded() && RotatingDimension.is(level));
+    }
+
+    /**
+     * 跳夜抑制口径（2026-10-23 起 rotating 恢复夜晚跳夜）：主世界永不跳夜（纯休息式睡眠）；
+     * rotating 白天非雷雨时抑制（白天小睡只休息，不带着跳一整天），夜晚/雷雨按原版语义
+     * 跳到早晨、强制起床、清天气——写时间经 RotatingLevelData 穿透到主世界共享时钟。
+     * 其余维度不动原版行为。
+     */
+    public static boolean suppressesTimeSkip(Level level) {
+        boolean overworld = level.dimension().equals(Level.OVERWORLD);
+        boolean rotating = Config.isLoaded() && RotatingDimension.is(level);
+        return suppressesTimeSkip(overworld, rotating, level.isDay(), level.isThundering());
+    }
+
+    /** 纯判定核心，与 Level 解耦便于单测。 */
+    static boolean suppressesTimeSkip(boolean overworld, boolean rotating, boolean isDay, boolean thundering) {
+        if (overworld) return true;
+        if (rotating) return isDay && !thundering;
+        return false;
     }
 
     public static boolean isResting(Player player) {
