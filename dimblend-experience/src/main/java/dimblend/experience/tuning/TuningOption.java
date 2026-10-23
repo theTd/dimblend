@@ -18,6 +18,9 @@ public enum TuningOption {
     SABLE_LAVA_MELT("sable_lava_melt", 1.0D, "sable"),
     // 倍率默认值与 LavaMeltMath.DEFAULT_SPEED_MULTIPLIER 的镜像由 TuningOptionTest 钉死
     SABLE_LAVA_MELT_SPEED("sable_lava_melt_speed", 4.0D, 0.5D, 64.0D, 1, "sable", Section.MAIN),
+    // 默认值镜像 Config.SABLE_VOID_FIT_SCAN_BUDGET / SABLE_LAVA_MELT_SCAN_BUDGET（2），由 TuningOptionTest 钉死
+    SABLE_VOID_FIT_SCAN_BUDGET("sable_void_fit_scan_budget", 2.0D, 1.0D, 64.0D, 0, "sable", Section.MAIN),
+    SABLE_LAVA_MELT_SCAN_BUDGET("sable_lava_melt_scan_budget", 2.0D, 1.0D, 64.0D, 0, "sable", Section.MAIN),
     PORTABLE_ENGINE_LIMIT("portable_engine_limit", 1.0D, "simulated"),
     STEAM_OVERLOAD("steam_overload", 1.0D, "create"),
     DIESEL_OVERLOAD("diesel_overload", 1.0D, "createdieselgenerators"),
@@ -38,6 +41,10 @@ public enum TuningOption {
     RADIO_END_VOICE_VOLUME("radio_end_voice_volume", 0.75D, 2.0D, 2, "dimblend_radio"),
     RADIO_ACOUSTIC_INTENSITY("radio_acoustic_intensity", 1.0D, 2.0D, 2, "dimblend_radio"),
     EXP_CLEAR_RATIO("exp_clear_ratio", 1.0D, 1.0D, 2, ""),
+    // 默认值镜像 Config.ROTATING_MONSTER_CAP_MULTIPLIER ×100（0.5→50%），由 TuningOptionTest 钉死
+    ROTATING_MONSTER_CAP("rotating_monster_cap", 50.0D, 0.0D, 100.0D, 0, "", Section.MAIN),
+    // 默认值镜像 Config.ITEM_DRAIN_GROWTH_COST_MB（20mb），由 TuningOptionTest 钉死
+    ITEM_DRAIN_GROWTH_COST("item_drain_growth_cost", 20.0D, 0.0D, 1500.0D, 0, "create", Section.MAIN),
     SABLE_SUBSTEPS("sable_substeps", 2.0D, 1.0D, 10.0D, 0, "sable", Section.SABLE),
     SABLE_SOLVER_ITERATIONS("sable_solver_iterations", 18.0D, 1.0D, 64.0D, 0, "sable", Section.SABLE),
     SABLE_PGS_ITERATIONS("sable_pgs_iterations", 2.0D, 1.0D, 8.0D, 0, "sable", Section.SABLE),

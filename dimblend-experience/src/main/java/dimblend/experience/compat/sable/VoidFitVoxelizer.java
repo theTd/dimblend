@@ -121,7 +121,7 @@ public final class VoidFitVoxelizer {
     }
 
     /** 把以 (wx,wy,wz) 为中心、半 extent (hx,hy,hz) 的 AABB 触及的所有世界格加入集合。 */
-    private static void addCoveredCells(LongOpenHashSet out,
+    static void addCoveredCells(LongOpenHashSet out,
             double wx, double wy, double wz,
             double hx, double hy, double hz, int minY, int maxY) {
         int x0 = (int) Math.floor(wx - hx);
@@ -129,7 +129,7 @@ public final class VoidFitVoxelizer {
         int y0 = Math.max(minY, (int) Math.floor(wy - hy));
         int y1 = Math.min(maxY, (int) Math.floor(wy + hy));
         int z0 = (int) Math.floor(wz - hz);
-        int z1 = Math.min(maxY, (int) Math.floor(wz + hz));
+        int z1 = (int) Math.floor(wz + hz);
         for (int y = y0; y <= y1; y++) {
             for (int z = z0; z <= z1; z++) {
                 for (int x = x0; x <= x1; x++) {

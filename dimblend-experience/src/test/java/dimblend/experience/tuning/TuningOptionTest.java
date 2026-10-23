@@ -195,6 +195,30 @@ class TuningOptionTest {
     }
 
     @Test
+    void scanBudgetsMirrorConfigDefaultsAndAcceptIntegersWithinClampRange() {
+        TuningOption[] options = {TuningOption.SABLE_VOID_FIT_SCAN_BUDGET,
+                TuningOption.SABLE_LAVA_MELT_SCAN_BUDGET};
+        ModConfigSpec.IntValue[] configs = {Config.SABLE_VOID_FIT_SCAN_BUDGET,
+                Config.SABLE_LAVA_MELT_SCAN_BUDGET};
+        for (int i = 0; i < options.length; i++) {
+            var option = options[i];
+            assertFalse(option.isCheckbox(), option.id());
+            assertSame(TuningOption.Section.MAIN, option.section());
+            assertEquals("sable", option.modId());
+            // 面板默认值与 Config 扫描预算默认互为镜像（GameTest 钉满的 64 即上限），漂移即失败
+            assertEquals((double) configs[i].getDefault(), option.defaultValue(), option.id());
+            assertEquals(2.0D, option.defaultValue(), option.id());
+            for (double valid : new double[] {1.0D, 2.0D, 64.0D}) {
+                assertTrue(option.isValid(valid), option.id());
+            }
+            for (double invalid : new double[] {0.0D, 1.5D, 64.1D, 65.0D, -1.0D}) {
+                assertFalse(option.isValid(invalid), option.id());
+            }
+            assertEquals("2", option.format(option.defaultValue()), option.id());
+        }
+    }
+
+    @Test
     void trainHornPitchesMirrorConfigDefaultsAndAcceptTenthsWithinClampRange() {
         TuningOption[] options = {TuningOption.TRAIN_HORN_STEAM_PITCH_SMALL,
                 TuningOption.TRAIN_HORN_STEAM_PITCH_MEDIUM, TuningOption.TRAIN_HORN_STEAM_PITCH_LARGE,
@@ -226,6 +250,42 @@ class TuningOptionTest {
         }
         assertEquals("1.5", TuningOption.TRAIN_HORN_STEAM_PITCH_SMALL.format(
                 TuningOption.TRAIN_HORN_STEAM_PITCH_SMALL.defaultValue()));
+    }
+
+    @Test
+    void rotatingMonsterCapIsVanillaPercentageMirroringConfig() {
+        var option = TuningOption.ROTATING_MONSTER_CAP;
+        assertFalse(option.isCheckbox());
+        assertSame(TuningOption.Section.MAIN, option.section());
+        assertEquals("", option.modId());
+        // 面板默认值与 Config.ROTATING_MONSTER_CAP_MULTIPLIER 默认倍率 ×100 互为镜像，漂移即失败
+        assertEquals(Config.ROTATING_MONSTER_CAP_MULTIPLIER.getDefault() * 100.0D, option.defaultValue());
+        assertEquals(50.0D, option.defaultValue());
+        for (double valid : new double[] {0.0D, 1.0D, 50.0D, 100.0D}) {
+            assertTrue(option.isValid(valid));
+        }
+        for (double invalid : new double[] {-1.0D, 0.5D, 99.5D, 100.5D, 101.0D}) {
+            assertFalse(option.isValid(invalid));
+        }
+        assertEquals("50", option.format(option.defaultValue()));
+    }
+
+    @Test
+    void itemDrainGrowthCostMirrorsConfigDefaultAndAcceptsWholeMb() {
+        var option = TuningOption.ITEM_DRAIN_GROWTH_COST;
+        assertFalse(option.isCheckbox());
+        assertSame(TuningOption.Section.MAIN, option.section());
+        assertEquals("create", option.modId());
+        // 面板默认值与 Config.ITEM_DRAIN_GROWTH_COST_MB 默认耗水互为镜像，漂移即失败
+        assertEquals((double) Config.ITEM_DRAIN_GROWTH_COST_MB.getDefault(), option.defaultValue());
+        assertEquals(20.0D, option.defaultValue());
+        for (double valid : new double[] {0.0D, 20.0D, 1500.0D}) {
+            assertTrue(option.isValid(valid));
+        }
+        for (double invalid : new double[] {-1.0D, 10.5D, 1500.5D, 1501.0D}) {
+            assertFalse(option.isValid(invalid));
+        }
+        assertEquals("20", option.format(option.defaultValue()));
     }
 
     @Test

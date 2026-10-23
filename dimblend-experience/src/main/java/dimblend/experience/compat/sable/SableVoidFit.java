@@ -34,9 +34,9 @@ import org.joml.Vector3dc;
  * <p>节律与预算（性能约束全在本类收口）：</p>
  * <ul>
  * <li>每 {@code Config#SABLE_VOID_FIT_REFIT_TICKS} tick 扫描一次（默认 5，即 4Hz）；</li>
- * <li>单次扫描最多 refit {@link #VEHICLE_BUDGET_PER_SCAN} 个载具，候选按 重试优先 →
- *     新载具 → 位姿超阈值 → 自愈到期 排序，超出预算的留到下轮（round-robin 由重试集合
- *     承载）；</li>
+ * <li>单次扫描最多 refit {@code Config#SABLE_VOID_FIT_SCAN_BUDGET} 个载具（默认 2），
+ *     候选按 重试优先 → 新载具 → 位姿超阈值 → 自愈到期 排序，超出预算的留到下轮
+ *     （round-robin 由重试集合承载）；</li>
  * <li>位姿阈值：平移 {@value #TRANSLATION_THRESHOLD} 格或旋转约
  *     {@value #ROTATION_THRESHOLD_DEG}° 才触发重算，静止载具每轮只有 O(载具数) 次
  *     位姿比较；</li>
@@ -60,8 +60,6 @@ public final class SableVoidFit {
 
     /** 慢速自愈周期（按扫描次数计：20 扫描 × 默认 5 tick = 100 tick）。 */
     public static final int VERIFY_SCANS = 20;
-    /** 单次扫描最多 refit 的载具数。 */
-    private static final int VEHICLE_BUDGET_PER_SCAN = 2;
     private static final double TRANSLATION_THRESHOLD = 0.5;
     private static final double ROTATION_THRESHOLD_DEG = 2.5;
     private static final double TRANSLATION_THRESHOLD_SQR = TRANSLATION_THRESHOLD * TRANSLATION_THRESHOLD;
@@ -136,7 +134,7 @@ public final class SableVoidFit {
         // 已在 retry 里但已从世界消失的 id 清掉（deferred 的新载具在下次扫描前被拆的情形）
         retry.removeIf(id -> !alive.contains(id));
 
-        int vehicleBudget = VEHICLE_BUDGET_PER_SCAN;
+        int vehicleBudget = Config.SABLE_VOID_FIT_SCAN_BUDGET.get();
         List<ServerSubLevel> deferred = new ArrayList<>();
         // 重试集合优先；refit 对无条目载具自动建账，retry 里的新载具不会空烧预算
         if (!retry.isEmpty()) {

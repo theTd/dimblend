@@ -269,6 +269,17 @@ public final class Config {
                     + "已累进度不变、后续按新速率累计）；0 即停手的语义由 sableLavaMelt 开关承担")
             .defineInRange("sableLavaMeltSpeed", LavaMeltMath.DEFAULT_SPEED_MULTIPLIER, 0.5D, 64.0D);
 
+    public static final ModConfigSpec.IntValue SABLE_VOID_FIT_SCAN_BUDGET = BUILDER
+            .comment("结构空位拟合的单扫描载具预算：每个扫描周期（见 sableVoidFitRefitTicks）最多"
+                    + " refit 的载具数，超出预算的载具下一轮优先。默认 2；同维度载具密集"
+                    + "（数十辆）时调高可消除扫描饥饿（GameTest 套件钉 64 就是这个场景）")
+            .defineInRange("sableVoidFitScanBudget", 2, 1, 64);
+
+    public static final ModConfigSpec.IntValue SABLE_LAVA_MELT_SCAN_BUDGET = BUILDER
+            .comment("G6 岩浆熔毁的单扫描载具预算：每 5 tick 一轮最多扫描的载具数（游标轮询分摊），"
+                    + "默认 2；同维度载具密集时调高可消除扫描饥饿（GameTest 套件钉 64）")
+            .defineInRange("sableLavaMeltScanBudget", 2, 1, 64);
+
     public static final ModConfigSpec.BooleanValue ENDER_STORAGE_STRUCTURE_ONLY = BUILDER
             .comment("G 板块 G5：旋转维度内末影箱/末影罐（enderstorage:ender_chest / ender_tank）只能放在 sable 结构上；"
                     + "放在结构外则放行放置后本 tick 末破坏返还（真人回背包、机器放置掉落，频率保留）；"
@@ -309,8 +320,8 @@ public final class Config {
             .defineInRange("itemDrainGrowthIntervalSeconds", 30, 1, 600);
 
     public static final ModConfigSpec.IntValue ITEM_DRAIN_GROWTH_COST_MB = BUILDER
-            .comment("分液池每次催熟生效扣除的水量（mb，1 桶=1000）；0=免费催熟")
-            .defineInRange("itemDrainGrowthCostMb", 10, 0, 1500);
+            .comment("分液池每次催熟生效扣除的水量（mb，1 桶=1000）；0=免费催熟；默认 20，经 /dbx tune 面板可调")
+            .defineInRange("itemDrainGrowthCostMb", 20, 0, 1500);
 
     public static final ModConfigSpec.IntValue ITEM_DRAIN_GROWTH_MIN_MB = BUILDER
             .comment("分液池存水低于此水量（mb）时停止催熟（保湿不受影响）；回水后自动恢复")

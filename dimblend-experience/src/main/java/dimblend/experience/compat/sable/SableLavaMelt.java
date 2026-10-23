@@ -54,12 +54,16 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
  * Sable 里只产生拳击冲量、不路由破坏；Create 机械臂/钻头遵守 non_breakable 清单），
  * 本特性直改 plot 存储会绕过这些口径，故显式豁免同一张清单。</p>
  *
- * <p>与拟合的配合：{@code VoidFitApplier#placeVoid} 在本开关开启时跳过熔岩格不再
- * 驱逐——熔岩留在投影格内持续浇淋，熔穿后投影收缩、空位拆除，熔岩向缺口推进，
- * 形成逐步熔穿；关闭则退回旧行为（熔岩与水同被驱逐，本调度整体停摆）。</p>
+ * <p>与拟合的配合（2026-10-23 柱顶收窄）：{@code VoidFitApplier#placeVoid} 在本开关
+ * 开启时只保留各 (x,z) 柱最高目标格（柱顶）的熔岩不驱逐——从上方流下的岩浆在车顶线
+ * 截断、从车顶开始浇淋熔穿，柱内更低的投影格照常驱逐成空位（舱内不积岩浆、不把
+ * 流经导向他处）；熔穿后投影收缩、空位拆除，熔岩向缺口推进，形成逐层向下的熔穿。
+ * 侧向/下方浸没时投影格内熔岩同样只留柱顶，壳体方块靠壳外 0.25 容差从外侧熔起，
+ * 壳内方块要等壳熔穿、熔岩真实流入才接触。关闭则退回旧行为（熔岩与水同被驱逐，
+ * 本调度整体停摆）。</p>
  *
  * <p>节律与预算：每 {@value #SCAN_TICKS} tick 扫一轮，单轮最多处理
- * {@value #VEHICLE_BUDGET_PER_SCAN} 个载具（逐维度游标 round-robin）；连续接触按
+ * {@code Config#SABLE_LAVA_MELT_SCAN_BUDGET} 个载具（默认 2，逐维度游标 round-robin）；连续接触按
  * 距上次扫描的真实 tick 差累计，任何 cadence 下熔毁速率一致；新接触从 0 起算
  * （不预支发现前空窗），接触中断即清零（与徒手停手同型）。熔毁执行集中在枚举
  * 之后，不存在边遍历 plot 边改写的窗口。</p>
@@ -95,8 +99,6 @@ public final class SableLavaMelt {
 
     /** 扫描周期（tick）。 */
     private static final int SCAN_TICKS = 5;
-    /** 单轮扫描最多处理的载具数。 */
-    private static final int VEHICLE_BUDGET_PER_SCAN = 2;
 
     /**
      * 熔毁免疫标签（{@code data/dimblend_experience/tags/block/lava_melt_immune.json}）：
@@ -176,7 +178,7 @@ public final class SableLavaMelt {
             return;
         }
         // 游标轮询：单轮预算内从上次停下的位置继续，多载具公平分摊
-        int budget = VEHICLE_BUDGET_PER_SCAN;
+        int budget = Config.SABLE_LAVA_MELT_SCAN_BUDGET.get();
         int cursor = SCAN_CURSOR.computeIfAbsent(level.dimension(), key -> 0);
         for (int step = 0; step < current.size() && budget > 0; step++) {
             ServerSubLevel subLevel = current.get((cursor + step) % current.size());
@@ -187,7 +189,7 @@ public final class SableLavaMelt {
             scanVehicle(level, subLevel, melts.computeIfAbsent(subLevel.getUniqueId(),
                     id -> new VehicleMelt()));
         }
-        SCAN_CURSOR.put(level.dimension(), (cursor + VEHICLE_BUDGET_PER_SCAN) % current.size());
+        SCAN_CURSOR.put(level.dimension(), (cursor + Config.SABLE_LAVA_MELT_SCAN_BUDGET.get()) % current.size());
     }
 
     private static void scanVehicle(ServerLevel level, ServerSubLevel subLevel, VehicleMelt melt) {

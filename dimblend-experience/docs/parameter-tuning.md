@@ -27,6 +27,8 @@ Missing optional mods leave their controls disabled.
 | Structure-void fitting on vehicles | true | Checkbox | experience |
 | Lava melting vehicle blocks | true | Checkbox | experience |
 | Lava melt speed multiplier | 4.0 | 0.5-64.0, step 0.1; relative to bare-hand breaking, applies on the fly without clearing accumulated melt progress | experience |
+| Void-fit vehicles per scan | 2 | 1-64, step 1; vehicles refit per fitting scan, overflow goes first next round; raise when one dimension hosts dozens of vehicles to relieve scan starvation | experience |
+| Lava melt vehicles per scan | 2 | 1-64, step 1; vehicles scanned per 5-tick melt round (round-robin); raise when one dimension hosts dozens of vehicles to relieve scan starvation | experience |
 | Portable Engine quantity limit | true | Checkbox | experience |
 | Steam Engine overload penalty | true | Checkbox | experience |
 | Small/Modular/Large Diesel Engine overload penalty | true | Checkbox | experience |
@@ -39,6 +41,8 @@ Missing optional mods leave their controls disabled.
 | Radio End voice volume | 0.75 | 0.00-2.00, step 0.01; 0.5 = former hard-coded loudness, 0 = no voices (music not ducked) | radio |
 | Radio acoustic simulation intensity | 1.00 | 0.00-2.00, step 0.01; 0 = no simulated echo | radio |
 | Experience clear ratio on respawn | 1.00 | 0.00-1.00, step 0.01; rotating dimension only, ignores keepInventory, no experience orb drops | experience |
+| Rotating monster cap (% of vanilla) | 50 | 0-100, step 1; 100 = vanilla density, 0 = no natural monster spawns; scales only the global cap, per-attempt odds and per-player local caps unchanged | experience |
+| Item drain growth boost water cost | 20 mB | 0-1500, step 1; drained per successful boost, 0 = free | experience |
 
 ## Vehicle headlights (surface and volumetric haze)
 
@@ -51,7 +55,7 @@ chunk reloads and vehicle assembly retain activation. Iris still disables this r
 
 The Sable page includes eight **experience-owned, server-authoritative** options.
 Edits persist in `serverconfig/dimblend_experience-server.toml` and broadcast to
-all clients through the tuning snapshot (protocol 24, 64-bit availability mask).
+all clients through the tuning snapshot (protocol 25, 64-bit availability mask).
 
 | `/dbx` option | Config key | Default | Range / step |
 |---|---|---|---|
@@ -208,7 +212,7 @@ Radio follows the same pattern through `dimblend.radio.api.RadioTuning` and its
 own `serverconfig/dimblend_radio-server.toml`. Its settings are heard on each
 client, so remote clients also apply the broadcast radio values in memory
 (NeoForge already sends the config at login). The snapshot carries one value
-per option, so each added or removed option bumps the protocol version (now `24`; see the
+per option, so each added or removed option bumps the protocol version (now `25`; see the
 performance checklist below).
 
 The existing `couplerRedstone` config uses the inverse meaning: true blocks
@@ -305,7 +309,7 @@ server's results are shown (same JVM); a client connected to a remote server
 also lists its own collector, heap and memory. Server steps and the spark fix use
 the same permission gate as the panel (level 2) and travel on two extra payloads
 (`perf_check_request`, `perf_check_report`), which also bumped the tuning
-protocol version (now `24`, see above). The thresholds live in `PerfRules` and are unit-tested;
+protocol version (now `25`, see above). The thresholds live in `PerfRules` and are unit-tested;
 `PerfChecklistTranslationsTest` checks both languages cover every step, advice
 and fix label.
 

@@ -184,7 +184,7 @@
 - 只压全局密度上限，不改单次刷怪概率；被动/水生等其它类别与其它维度完全走原版；
   纯函数 `RotatingMonsterCap.scaledCap` + 单测
 - 新配置 `rotatingMonsterCapMultiplier`（DoubleValue，默认 0.5，范围 0-1；
-  1.0 等效原版、0=不自然刷怪）
+  1.0 等效原版、0=不自然刷怪；经 /dbx 面板按原版百分比 0–100 可调）
 
 ## 2. 板块 B：CDG 柴油机行为
 
@@ -613,7 +613,7 @@
 - **构建环境**：本机默认 JAVA_HOME 为 JDK 11，每条 gradle 命令需显式 `$env:JAVA_HOME='C:\Program Files\Java\jdk-21'`
 - 音效素材由**用户提供**（用户拍板），我负责接入；素材到位前相关功能用占位实现，代码先行
 - **已知接受风险（A1/A2 L4）**：v1.13 起作废——快照捕获、LivingDropsEvent 拦截、重生改道均已删除，原三条风险（快照残留、连带取消、附件序列化）随之消失；现 A1 仅剩经验比率（克隆时覆盖经验字段 + 取消经验球事件），无新增在案风险
-- **GameTest 共享配置纪律（2026-10-11 起）**：vanilla GameTest 不同 batch 在同一世界并发执行，各用例私有"保存-设值-还原"会被先结束者的还原踩踏（在途用例门控被拨回生产值而全灭）。取值一致的共享键（维度门、SABLE_STRUCTURE_VOID_FIT、SABLE_VOID_FIT_REFIT_TICKS、SABLE_LAVA_MELT）一律走 `GameTestSableRules` 引用计数覆写（首个 acquire 应用、最后 release 还原、中途不改值）；用例中段的临时翻转必须自己翻回（含 finally 兜底）；取值互斥的键（LIMITED_WATER：limited_water 要开、载具用例要关）仍按各类私有保存/还原，既有低概率互踩按接受处理
+- **GameTest 共享配置纪律（2026-10-24 源码校正）**：vanilla `GameTestRunner.runBatch` 在前一批全部结束后才启动下一批，并发只发生在同一 batch 内。取值一致的共享键（维度门、SABLE_STRUCTURE_VOID_FIT、SABLE_VOID_FIT_REFIT_TICKS、SABLE_LAVA_MELT）一律走 `GameTestSableRules` 引用计数覆写（首个 acquire 应用、最后 release 还原、中途不改值），防止同 batch 用例的私有还原互踩；用例中段的临时翻转必须自己翻回（含 finally 兜底）；取值互斥的键（LIMITED_WATER：limited_water 要开、载具用例要关）仍按各类私有保存/还原
 
 ### 需用户提供的音效素材（OGG Vorbis，建议单声道 44100Hz）
 
@@ -748,7 +748,9 @@
   连续 20 轮仍空（限高外/病态）熔断退回自愈节拍，防挤占预算
 - 实现：`SableVoidFit`（4Hz 扫描、2 载具/轮预算、位姿阈值、20 周期自愈）
   → `VoidFitVoxelizer`/`VoidFitTracker`/`VoidFitApplier`/`VoidFitStrip`
-  + `ChunkMapVoidFitStripMixin`；GameTest 8 条
+  + `ChunkMapVoidFitStripMixin`；GameTest 8 条。投影 AABB 仅 Y 受世界高度钳制，
+  X/Z 不做 Y 上限裁剪（2026-10-24 修复远正 Z>319 时 z0>z1 导致整列 target 为空；
+  `VoidFitVoxelizerTest` 锁远 Z 覆盖与 Y 钳制）
 - 开关 `sableStructureVoidFit`（默认开）+ `sableVoidFitRefitTicks`（默认 5）
 
 ### G6 岩浆熔毁 sable 结构方块（2026-10-11 拍板口径，仅 rotating）
@@ -772,18 +774,24 @@
   播一次 `block.fire.extinguish`（原版灭火口径：音量 0.5、音高 2.6±0.4 随机，同
   `BucketItem` 灭火）——持续浇淋即持续嘶声，熔穿瞬间由破坏粒子/音效收尾；播世界
   坐标（播在 plot 存储格玩家听不见，`PhysicsBogeyBrakeSoundMixin` 事故口径）
-- 与拟合的配合：开关开启时 `VoidFitApplier#placeVoid` 不驱逐熔岩格（熔岩浇穿
-  船体逐步推进：熔穿→投影收缩→空位拆除→熔岩进缺口）；关闭后熔岩与水同被
-  驱逐、本特性停摆
+- 与拟合的配合（2026-10-23 柱顶收窄）：开关开启时 `VoidFitApplier#placeVoid`
+  只保留各 (x,z) 柱最高目标格（柱顶）的熔岩不驱逐——从上方流下的岩浆在车顶线
+  截断、从车顶开始浇淋熔穿，柱内更低投影格照常驱逐成空位（舱内不积岩浆、
+  不导流）；侧向/下方浸没同理只留柱顶，壳体靠壳外 0.25 容差从外侧熔起、壳内
+  方块待壳熔穿熔岩真实流入才接触；熔穿→投影收缩→空位拆除→熔岩进缺口逐层
+  推进。关闭后熔岩与水同被驱逐、本特性停摆
 - 实现：`SableLavaMelt`（5 tick 一轮、2 载具/轮游标轮询；连续接触按真实 tick 差
   累计、新接触从 0 起算不预支空窗；开关停摆恢复后首扫重置计时不补发停摆期；
   倍率逐次扫描读 `Config.SABLE_LAVA_MELT_SPEED`，运行中改值即时生效）
   → `LavaMeltMath` 纯函数（速率按倍率参数化，两参重载走默认值）；`VoidFitVoxelizer#forEachProjectedBlock` 与体素化共用
   投影枚举；plot 读写一律 `level` + 全局存储坐标（`EmbeddedPlotLevelAccessor`
   是中心相对坐标，严禁混用）；免疫守卫在扫描枚举与熔毁执行两处各查一次
-  `state.is(LAVA_MELT_IMMUNE)`（执行处复核防枚举后邻接更新改写）；单测 8 条 +
-  GameTest 6 条（含标签接线断言；GameTestSableRules 把倍率钉为默认值，套件时序与
-  服务器配置无关）
+  `state.is(LAVA_MELT_IMMUNE)`（执行处复核防枚举后邻接更新改写）；柱顶索引
+  `VoidFitColumnTops` 纯函数（单测 4 条）随 target 同步重建存于
+  `VoidFitTracker.VehicleFit`；普通 refit 用本车新索引并合并其他载具柱顶（不读回本车
+  旧索引），补放路径按"任一载具柱顶"并集口径查询；单测 8 条 +
+  GameTest 6 条（含标签接线断言与柱顶收窄用例；GameTestSableRules 把倍率钉为默认值，
+  套件时序与服务器配置无关）
 - 开关 `sableLavaMelt`（默认开）+ 倍率 `sableLavaMeltSpeed`（默认 4.0，/dbx 面板
   可调，快照协议随新增选项升版、当前版本以 parameter-tuning 为准）；需要 Sable 在场
 
@@ -909,7 +917,7 @@
 | itemDrainCoverageRadius | N1/N2 配套（保湿/催熟半径 1–8，默认 3=7x7；由旧键 itemDrainIrrigationRadius 改名，旧值自动清除） | 3 |
 | itemDrainGrowth | N2（分液池催熟：每周期随机挑一株作物型骨粉目标走原版骨粉逻辑，生效才扣水；无候选倒计时停走） | true |
 | itemDrainGrowthIntervalSeconds | N2 配套（催熟周期秒 1–600；由旧键 itemDrainGrowthIntervalTicks 改名） | 30 |
-| itemDrainGrowthCostMb | N2 配套（每次催熟生效扣除水量 mb，0=免费催熟） | 10 |
+| itemDrainGrowthCostMb | N2 配套（每次催熟生效扣除水量 mb，0=免费催熟；经 /dbx 面板可调） | 20 |
 | itemDrainGrowthMinMb | N2 配套（存水低于此值停催熟，保湿不受影响，回水自动恢复） | 200 |
 | itemDrainPipeRefill | N3（分液池管道补水：放开 forbidInsertion + 追加 UP 面流体接口，关闭恢复原版） | true |
 | rotatingDimensionId | A1–A6 作用域维度 id | "dimblend:rotating" |
@@ -1016,8 +1024,9 @@
 - 启动验证（2026-09-23 v1.7 批次，dev runClient + CCA 临时 localRuntime）：createaddition 1.5.10 加载、CCA Initialized、Sound engine started 到主菜单，0 ERROR/FATAL/InvalidMixin；本批 4 个 mixin（SoundClient 改版 + AlternatorIdleDrain + Goggle + GeneratorStats）随 CCA BE 注册完成 apply；dev 环境 mixin 库为 sponge-mixin 0.15.2+mixin.0.8.7（fabric fork）。实机听音/看数仍在待办
 - G7 实机项（2026-10-15 验收通过）：TrainTripWorld 实例放产蛋器于 sable 结构内（单块/多块子层级各一）与主世界各一，确认玻璃内嵌鸡可见、明暗与周围方块一致、玻璃仍半透明、孵化器不受影响、物品栏图标正常
 - L 板块实机项：储罐+汽笛（无热源）邻接蒸汽引擎/柴油机/电动马达各放红石，验证鸣笛音效对应、张嘴+音符前冲、播放期再输入无效、断电再上电再鸣；256/512 距离衰减与左右方向感听音；Sable 结构上同验（声音随结构当前位置）；9 键 pitch 配置各改一档实测
-- M 板块实机项：夜视仪开夜视后电量 50%/25%/10% 三档噪点密度观感校准（50% 应无噪点、10% 应严重干扰视线）、电量耗尽自动关夜视后噪点消失、F1 隐藏 HUD 时噪点随图层一同隐藏
+- M 板块实机项：夜视仪开夜视后电量 50%/25%/10% 三档遮罩深度观感校准（50% 应无遮罩、10% 应严重干扰视线）、电量耗尽自动关夜视后遮罩消失、F1 隐藏 HUD 时遮罩随图层一同隐藏、帧率对比无感（对照原噪点版的 FPS 拖累）
 - N 板块实机项：新存档（YAT 组件水链路）催熟生效+恰扣 10mb 复测、无候选倒计时停走与作物出现自动恢复、保湿建票拉满与维持、管道侧面/底面/顶面注水与关开关恢复原版、护目镜与 Jade 两行文案同口径、热改半径/周期配置生效
+- O 板块实机项：生存挖掘汲水器/高压泵/锥形喷嘴/扁平喷嘴/水桶控制器各掉自身物品、扳手潜行拆卸返还物品（修复前两者皆凭空消失）
 
 ### 复核闭环状态（截至第 25 轮）
 
@@ -1208,29 +1217,29 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
   触发、方向优先级 背面>左侧 / 正面>背面）、`TrainHornCcaGameTests`（-PwithCca：
   电动马达、模块化电池各自触发）。
 
-## 14. 板块 M：夜视仪低电量白噪点（2026-10-23 新增）
+## 14. 板块 M：夜视仪低电量渐褪（2026-10-23 新增，同日修订为渐褪）
 
-> 来源：2026-10-23 用户追加需求——夜视仪电量低于 50% 时，每次使用夜视功能增加白色
-> 噪点，噪点数量随 50%→0% 逐渐增多（增量参考：剩余 10% 时已会严重干扰视线）。
+> 来源：2026-10-23 用户追加需求——夜视仪电量低于 50% 时给低电量视觉反馈（原始
+> 提案为白噪点，密度随 50%→0% 增多，10% 时严重干扰视线）；同日用户实测噪点版
+> 拖 FPS 且伤眼，拍板改为「50% 起逐渐褪去夜视效果」。
 > 用户确认包内装的是 hardcore_nvg（有电量版，非 basic_nvg 无限夜视版）。
 
-- M1 口径：夜视开启（`NightVision=true`）且剩余电量 `Percent<50` 时，客户端在 HUD
-  图层之上撒 1px 白色噪点；密度随电量线性——50% 起 0 个，0% 达满密度（=画面逻辑
-  像素总数的 2%），10% 时≈满密度的 80%（用户给的「严重干扰」参考点）；负电量按 0%
-  钳制。噪点白色 75% 不透明度（0xBFFFFFFF），每帧重随机产生闪烁感；仅客户端渲染，
-  不回写任何状态；无功能开关。
+- M1 口径：夜视开启（`NightVision=true`）且剩余电量 `Percent<50` 时，客户端在
+  世界画面上叠一层随电量线性加深的**黑色整屏遮罩**，模拟夜视亮度逐渐褪去——50%
+  起透明，0% 时不透明度 85%（10% 时≈上限的 80%，对齐原噪点版的「严重干扰」
+  参考增量）；负电量按 0% 钳制。整屏一次 fill，无逐像素绘制（噪点版每帧数千次
+  单像素 fill 是 FPS 拖累根因）；仅客户端渲染，不回写任何状态；无功能开关。
 - M2 读数来源：hardcore_nvg 的玩家附件 `hardcore_nvg:player_variables`
   （`HardcoreNvgModVariables.PLAYER_VARIABLES`）——`Percent`（double 0–100）为剩余
   电量（该 mod 电量即物品耐久，夜视生效期间每 tick 耐久 -1），`NightVision`
   （boolean）为夜视开关；服务端每 tick `syncPlayerVariables` 同步到本人客户端，
   图层直接读本地附件，无自定义网络包（反编译核实，证据 /tmp/hnvg/）。
-- M3 图层顺序：hardcore_nvg 绿滤镜走 `RenderGuiEvent.Pre`（先于所有 HUD 图层），
-  本图层 `registerAboveAll` 在其后 → 噪点压在绿滤镜之上可见（复核侧字节码核实）。
-  hardcore_nvg 缺席时 `ModList` 守卫不注册图层，lambda 的 invokedynamic 永不链接，
-  类加载安全。
-- 运行验证：`NvgBatteryNoiseLayerTest` 单测 4 条（≥50% 不出点、10% 锚点=满密度 80%、
-  50%→0% 单调递增、负值钳 0%+密度随面积缩放）；`:dimblend-experience:test` 全绿。
-  实机密度观感校准待用户（见「游戏内运行验证清单」M 板块实机项）。
+- M3 图层顺序：`NvgBatteryFadeLayer` 经 `RegisterGuiLayersEvent#registerBelowAll`
+  挂在全部 HUD 层之下——只压暗世界画面，准星与快捷栏等 HUD 保持原亮度。hardcore_nvg 缺席时 `ModList` 守卫不
+  注册图层，lambda 的 invokedynamic 永不链接，类加载安全。
+- 运行验证：`NvgBatteryFadeLayerTest` 单测（≥50% 不遮罩、10% 锚点=上限 80%、
+  50%→0% 单调加深、负值钳 0%）；`:dimblend-experience:test` 全绿。
+  实机观感校准待用户（见「游戏内运行验证清单」M 板块实机项）。
 
 ## 15. 板块 N：分液池（Create Item Drain 扩展，2026-10-23 补录）
 
@@ -1252,7 +1261,7 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
 - N2 催熟（`itemDrainGrowth`，默认开）：存水 ≥ `itemDrainGrowthMinMb`（默认 200）
   时，每 `itemDrainGrowthIntervalSeconds`（默认 30 秒）在覆盖柱体 **y 与 y+1 两层**
   随机挑一株候选走原版骨粉三段式（`isValidBonemealTarget` → `isBonemealSuccess` →
-  `performBonemeal`）；**生效才扣** `itemDrainGrowthCostMb`（默认 10mb，0=免费），
+  `performBonemeal`）；**生效才扣** `itemDrainGrowthCostMb`（默认 20mb，0=免费），
   扣水门 = `isBonemealSuccess` 通过。候选限**作物型** `BonemealableBlock`
   （2026-10-22 收窄：草方块/草丛/苔藓/菌岩/缠根泥土/海草/粉红色花簇等蔓延/装饰型
   不算——户外农田恒有草，算候选则「无作物停走」永不触发、抽中草白扣 10mb 零可见
@@ -1302,3 +1311,21 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
   `ItemDrainHudSyncGameTests`（`item_drain_hud_armed` 上弦写键值域 /
   `item_drain_hud_disabled` 关开关写 -1 / `item_drain_hud_no_target` 无目标写 -1 /
   `item_drain_hud_disarm` 击发点无目标卸弦）。
+
+## 16. 板块 O：createfirefightingadd 缺失战利品表补齐（2026-10-23 数据注入）
+
+> 来源：2026-10-23 用户报告「汲水器挖掘不掉落、扳手拆卸会消失」。反编译
+> createfirefightingadd-0.2.1-beta.jar 核实：jar 内
+> `data/createfirefightingadd/loot_table/blocks/` 缺 5 张方块战利品表——
+> `water_intake`（汲水器）、`high_pressure_pump`、`cone_nozzle`、`flat_nozzle`、
+> `bucket_controller`。挖掘与 Create 扳手拆卸（`IWrenchable.onSneakWrenched`）
+> 都走 `Block.getDrops` → 空表 → 不掉落，属对方 mod 的发布缺漏。
+
+- O1 口径：以本模组数据包路径同名补齐（`data/createfirefightingadd/loot_table/blocks/
+  *.json`），格式照抄 jar 内现有 `fire_hose.json`——单 pool、掉自身物品、
+  `survives_explosion` 条件；物品 id 与方块同名（jar 内注册名核实）。数据注入与
+  对方日后补表不冲突（同名数据包资源按优先级覆盖，对方补了也只是同义替换）。
+- O2 范围说明：用户只报了汲水器；同 bug 的另外 4 个方块（高压泵/锥形喷嘴/扁平
+  喷嘴/水桶控制器）一并补齐——同一缺漏同源同修法，留着是已知坑。
+- 运行验证：数据包加载即生效（无需代码路径）；实机待验——生存挖掘 5 方块各掉
+  自身、扳手潜行拆卸返还物品（见「游戏内运行验证清单」）。

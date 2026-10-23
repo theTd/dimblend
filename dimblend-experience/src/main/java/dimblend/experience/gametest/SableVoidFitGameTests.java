@@ -4,9 +4,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.companion.math.BoundingBox3i;
+import dev.ryanhcode.sable.companion.math.BoundingBox3ic;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dimblend.experience.Config;
 import dimblend.experience.compat.sable.VoidFitStrip;
@@ -38,9 +40,14 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
  * <p>载具是物理体：组装后会下落/微沉到静止，落点格与初始格可能不同，且保守覆盖可能
  * 跨格。所有断言一律先经位姿投影求"石块当前的世界格"再核验，不断言初始格。</p>
  *
- * <p>维度门/拟合开关/扫描周期经 {@link GameTestSableRules} 引用计数共享覆写——
- * vanilla 不同 batch 在同一世界并发执行，私有"保存-设值-还原"会被先结束者的还原
- * 踩踏（在途用例门控被拨回生产值）；{@code LIMITED_WATER} 取值与 limited_water
+ * <p>就绪门一律走 {@link GameTestSableRules#await} 的墙钟轮询（谓词连续 3 tick 为真），
+ * 并在组装时同步预载 plot 区块（{@link #assemble}）：GameTestServer 不限速，固定 tick
+ * 窗口只对应几十毫秒墙钟，等不到 plot 区块经 force-load ticket 异步兑现（2026-10-24
+ * R5 实测 13 例误败于"15 tick 内未拟合"）。拟合之后的拆除/自愈核验是纯 tick 耦合
+ * （按扫描计数推进），仍用固定 tick 窗口。</p>
+ *
+ * <p>维度门/拟合开关/扫描周期经 {@link GameTestSableRules} 引用计数共享覆写，
+ * 防止同 batch 并发用例的私有还原互踩；{@code LIMITED_WATER} 取值与 limited_water
  * 用例互斥，仍按本类私有保存/还原（挡水用例需要水真实存续：G3 会把孤立源水改写为
  * 流动水，而原版流动水无供养下一流体 tick 即干涸——与本特性无关，关掉避免干扰）。
  * 不加 {@code @GameTestHolder}：引用 Sable 类，只由 DimBlend 在 Sable 在场时显式注册。</p>
@@ -51,7 +58,7 @@ public final class SableVoidFitGameTests {
     private static final String TEMPLATE = "item_drain_refill";
     private static final String NAMESPACE = "dimblend_experience";
     private static final BlockPos VEHICLE_REL = new BlockPos(1, 2, 1);
-    /** 结构 tick、物理静止与至少一次拟合扫描的就绪窗口。 */
+    /** 拆除/自愈等 tick 耦合步骤的固定窗口（扫描每 tick 一轮，不依赖异步区块就绪）。 */
     private static final int SETTLE_TICKS = 15;
     /** 等慢速自愈周期（20 扫描 × 1 tick）富余量。 */
     private static final int VERIFY_TICKS = 40;
@@ -78,6 +85,11 @@ public final class SableVoidFitGameTests {
     /**
      * 组装单方块载具并断言成功（方块随即被搬进 plot，世界格留空）。
      * plot 坐标在组装当下用初始位姿逆投影钉死——载具随后物理移动后仍有效。
+     *
+     * <p>组装后同步预载 plot 区块：拟合体素化只读 {@code getLoadedChunks()}，生产环境靠
+     * Sable 的 force-load ticket 异步兑现（墙钟耗时）；GameTestServer 不限速，tick 狂飙下
+     * 固定 tick 窗口等不到兑现（2026-10-24 R5 实测 13 例误败）。测试只关心拟合行为本身，
+     * 预载把环境噪声挤出断言窗口。</p>
      */
     private static Assembled assemble(GameTestHelper helper, BlockPos rel) {
         ServerLevel level = helper.getLevel();
@@ -86,8 +98,76 @@ public final class SableVoidFitGameTests {
         ServerSubLevel subLevel = SubLevelAssemblyHelper.assembleBlocks(level, world,
                 List.of(world), new BoundingBox3i(world, world));
         helper.assertTrue(subLevel != null, "assembly must succeed");
+        preloadPlotChunks(level, subLevel);
         Vec3 plotCenter = subLevel.logicalPose().transformPositionInverse(Vec3.atCenterOf(world));
         return new Assembled(subLevel, plotCenter);
+    }
+
+    /** 同步装载 plot 包围盒覆盖的全部区块（单方块载具只有 1-4 个）。 */
+    private static void preloadPlotChunks(ServerLevel level, ServerSubLevel subLevel) {
+        BoundingBox3ic box = subLevel.getPlot().getBoundingBox();
+        for (int cx = box.minX() >> 4; cx <= box.maxX() >> 4; cx++) {
+            for (int cz = box.minZ() >> 4; cz <= box.maxZ() >> 4; cz++) {
+                level.getChunk(cx, cz);
+            }
+        }
+    }
+
+    /**
+     * 拟合就绪门：投影格为 structure_void、物理线/角速度收敛且投影坐标跨轮不变
+     * 才放行，避免后续定点操作期间载具继续沉降跨格。超时先拆载具再失败。
+     */
+    private static void awaitFitted(GameTestHelper helper, ServerLevel level, Assembled assembled,
+            SavedConfig saved, Runnable onReady) {
+        awaitAllFitted(helper, level, List.of(assembled), saved, onReady);
+    }
+
+    /** 多载具版就绪门：全部载具的投影格连续稳定为 structure_void 且位姿不再跨格漂移。 */
+    private static void awaitAllFitted(GameTestHelper helper, ServerLevel level,
+            List<Assembled> vehicles, SavedConfig saved, Runnable onReady) {
+        Runnable cleanup = () -> {
+            for (Assembled vehicle : vehicles) {
+                vehicle.subLevel().markRemoved();
+            }
+            restore(saved);
+        };
+        GameTestSableRules.await(helper, "vehicle fit", new BooleanSupplier() {
+            private List<BlockPos> settledCells;
+
+            @Override
+            public boolean getAsBoolean() {
+                List<BlockPos> cells = new ArrayList<>(vehicles.size());
+                for (Assembled vehicle : vehicles) {
+                    BlockPos cell = projectedCell(vehicle);
+                    if (!level.getBlockState(cell).is(Blocks.STRUCTURE_VOID)
+                            || !GameTestSableRules.vehicleSettled(vehicle.subLevel())) {
+                        settledCells = null;
+                        return false;
+                    }
+                    cells.add(cell);
+                }
+                boolean settled = cells.equals(settledCells);
+                settledCells = cells;
+                return settled;
+            }
+        }, () -> {
+            StringBuilder sb = new StringBuilder();
+            for (Assembled vehicle : vehicles) {
+                BlockPos cell = projectedCell(vehicle);
+                sb.append('[').append(cell).append('=').append(level.getBlockState(cell))
+                        .append(" pose=").append(vehicle.subLevel().logicalPose())
+                        .append(" linear=").append(vehicle.subLevel().latestLinearVelocity)
+                        .append(" angular=").append(vehicle.subLevel().latestAngularVelocity).append(']');
+            }
+            return sb.toString();
+        }, cleanup, () -> {
+            try {
+                onReady.run();
+            } catch (RuntimeException | Error e) {
+                cleanup.run();
+                throw e;
+            }
+        });
     }
 
     /** 石块当前的世界格：plot 内固定坐标经当前位姿正投影。 */
@@ -129,18 +209,19 @@ public final class SableVoidFitGameTests {
     }
 
     /** 载具占据格被拟合为结构空位。 */
-    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_air", timeoutTicks = 120)
+    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_air", timeoutTicks = 24000)
     public static void fitsVehicleCell(GameTestHelper helper) {
         SavedConfig saved = enableRules();
         ServerLevel level = helper.getLevel();
         Assembled assembled = assemble(helper, VEHICLE_REL);
-        helper.runAfterDelay(SETTLE_TICKS, () -> {
+        awaitFitted(helper, level, assembled, saved, () -> {
             try {
                 BlockPos cell = projectedCell(assembled);
                 helper.assertTrue(level.getBlockState(cell).is(Blocks.STRUCTURE_VOID),
                         "projected vehicle cell " + cell + " must be fitted with structure_void but was "
                                 + level.getBlockState(cell));
             } finally {
+                assembled.subLevel().markRemoved();
                 restore(saved);
             }
             helper.succeed();
@@ -148,12 +229,12 @@ public final class SableVoidFitGameTests {
     }
 
     /** 拟合格挡水：向覆盖边界外第一格放水，水不渗入载具格、但确实存在于开放格。 */
-    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_water", timeoutTicks = 120)
+    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_water", timeoutTicks = 24000)
     public static void fittedCellBlocksWaterIngress(GameTestHelper helper) {
         SavedConfig saved = enableRules();
         ServerLevel level = helper.getLevel();
         Assembled assembled = assemble(helper, VEHICLE_REL);
-        helper.runAfterDelay(SETTLE_TICKS, () -> {
+        awaitFitted(helper, level, assembled, saved, () -> {
             BlockPos cell = projectedCell(assembled);
             helper.assertTrue(level.getBlockState(cell).is(Blocks.STRUCTURE_VOID),
                     "precondition: projected cell must be fitted");
@@ -176,6 +257,7 @@ public final class SableVoidFitGameTests {
                             "sanity: water must have spread to the open neighbour cell; waterAt="
                                     + level.getBlockState(waterAt) + " openAt=" + level.getBlockState(openAt));
                 } finally {
+                    assembled.subLevel().markRemoved();
                     restore(saved);
                 }
                 helper.succeed();
@@ -232,12 +314,12 @@ public final class SableVoidFitGameTests {
     }
 
     /** 拟合格不落盘：剥成空气后序列化，palette 里不得出现 structure_void。 */
-    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_save", timeoutTicks = 120)
+    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_save", timeoutTicks = 24000)
     public static void fittedVoidsNeverSaved(GameTestHelper helper) {
         SavedConfig saved = enableRules();
         ServerLevel level = helper.getLevel();
         Assembled assembled = assemble(helper, VEHICLE_REL);
-        helper.runAfterDelay(SETTLE_TICKS, () -> {
+        awaitFitted(helper, level, assembled, saved, () -> {
             try {
                 BlockPos cell = projectedCell(assembled);
                 helper.assertTrue(level.getBlockState(cell).is(Blocks.STRUCTURE_VOID),
@@ -300,6 +382,7 @@ public final class SableVoidFitGameTests {
                                     + diagnose(level, leakedCells));
                 }
             } finally {
+                assembled.subLevel().markRemoved();
                 restore(saved);
             }
             helper.succeed();
@@ -307,16 +390,17 @@ public final class SableVoidFitGameTests {
     }
 
     /** 载具消失后已写入的空位被拆除，占据格回到空气。 */
-    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_gone", timeoutTicks = 120)
+    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_gone", timeoutTicks = 24000)
     public static void voidsRemovedWhenVehicleGone(GameTestHelper helper) {
         SavedConfig saved = enableRules();
         ServerLevel level = helper.getLevel();
         Assembled assembled = assemble(helper, VEHICLE_REL);
-        helper.runAfterDelay(SETTLE_TICKS, () -> {
+        awaitFitted(helper, level, assembled, saved, () -> {
             BlockPos cell = projectedCell(assembled);
             helper.assertTrue(level.getBlockState(cell).is(Blocks.STRUCTURE_VOID),
                     "precondition: projected cell must be fitted");
             assembled.subLevel().markRemoved();
+            // 拆除走逐 tick 扫描的 gone 检测（tick 耦合，不依赖异步区块就绪），固定窗口即可
             helper.runAfterDelay(SETTLE_TICKS, () -> {
                 try {
                     helper.assertTrue(level.getBlockState(cell).isAir(),
@@ -330,22 +414,24 @@ public final class SableVoidFitGameTests {
     }
 
     /** 真实方块不被覆盖：玩家顶掉空位（replaceable）后，自愈核验也不得顶回。 */
-    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_repl", timeoutTicks = 120)
+    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_repl", timeoutTicks = 24000)
     public static void realBlocksNotOverwritten(GameTestHelper helper) {
         SavedConfig saved = enableRules();
         ServerLevel level = helper.getLevel();
         Assembled assembled = assemble(helper, VEHICLE_REL);
-        helper.runAfterDelay(SETTLE_TICKS, () -> {
+        awaitFitted(helper, level, assembled, saved, () -> {
             BlockPos cell = projectedCell(assembled);
             helper.assertTrue(level.getBlockState(cell).is(Blocks.STRUCTURE_VOID),
                     "precondition: projected cell must be fitted");
             level.setBlockAndUpdate(cell, Blocks.STONE.defaultBlockState());
+            // 自愈核验按扫描计数（tick 耦合，不依赖异步区块就绪），固定窗口即可
             helper.runAfterDelay(VERIFY_TICKS, () -> {
                 try {
                     helper.assertTrue(level.getBlockState(cell).is(Blocks.STONE),
                             "player-placed block must survive the self-heal refit but was "
                                     + level.getBlockState(cell));
                 } finally {
+                    assembled.subLevel().markRemoved();
                     restore(saved);
                 }
                 helper.succeed();
@@ -357,24 +443,26 @@ public final class SableVoidFitGameTests {
      * 含水方块不被驱逐（B1 回归）：含水台阶的 fluidState 非空，若放置守卫把"含流体"
      * 误当"纯流体"，行驶载具会沿途删除海草/海带/含水方块。含水台阶必须在自愈后存活。
      */
-    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_wlog", timeoutTicks = 120)
+    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_wlog", timeoutTicks = 24000)
     public static void waterloggedBlocksNotEvicted(GameTestHelper helper) {
         SavedConfig saved = enableRules();
         ServerLevel level = helper.getLevel();
         Assembled assembled = assemble(helper, VEHICLE_REL);
-        helper.runAfterDelay(SETTLE_TICKS, () -> {
+        awaitFitted(helper, level, assembled, saved, () -> {
             BlockPos cell = projectedCell(assembled);
             helper.assertTrue(level.getBlockState(cell).is(Blocks.STRUCTURE_VOID),
                     "precondition: projected cell must be fitted");
             BlockState waterlogged = Blocks.STONE_SLAB.defaultBlockState()
                     .setValue(SlabBlock.WATERLOGGED, true);
             level.setBlockAndUpdate(cell, waterlogged);
+            // 自愈核验按扫描计数（tick 耦合，不依赖异步区块就绪），固定窗口即可
             helper.runAfterDelay(VERIFY_TICKS, () -> {
                 try {
                     helper.assertTrue(level.getBlockState(cell).is(Blocks.STONE_SLAB)
                                     && level.getBlockState(cell).getValue(SlabBlock.WATERLOGGED),
                             "waterlogged slab must survive refits but was " + level.getBlockState(cell));
                 } finally {
+                    assembled.subLevel().markRemoved();
                     restore(saved);
                 }
                 helper.succeed();
@@ -384,18 +472,43 @@ public final class SableVoidFitGameTests {
 
     /**
      * 多载具同时出现全部拟合（B2 回归：retry 空转饿死尾部载具）。
-     * 4 个载具超过单次扫描的载具预算（2），尾部必须经 retry 建账补齐而非永久饥饿。
+     * 本例私有地把扫描预算压回 2（套件全局钉满 64，见 GameTestSableRules）以重演
+     * 原始场景：4 个载具超过单次扫描预算，尾部必须经 retry 建账补齐而非永久饥饿。
      */
-    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_multi", timeoutTicks = 120)
+    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_multi", timeoutTicks = 24000)
     public static void multipleVehiclesAllFitted(GameTestHelper helper) {
         SavedConfig saved = enableRules();
+        int savedBudget = Config.SABLE_VOID_FIT_SCAN_BUDGET.get();
+        Config.SABLE_VOID_FIT_SCAN_BUDGET.set(2);
         ServerLevel level = helper.getLevel();
         List<Assembled> vehicles = new ArrayList<>();
         for (BlockPos rel : new BlockPos[]{new BlockPos(0, 2, 0), new BlockPos(2, 2, 0),
                 new BlockPos(0, 2, 2), new BlockPos(2, 2, 2)}) {
             vehicles.add(assemble(helper, rel));
         }
-        helper.runAfterDelay(SETTLE_TICKS + 10, () -> {
+        Runnable cleanup = () -> {
+            Config.SABLE_VOID_FIT_SCAN_BUDGET.set(savedBudget);
+            for (Assembled vehicle : vehicles) {
+                vehicle.subLevel().markRemoved();
+            }
+            restore(saved);
+        };
+        GameTestSableRules.await(helper, "all vehicles fitted", () -> {
+            for (Assembled vehicle : vehicles) {
+                if (!level.getBlockState(projectedCell(vehicle)).is(Blocks.STRUCTURE_VOID)) {
+                    return false;
+                }
+            }
+            return true;
+        }, () -> {
+            StringBuilder sb = new StringBuilder();
+            for (Assembled vehicle : vehicles) {
+                BlockPos cell = projectedCell(vehicle);
+                sb.append('[').append(cell).append('=').append(level.getBlockState(cell))
+                        .append(" pose=").append(vehicle.subLevel().logicalPose()).append(']');
+            }
+            return sb.toString();
+        }, cleanup, () -> {
             try {
                 for (Assembled vehicle : vehicles) {
                     BlockPos cell = projectedCell(vehicle);
@@ -403,7 +516,7 @@ public final class SableVoidFitGameTests {
                             "every vehicle must be fitted; " + cell + " was " + level.getBlockState(cell));
                 }
             } finally {
-                restore(saved);
+                cleanup.run();
             }
             helper.succeed();
         });

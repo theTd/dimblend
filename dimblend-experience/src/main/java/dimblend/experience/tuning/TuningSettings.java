@@ -48,6 +48,8 @@ public final class TuningSettings {
             case SABLE_VOID_FIT -> Config.SABLE_STRUCTURE_VOID_FIT.get() ? 1.0D : 0.0D;
             case SABLE_LAVA_MELT -> Config.SABLE_LAVA_MELT.get() ? 1.0D : 0.0D;
             case SABLE_LAVA_MELT_SPEED -> Config.SABLE_LAVA_MELT_SPEED.get();
+            case SABLE_VOID_FIT_SCAN_BUDGET -> Config.SABLE_VOID_FIT_SCAN_BUDGET.get();
+            case SABLE_LAVA_MELT_SCAN_BUDGET -> Config.SABLE_LAVA_MELT_SCAN_BUDGET.get();
             case PORTABLE_ENGINE_LIMIT -> Config.PORTABLE_ENGINE_EXCLUSIVITY.get() ? 1.0D : 0.0D;
             case STEAM_OVERLOAD -> Config.STEAM_ENGINE_OVERLOAD.get() ? 1.0D : 0.0D;
             case DIESEL_OVERLOAD -> Config.DIESEL_ENGINE_OVERLOAD.get() ? 1.0D : 0.0D;
@@ -62,6 +64,8 @@ public final class TuningSettings {
             case TRAIN_HORN_ELEC_PITCH_MEDIUM -> Config.TRAIN_HORN_ELEC_PITCH_MEDIUM.get();
             case TRAIN_HORN_ELEC_PITCH_LARGE -> Config.TRAIN_HORN_ELEC_PITCH_LARGE.get();
             case EXP_CLEAR_RATIO -> Config.DEATH_EXP_CLEAR_RATIO.get();
+            case ROTATING_MONSTER_CAP -> Config.ROTATING_MONSTER_CAP_MULTIPLIER.get() * 100.0D;
+            case ITEM_DRAIN_GROWTH_COST -> Config.ITEM_DRAIN_GROWTH_COST_MB.get();
             case SABLE_SUBSTEPS, SABLE_SOLVER_ITERATIONS, SABLE_PGS_ITERATIONS, SABLE_STABILIZATION_ITERATIONS,
                     SABLE_PHYSICS_TICK_INTERVAL, SABLE_SLEEP_SKIP, SABLE_CONTACT_FORCE_EVENTS,
                     SABLE_BIOME_PROJECTION_FAST_PATH, SABLE_EMPTY_CONTAINER_FAST_PATH ->
@@ -111,6 +115,8 @@ public final class TuningSettings {
             case SABLE_VOID_FIT -> Config.SABLE_STRUCTURE_VOID_FIT.set(enabled);
             case SABLE_LAVA_MELT -> Config.SABLE_LAVA_MELT.set(enabled);
             case SABLE_LAVA_MELT_SPEED -> Config.SABLE_LAVA_MELT_SPEED.set(value);
+            case SABLE_VOID_FIT_SCAN_BUDGET -> Config.SABLE_VOID_FIT_SCAN_BUDGET.set((int) value);
+            case SABLE_LAVA_MELT_SCAN_BUDGET -> Config.SABLE_LAVA_MELT_SCAN_BUDGET.set((int) value);
             case PORTABLE_ENGINE_LIMIT -> Config.PORTABLE_ENGINE_EXCLUSIVITY.set(enabled);
             case STEAM_OVERLOAD -> Config.STEAM_ENGINE_OVERLOAD.set(enabled);
             case DIESEL_OVERLOAD -> Config.DIESEL_ENGINE_OVERLOAD.set(enabled);
@@ -125,6 +131,8 @@ public final class TuningSettings {
             case TRAIN_HORN_ELEC_PITCH_MEDIUM -> Config.TRAIN_HORN_ELEC_PITCH_MEDIUM.set(value);
             case TRAIN_HORN_ELEC_PITCH_LARGE -> Config.TRAIN_HORN_ELEC_PITCH_LARGE.set(value);
             case EXP_CLEAR_RATIO -> Config.DEATH_EXP_CLEAR_RATIO.set(value);
+            case ROTATING_MONSTER_CAP -> Config.ROTATING_MONSTER_CAP_MULTIPLIER.set(value / 100.0D);
+            case ITEM_DRAIN_GROWTH_COST -> Config.ITEM_DRAIN_GROWTH_COST_MB.set((int) value);
             case BOGIE_ROLL_TORQUE, SOILING_MULTIPLIER, RADIO_STATIC, RADIO_END_VOICE_FREQUENCY, RADIO_END_VOICE_VOLUME, RADIO_ACOUSTIC_INTENSITY -> { }
             case SABLE_SUBSTEPS, SABLE_SOLVER_ITERATIONS, SABLE_PGS_ITERATIONS, SABLE_STABILIZATION_ITERATIONS,
                     SABLE_PHYSICS_TICK_INTERVAL, SABLE_SLEEP_SKIP, SABLE_CONTACT_FORCE_EVENTS,

@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dimblend.experience.Config;
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
@@ -23,8 +24,9 @@ import net.minecraft.world.level.block.state.BlockState;
  * <ul>
  * <li>放置只进空气或纯流体格；顶掉流体时带 {@code UPDATE_CLIENTS}（客户端停止渲染水），
  *     空气格不通知客户端（不可见方块无需发包）；都不带邻接更新——放 structure_void 不需要
- *     触发周围方块响应。例外：G6 熔毁开关开启时熔岩格不驱逐（留给 {@code SableLavaMelt}
- *     持续浇淋熔穿），关闭时熔岩与水同被驱逐。</li>
+ *     触发周围方块响应。例外：G6 熔毁开关开启时，熔岩格仅在其 (x,z) 柱的最高目标格
+ *     （柱顶）保留不驱逐——留给 {@code SableLavaMelt} 从车顶线开始浇淋熔穿，柱内更低格
+ *     照常驱逐（遮挡恢复、不导流）；关闭时熔岩与水同被驱逐。</li>
  * <li>拆除仅当当前格仍是 structure_void（可能被玩家 replaceable 顶掉、被爆炸 DESTROY）；
  *     拆除带邻接更新，让旁侧自然水回流（回流写入走既有 G3 有限水链路）。</li>
  * <li>区块未加载的格跳过写入：target 集合保留该格，区块加载后由 tick 补放队列按表
@@ -68,6 +70,8 @@ public final class VoidFitApplier {
                     return created;
                 });
         LongOpenHashSet newTarget = VoidFitVoxelizer.voxelize(level, subLevel);
+        // G6 柱顶索引：熔毁开启时仅各柱最高目标格保留熔岩（详见 placeVoid）
+        Long2IntOpenHashMap columnTops = VoidFitColumnTops.of(newTarget);
         int budget = CELL_BUDGET;
         boolean complete = true;
 
@@ -85,6 +89,7 @@ public final class VoidFitApplier {
             }
         }
 
+        UUID self = subLevel.getUniqueId();
         // 先放新增：水密优先于清理旧位置
         LongIterator additions = newTarget.iterator();
         while (additions.hasNext()) {
@@ -96,14 +101,14 @@ public final class VoidFitApplier {
                 complete = false;
                 break;
             }
-            if (placeVoid(level, cell)) {
+            if (placeVoid(level, cell,
+                    VoidFitColumnTops.isTop(columnTops, cell) || isColumnTopOfOther(tracker, self, cell))) {
                 fit.materializedCells.add(cell);
                 budget--;
             }
         }
         // 再拆移出；仍被其他载具 target 的共享格交给对方续管（过继 materialized），
         // 世界侧空位不动——不变式：世界空位 ⇔ 至少一个载具 target 且至少在一位 owner 账上
-        UUID self = subLevel.getUniqueId();
         LongIterator removals = fit.materializedCells.iterator();
         while (removals.hasNext()) {
             long cell = removals.nextLong();
@@ -189,7 +194,7 @@ public final class VoidFitApplier {
             if (budget <= 0) {
                 return false;
             }
-            if (placeVoid(level, cell)) {
+            if (placeVoid(level, cell, isColumnTop(tracker, cell))) {
                 budget--;
                 // 重叠载具的 target 可能同含此格：全数记账，避免一方移走时被误拆
                 for (VoidFitTracker.VehicleFit fit : tracker.vehicles().values()) {
@@ -202,7 +207,29 @@ public final class VoidFitApplier {
         return true;
     }
 
-    private static boolean placeVoid(ServerLevel level, long cell) {
+    /** 本车 refit 尚未提交新 target，只能合并其他载具，不能读回本车旧柱顶索引。 */
+    private static boolean isColumnTopOfOther(VoidFitTracker tracker, UUID self, long cell) {
+        for (Map.Entry<UUID, VoidFitTracker.VehicleFit> entry : tracker.vehicles().entrySet()) {
+            VoidFitTracker.VehicleFit fit = entry.getValue();
+            if (!entry.getKey().equals(self) && fit.targetCells.contains(cell)
+                    && VoidFitColumnTops.isTop(fit.columnTops, cell)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 该格是否任一仍 target 它的载具的柱顶格（共享格取并集口径，与过继语义一致）。 */
+    private static boolean isColumnTop(VoidFitTracker tracker, long cell) {
+        for (VoidFitTracker.VehicleFit fit : tracker.vehicles().values()) {
+            if (fit.targetCells.contains(cell) && VoidFitColumnTops.isTop(fit.columnTops, cell)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean placeVoid(ServerLevel level, long cell, boolean columnTop) {
         BlockPos pos = BlockPos.of(cell);
         if (!level.hasChunkAt(pos)) {
             return false;
@@ -218,11 +245,13 @@ public final class VoidFitApplier {
             // 真实方块（含含水方块）：本身挡水，不覆盖
             return false;
         }
-        // G6 配对：熔岩格在熔毁开关开启时不驱逐——留给 SableLavaMelt 持续浇淋熔穿；
-        // 开关关闭退回旧行为（熔岩与水同被驱逐）。本格不进 materialized，
+        // G6 配对（2026-10-23 柱顶收窄）：熔毁开关开启时，熔岩格仅在其 (x,z) 柱的
+        // 最高目标格（柱顶）不驱逐——从上方流下的岩浆在车顶线截断、只浇柱顶、从车顶
+        // 开始熔穿，柱内更低格照常驱逐成结构空位（遮挡恢复、舱内不积岩浆、不导流）；
+        // 开关关闭退回旧行为（熔岩与水同被驱逐）。保留格不进 materialized，
         // 后续每轮 refit 重试至此仍跳过（无写入、开销可忽略）
         if (pureFluid && current.getFluidState().is(FluidTags.LAVA)
-                && Config.isLoaded() && Config.SABLE_LAVA_MELT.get()) {
+                && Config.isLoaded() && Config.SABLE_LAVA_MELT.get() && columnTop) {
             return false;
         }
         level.setBlock(pos, VOID, pureFluid ? PLACE_FLAGS_EVICT_FLUID : PLACE_FLAGS);

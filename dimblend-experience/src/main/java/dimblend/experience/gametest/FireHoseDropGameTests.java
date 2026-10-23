@@ -8,6 +8,8 @@ import com.mikoalopex.createfirefightingadd.content.blocks.fire_hose.PlaceFireHo
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
@@ -57,6 +59,35 @@ public final class FireHoseDropGameTests {
             helper.assertTrue(dropped == 1,
                     "one hose endpoint must drop exactly one hose item (was 2 before the fix), got "
                             + dropped);
+            helper.succeed();
+        });
+    }
+
+    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", timeoutTicks = 100)
+    public static void addonBlocksDropTheirItems(GameTestHelper helper) {
+        List<String> names = List.of("water_intake", "high_pressure_pump", "flat_nozzle", "cone_nozzle",
+                "bucket_controller");
+        List<BlockPos> positions = List.of(new BlockPos(0, 1, 0), new BlockPos(1, 1, 0),
+                new BlockPos(2, 1, 0), new BlockPos(0, 1, 2), new BlockPos(2, 1, 2));
+        ServerLevel level = helper.getLevel();
+        for (int i = 0; i < names.size(); i++) {
+            ResourceLocation id = ResourceLocation.fromNamespaceAndPath("createfirefightingadd", names.get(i));
+            var block = BuiltInRegistries.BLOCK.get(id);
+            helper.assertTrue(!block.defaultBlockState().isAir(), id + " must be registered");
+            BlockPos abs = helper.absolutePos(positions.get(i));
+            level.setBlockAndUpdate(abs, block.defaultBlockState());
+            level.destroyBlock(abs, true);
+        }
+        helper.runAfterDelay(2, () -> {
+            for (String name : names) {
+                ResourceLocation id = ResourceLocation.fromNamespaceAndPath("createfirefightingadd", name);
+                var item = BuiltInRegistries.ITEM.get(id);
+                int dropped = level.getEntitiesOfClass(ItemEntity.class,
+                        AABB.ofSize(Vec3.atCenterOf(helper.absolutePos(CENTER)), 8.0, 8.0, 8.0),
+                        entity -> entity.getItem().is(item)).stream()
+                        .mapToInt(entity -> entity.getItem().getCount()).sum();
+                helper.assertTrue(dropped == 1, id + " must drop exactly one own item, got " + dropped);
+            }
             helper.succeed();
         });
     }

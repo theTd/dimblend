@@ -152,7 +152,7 @@ dependencies {
     // 只给 mixin/GameTest 编译可见，不进 runtimeClasspath；恢复步骤同 docs/requirements-spec.md
     // 「libs jar 清单」。
     compileOnly files("libs/createfirefightingadd-0.2.1-beta.jar")
-    // hardcore_nvg（夜视仪低电量白噪点：读 PlayerVariables 附件）无公开 Maven（MCreator
+    // hardcore_nvg（夜视仪低电量渐褪：读 PlayerVariables 附件）无公开 Maven（MCreator
     // 模组，仅 CurseForge），从正式包 mods 目录原样复制到 ./libs（1.1.2，与包一致）：
     // compileOnly 只给客户端图层编译可见；恢复步骤同 docs/requirements-spec.md「libs jar 清单」。
     compileOnly files("libs/hardcore_nvg-1.1.2-neoforge-1.21.1.jar")

@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
@@ -18,7 +19,8 @@ import javax.annotation.Nullable;
 
 /**
  * 结构空位拟合的真相源：每个受跟踪载具当前"应当"有结构空位的世界格集合（target），
- * 与实际已写入世界的格集合（materialized），以及 target 按区块的倒排索引。
+ * 与实际已写入世界的格集合（materialized），以及 target 按区块的倒排索引、按 (x,z)
+ * 柱的柱顶索引（G6 熔毁的熔岩保留口径，随 target 同步重建）。
  *
  * <p>两个集合分工：</p>
  * <ul>
@@ -42,12 +44,19 @@ public final class VoidFitTracker {
         public final Quaterniond lastOrientation = new Quaterniond();
         /** 目标世界格全集（BlockPos.asLong）。 */
         public final LongOpenHashSet targetCells = new LongOpenHashSet();
+        /** 各 (x,z) 柱的最高目标格 y（G6 熔毁开启时仅柱顶格保留熔岩；随 target 同步重建）。 */
+        public final Long2IntOpenHashMap columnTops = new Long2IntOpenHashMap();
         /** 确认已写入 structure_void 的世界格。 */
         public final LongOpenHashSet materializedCells = new LongOpenHashSet();
         /** 慢速自愈倒计时（按扫描周期计，归零强制 refit）。 */
         public int verifyCountdown;
         /** 连续空 target 重试次数（plot 懒加载退避保险丝计数，非空时清零）。 */
         public int emptyRetries;
+
+        public VehicleFit() {
+            // 缺柱永不命中（fastutil 缺省 0 会误中 y=0 的合法格；clear/putAll 不动缺省值）
+            columnTops.defaultReturnValue(Integer.MIN_VALUE);
+        }
     }
 
     private static final Map<ResourceKey<Level>, VoidFitTracker> BY_DIMENSION = new HashMap<>();
@@ -112,6 +121,8 @@ public final class VoidFitTracker {
         }
         fit.targetCells.clear();
         fit.targetCells.addAll(newTarget);
+        fit.columnTops.clear();
+        fit.columnTops.putAll(VoidFitColumnTops.of(newTarget));
         for (long cell : newTarget) {
             targetCellsByChunk.computeIfAbsent(chunkKey(cell), key -> new LongOpenHashSet()).add(cell);
         }

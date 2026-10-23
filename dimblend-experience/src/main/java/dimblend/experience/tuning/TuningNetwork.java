@@ -18,8 +18,8 @@ public final class TuningNetwork {
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
         // The snapshot carries one value per option: adding options changes the protocol.
-        // v24 adds the nine train horn pitch options (steam/diesel/elec × small/medium/large).
-        var registrar = event.registrar("24");
+        // v25 adds rotating_monster_cap and item_drain_growth_cost.
+        var registrar = event.registrar("25");
         registrar.playToServer(TuningEditPayload.TYPE, TuningEditPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof ServerPlayer player) {
