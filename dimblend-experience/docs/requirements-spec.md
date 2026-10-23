@@ -904,7 +904,14 @@
 | sableLavaMelt | G6（岩浆按 sableLavaMeltSpeed 倍率（默认 4 倍徒手速）熔毁 sable 结构方块并掉落） | true |
 | sableLavaMeltSpeed | G6 配套（熔毁速度倍率 0.5–64.0 步进 0.1，运行中即时生效；经 /dbx 面板可调） | 4.0 |
 | steamEngineOverload | H（蒸汽引擎过载两阶段） | true |
-| trainHorn{Steam,Diesel,Elec}Pitch{Small,Medium,Large} | L（列车汽笛 9 键：音效×汽笛尺寸各自 pitch，0.5–2.0，服务端权威随包下发；无功能开关） | 小 1.5 / 中 1.0 / 大 0.5（小笛高音、大笛低音） |
+| trainHorn{Steam,Diesel,Elec}Pitch{Small,Medium,Large} | L（列车汽笛 9 键：音效×汽笛尺寸各自 pitch，0.5–2.0，服务端权威随包下发；无功能开关；经 /dbx 面板可调） | 小 1.5 / 中 1.0 / 大 0.5（小笛高音、大笛低音） |
+| itemDrainIrrigation | N1（分液池保湿：水箱有水即票据维持周围同层耕地湿润，免费、无最低水量门槛） | true |
+| itemDrainCoverageRadius | N1/N2 配套（保湿/催熟半径 1–8，默认 3=7x7；由旧键 itemDrainIrrigationRadius 改名，旧值自动清除） | 3 |
+| itemDrainGrowth | N2（分液池催熟：每周期随机挑一株作物型骨粉目标走原版骨粉逻辑，生效才扣水；无候选倒计时停走） | true |
+| itemDrainGrowthIntervalSeconds | N2 配套（催熟周期秒 1–600；由旧键 itemDrainGrowthIntervalTicks 改名） | 30 |
+| itemDrainGrowthCostMb | N2 配套（每次催熟生效扣除水量 mb，0=免费催熟） | 10 |
+| itemDrainGrowthMinMb | N2 配套（存水低于此值停催熟，保湿不受影响，回水自动恢复） | 200 |
+| itemDrainPipeRefill | N3（分液池管道补水：放开 forbidInsertion + 追加 UP 面流体接口，关闭恢复原版） | true |
 | rotatingDimensionId | A1–A6 作用域维度 id | "dimblend:rotating" |
 
 ### Mixin 清单（`dimblend_experience.mixins.json`，plugin 按模组存在性过滤）
@@ -929,6 +936,12 @@
 | compat.create.WhistleHornBlockMixin | Create 蒸汽笛方块（neighborChanged TAIL 上升沿识别） | L | create 在场 |
 | compat.create.WhistleHornBlockEntityMixin | Create 蒸汽笛 BE（鸣笛锁定纯内存字段，经 TrainHornStateAccess 访问） | L | create 在场 |
 | compat.create.WhistleHornClientMixin | Create 蒸汽笛 BE（tick 张嘴驱动 + tickAudio HEAD 音符粒子/原生循环门控） | L | create 在场（client 数组） |
+| compat.create.ItemDrainIrrigationMixin | Create 分液池 BE（tick HEAD 10 tick 降拍保湿驱动 + invalidate TAIL 摘票） | N1 | create 在场 |
+| compat.create.ItemDrainGrowthBoostMixin | Create 分液池 BE（tick HEAD 催熟驱动 + invalidate TAIL 复位倒计时） | N2 | create 在场 |
+| compat.create.ItemDrainPipeRefillMixin | Create 分液池 BE（tick HEAD 注水门逐 tick 双向置位自愈） | N3 | create 在场 |
+| compat.create.ItemDrainHudSyncMixin | Create 分液池 BE（write/read TAIL：下次击发绝对 gameTime 仅 clientPacket 捎带，不污染存档） | N4 | create 在场 |
+| compat.create.ItemDrainGoggleMixin | Create 分液池 BE（addToGoggleTooltip RETURN 追加灌溉/催熟 HUD 行） | N4 | create 在场（client 数组） |
+| compat.yat.WaterBottleDrainPurityMixin | Create 分液池 BE（continueProcessing 内 GenericItemEmptying.emptyItem WrapOperation，水瓶倒空保 YAT 纯度组件） | N5 | create + yet_another_thirst 双在场 |
 | compat.create.PortableEngineAttachMixin | Create RotationPropagator（`handleAdded` HEAD，只登记维度/引擎） | F2 | create 在场 |
 | compat.create.RotationPropagatorInvoker | Create RotationPropagator（`getPotentialNeighbourLocations` 静态 invoker） | F2 | create 在场 |
 | compat.create.KineticUnloadedShareMixin | Create KineticBlockEntity（`read` RETURN 快照存档份额；`initialize`/`setNetwork`/`remove` HEAD 结算） | B4 读档账本修正 | create 在场 |
@@ -987,6 +1000,7 @@
 - **E2 口径（v1.1 新映射）**：pitch 分段线性（2m/s→0.2、10→1.0、16→1.5；<2 静音、>16 钳制 1.5），音量固定 1.0，淡入淡出 100 tick；仍以同步的 visualSpeed（b/s）门控，不查 hasTrack（车轴字段客户端不更新，恒旧值）；脱线但仍有速度的车架会播循环——接受
 - **D4 口径（v1.1：阈值 16→64rpm）**：用户补供 startup/stopping 素材，实现为三态（启动→循环→停转）；启动音与循环同时起（启动音盖住循环头，不解析 ogg 时长）；行为开关开启时 CCA 原版马达声被整体静音替代
 - **E2 客户端 tick 前提**：客户端子层级客户绘图需 tick 转向架 BE（tick()V 客户端分支存在渲染插值代码，推定成立）——实机听音验证为最终实证
+- **N2/N3 分液池（2026-10-23 补录在案）**：① N2 催熟「生效才扣」的已知边界——个别 `performBonemeal` 实现零世界变化仍计生效并扣水（竹子顶端被挡/树苗长成失败），严格前后快照检测覆盖不全故不采用；本催熟不走 `BonemealEvent`，靠骨粉事件联动的第三方模组感知不到。② N3 管道回注——加工流体物品的当拍有 1-tick 注水关窗（`continueProcessing` 收尾复位 `forbidInsertion` 晚于本头置位，下一拍自愈）；热切换不调 `invalidateCapabilities`，缓存 UP 面接口存在性的消费者（如 Create 管道）热开启后顶面注水可能需一次方块更新才开始
 
 ### 游戏内运行验证清单（待实机，当前仅构建通过）
 
@@ -1003,8 +1017,9 @@
 - G7 实机项（2026-10-15 验收通过）：TrainTripWorld 实例放产蛋器于 sable 结构内（单块/多块子层级各一）与主世界各一，确认玻璃内嵌鸡可见、明暗与周围方块一致、玻璃仍半透明、孵化器不受影响、物品栏图标正常
 - L 板块实机项：储罐+汽笛（无热源）邻接蒸汽引擎/柴油机/电动马达各放红石，验证鸣笛音效对应、张嘴+音符前冲、播放期再输入无效、断电再上电再鸣；256/512 距离衰减与左右方向感听音；Sable 结构上同验（声音随结构当前位置）；9 键 pitch 配置各改一档实测
 - M 板块实机项：夜视仪开夜视后电量 50%/25%/10% 三档噪点密度观感校准（50% 应无噪点、10% 应严重干扰视线）、电量耗尽自动关夜视后噪点消失、F1 隐藏 HUD 时噪点随图层一同隐藏
+- N 板块实机项：新存档（YAT 组件水链路）催熟生效+恰扣 10mb 复测、无候选倒计时停走与作物出现自动恢复、保湿建票拉满与维持、管道侧面/底面/顶面注水与关开关恢复原版、护目镜与 Jade 两行文案同口径、热改半径/周期配置生效
 
-### 复核闭环状态（截至第 23 轮）
+### 复核闭环状态（截至第 25 轮）
 
 | 板块 | 首轮 | 增量验证 | 状态 |
 |---|---|---|---|
@@ -1022,7 +1037,9 @@
 | v1.2 代码+B5 | 2中3低（全属实） | 首轮：中1 B5 计时无条件推进（停机照涨致重启丢爬梯）、中2 音量 3.0 只扩射程不提响度；低：B5 无闩锁回退、文档债×3、respawn 未清方向记忆。修复：enabled 门控+复位、过载后移（他人应力不牵连）、闩锁给0/加油解闩；ogg 本体线性增益归一 -1dBFS（brake+8.9/loop+11.1/stopping+6.5/train_brake+22.8，另二满幅未动，ffmpeg；3.0 保留射程）；回退对齐 B4；文档债+respawn 全清。第 2 轮（通道 A）：仅剩 spec E2 增益入库一行 → 第 3 轮补后**终止条件达成**。启动验证（23:12 新 jar，0 ERROR 到主菜单、defaultRequire:1 存活） | ✅ 闭环（待实机：B5 ramp/波动/爆机、音效听感、本底噪声） |
 | M 夜视低电量噪点 | 3低（全文档项，代码 6 风险点全无问题） | 首轮：P1 清单标题计数 6→7 未同步、P2 「libs/ 仅剩…」枚举漏 createfirefightingadd/hardcore_nvg、P3 缺 M 板块 spec 条目；已修（另顺修 build.gradle:141 同型过时枚举注释）。第 2 轮（通道 A，原 agent）：4/4 全关、常量逐项对账一致、无新增问题，**终止条件达成** | ✅ 闭环（待实机：50%/25%/10% 密度观感校准、耗尽消失、F1 随图层隐藏） |
 | G2 rotating 跳夜恢复 | 2中（全属实）：①`ServerLevelTickTimeMixin` 前提错误成死代码（rotating 构造即 `tickTime=false`，`tickTime()` 体不执行，无双倍流速可拦）+ 四处机制误述；②`/time add` 逐 level 相对写经穿透叠成 +2X 回归 | 通道 A **通过**（第 2 轮，逐项 file:line 证据）：死 mixin 删净零残留、三处文档改写为 tickTime=false 真实机制；新增 `TimeCommandMixin`（`addTime` 内唯一调用点、private static、require=1 应用实证）跳过 `instanceof RotatingLevelData` 回声写；单测独立复跑绿、GameTest 两轮红均为记录在案 sable 抖动签名 | ✅ 闭环（待实机：rotating 跳夜到早晨/白天小睡不跳日/强制起床清雨、`/time add` 单倍生效） |
-| 分液池催熟组件水探头 | 0（首轮全量即通过） | 独立复核字节码级坐实根因链（`FluidTank.drain` 按类型+组件匹配→新存档供水链路附加组件→裸探头失配 "cannot drain"）；全模块 drain/fill 调用点排查无同类裸探头（保湿只读不消耗、铜水槽探头派生自 SIMULATE 实栈、铜龙头走数量重载）；回归用例对旧代码必红（fill 保组件）、断言恰扣 10mb；无技术债。**spec 文档债在案：分液池板块（保湿/催熟/管道回注）无条目**，javadoc 为唯一文档源 | ✅ 闭环（待实机：新存档复测催熟+扣水、无作物停走复测） |
+| 分液池催熟组件水探头 | 0（首轮全量即通过） | 独立复核字节码级坐实根因链（`FluidTank.drain` 按类型+组件匹配→新存档供水链路附加组件→裸探头失配 "cannot drain"）；全模块 drain/fill 调用点排查无同类裸探头（保湿只读不消耗、铜水槽探头派生自 SIMULATE 实栈、铜龙头走数量重载）；回归用例对旧代码必红（fill 保组件）、断言恰扣 10mb；无技术债。~~spec 文档债在案：分液池板块（保湿/催熟/管道回注）无条目~~ → **2026-10-23 已补录销账（板块 N，用户拍板「补」）** | ✅ 闭环（待实机：新存档复测催熟+扣水、无作物停走复测） |
+| 汽笛音高九项进 tune 面板 | 1中1低（全属实）：①快照协议版本未升版（快照每选项一值，仓纪律每增删选项必升版）；②parameter-tuning.md 主设置表缺汽笛行 | 通道 A **通过**（第 2 轮，逐项 file:line 证据）：`TuningNetwork` registrar "23"→"24" 注释同步、parameter-tuning.md 三处版本号一致 24（含两处历史残留 22 顺修）、主设置表补 3 行（沿用柴油过载合并行风格）；其余 `registrar` 通道独立不受影响；修复 diff 零新增问题 | ✅ 闭环（待实机：面板翻页渲染、缺引擎 mod 灰显、改值即时生效；发布需双端同版本 jar） |
+| spec 分液池板块补录（板块 N） | 2低（全属实，纯文档字面值偏差，同在运行验证行）：①「六面注水全收」与代码不符（实为 DOWN/侧面/UP 三面 1000mb）；②`pipe_refill_toggle` 批次归属不精确（三面注水用例在默认批次） | 通道 A **通过**（第 2 轮）：P1/P2 修复文本与 `ItemDrainPipeRefillGameTests` 断言逐字对码一致、与 N3/实机项自洽、无新增问题；首轮已全量核过 N1-N5 机制描述、Config/Mixin 表新行、日期归因、8 个 GameTest 批次名全部属实 | ✅ 闭环（文档债销账） |
 
 **审计链更正**：D 板块的"最小正确结构 6 条"提炼自 B 复核报告的经验教训（name-only target、ServerLevel 守卫前置、跃迁 setChanged、附件 codec 等），不宜记作复核侧"D 板块指引"；D 第 1 轮验证载荷曾误发 B 复核 agent（未达），已重发至 D 复核 agent（`adcc6814`）并确认送达。
 
@@ -1214,3 +1231,74 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
 - 运行验证：`NvgBatteryNoiseLayerTest` 单测 4 条（≥50% 不出点、10% 锚点=满密度 80%、
   50%→0% 单调递增、负值钳 0%+密度随面积缩放）；`:dimblend-experience:test` 全绿。
   实机密度观感校准待用户（见「游戏内运行验证清单」M 板块实机项）。
+
+## 15. 板块 N：分液池（Create Item Drain 扩展，2026-10-23 补录）
+
+> 来源：功能本体早于单仓（2026-09-25 随 8bae78f 合入，此前无 spec 条目、javadoc 为
+> 唯一文档源——即复核闭环表登记的 spec 文档债，本板块补录销账）；2026-10-10 补
+> 护目镜/Jade HUD（18879c2）；2026-10-22 催熟候选收窄为作物型 + 无候选倒计时停走
+> （6cca7d3/cb404a5）；2026-10-23 催熟抽水探头保数据组件修复（3e76931）。
+> 三个子功能全部全局生效、不限维度。
+
+- N1 保湿（`itemDrainIrrigation`，默认开）：水箱只要有水（**无最低水量门槛、不耗
+  水**）即持有 NeoForge `FarmlandWaterManager` AABB 票据，覆盖以池为中心、边长
+  2r+1 的**同层**方形（y..y+1，r=`itemDrainCoverageRadius` 默认 3 即 7x7）；原版
+  `FarmBlock.randomTick` 的 `isNearWater` 认票据，范围内耕地维持 MOISTURE=7。建票
+  即把范围内耕地主动拉满一次（写盘 flag 与原版 randomTick 一致），其余时间走原版
+  randomTick 节奏；空水箱/非水摘票，回水后下一拍自动重建；票据为内存态，区块卸载
+  由管理器按 master chunk 自清。只认水；主动拉满只识别原版 FARMLAND（第三方
+  FarmBlock 子类走票据被动保湿）。驱动：`ItemDrainIrrigationMixin` 挂
+  `ItemDrainBlockEntity.tick` HEAD（服务端、10 tick 降拍）+ `invalidate` TAIL 摘票。
+- N2 催熟（`itemDrainGrowth`，默认开）：存水 ≥ `itemDrainGrowthMinMb`（默认 200）
+  时，每 `itemDrainGrowthIntervalSeconds`（默认 30 秒）在覆盖柱体 **y 与 y+1 两层**
+  随机挑一株候选走原版骨粉三段式（`isValidBonemealTarget` → `isBonemealSuccess` →
+  `performBonemeal`）；**生效才扣** `itemDrainGrowthCostMb`（默认 10mb，0=免费），
+  扣水门 = `isBonemealSuccess` 通过。候选限**作物型** `BonemealableBlock`
+  （2026-10-22 收窄：草方块/草丛/苔藓/菌岩/缠根泥土/海草/粉红色花簇等蔓延/装饰型
+  不算——户外农田恒有草，算候选则「无作物停走」永不触发、抽中草白扣 10mb 零可见
+  变化）。范围内无可催熟作物时**倒计时停走**（不上弦/击发点卸弦），作物出现后下一
+  拍自动上弦；刚启动/复位后先上弦满一个周期才首催（防区块重载刷催熟）。生效时发
+  原版 1505 成长粒子+骨粉音效；不走 `BonemealEvent`（靠骨粉事件联动的第三方模组
+  感知不到本催熟）。扣水走 DOWN 面公开 capability（SIMULATE 先验，不足本拍不催不
+  扣），**探头派生自实存水栈保数据组件**（2026-10-23 根因修复：`FluidTank.drain`
+  按类型+组件匹配，YAT 纯度组件水对裸探头失配 →「cannot drain 10 mb」，倒计时照走
+  但不催不扣、仅新存档犯病）；扣水后手动 `setChanged`+`sendData`（capability 排液
+  不走 behaviour 的 updateFluids 同步）。已知限制：个别 `performBonemeal` 零世界变化
+  仍计生效扣水（竹子顶端被挡/树苗长成失败），严格前后快照检测覆盖不全，不采用。
+- N3 管道回注（`itemDrainPipeRefill`，默认开）：放开原版分液池两点限制——① 水箱
+  `forbidInsertion`（管道只能抽不能灌）：`ItemDrainPipeRefillMixin` 每 tick 双向
+  置位（开→`allowInsertion`/关→`forbidInsertion`），热切换两向下一拍生效；
+  必须逐 tick 自愈的原因：`continueProcessing` 每次倒空流体物品后都会复位
+  `forbidInsertion`，一次性放开会被物品加工悄悄关回。② 正上方无流体接口：
+  `RegisterCapabilitiesEvent` 追加仅 UP 面生效的 provider（`BlockCapability` 查询
+  「首个非 null 生效、null 落穿」，对 Create 自己的注册无影响），返回与侧面/底面
+  同一 handler 实例。已知限制：加工流体物品的当拍存在 1-tick 关窗（同拍收尾复位
+  晚于本头置位，下一拍自愈）；热切换不调 `invalidateCapabilities`，缓存「UP 面
+  接口存在性」的消费者（如 Create 管道）热开启后顶面注水可能需一次方块更新才开始。
+- N4 HUD（护目镜 + Jade，无独立开关，随 N1/N2 开关出行）：`ItemDrainHud.hudLines`
+  双端共用同口径文案——灌溉行（水量>0「灌溉中」绿/否则「无水」灰）；催熟行
+  （水量<阈值「水量不足 x/y mb」黄 / 计时中「下次催熟 X 秒」青，向上取整 /
+  无候选停走不出行）。倒计时以节拍对齐的绝对击发 gameTime 经
+  `ItemDrainHudSyncMixin`（`write`/`read` TAIL 注入，仅 clientPacket 写键、不污染
+  存档）捎进 BE 同步包，客户端按 gameTime 差值平滑显示；上弦/击发/复位各分支均补
+  `sendData`（含扣水/免费/无目标，防 HUD 停在旧值）。护目镜走
+  `ItemDrainGoggleMixin`（`addToGoggleTooltip` RETURN，client 数组）；Jade 走
+  `@WailaPlugin("create")` 插件（Create 缺席类不加载）+ server data provider 仅
+  注视时同步，UID 即 Jade 设置开关项；水量不自建同步（Create `sendDataLazily`
+  已 ≤8 tick 节流）。
+- N5 YAT 纯度保留（无开关，create + yet_another_thirst 双在场才应用）：
+  `WaterBottleDrainPurityMixin` 以 WrapOperation 包 `continueProcessing` 内
+  `GenericItemEmptying.emptyItem` 调用——水瓶倒空产出的水附加 YAT 纯度组件
+  （Create 内置药水倒空路径先于配方执行、原本丢弃纯度）。**这正是「新存档组件水」
+  的来源**：生存模式水瓶倒水入池 → 池内水带纯度组件 → 旧裸探头抽不出（N2 根因）。
+- 运行验证：`IrrigationMathTest` 纯函数单测（覆盖边界/节拍换算/阈值/秒数向上
+  取整）；GameTest——`ItemDrainPipeRefillGameTests`（默认批次
+  `pipeRefillAcceptsFillOnAllFaces`：DOWN/侧面/UP 三面注水全收、同箱累加 1000mb；
+  `pipe_refill_toggle`：`switchOffRestoresVanilla` 热关恢复原版——三面拒灌且 UP 面
+  不再暴露流体接口）、`ItemDrainGrowthFireGameTests`
+  （`item_drain_fire_grow`：注水击发扣 10mb 且作物 age 增长；
+  `item_drain_fire_components`：带 CUSTOM_NAME 组件的水击发恰扣 10mb——对旧代码
+  必红的回归用例；`item_drain_grass_no_candidate`：仅草方块时倒计时停走）、
+  `ItemDrainHudSyncGameTests`（`item_drain_hud_armed` 上弦写键值域 /
+  `item_drain_hud_disabled` 关开关写 -1 / `item_drain_hud_no_target` 无目标写 -1 /
+  `item_drain_hud_disarm` 击发点无目标卸弦）。
