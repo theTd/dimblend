@@ -18,8 +18,8 @@ public final class TuningNetwork {
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
         // The snapshot carries one value per option: adding options changes the protocol.
-        // v23 adds the server-owned headlight occlusion option (64-bit availability mask).
-        var registrar = event.registrar("23");
+        // v24 adds the nine train horn pitch options (steam/diesel/elec × small/medium/large).
+        var registrar = event.registrar("24");
         registrar.playToServer(TuningEditPayload.TYPE, TuningEditPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof ServerPlayer player) {

@@ -31,6 +31,9 @@ Missing optional mods leave their controls disabled.
 | Steam Engine overload penalty | true | Checkbox | experience |
 | Small/Modular/Large Diesel Engine overload penalty | true | Checkbox | experience |
 | Electric Motor overload penalty | true | Checkbox | experience |
+| Steam train horn pitch (small/medium/large whistle) | 1.5 / 1.0 / 0.5 | 0.5-2.0, step 0.1; small whistles sound high, large ones low | experience |
+| Diesel train horn pitch (small/medium/large whistle) | 1.5 / 1.0 / 0.5 | 0.5-2.0, step 0.1; small whistles sound high, large ones low | experience |
+| Electric train horn pitch (small/medium/large whistle) | 1.5 / 1.0 / 0.5 | 0.5-2.0, step 0.1; small whistles sound high, large ones low | experience |
 | Radio reception noise volume | 0.50 | 0.00-2.00, step 0.01; 0 = every radio clean, 0.50 = former on level | radio |
 | Radio End voice frequency multiplier | 2.0 | 0.0-4.0, step 0.1; 1.0 = original cadence, 0 = no new voices | radio |
 | Radio End voice volume | 0.75 | 0.00-2.00, step 0.01; 0.5 = former hard-coded loudness, 0 = no voices (music not ducked) | radio |
@@ -48,7 +51,7 @@ chunk reloads and vehicle assembly retain activation. Iris still disables this r
 
 The Sable page includes eight **experience-owned, server-authoritative** options.
 Edits persist in `serverconfig/dimblend_experience-server.toml` and broadcast to
-all clients through the tuning snapshot (protocol 23, 64-bit availability mask).
+all clients through the tuning snapshot (protocol 24, 64-bit availability mask).
 
 | `/dbx` option | Config key | Default | Range / step |
 |---|---|---|---|
@@ -205,7 +208,7 @@ Radio follows the same pattern through `dimblend.radio.api.RadioTuning` and its
 own `serverconfig/dimblend_radio-server.toml`. Its settings are heard on each
 client, so remote clients also apply the broadcast radio values in memory
 (NeoForge already sends the config at login). The snapshot carries one value
-per option, so each added or removed option bumps the protocol version (now `22`; see the
+per option, so each added or removed option bumps the protocol version (now `24`; see the
 performance checklist below).
 
 The existing `couplerRedstone` config uses the inverse meaning: true blocks
@@ -302,7 +305,7 @@ server's results are shown (same JVM); a client connected to a remote server
 also lists its own collector, heap and memory. Server steps and the spark fix use
 the same permission gate as the panel (level 2) and travel on two extra payloads
 (`perf_check_request`, `perf_check_report`), which also bumped the tuning
-protocol version (now `22`, see above). The thresholds live in `PerfRules` and are unit-tested;
+protocol version (now `24`, see above). The thresholds live in `PerfRules` and are unit-tested;
 `PerfChecklistTranslationsTest` checks both languages cover every step, advice
 and fix label.
 

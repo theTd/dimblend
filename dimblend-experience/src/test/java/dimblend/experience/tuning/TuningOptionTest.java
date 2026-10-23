@@ -1,7 +1,9 @@
 package dimblend.experience.tuning;
 
 import static org.junit.jupiter.api.Assertions.*;
+import dimblend.experience.Config;
 import dimblend.experience.compat.sable.LavaMeltMath;
+import net.neoforged.neoforge.common.ModConfigSpec;
 import org.junit.jupiter.api.Test;
 
 class TuningOptionTest {
@@ -190,6 +192,40 @@ class TuningOptionTest {
             assertFalse(option.isValid(invalid));
         }
         assertEquals("4.0", option.format(option.defaultValue()));
+    }
+
+    @Test
+    void trainHornPitchesMirrorConfigDefaultsAndAcceptTenthsWithinClampRange() {
+        TuningOption[] options = {TuningOption.TRAIN_HORN_STEAM_PITCH_SMALL,
+                TuningOption.TRAIN_HORN_STEAM_PITCH_MEDIUM, TuningOption.TRAIN_HORN_STEAM_PITCH_LARGE,
+                TuningOption.TRAIN_HORN_DIESEL_PITCH_SMALL, TuningOption.TRAIN_HORN_DIESEL_PITCH_MEDIUM,
+                TuningOption.TRAIN_HORN_DIESEL_PITCH_LARGE, TuningOption.TRAIN_HORN_ELEC_PITCH_SMALL,
+                TuningOption.TRAIN_HORN_ELEC_PITCH_MEDIUM, TuningOption.TRAIN_HORN_ELEC_PITCH_LARGE};
+        double[] defaults = {1.5D, 1.0D, 0.5D, 1.5D, 1.0D, 0.5D, 1.5D, 1.0D, 0.5D};
+        ModConfigSpec.DoubleValue[] configs = {Config.TRAIN_HORN_STEAM_PITCH_SMALL,
+                Config.TRAIN_HORN_STEAM_PITCH_MEDIUM, Config.TRAIN_HORN_STEAM_PITCH_LARGE,
+                Config.TRAIN_HORN_DIESEL_PITCH_SMALL, Config.TRAIN_HORN_DIESEL_PITCH_MEDIUM,
+                Config.TRAIN_HORN_DIESEL_PITCH_LARGE, Config.TRAIN_HORN_ELEC_PITCH_SMALL,
+                Config.TRAIN_HORN_ELEC_PITCH_MEDIUM, Config.TRAIN_HORN_ELEC_PITCH_LARGE};
+        String[] mods = {"create", "create", "create", "createdieselgenerators", "createdieselgenerators",
+                "createdieselgenerators", "createaddition", "createaddition", "createaddition"};
+        for (int i = 0; i < options.length; i++) {
+            var option = options[i];
+            assertFalse(option.isCheckbox(), option.id());
+            assertSame(TuningOption.Section.MAIN, option.section(), option.id());
+            assertEquals(mods[i], option.modId(), option.id());
+            // 面板默认值与 Config.TRAIN_HORN_*_PITCH_* 的默认音高互为镜像，漂移即失败
+            assertEquals(defaults[i], option.defaultValue(), option.id());
+            assertEquals(configs[i].getDefault(), option.defaultValue(), option.id());
+            for (double valid : new double[] {0.5D, 1.0D, 1.5D, 2.0D}) {
+                assertTrue(option.isValid(valid), option.id());
+            }
+            for (double invalid : new double[] {0.0D, 0.4D, 0.55D, 2.1D, -0.5D}) {
+                assertFalse(option.isValid(invalid), option.id());
+            }
+        }
+        assertEquals("1.5", TuningOption.TRAIN_HORN_STEAM_PITCH_SMALL.format(
+                TuningOption.TRAIN_HORN_STEAM_PITCH_SMALL.defaultValue()));
     }
 
     @Test
