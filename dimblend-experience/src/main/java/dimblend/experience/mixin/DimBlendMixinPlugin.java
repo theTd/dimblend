@@ -30,7 +30,9 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.endsWith(".client.SableSubLevelSpriteAnimationMixin")) {
             return isLoaded("sable");
         }
-        if (mixinClassName.endsWith(".compat.connected.KineticBatteryLifecycleMixin")) {
+        if (mixinClassName.endsWith(".compat.connected.KineticBatteryLifecycleMixin")
+                || mixinClassName.endsWith(".compat.connected.LinkHandlerEventHitMixin")
+                || mixinClassName.endsWith(".compat.connected.LinkedItemUseOverridesMixin")) {
             return isLoaded("create_connected");
         }
         // 消防水带放置/拆卸数量守恒：目标为 Create: Fire Fighting Add 的水带方块实体

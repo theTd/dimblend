@@ -5,6 +5,7 @@
 	"plugin": "dimblend.experience.mixin.DimBlendMixinPlugin",
 	"mixins": [
 		"PlayerBedRestMixin",
+		"PlayerStandingFitInvoker",
 		"ServerLevelBedRestMixin",
 		"compat.yat.SleepThirstSuspensionMixin",
 		"compat.dndecor.FrontlightSpotlightStateMixin",
@@ -56,6 +57,8 @@
 		"compat.yat.WaterBottleDrainPurityMixin",
 		"compat.yat.CopperSinkBottlePurityMixin",
 		"compat.connected.KineticBatteryLifecycleMixin",
+		"compat.connected.LinkHandlerEventHitMixin",
+		"compat.connected.LinkedItemUseOverridesMixin",
 		"compat.create.SteamEngineOverloadMixin",
 		"compat.create.WhistleHornBlockMixin",
 		"compat.create.WhistleHornBlockEntityMixin",

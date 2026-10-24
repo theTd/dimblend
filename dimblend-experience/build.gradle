@@ -207,6 +207,9 @@ dependencies {
         localRuntime files("libs/fluid-2.0.1.jar")
         localRuntime project(":dimblend-craft")
     }
+    if (project.hasProperty('withLinkedTransmitter')) {
+        localRuntime "maven.modrinth:create-connected:iUFG9osW"
+    }
     // Rest-only sleeping and the optional YAT suspension hook.
     if (project.hasProperty('withSleepRest')) {
         localRuntime "maven.modrinth:yet-another-thirst:xmk0FTsX"
@@ -243,7 +246,7 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
-if (project.hasProperty('withBatchCompat')) {
+if (project.hasProperty('withBatchCompat') || project.hasProperty('withLinkedTransmitter')) {
     neoForge.runs.gameTestServer.systemProperty 'neoforge.enabledGameTestNamespaces', 'dimblend_compat_batch'
 }
 if (project.hasProperty('withSleepRest')) {

@@ -869,6 +869,14 @@
 - 渲染仍要求 Sable/Veil 在场且未安装 Iris；本次激活机制不改变既有 Iris 兼容限制。客户端和服务端必须同步更新。
 - 验证：169 项单测及 5 项实际 DnDecor/Sable GameTest 通过。可用 `:dimblend-experience:runGameTestServer -PwithHeadlights -PheadlightDecorJar=<DnDecor jar 路径>` 重跑；地面聚光已由玩家确认激活后正常，载具视觉回归待完成。
 
+### G9 Linked Transmitter 交互修复与诊断（2026-10-24）
+
+- 根因：linked 拉杆/按钮继承 `noCollission`，Create `LinkHandler` 的 `COLLIDER` 频率射线会穿过 linked 命中支撑块；Connected 的 `ItemUseOverrides` 又用格心伪命中并独立重射线。Sable 双端位姿差使这些独立命中在频率边界分流，客户端预测放置扣物而服务端实际只设置频率，形成假消失。
+- 修复：真人 linked 交互统一使用右键事件附带的精确命中，按 `ServerboundUseItemOnPacket` 的相对 float 坐标格式量化后交给 `LinkHandler` 和 `BlockHelper.invokeUse`，不再各自重射线。`ItemUseOverrides` 保留扳手排除、提前交互、蜜脾/斧、蜡锁及潜行底座 `CONSUME`，不增加实体碰撞、不改第三方注册表。
+- 边界：`FakePlayer`/Deployer 保留原路径，未经专门回归不承诺其最近槽回退已改变；蹲姿问题本轮只加运行时取证，不直接改 Sable `lastPose`，不把发射器附件说成实体碰撞源。
+- 诊断：CLIENT 配置 `linkedTransmitterDiagnostics`（默认 false），`/dbx linkeddiag`（权限 2 级）可切换；无权限玩家由管理员或配置文件开启。日志前缀 `[linked-diag]`，记录双端命中、频率判定、物品/Shift/实际蹲姿/三种姿态适配/AABB，以及 Sable 的 `lastPose`/`logicalPose`/客户端 `renderPose`。dedicated server 的客户端与服务端需分别开启，不能用客户端开关代替服务端日志。
+- 自动验证：`LinkedTransmitterInteractionTest` 量化单测；`LinkedTransmitterGameTests` 覆盖两个频率槽、底座提前交互、蜜脾/斧/蜡锁、潜行 `CONSUME`、FakePlayer 对照。重跑：`JAVA_HOME='C:\Program Files\Java\jdk-21' ./gradlew :dimblend-experience:test` 与 `./gradlew :dimblend-experience:runGameTestServer -PwithLinkedTransmitter`。
+
 ## 8. 实现覆盖对账（实现完毕时点）
 
 ### Config 开关清单（server 端 `dimblend_experience-server.toml`）
@@ -922,6 +930,12 @@
 | itemDrainPipeRefill | N3（分液池管道补水：放开 forbidInsertion + 追加 UP 面流体接口，关闭恢复原版） | true |
 | rotatingDimensionId | A1–A6 作用域维度 id | "dimblend:rotating" |
 
+### CLIENT 诊断配置（`dimblend_experience-client.toml`）
+
+| 开关 | 用途 | 默认 |
+|---|---|---|
+| linkedTransmitterDiagnostics | G9 linked 交互与蹲姿双端取证；`/dbx linkeddiag` 也可切换，dedicated 双端分别开启 | false |
+
 ### Mixin 清单（`dimblend_experience.mixins.json`，plugin 按模组存在性过滤）
 
 | mixin | 目标 | 板块 | 条件（DimBlendMixinPlugin） |
@@ -940,6 +954,9 @@
 | compat.create.AlternatorLatchSyncMixin | Create KineticBlockEntity（write/read TAIL） | D8 同步 | createaddition 在场（handler 接口 instanceof 限定发电机） |
 | compat.cca.ElectricMotorGoggleMixin | CCA 电动马达 BE | D6 能耗行 | createaddition 在场（client 数组） |
 | compat.create.ElectricMotorGeneratorStatsMixin | Create GeneratingKineticBlockEntity | D6 应力量行 | createaddition 在场（client 数组；handler instanceof 限定马达） |
+| compat.connected.LinkHandlerEventHitMixin | Create LinkHandler（频率处理复用按右键包精度量化的事件命中，不再独立 COLLIDER 重射线） | G9 | create_connected 在场 |
+| compat.connected.LinkedItemUseOverridesMixin | Create ItemUseOverrides（linked 提前交互改用量化事件命中，跳过格心伪命中及 Connected 二次射线） | G9 | create_connected 在场 |
+| PlayerStandingFitInvoker | 原版 Player（只读调用当前实际站立/蹲下/游泳适配，含 Sable 补丁效果） | G9 诊断 | 无条件（原版目标） |
 | compat.create.SteamEngineOverloadMixin | Create 蒸汽引擎 BE（tick RETURN） | H | create 在场 |
 | compat.create.WhistleHornBlockMixin | Create 蒸汽笛方块（neighborChanged TAIL 双边沿识别） | L | create 在场 |
 | compat.create.WhistleHornBlockEntityMixin | Create 蒸汽笛 BE（鸣笛锁定纯内存字段，经 TrainHornStateAccess 访问） | L | create 在场 |

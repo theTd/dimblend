@@ -27,11 +27,13 @@ public final class DimBlendClient {
                 && !net.neoforged.fml.ModList.get().isLoaded("iris")) {
             event.enqueueWork(dimblend.experience.client.headlight.HeadlightRenderer::initialize);
         }
+        event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(LinkedTransmitterDebugClient::tick));
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(
                 (ClientPlayerNetworkEvent.LoggingOut logout) -> {
                     ClientFarCurseTier.reset();
                     ClientDeadmanLatch.reset();
                     TrainHornClient.reset();
+                    dimblend.experience.compat.connected.LinkedTransmitterDiagnostics.reset();
                 }));
     }
 

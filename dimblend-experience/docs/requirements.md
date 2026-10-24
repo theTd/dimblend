@@ -148,3 +148,8 @@
 - [ ] 已实施、待完整实机验收｜铜龙头连续空滴 15 秒后每秒流失 1mB，关闭/恢复灌注/无来源复位。
 - [ ] 已实施并通过客户端截图验证｜Camerapture 1.10.12 照片在普通/发光展示框内等比例满格显示。
 - [ ] 已修复并通过地面/Sable验证｜动力电池放电方向与外部网络相反引发自动破坏后，旧 BE 继续写回导致方块复活；KineticBatteryLifecycleMixin 在 updateLevel 校验实例身份。外部 -32rpm / 电池 +64rpm 用例先红后绿，地面与 Sable 局部 GameTest 和完整客户端精确冲突路径均通过。普通扳手拆卸不是此问题触发。
+
+## create:connected 无线红石与蹲姿取证（2026-10-24）
+
+- [ ] 待实测｜linked 拉杆/按钮/模拟拉杆/油门杆频率设置、底座交互、放置与物品计数保持一致：统一使用按右键包精度量化的事件命中，避免 `COLLIDER` 穿过无碰撞 linked、支撑面误判及 Sable 双端独立射线分流；保留扳手、蜜脾/斧、蜡锁和潜行底座 `CONSUME` 语义。FakePlayer/Deployer 保留原路径，详见 spec G9。
+- [ ] 待玩家取证｜车上“蹲着站不起来”：管理员执行 `/dbx linkeddiag`（权限 2 级）开启后复现；无权限玩家由管理员或 `config/dimblend_experience-client.toml` 开启。提供 `logs/latest.log` 或 `logs/debug.log` 中 `[linked-diag]` 行。日志同时包含 Shift、真实 crouch/pose、站立/蹲下/游泳适配、AABB、右键命中和 Sable 三套位姿；dedicated server 的客户端与服务端需分别开启。发射器附件无实体碰撞，本轮不先改站起逻辑。

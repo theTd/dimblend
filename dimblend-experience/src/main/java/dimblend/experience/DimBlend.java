@@ -26,6 +26,7 @@ import dimblend.experience.gametest.DeployerIcePlacementGameTests;
 import dimblend.experience.gametest.FireHoseDropGameTests;
 import dimblend.experience.gametest.LimitedWaterGameTests;
 import dimblend.experience.gametest.LootMapFilterGameTests;
+import dimblend.experience.gametest.LinkedTransmitterGameTests;
 import dimblend.experience.gametest.ItemDrainPipeRefillGameTests;
 import dimblend.experience.gametest.ItemDrainGrowthFireGameTests;
 import dimblend.experience.gametest.ItemDrainHudSyncGameTests;
@@ -88,6 +89,8 @@ public class DimBlend {
 
         // 探索规则都在服务端执行，走 SERVER 配置
         modContainer.registerConfig(ModConfig.Type.SERVER, Config.SPEC);
+        modContainer.registerConfig(ModConfig.Type.CLIENT,
+                dimblend.experience.compat.connected.LinkedTransmitterDebugSettings.SPEC);
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {
@@ -119,6 +122,9 @@ public class DimBlend {
             event.register(KineticUnloadedShareGameTests.class);
             event.register(CdgKineticOverloadGameTests.class);
             event.register(TrainHornGameTests.class);
+        }
+        if (ModList.get().isLoaded("create_connected")) {
+            event.register(LinkedTransmitterGameTests.class);
         }
         // 引用 Sable 类：仅 Sable 在场时注册（dev 下 localRuntime 常驻）
         if (ModList.get().isLoaded("sable")) {

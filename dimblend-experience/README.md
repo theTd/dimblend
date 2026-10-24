@@ -42,6 +42,12 @@ gradlew.bat :dimblend-experience:runData
   `$env:JAVA_HOME = 'C:\Program Files\Java\jdk-21'` (PowerShell) or the equivalent for your OS.
 
 
+## Linked transmitter diagnostics
+
+- With permission level 2, run `/dbx linkeddiag`, reproduce the interaction or crouch issue, then run the command again to stop recording. Without that permission, ask an admin or enable the config below instead.
+- Logs use the `[linked-diag]` prefix in `logs/latest.log` (and `logs/debug.log` when enabled). They include client/server hit results, frequency decisions, item counts, Shift/crouch/pose state, standing-space checks and Sable poses.
+- The persistent switch is `linkedTransmitterDiagnostics` in `config/dimblend_experience-client.toml`, default `false`. On a dedicated server, enable client and server logging separately; the client switch does not enable server logs.
+
 ## Project layout
 
 ```
