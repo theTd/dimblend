@@ -23,7 +23,8 @@ import java.util.Map;
  *
  * <p>「张嘴动画 + 音符粒子」窗口与声音实例共用同一份到达时刻（客户端 gameTime +
  * 素材时长），按汽笛 plot 坐标登记；{@code WhistleHornClientMixin} 在汽笛 BE 的客户端
- * tick 里查询本类驱动动画/粒子。窗口过期在读取时惰性清除，新包到达时也顺手清扫。</p>
+ * tick 里查询本类驱动动画/粒子并抑制特殊模式的原生音频。停止包或断电对账清除窗口、
+ * 淡出声音；重新起播与登出都会精确停止旧实例，窗口过期在读取时惰性清除。</p>
  */
 public final class TrainHornClient {
 
@@ -32,11 +33,17 @@ public final class TrainHornClient {
     }
 
     private static final Map<BlockPos, HornWindow> WINDOWS = new HashMap<>();
+    private static final Map<BlockPos, TrainHornSoundInstance> SOUNDS = new HashMap<>();
 
     /** S2C 处理器落点（客户端线程）。 */
     public static void apply(TrainHornPayload payload) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) {
+            return;
+        }
+        BlockPos pos = payload.pos().immutable();
+        if (!payload.start()) {
+            stopHorn(pos);
             return;
         }
         int ordinal = payload.hornKind() & 0xFF;
@@ -47,15 +54,48 @@ public final class TrainHornClient {
         TrainHorn.HornKind kind = kinds[ordinal];
         long now = mc.level.getGameTime();
         sweepExpired(now);
-        WINDOWS.put(payload.pos().immutable(), new HornWindow(now + kind.durationTicks(), kind));
+        TrainHornSoundInstance previous = SOUNDS.remove(pos);
+        if (previous != null) {
+            mc.getSoundManager().stop(previous);
+        }
+        WINDOWS.put(pos, new HornWindow(now + kind.durationTicks(), kind));
         // 距离门：起播时已在 512 格外就不占声道（音量曲线本身也会给 0）
-        Vec3 world = SableWorldPosition.project(mc.level, Vec3.atCenterOf(payload.pos()));
+        Vec3 world = SableWorldPosition.project(mc.level, Vec3.atCenterOf(pos));
         Vec3 camera = mc.gameRenderer.getMainCamera().getPosition();
         if (camera.distanceTo(world) >= TrainHorn.MAX_RADIUS) {
             return;
         }
-        mc.getSoundManager().play(
-                new TrainHornSoundInstance(kind.sound(), payload.pos(), payload.pitch(), kind.durationTicks()));
+        TrainHornSoundInstance sound = new TrainHornSoundInstance(
+                kind.sound(), pos, payload.pitch(), kind.durationTicks());
+        SOUNDS.put(pos, sound);
+        mc.getSoundManager().play(sound);
+    }
+
+    /**
+     * 特殊供电期间彻底接管 Create 原生音频；断电对账是停止包之外的兜底。
+     * 直接读客户端红石与邻接引擎，开始包到达前也不会漏出原生汽笛。
+     */
+    public static boolean tickSpecialMode(WhistleBlockEntity be) {
+        BlockPos pos = be.getBlockPos();
+        TrainHornSoundInstance sound = SOUNDS.get(pos);
+        if (sound != null && sound.isStopped()) {
+            SOUNDS.remove(pos);
+        }
+        BlockState state = be.getBlockState();
+        if (!(state.getBlock() instanceof WhistleBlock) || be.getLevel() == null) {
+            stopHorn(pos);
+            return false;
+        }
+        if (!state.getValue(WhistleBlock.POWERED)) {
+            stopHorn(pos);
+        }
+        if (!TrainHorn.isSpecialMode(be.getLevel(), pos, state)) {
+            return false;
+        }
+        if (isHornActive(pos)) {
+            tickHornParticles(be);
+        }
+        return true;
     }
 
     /** 汽笛客户端 tick 查询：当前是否处于鸣笛窗口（过期即清除并视为未鸣笛）。 */
@@ -70,6 +110,7 @@ public final class TrainHornClient {
         }
         if (mc.level.getGameTime() >= window.untilTick()) {
             WINDOWS.remove(pos);
+            SOUNDS.remove(pos);
             return false;
         }
         return true;
@@ -117,16 +158,31 @@ public final class TrainHornClient {
                 window.kind().particleHue(), 0.0D, 0.0D);
     }
 
-    /** 登出清理（DimBlendClient 的 LoggingOut 钩子调用）：防跨世界同坐标继承残窗。 */
+    private static void stopHorn(BlockPos pos) {
+        WINDOWS.remove(pos);
+        TrainHornSoundInstance sound = SOUNDS.get(pos);
+        if (sound != null) {
+            sound.fadeOut();
+        }
+    }
+
+    /** 登出清理（DimBlendClient 的 LoggingOut 钩子调用）：防跨世界同坐标继承残窗与声音。 */
     public static void reset() {
+        Minecraft mc = Minecraft.getInstance();
+        for (TrainHornSoundInstance sound : SOUNDS.values()) {
+            mc.getSoundManager().stop(sound);
+        }
+        SOUNDS.clear();
         WINDOWS.clear();
     }
 
     private static void sweepExpired(long now) {
-        Iterator<HornWindow> it = WINDOWS.values().iterator();
+        Iterator<Map.Entry<BlockPos, HornWindow>> it = WINDOWS.entrySet().iterator();
         while (it.hasNext()) {
-            if (now >= it.next().untilTick()) {
+            Map.Entry<BlockPos, HornWindow> entry = it.next();
+            if (now >= entry.getValue().untilTick()) {
                 it.remove();
+                SOUNDS.remove(entry.getKey());
             }
         }
     }

@@ -19,10 +19,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * 与原生开启同参），渲染层 {@code WhistleRenderer} 照常读 animation 张嘴——
  * 绕开原生「POWERED 且锅炉激活」判定，本功能补的正是无热源场景。窗口结束
  * 原生 chase(0) 自动接管合嘴，无需收尾。</li>
- * <li><b>音符粒子</b>：{@code tickAudio} HEAD——窗口内每 tick 一颗沿哨口朝向冲出
- * （{@link TrainHornClient#tickHornParticles}）；无热源（powered=false）时 cancel 掉
- * 原方法（此时原方法只做 soundInstance fadeOut，无损失）；有热源时保留原生
- * 汽笛循环与蒸汽粒子，音符叠加其上（拍板口径：不压制 Create 原生行为）。</li>
+ * <li><b>特殊音频接管</b>：{@code tickAudio} HEAD——原始 POWERED 且邻接引擎时
+ * 无条件 cancel 原生方法，特殊供电期间不发原生循环声、chiff 或蒸汽粒子；自定义
+ * 窗口内每 tick 一颗音符沿哨口朝向冲出。断电由 {@link TrainHornClient} 对账淡出，
+ * 不依赖仅表示「红石 + 有效锅炉」的原生 powered 参数。</li>
  * </ul>
  */
 @Mixin(WhistleBlockEntity.class)
@@ -47,13 +47,9 @@ public abstract class WhistleHornClientMixin {
     }
 
     @Inject(method = "tickAudio", at = @At("HEAD"), cancellable = true, remap = false, require = 1, allow = 1)
-    private void dimblend$hornParticles(WhistleBlock.WhistleSize size, boolean powered, CallbackInfo ci) {
+    private void dimblend$specialHornAudio(WhistleBlock.WhistleSize size, boolean powered, CallbackInfo ci) {
         WhistleBlockEntity self = (WhistleBlockEntity) (Object) this;
-        if (!TrainHornClient.isHornActive(self.getBlockPos())) {
-            return;
-        }
-        TrainHornClient.tickHornParticles(self);
-        if (!powered) {
+        if (TrainHornClient.tickSpecialMode(self)) {
             ci.cancel();
         }
     }

@@ -16,6 +16,7 @@ import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.companion.math.BoundingBox3ic;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dimblend.experience.Config;
+import dimblend.experience.compat.sable.VoidFitApplier;
 import dimblend.experience.compat.sable.VoidFitColumnTops;
 import dimblend.experience.compat.sable.VoidFitTracker;
 import it.unimi.dsi.fastutil.longs.LongSet;
@@ -363,38 +364,6 @@ public final class SableLavaMeltGameTests {
         });
     }
 
-    /**
-     * 轮询等待拟合把给定熔岩格全部顶回结构空位（经 verify 级 refit 核验漂移后重放）。
-     * {@code cadenceTicks} 为轮询间隔：熔毁开关的临时翻转窗口要压到最小的场合传 1。
-     */
-    private static void pollUntilEvicted(GameTestHelper helper, ServerLevel level, Assembled assembled,
-            List<BlockPos> cells, int cadenceTicks, int attemptsLeft, Runnable onEvicted, Runnable cleanup) {
-        if (attemptsLeft <= 0) {
-            List<String> states = new ArrayList<>();
-            for (BlockPos cell : cells) {
-                states.add(cell.toShortString() + "=" + level.getBlockState(cell));
-            }
-            failAfter(helper, cleanup, "lava must be evicted by the fit but was " + states
-                    + "; fit=" + dumpFit(level, assembled));
-            return;
-        }
-        helper.runAfterDelay(cadenceTicks, () -> {
-            boolean allVoid = true;
-            for (BlockPos cell : cells) {
-                if (!level.getBlockState(cell).is(Blocks.STRUCTURE_VOID)) {
-                    allVoid = false;
-                    break;
-                }
-            }
-            if (allVoid) {
-                onEvicted.run();
-            } else {
-                pollUntilEvicted(helper, level, assembled, cells, cadenceTicks, attemptsLeft - 1,
-                        onEvicted, cleanup);
-            }
-        });
-    }
-
     /** 轮询等待浇淋嘶声出现：每 5 tick 一查，听到后回调；attempts 耗尽先自清再失败。 */
     private static void pollForSizzle(GameTestHelper helper,
             Consumer<PlayLevelSoundEvent.AtPosition> listener, int[] sizzles,
@@ -622,14 +591,11 @@ public final class SableLavaMeltGameTests {
      * 柱顶收窄（2026-10-23，G6 遮顶不导流）的配对开关语义，同一载具两阶段核验：
      * 熔毁<b>开启</b>时同柱低于柱顶的投影格内岩浆照常驱逐成结构空位、柱顶格保留浇淋
      * （从上方流下的岩浆在车顶线截断、舱内不积不导流，仅柱顶保留并从车顶逐层熔穿）；
-     * 熔毁<b>关闭</b>后下一轮 verify 级 refit 把柱顶岩浆也顶成结构空位。
-     * 两阶段挂同一载具，消除两条用例并发争抢全局熔毁开关的互踩窗口（本例是唯一的
-     * 开关翻转者，翻转窗口压到"关→驱逐→立即翻回"的几十 tick）。
+     * 熔毁<b>关闭</b>后 verify 级 refit 把柱顶岩浆也顶成结构空位。
      *
-     * <p>载具用两格高黑曜石柱：单方块载具沉降静止后投影柱只有 2 格高、低于柱顶的目标格
-     * 恰是模板地板真方块（放置守卫拒绝覆盖真方块，永不物化，浇了也无人驱逐——
-     * 2026-10-24 R4/R5 该设计两度误败的归因之一）；加高一格后柱中段才有可物化的
-     * 低于柱顶格。黑曜石需 1250 tick 才熔穿，窗口内排除熔穿改变柱结构的干扰。</p>
+     * <p>两阶段在同一服务端 tick 内直接调用生产 {@code refit(verify=true)}，避免等待
+     * 自愈扫描期间载具继续漂移、浇淋格脱离 target 的测试时序噪声。载具用两格高黑曜石柱，
+     * 保证柱中段存在可物化的低于柱顶格；黑曜石不会在断言期间熔穿。</p>
      */
     @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_lava_melt_fit", timeoutTicks = 24000)
     public static void fitKeepsColumnTopLavaOnlyWhileMeltEnabled(GameTestHelper helper) {
@@ -639,7 +605,6 @@ public final class SableLavaMeltGameTests {
                 List.of(VEHICLE_REL, VEHICLE_REL.above()), i -> Blocks.OBSIDIAN);
         Set<BlockPos> sealed = new LinkedHashSet<>();
         Runnable cleanup = () -> {
-            // 共享覆写口径：临时翻转须自己翻回（GameTestSableRules 中途不改值）
             Config.SABLE_LAVA_MELT.set(true);
             clearLavaAround(level, projectedCell(assembled), 5);
             unseal(level, sealed);
@@ -648,6 +613,7 @@ public final class SableLavaMeltGameTests {
         };
         awaitFitted(helper, level, assembled, cleanup, () -> {
             try {
+                VoidFitTracker tracker = VoidFitTracker.of(level.dimension());
                 VoidFitTracker.VehicleFit fit = trackedFit(helper, level, assembled);
                 PourPair pair = pickPourPair(helper, level, fit);
                 Set<BlockPos> pairCells = Set.of(pair.top(), pair.belowTop());
@@ -655,34 +621,29 @@ public final class SableLavaMeltGameTests {
                 sealAroundLava(level, fit, pair.belowTop(), pairCells, sealed);
                 level.setBlockAndUpdate(pair.top(), Blocks.LAVA.defaultBlockState());
                 level.setBlockAndUpdate(pair.belowTop(), Blocks.LAVA.defaultBlockState());
-                // 阶段一（熔毁开）：低于柱顶的岩浆被 verify 级 refit 驱逐，柱顶岩浆保留
-                pollUntilEvicted(helper, level, assembled, List.of(pair.belowTop()), 5, 24, () -> {
-                    if (!level.getFluidState(pair.top()).is(FluidTags.LAVA)) {
-                        failAfter(helper, cleanup,
-                                "column-top lava must be kept while melt is enabled but was "
-                                        + level.getBlockState(pair.top()) + " at "
-                                        + pair.top().toShortString());
-                        return;
-                    }
-                    if (!plotState(level, assembled).is(Blocks.OBSIDIAN)) {
-                        failAfter(helper, cleanup, "obsidian must survive phase one but was "
-                                + plotState(level, assembled));
-                        return;
-                    }
-                    // 阶段二（熔毁关）：柱顶岩浆同样被驱逐；观察到立即翻回，压缩互踩窗口
-                    Config.SABLE_LAVA_MELT.set(false);
-                    pollUntilEvicted(helper, level, assembled, List.of(pair.top()), 1, 120, () -> {
-                        Config.SABLE_LAVA_MELT.set(true);
-                        try {
-                            helper.assertTrue(plotState(level, assembled).is(Blocks.OBSIDIAN),
-                                    "obsidian must survive with melt toggled off but was "
-                                            + plotState(level, assembled));
-                        } finally {
-                            cleanup.run();
-                        }
-                        helper.succeed();
-                    }, cleanup);
-                }, cleanup);
+
+                helper.assertTrue(VoidFitApplier.refit(level, tracker, assembled.subLevel(), true),
+                        "verify refit must complete with melt enabled");
+                helper.assertTrue(level.getBlockState(pair.belowTop()).is(Blocks.STRUCTURE_VOID),
+                        "below-top lava must be evicted while melt is enabled");
+                helper.assertTrue(level.getFluidState(pair.top()).is(FluidTags.LAVA),
+                        "column-top lava must be kept while melt is enabled");
+                helper.assertTrue(plotState(level, assembled).is(Blocks.OBSIDIAN),
+                        "obsidian must survive phase one");
+
+                Config.SABLE_LAVA_MELT.set(false);
+                try {
+                    helper.assertTrue(VoidFitApplier.refit(level, tracker, assembled.subLevel(), true),
+                            "verify refit must complete with melt disabled");
+                    helper.assertTrue(level.getBlockState(pair.top()).is(Blocks.STRUCTURE_VOID),
+                            "column-top lava must be evicted when melt is disabled");
+                    helper.assertTrue(plotState(level, assembled).is(Blocks.OBSIDIAN),
+                            "obsidian must survive with melt toggled off");
+                } finally {
+                    Config.SABLE_LAVA_MELT.set(true);
+                }
+                cleanup.run();
+                helper.succeed();
             } catch (RuntimeException | Error e) {
                 cleanup.run();
                 throw e;

@@ -65,47 +65,48 @@ public final class TrainHornGameTests {
         });
     }
 
-    /** 播放期间无视信号输入：锁定窗口内 断电→再上电 不延长锁定。 */
-    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", timeoutTicks = 60)
-    public static void hornIgnoresInputDuringPlayback(GameTestHelper helper) {
+    /** 播放期间断电立即停止并清锁；不等片段结束即可重新供能、从头播放。 */
+    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", timeoutTicks = 40)
+    public static void powerLossStopsAndRearmsImmediately(GameTestHelper helper) {
         placeWhistleRig(helper);
         helper.setBlock(ENGINE, AllBlocks.STEAM_ENGINE.get().defaultBlockState());
         helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
         helper.runAfterDelay(2, () -> {
-            long firstUntil = hornUntil(helper);
-            helper.assertTrue(firstUntil > 0L, "precondition: horn must be locked after first edge");
+            helper.assertTrue(hornUntil(helper) > 0L, "precondition: horn must be locked after first edge");
             helper.setBlock(SIGNAL, Blocks.AIR);
             helper.runAfterDelay(2, () -> {
+                helper.assertTrue(hornUntil(helper) == 0L,
+                        "power loss must immediately clear horn lock, until=" + hornUntil(helper));
+                long restartedAt = helper.getLevel().getGameTime();
                 helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
                 helper.runAfterDelay(2, () -> {
-                    helper.assertTrue(hornUntil(helper) == firstUntil,
-                            "rising edge during playback must be ignored, firstUntil=" + firstUntil
-                                    + " now=" + hornUntil(helper));
+                    helper.assertTrue(hornUntil(helper) == restartedAt + TrainHorn.HornKind.STEAM.durationTicks(),
+                            "fresh power must immediately restart the full horn duration, until="
+                                    + hornUntil(helper) + " expected="
+                                    + (restartedAt + TrainHorn.HornKind.STEAM.durationTicks()));
                     helper.succeed();
                 });
             });
         });
     }
 
-    /** 播放结束后须信号断开再输入：锁定过期后 断电→再上电 重新鸣笛。 */
-    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", timeoutTicks = 120)
-    public static void hornRearmsAfterSignalCycle(GameTestHelper helper) {
+    /** 持续高电平只播放一次：素材自然结束后，普通邻接更新不得重触发。 */
+    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", timeoutTicks = 100)
+    public static void heldPowerDoesNotRetriggerAfterPlayback(GameTestHelper helper) {
         placeWhistleRig(helper);
         helper.setBlock(ENGINE, AllBlocks.STEAM_ENGINE.get().defaultBlockState());
         helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
         helper.runAfterDelay(2, () -> {
             long firstUntil = hornUntil(helper);
             helper.assertTrue(firstUntil > 0L, "precondition: horn must be locked after first edge");
-            helper.setBlock(SIGNAL, Blocks.AIR);
-            // 蒸汽素材锁定 55 tick，等足 60 保证过期
             helper.runAfterDelay(60, () -> {
-                long t1 = helper.getLevel().getGameTime();
-                helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
+                helper.assertTrue(helper.getLevel().getGameTime() >= firstUntil,
+                        "precondition: steam clip must have ended");
+                helper.setBlock(WHISTLE.west(), Blocks.STONE);
                 helper.runAfterDelay(2, () -> {
-                    helper.assertTrue(hornUntil(helper) == t1 + TrainHorn.HornKind.STEAM.durationTicks(),
-                            "horn must re-arm after lockout expiry and a fresh edge, until="
-                                    + hornUntil(helper) + " expected="
-                                    + (t1 + TrainHorn.HornKind.STEAM.durationTicks()));
+                    helper.assertTrue(hornUntil(helper) == firstUntil,
+                            "held power must not retrigger on a neighbor update, firstUntil=" + firstUntil
+                                    + " now=" + hornUntil(helper));
                     helper.succeed();
                 });
             });

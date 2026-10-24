@@ -24,7 +24,8 @@ import net.minecraft.world.phys.Vec3;
  * 听者朝向实时声像（立体声素材不做空间化，素材已转单声道）。无视遮挡（原版无遮挡机制）。</li>
  * <li><b>Sable</b>：存 plot 坐标，每 tick 经 {@link SableWorldPosition} 投影到结构当前
  * 世界位置——声源随移动中的结构走。</li>
- * <li><b>生命周期</b>：非循环素材播完由引擎收通道；另加 duration+10 tick 兜底自停。</li>
+ * <li><b>生命周期</b>：非循环素材播完由引擎收通道；另加 duration+10 tick 兜底自停。
+ * 播放中断电时每 tick 减少 0.25 淡出系数，与距离音量相乘，约 4 tick 归零停止。</li>
  * </ul>
  */
 public class TrainHornSoundInstance extends AbstractTickableSoundInstance {
@@ -32,6 +33,8 @@ public class TrainHornSoundInstance extends AbstractTickableSoundInstance {
     private final BlockPos plotPos;
     private final int maxAge;
     private int age;
+    private float fadeFactor = 1.0F;
+    private boolean fadingOut;
 
     public TrainHornSoundInstance(SoundEvent event, BlockPos plotPos, float pitch, int durationTicks) {
         super(event, SoundSource.BLOCKS, SoundInstance.createUnseededRandom());
@@ -48,14 +51,21 @@ public class TrainHornSoundInstance extends AbstractTickableSoundInstance {
         this.volume = volumeAt(world);
     }
 
+    void fadeOut() {
+        this.fadingOut = true;
+    }
+
     @Override
     public void tick() {
         Vec3 world = projectPosition();
         this.x = world.x;
         this.y = world.y;
         this.z = world.z;
-        this.volume = volumeAt(world);
-        if (++this.age > this.maxAge) {
+        if (this.fadingOut) {
+            this.fadeFactor = Math.max(0.0F, this.fadeFactor - 0.25F);
+        }
+        this.volume = volumeAt(world) * this.fadeFactor;
+        if (this.fadeFactor <= 0.0F || ++this.age > this.maxAge) {
             this.stop();
         }
     }

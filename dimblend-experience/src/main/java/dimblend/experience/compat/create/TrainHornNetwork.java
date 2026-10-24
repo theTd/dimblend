@@ -14,7 +14,7 @@ public final class TrainHornNetwork {
 
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
-        event.registrar("1").playToClient(TrainHornPayload.TYPE, TrainHornPayload.STREAM_CODEC,
+        event.registrar("2").playToClient(TrainHornPayload.TYPE, TrainHornPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(
                         () -> dimblend.experience.client.TrainHornClient.apply(payload)));
     }

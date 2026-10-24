@@ -30,15 +30,15 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 列车汽笛（需求追加 2026-10-21）：蒸汽笛六面邻接特定引擎方块时，红石上升沿触发
- * 一次性对应音效，<b>不要求所附储罐有热源</b>（Create 原生汽笛只在锅炉激活时响，
- * 本功能补的是无热源场景的机车鸣笛）。
+ * 列车汽笛（需求追加 2026-10-21、2026-10-24 修订）：蒸汽笛六面邻接特定引擎方块时，
+ * 红石上升沿触发一次性对应音效，<b>不要求所附储罐有热源</b>（Create 原生汽笛只在
+ * 锅炉激活时响，本功能补的是无热源场景的机车鸣笛）。
  *
  * <p>语义（用户拍板口径）：</p>
  * <ul>
- * <li>触发：{@code WhistleBlock.neighborChanged} TAIL 处识别 POWERED false→true 上升沿
- * （{@code WhistleHornBlockMixin}）；播放期间（锁定窗口内）的上升沿无视——
- * 上升沿触发天然满足「播完需信号断开再次输入」：信号保持高位不会产生新沿。</li>
+ * <li>触发：{@code WhistleBlock.neighborChanged} TAIL 处识别 POWERED 双边沿
+ * （{@code WhistleHornBlockMixin}）。持续高电平只播一次；播放中断电立即清锁并淡出，
+ * 重新供能可马上从头播放。特殊供电期间 Create 原生汽笛声与蒸汽粒子完全禁用。</li>
  * <li>六面扫描按方向优先级取第一个命中：以汽笛朝向为基准
  * 正面 → 背面 → 左侧 → 右侧 → 上方 → 下方（附着储罐一面永不命中引擎）。</li>
  * <li>引擎映射：Create 蒸汽引擎 → 蒸汽音；CDG 三种柴油机
@@ -119,16 +119,37 @@ public final class TrainHorn {
         float pitch = pitchFor(kind, size);
         // 实机排障（2026-10-23 报"音高仍反"）：留下服务端权威的 尺寸→音高 证据
         DimBlend.LOGGER.debug("train horn at {}: kind={}, size={}, pitch={}", pos, kind, size, pitch);
-        TrainHornPayload payload = new TrainHornPayload(pos, (byte) kind.ordinal(), pitch);
+        broadcast(level, pos, new TrainHornPayload(pos, (byte) kind.ordinal(), pitch, true));
+    }
+
+    /** 断电立即结束本次特殊鸣笛；停止包幂等，片段已自然结束也要撤销客户端特殊表现。 */
+    public static void onPowerLoss(ServerLevel level, BlockPos pos) {
+        BlockEntity be = level.getBlockEntity(pos);
+        if (!(be instanceof TrainHornStateAccess access)) {
+            return;
+        }
+        int previousKind = access.dimblend$hornKind();
+        access.dimblend$setHornLock(0L, previousKind);
+        if (previousKind >= 0) {
+            broadcast(level, pos, new TrainHornPayload(pos, (byte) 0, 1.0F, false));
+        }
+    }
+
+    private static void broadcast(ServerLevel level, BlockPos pos, TrainHornPayload payload) {
         Vec3 world = SableWorldPosition.project(level, pos.getCenter());
         Packet<?> packet = new ClientboundCustomPayloadPacket(payload);
         level.getServer().getPlayerList()
                 .broadcast(null, world.x, world.y, world.z, BROADCAST_RADIUS, level.dimension(), packet);
     }
 
+    /** 客户端原生声抑制与服务端触发共用同一特殊模式判定。 */
+    public static boolean isSpecialMode(Level level, BlockPos pos, BlockState state) {
+        return state.getValue(WhistleBlock.POWERED) && detectEngine(level, pos, state) != null;
+    }
+
     /** 方向优先级扫描：正面 → 背面 → 左 → 右 → 上 → 下，取第一个命中的引擎种类。 */
     @Nullable
-    private static HornKind detectEngine(ServerLevel level, BlockPos pos, BlockState state) {
+    private static HornKind detectEngine(Level level, BlockPos pos, BlockState state) {
         Direction facing = state.getValue(WhistleBlock.FACING);
         Direction[] order = {
                 facing, facing.getOpposite(),

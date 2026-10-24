@@ -6,7 +6,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
 /**
- * 列车汽笛服务端锁定状态（鸣笛播放中忽略新红石沿）：纯内存字段不落盘，
+ * 列车汽笛服务端锁定状态（持续高电平不重触发，断电立即清零）：纯内存字段不落盘，
  * 区块卸载/重进清零（同 {@code SteamEngineOverloadMixin} 口径）。读写走
  * {@link TrainHornStateAccess}，mixin 包外不引用本类。
  */
