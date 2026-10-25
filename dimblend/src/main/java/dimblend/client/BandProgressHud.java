@@ -2,6 +2,7 @@ package dimblend.client;
 
 import dimblend.DimBlendRegistries;
 import dimblend.worldgen.BandLayout;
+import java.util.OptionalDouble;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.entity.Entity;
@@ -15,10 +16,14 @@ import net.minecraft.world.level.GameType;
  * at an 8px step plus the 9px sprite width of the last icon). It sits in the
  * bottom strip next to the hotbar with a small hotbar-style edge margin
  * (3px off the screen bottom, 6px off the hotbar), so it never overlaps the
- * armor/health rows. The band number is drawn centered on the bar, and two
- * centered lines sit right above it: "编号-当前区域名" over "前方到达：…"
- * (random-drawn neighbors show 未知; names come from {@code BandLaneSync}
- * pushes, mapped by {@link BandLaneNames}).
+ * armor/health rows. While the player is on the track corridor (|z| &lt; 16),
+ * two centered lines sit right above the bar: "编号-当前区域名" over
+ * "前方到达：…" (random-drawn neighbors show 未知; names come from
+ * {@code BandLaneSync} pushes, mapped by {@link BandLaneNames}); off the
+ * corridor the lines hide. Wherever the player is, a white vertical marker
+ * pins the frontmost on-track Sable's centroid (see {@link SableTrainLocator})
+ * so the player can see where the train is; when the train is in another band
+ * the marker clamps to the bar edge on the train's side.
  *
  * <p>Visible in survival, adventure and creative; hidden in spectator
  * (vanilla {@code canHurtPlayer} is survival/adventure-only, so the gate
@@ -38,6 +43,7 @@ public final class BandProgressHud {
     private static final int MIN_LEFT_MARGIN = 2;
     private static final int BACKGROUND_COLOR = 0xA0000000;
     private static final int FILL_COLOR = 0xFFE0A020;
+    private static final int TRAIN_MARKER_COLOR = 0xFFFFFFFF;
 
     private BandProgressHud() {
     }
@@ -88,17 +94,42 @@ public final class BandProgressHud {
         if (fillWidth > 0) {
             graphics.fill(left + 1, barTop + 1, left + 1 + fillWidth, barTop + BAR_HEIGHT - 1, FILL_COLOR);
         }
-        int textY = barTop + (BAR_HEIGHT - mc.font.lineHeight) / 2;
-        graphics.drawCenteredString(mc.font, Integer.toString(region), left + BAR_WIDTH / 2, textY, 0xFFFFFFFF);
 
-        // 区域名两行居中挂在进度条正上方：上 = 当前「编号-区域名」，下 = 「前方到达：…」；
-        // 前方区域为随机抽选（或服务端尚未推送）时显示「未知」
-        int centerX = left + BAR_WIDTH / 2;
-        String nextLane = ClientBandLane.nextLane();
-        String nextText = "前方到达：" + (nextLane.isEmpty() ? "未知" : BandLaneNames.display(nextLane));
-        int nextY = barTop - 2 - mc.font.lineHeight;
-        graphics.drawCenteredString(mc.font, region + "-" + BandLaneNames.display(ClientBandLane.lane()),
-                centerX, nextY - mc.font.lineHeight, 0xFFFFFFFF);
-        graphics.drawCenteredString(mc.font, nextText, centerX, nextY, 0xFFFFFFFF);
+        // 区段序号只出现在上方文字行里，不再重复画在进度条上。
+        if (Math.abs(player.getBlockZ()) < SableTrainLocator.TRACK_HALF_WIDTH) {
+            // 区域名两行居中挂在进度条正上方：上 = 当前「编号-区域名」，下 = 「前方到达：…」；
+            // 前方区域为随机抽选（或服务端尚未推送）时显示「未知」
+            int centerX = left + BAR_WIDTH / 2;
+            String nextLane = ClientBandLane.nextLane();
+            String nextText = "前方到达：" + (nextLane.isEmpty() ? "未知" : BandLaneNames.display(nextLane));
+            int nextY = barTop - 2 - mc.font.lineHeight;
+            graphics.drawCenteredString(mc.font, region + "-" + BandLaneNames.display(ClientBandLane.lane()),
+                    centerX, nextY - mc.font.lineHeight, 0xFFFFFFFF);
+            graphics.drawCenteredString(mc.font, nextText, centerX, nextY, 0xFFFFFFFF);
+        }
+        // 火车标记不分是否在轨道走廊内都画：沿轨道步行找车时同样需要。
+        drawTrainMarker(graphics, mc, left, barTop, bandSize, region);
+    }
+
+    /**
+     * 1px 白色竖杠，标出最前轨道上 Sable 质心的位置；火车不在玩家当前区段时
+     * 钉在指向火车那一侧的边缘，提示往回走的方向。
+     */
+    private static void drawTrainMarker(GuiGraphics graphics, Minecraft mc, int left, int barTop,
+            int bandSize, int region) {
+        OptionalDouble trainX = SableTrainLocator.frontmostCenterX(mc.level);
+        if (trainX.isEmpty()) {
+            return;
+        }
+        int trainBlockX = (int) Math.floor(trainX.getAsDouble());
+        int trainRegion = BandLayout.regionOfBlockX(trainBlockX, bandSize);
+        int markerX;
+        if (trainRegion == region) {
+            float trainProgress = Math.floorMod(trainBlockX, bandSize) / (float) bandSize;
+            markerX = left + 1 + Math.round(trainProgress * (BAR_WIDTH - 2));
+        } else {
+            markerX = trainRegion < region ? left : left + BAR_WIDTH - 1;
+        }
+        graphics.fill(markerX, barTop - 1, markerX + 1, barTop + BAR_HEIGHT + 1, TRAIN_MARKER_COLOR);
     }
 }
