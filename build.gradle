@@ -1,4 +1,4 @@
-// 单仓聚合根：不产出 jar，只收敛四个子工程的共享 Maven 仓库。
+// 单仓聚合根：不产出 jar，只收敛各子工程的共享 Maven 仓库。
 // 各 mod 的插件版本、依赖声明保留在各自 build.gradle。
 // 注：插件 marker 仓库（如 userdev 插件的 maven.neoforged.net/releases）不在此列，
 // 收敛在 settings.gradle 的 pluginManagement 里。

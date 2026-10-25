@@ -1,6 +1,6 @@
 # DimBlend 单仓（Gradle 多工程）
 
-四个 mod 同仓管理，Gradle 子工程：
+八个 mod 同仓管理，Gradle 子工程：
 
 | 子工程 | mod_id | 说明 |
 |---|---|---|
@@ -10,11 +10,13 @@
 | `dimblend-blocks/` | `dimblend_blocks` | 方块（创造伪装/易碎石） |
 | `dimblend-radio/` | `dimblend_radio` | 红石点播电台（空唱片机+顶部选台+侧面音量） |
 | `dimblend-carwash/` | `dimblend_carwash` | 车架脏污与清洗（行驶积灰，水桶/湿海绵/雨/消防喷淋洗净，纯视觉） |
+| `dimblend-asyncsave/` | `dimblend_asyncsave` | 异步存档（level.dat 与玩家数据后台写入） |
+| `dimblend-spyglass/` | `dimblend_spyglass` | 望远镜远景建筑：雾外已存结构以真实方块网格隐约可见并标注名称与距离（只读已有结构存档） |
 
 ## 常用命令（根目录执行）
 
 ```sh
-./gradlew build                  # 构建全部六个 jar
+./gradlew build                  # 构建全部八个 jar
 ./gradlew :dimblend:build        # 只构建某一个
 ./gradlew projects               # 查看子工程列表
 ./gradlew build -x test          # 跳过单测的构建
@@ -26,7 +28,7 @@
 ## 基线（统一真相源：根 `gradle.properties`）
 
 - MC 1.21.1 / NeoForge **21.1.249**（与 TrainTripWorld 实例一致）/ Parchment 2024.11.17
-- ModDevGradle **2.0.147**（四工程统一）
+- ModDevGradle **2.0.147**（各工程统一）
 - Ponder **1.0.82+mc1.21.1**（Create 6.0.10 运行时 JarJar 的版本，零漂移；dimblend 已从 1.0.85 回落）
 - Wrapper：根唯一一份 Gradle 9.2.1，子工程不再保留 wrapper
 
