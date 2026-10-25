@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dimblend.experience.Config;
+import it.unimi.dsi.fastutil.longs.Long2IntMap;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -24,9 +25,10 @@ import net.minecraft.world.level.block.state.BlockState;
  * <ul>
  * <li>放置只进空气或纯流体格；顶掉流体时带 {@code UPDATE_CLIENTS}（客户端停止渲染水），
  *     空气格不通知客户端（不可见方块无需发包）；都不带邻接更新——放 structure_void 不需要
- *     触发周围方块响应。例外：G6 熔毁开关开启时，熔岩格仅在其 (x,z) 柱的最高目标格
- *     （柱顶）保留不驱逐——留给 {@code SableLavaMelt} 从车顶线开始浇淋熔穿，柱内更低格
- *     照常驱逐（遮挡恢复、不导流）；关闭时熔岩与水同被驱逐。</li>
+ *     触发周围方块响应。例外：G6 熔毁开关开启时，"安全柱顶"（正下方同柱下一格仍在目标集内，
+ *     见 {@link VoidFitColumnTops}）的熔岩保留不驱逐——留给 {@code SableLavaMelt} 从车顶线
+ *     开始浇淋熔穿；下方由实体投影或补的封口格顶着，任一条件不成立（下方悬空/封口未物化/
+ *     别的载具把该格当中层格）就照常驱逐。关闭时熔岩与水同被驱逐。</li>
  * <li>拆除仅当当前格仍是 structure_void（可能被玩家 replaceable 顶掉、被爆炸 DESTROY）；
  *     拆除带邻接更新，让旁侧自然水回流（回流写入走既有 G3 有限水链路）。</li>
  * <li>区块未加载的格跳过写入：target 集合保留该格，区块加载后由 tick 补放队列按表
@@ -70,7 +72,12 @@ public final class VoidFitApplier {
                     return created;
                 });
         LongOpenHashSet newTarget = VoidFitVoxelizer.voxelize(level, subLevel);
-        // G6 柱顶索引：熔毁开启时仅各柱最高目标格保留熔岩（详见 placeVoid）
+        boolean lavaMelt = Config.isLoaded() && Config.SABLE_LAVA_MELT.get();
+        if (lavaMelt) {
+            // G6 封口：体素化只收非空气方块，下方悬空的柱顶（单格柱/间隙/外挑下沿）
+            // 若保留熔岩会从完整船壳漏下去——先补一格目标格（正下方）再算柱顶索引
+            newTarget.addAll(VoidFitColumnTops.sealCellsFor(newTarget, level.getMinBuildHeight()));
+        }
         Long2IntOpenHashMap columnTops = VoidFitColumnTops.of(newTarget);
         int budget = CELL_BUDGET;
         boolean complete = true;
@@ -90,10 +97,16 @@ public final class VoidFitApplier {
         }
 
         UUID self = subLevel.getUniqueId();
-        // 先放新增：水密优先于清理旧位置
+        // 先放新增：水密优先于清理旧位置。分两轮——先非柱顶（含封口格），再柱顶：
+        // 柱顶保留熔岩的判定要求正下方封口格已物化（placeVoid 的世界侧检查），
+        // 同一轮里封口格必须先写；预算耗尽则柱顶整轮不写（complete=false 下轮重试），
+        // 绝不出现"封口未放、熔岩已保留"的窗口
         LongIterator additions = newTarget.iterator();
         while (additions.hasNext()) {
             long cell = additions.nextLong();
+            if (VoidFitColumnTops.isTop(columnTops, cell)) {
+                continue; // 留给第二轮
+            }
             if (fit.materializedCells.contains(cell)) {
                 continue;
             }
@@ -101,10 +114,34 @@ public final class VoidFitApplier {
                 complete = false;
                 break;
             }
-            if (placeVoid(level, cell,
-                    VoidFitColumnTops.isTop(columnTops, cell) || isColumnTopOfOther(tracker, self, cell))) {
+            if (placeVoid(level, cell, false)) {
                 fit.materializedCells.add(cell);
                 budget--;
+            }
+        }
+        if (complete) {
+            LongIterator tops = newTarget.iterator();
+            while (tops.hasNext()) {
+                long cell = tops.nextLong();
+                if (!VoidFitColumnTops.isTop(columnTops, cell)) {
+                    continue;
+                }
+                if (fit.materializedCells.contains(cell)) {
+                    continue;
+                }
+                if (budget <= 0) {
+                    complete = false;
+                    break;
+                }
+                // 保留条件：本车新 target 与所有其他 target 该格的载具都视其为安全
+                // 柱顶（多载具取交集，见 isSealedTopForAllVehicles）；世界侧是否
+                // 挡熔岩由 placeVoid 复核
+                boolean keep = lavaMelt
+                        && isSealedTopForAllVehicles(tracker, self, newTarget, columnTops, cell);
+                if (placeVoid(level, cell, keep)) {
+                    fit.materializedCells.add(cell);
+                    budget--;
+                }
             }
         }
         // 再拆移出；仍被其他载具 target 的共享格交给对方续管（过继 materialized），
@@ -190,37 +227,47 @@ public final class VoidFitApplier {
      *         （target 记账先行、materialized 差分续跑的不变式天然兼容）
      */
     public static boolean placeInChunk(ServerLevel level, VoidFitTracker tracker, LongSet cells, int budget) {
+        // 两轮：先非柱顶（含封口格），再柱顶——柱顶保留熔岩要求正下方封口格已物化
+        // （封口格必在同 (x,z) 柱，必属同一区块、同一 cells 集合）
         for (long cell : cells) {
             if (budget <= 0) {
                 return false;
             }
-            if (placeVoid(level, cell, isColumnTop(tracker, cell))) {
+            if (isColumnTopOfAny(tracker, cell)) {
+                continue; // 留给第二轮
+            }
+            if (placeVoid(level, cell, false)) {
                 budget--;
-                // 重叠载具的 target 可能同含此格：全数记账，避免一方移走时被误拆
-                for (VoidFitTracker.VehicleFit fit : tracker.vehicles().values()) {
-                    if (fit.targetCells.contains(cell)) {
-                        fit.materializedCells.add(cell);
-                    }
-                }
+                markMaterialized(tracker, cell);
+            }
+        }
+        for (long cell : cells) {
+            if (budget <= 0) {
+                return false;
+            }
+            if (!isColumnTopOfAny(tracker, cell)) {
+                continue;
+            }
+            // 多载具取交集：任一 target 该格的载具把它当中层格/悬空柱顶就驱逐
+            if (placeVoid(level, cell, isSealedTopOfAll(tracker, cell))) {
+                budget--;
+                markMaterialized(tracker, cell);
             }
         }
         return true;
     }
 
-    /** 本车 refit 尚未提交新 target，只能合并其他载具，不能读回本车旧柱顶索引。 */
-    private static boolean isColumnTopOfOther(VoidFitTracker tracker, UUID self, long cell) {
-        for (Map.Entry<UUID, VoidFitTracker.VehicleFit> entry : tracker.vehicles().entrySet()) {
-            VoidFitTracker.VehicleFit fit = entry.getValue();
-            if (!entry.getKey().equals(self) && fit.targetCells.contains(cell)
-                    && VoidFitColumnTops.isTop(fit.columnTops, cell)) {
-                return true;
+    /** 重叠载具的 target 可能同含此格：全数记账，避免一方移走时被误拆。 */
+    private static void markMaterialized(VoidFitTracker tracker, long cell) {
+        for (VoidFitTracker.VehicleFit fit : tracker.vehicles().values()) {
+            if (fit.targetCells.contains(cell)) {
+                fit.materializedCells.add(cell);
             }
         }
-        return false;
     }
 
-    /** 该格是否任一仍 target 它的载具的柱顶格（共享格取并集口径，与过继语义一致）。 */
-    private static boolean isColumnTop(VoidFitTracker tracker, long cell) {
+    /** 该格是否任一仍 target 它的载具的柱顶格（用于"柱顶延后到第二轮"）。 */
+    private static boolean isColumnTopOfAny(VoidFitTracker tracker, long cell) {
         for (VoidFitTracker.VehicleFit fit : tracker.vehicles().values()) {
             if (fit.targetCells.contains(cell) && VoidFitColumnTops.isTop(fit.columnTops, cell)) {
                 return true;
@@ -229,7 +276,45 @@ public final class VoidFitApplier {
         return false;
     }
 
-    private static boolean placeVoid(ServerLevel level, long cell, boolean columnTop) {
+    /**
+     * 该格对其所有 target 它的载具都是安全柱顶（多载具取交集）。refit 用本车尚未提交的
+     * 新 target/新柱顶索引，其他载具用已提交的 target；任一载具把该格当中层格（即该格
+     * 低于它的柱顶）或悬空柱顶，都不保留——否则熔岩会落在那个载具的投影里。
+     */
+    private static boolean isSealedTopForAllVehicles(VoidFitTracker tracker, UUID self,
+            LongSet selfTarget, Long2IntMap selfTops, long cell) {
+        if (!VoidFitColumnTops.isSealedTop(selfTops, selfTarget, cell)) {
+            return false;
+        }
+        for (Map.Entry<UUID, VoidFitTracker.VehicleFit> entry : tracker.vehicles().entrySet()) {
+            if (entry.getKey().equals(self)) {
+                continue;
+            }
+            VoidFitTracker.VehicleFit fit = entry.getValue();
+            if (fit.targetCells.contains(cell)
+                    && !VoidFitColumnTops.isSealedTop(fit.columnTops, fit.targetCells, cell)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** 补放路径口径：所有已提交 target 该格的载具都视其为安全柱顶。 */
+    private static boolean isSealedTopOfAll(VoidFitTracker tracker, long cell) {
+        boolean targeted = false;
+        for (VoidFitTracker.VehicleFit fit : tracker.vehicles().values()) {
+            if (!fit.targetCells.contains(cell)) {
+                continue;
+            }
+            targeted = true;
+            if (!VoidFitColumnTops.isSealedTop(fit.columnTops, fit.targetCells, cell)) {
+                return false;
+            }
+        }
+        return targeted;
+    }
+
+    private static boolean placeVoid(ServerLevel level, long cell, boolean sealedTop) {
         BlockPos pos = BlockPos.of(cell);
         if (!level.hasChunkAt(pos)) {
             return false;
@@ -245,17 +330,38 @@ public final class VoidFitApplier {
             // 真实方块（含含水方块）：本身挡水，不覆盖
             return false;
         }
-        // G6 配对（2026-10-23 柱顶收窄）：熔毁开关开启时，熔岩格仅在其 (x,z) 柱的
-        // 最高目标格（柱顶）不驱逐——从上方流下的岩浆在车顶线截断、只浇柱顶、从车顶
-        // 开始熔穿，柱内更低格照常驱逐成结构空位（遮挡恢复、舱内不积岩浆、不导流）；
-        // 开关关闭退回旧行为（熔岩与水同被驱逐）。保留格不进 materialized，
-        // 后续每轮 refit 重试至此仍跳过（无写入、开销可忽略）
+        // G6 配对（2026-10-26 安全柱顶）：熔毁开关开启时，只有"安全柱顶"的熔岩不驱逐
+        // ——该格对每个 target 它的载具都是柱顶且正下方同柱下一格也在 target 内
+        // （实体投影或补的封口格），且正下方世界格此刻确实挡熔岩。熔岩留在柱顶格
+        // 与方块同格接触（SableLavaMelt 的接触扫描），不能下行；柱内更低格照常驱逐
+        // 成结构空位（遮挡恢复、舱内不积岩浆、不导流）。任一条件不成立就退回驱逐
+        // （安全方向）。保留格不进 materialized，后续每轮 refit 重试并重新判定
+        // （无写入、开销可忽略）；下方一旦离开 target（方块熔掉/投影收缩），下一轮
+        // 即驱逐，不会把熔岩带进新投影
         if (pureFluid && current.getFluidState().is(FluidTags.LAVA)
-                && Config.isLoaded() && Config.SABLE_LAVA_MELT.get() && columnTop) {
+                && Config.isLoaded() && Config.SABLE_LAVA_MELT.get()
+                && sealedTop && blocksLavaBelow(level, pos)) {
             return false;
         }
         level.setBlock(pos, VOID, pureFluid ? PLACE_FLAGS_EVICT_FLUID : PLACE_FLAGS);
         return true;
+    }
+
+    /**
+     * 正下方世界格此刻是否挡熔岩：structure_void 或 blocksMotion() 方块。故意保守——
+     * 只认这两种，其余（空气/纯流体/无碰撞方块）一律返回 false，让调用方驱逐柱顶
+     * 熔岩（安全方向）。依据原版 {@code FlowingFluid#canHoldFluid}
+     * （FlowingFluid.java:394-412）：structure_void 在 :408 被显式排除；blocksMotion
+     * 为 true 的方块流体不能占据。封口格可能因区块未加载/预算耗尽/压中非流体方块
+     * 尚未物化，这一步把几何判定留下的窗口关掉。
+     */
+    private static boolean blocksLavaBelow(ServerLevel level, BlockPos pos) {
+        BlockPos below = pos.below();
+        if (!level.hasChunkAt(below)) {
+            return false;
+        }
+        BlockState state = level.getBlockState(below);
+        return state.is(Blocks.STRUCTURE_VOID) || state.blocksMotion();
     }
 
     private static boolean removeVoid(ServerLevel level, long cell) {

@@ -44,8 +44,11 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
  * <p>接触口径（用户拍板 2026-10-11）：熔岩格与方块投影体积（沿用体素化的旋转保守
  * 半 extent）AABB 距离 ≤ {@link LavaMeltMath#CONTACT_TOLERANCE} 即"被岩浆浇着"——
  * 同格（载具驶入熔岩，投影格内已有岩浆）与贴壳（熔岩从外侧流到拟合空位壳边，
- * 空位壳挡流体但 0.25 容差让壳边方块照常被浇）都覆盖。硬度只决定速度不设阈值：
- * 黑曜石级（50）默认倍率下约 62.5 秒持续浇淋才熔，等效抗岩浆；硬度负（基岩等）免疫。</p>
+ * 空位壳挡流体但 0.25 容差让壳边方块照常被浇）都覆盖。柱顶另向上多收一格
+ * （2026-10-26，见 {@link #touchesLava}）：拟合格是保守覆盖，熔岩停在柱顶空位上时
+ * 可能比方块 AABB 高出近一格，只按 AABB+0.25 会把"浇在车顶上"的熔岩漏判，车顶就
+ * 无法从上方开始熔。硬度只决定速度不设阈值：黑曜石级（50）默认倍率下约 62.5 秒
+ * 持续浇淋才熔，等效抗岩浆；硬度负（基岩等）免疫。</p>
  *
  * <p>免疫清单（2026-10-14 增补）：{@link #LAVA_MELT_IMMUNE} 标签内的方块一律不熔
  * （不进接触、不累计进度、不掉落；中途改标签，存量进度按接触中断自然清零）。标签
@@ -54,13 +57,17 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
  * Sable 里只产生拳击冲量、不路由破坏；Create 机械臂/钻头遵守 non_breakable 清单），
  * 本特性直改 plot 存储会绕过这些口径，故显式豁免同一张清单。</p>
  *
- * <p>与拟合的配合（2026-10-23 柱顶收窄）：{@code VoidFitApplier#placeVoid} 在本开关
- * 开启时只保留各 (x,z) 柱最高目标格（柱顶）的熔岩不驱逐——从上方流下的岩浆在车顶线
- * 截断、从车顶开始浇淋熔穿，柱内更低的投影格照常驱逐成空位（舱内不积岩浆、不把
- * 流经导向他处）；熔穿后投影收缩、空位拆除，熔岩向缺口推进，形成逐层向下的熔穿。
- * 侧向/下方浸没时投影格内熔岩同样只留柱顶，壳体方块靠壳外 0.25 容差从外侧熔起，
- * 壳内方块要等壳熔穿、熔岩真实流入才接触。关闭则退回旧行为（熔岩与水同被驱逐，
- * 本调度整体停摆）。</p>
+ * <p>与拟合的配合（2026-10-26 安全柱顶 + 封口格）：{@code VoidFitApplier#placeVoid}
+ * 在本开关开启时只保留"安全柱顶"的熔岩——该格对每个 target 它的载具都是柱顶、且
+ * 正下方同柱下一格仍在 target 内（实体投影，或 {@code VoidFitColumnTops#sealCellsFor}
+ * 给下方悬空柱顶补的封口格），并且正下方世界格此刻确实挡熔岩（structure_void 或
+ * blocksMotion 方块）。单格柱/悬空柱顶由封口格补上正下方一格，熔岩留在车顶线同格
+ * 接触、不能从完整船壳漏下去；柱内更低的投影格照常驱逐成空位（舱内不积岩浆、不把
+ * 流经导向他处）。任一条件不成立即驱逐，靠停在车顶拟合面上的熔岩接触浇熔（柱顶 +1
+ * 格接触口径）。熔穿后投影收缩、空位与封口格拆除，熔岩向缺口推进，形成逐层向下的
+ * 熔穿；舱内空气不在体素化投影内，若熔穿层下方是空腔，熔岩经熔出的洞进入空腔
+ * （原版流体行为），仍被下一层投影挡住，不会从完整船壳穿过。关闭则退回旧行为
+ * （熔岩与水同被驱逐，本调度整体停摆）。</p>
  *
  * <p>节律与预算：每 {@value #SCAN_TICKS} tick 扫一轮，单轮最多处理
  * {@code Config#SABLE_LAVA_MELT_SCAN_BUDGET} 个载具（默认 2，逐维度游标 round-robin）；连续接触按
@@ -259,7 +266,15 @@ public final class SableLavaMelt {
                 2.6F + (level.random.nextFloat() - level.random.nextFloat()) * 0.8F);
     }
 
-    /** 方块投影体积（中心 w、半 extent h）外扩 {@link LavaMeltMath#CONTACT_TOLERANCE} 内有熔岩格。 */
+    /**
+     * 方块投影体积（中心 w、半 extent h）外扩 {@link LavaMeltMath#CONTACT_TOLERANCE} 内有熔岩格。
+     *
+     * <p>柱顶（2026-10-26）额外把保守覆盖最高格的再上一格纳入：体素化按
+     * {@code floor(w±h)} 取保守覆盖格，熔岩停在柱顶空位上方时，其格面比方块 AABB
+     * 顶面最多高近一格（取决于亚格偏移），只按 AABB+0.25 扫描会漏判"浇在车顶上"的
+     * 熔岩，车顶就永远等不到第一次接触。只向上多收一格：侧向/下方仍是 0.25 口径。
+     * 非柱顶格多收的这格在投影内（空位），按不变式不会有熔岩，多收无效但无害。</p>
+     */
     private static boolean touchesLava(ServerLevel level,
             double wx, double wy, double wz, double hx, double hy, double hz) {
         double expand = LavaMeltMath.CONTACT_TOLERANCE;
@@ -268,7 +283,8 @@ public final class SableLavaMelt {
         int x0 = (int) Math.floor(wx - hx - expand);
         int x1 = (int) Math.floor(wx + hx + expand);
         int y0 = Math.max(minY, (int) Math.floor(wy - hy - expand));
-        int y1 = Math.min(maxY, (int) Math.floor(wy + hy + expand));
+        int topCovered = (int) Math.floor(wy + hy);
+        int y1 = Math.min(maxY, Math.max((int) Math.floor(wy + hy + expand), topCovered + 1));
         int z0 = (int) Math.floor(wz - hz - expand);
         int z1 = (int) Math.floor(wz + hz + expand);
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();

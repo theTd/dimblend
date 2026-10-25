@@ -20,7 +20,7 @@ import javax.annotation.Nullable;
 /**
  * 结构空位拟合的真相源：每个受跟踪载具当前"应当"有结构空位的世界格集合（target），
  * 与实际已写入世界的格集合（materialized），以及 target 按区块的倒排索引、按 (x,z)
- * 柱的柱顶索引（G6 熔毁的熔岩保留口径，随 target 同步重建）。
+ * 柱的柱顶索引（G6 熔毁的熔岩保留口径；封口格也在 target 内，随 target 同步重建）。
  *
  * <p>两个集合分工：</p>
  * <ul>
@@ -44,7 +44,7 @@ public final class VoidFitTracker {
         public final Quaterniond lastOrientation = new Quaterniond();
         /** 目标世界格全集（BlockPos.asLong）。 */
         public final LongOpenHashSet targetCells = new LongOpenHashSet();
-        /** 各 (x,z) 柱的最高目标格 y（G6 熔毁开启时仅柱顶格保留熔岩；随 target 同步重建）。 */
+        /** 各 (x,z) 柱的最高目标格 y（G6 熔毁开启时仅安全柱顶格保留熔岩；随 target 同步重建）。 */
         public final Long2IntOpenHashMap columnTops = new Long2IntOpenHashMap();
         /** 确认已写入 structure_void 的世界格。 */
         public final LongOpenHashSet materializedCells = new LongOpenHashSet();
