@@ -40,6 +40,13 @@ public final class HeadlightLavaMath {
     /** Alpha pulse frequency in cycles per second (one cycle per 20 game ticks). */
     public static final double PULSE_HZ = 1.0;
 
+    /**
+     * Fraction of the pulse alpha used for edge parts the camera cannot see (behind the train cab, terrain
+     * or a wall). Every segment is drawn once at this dimmer alpha without the depth test, then the
+     * depth-tested pass paints the visible parts at the full pulse alpha.
+     */
+    public static final float HIDDEN_ALPHA_FACTOR = 0.4F;
+
     private static final float MIN_ALPHA = 0.35F;
     private static final float MAX_ALPHA = 0.75F;
     private static final double TICKS_PER_SECOND = 20.0;
@@ -138,6 +145,11 @@ public final class HeadlightLavaMath {
     public static float alpha(double gameTime) {
         double phase = 0.5 + 0.5 * Math.sin(gameTime * Math.PI * 2.0 * PULSE_HZ / TICKS_PER_SECOND);
         return (float) (MIN_ALPHA + (MAX_ALPHA - MIN_ALPHA) * phase);
+    }
+
+    /** Alpha of the see-through under-pass: {@link #HIDDEN_ALPHA_FACTOR} of the current pulse alpha. */
+    public static float hiddenAlpha(float alpha) {
+        return alpha * HIDDEN_ALPHA_FACTOR;
     }
 
     private HeadlightLavaMath() {

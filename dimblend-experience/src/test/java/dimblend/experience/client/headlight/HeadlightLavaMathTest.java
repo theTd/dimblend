@@ -196,6 +196,21 @@ class HeadlightLavaMathTest {
     }
 
     @Test
+    void hiddenEdgesUseFortyPercentOfThePulseAlpha() {
+        assertEquals(0.4F, HeadlightLavaMath.HIDDEN_ALPHA_FACTOR, 1e-6F);
+        for (float alpha : new float[] {0.0F, 0.35F, 0.55F, 0.75F, 1.0F}) {
+            assertEquals(HeadlightLavaMath.HIDDEN_ALPHA_FACTOR * alpha, HeadlightLavaMath.hiddenAlpha(alpha), 1e-6F,
+                    "pulse alpha " + alpha);
+        }
+        // The default pulse is 0.55 at tick 0 and 0.75 at its peak; the see-through pass is 40% of each.
+        assertEquals(0.22F, HeadlightLavaMath.hiddenAlpha(HeadlightLavaMath.alpha(0)), 1e-6F);
+        assertEquals(0.30F, HeadlightLavaMath.hiddenAlpha(HeadlightLavaMath.alpha(5)), 1e-6F);
+        float full = HeadlightLavaMath.alpha(10);
+        float dim = HeadlightLavaMath.hiddenAlpha(full);
+        assertTrue(dim > 0.0F && dim < full, "hidden edges stay visible but dimmer: " + dim + " vs " + full);
+    }
+
+    @Test
     void outlineSitsJustAboveTheFluidSurface() {
         LavaSurface surface = new LavaSurface(-3, 40, 9, 8 / 9.0F);
         // The fluid height is a float (FluidState.getOwnHeight), so the expected value goes through float too.

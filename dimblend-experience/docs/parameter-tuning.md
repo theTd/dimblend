@@ -178,13 +178,18 @@ Iris) and the same on/off and intensity switches, and it needs no extra mixin.
   shoulder trims the lit width to 84–91% of the cone radius off axis. With the
   occlusion option on, the block must also pass a block-grid raycast from the lens
   that uses the same occluder predicate as the shadow grids, so a wall or a car
-  body hides the outline wherever it hides the light.
+  body keeps the lava out of the lit set wherever it keeps the light out. The
+  outline itself is no longer hidden by occluders once a face is lit; see Stage.
 - **Outline**: only perimeter edges are drawn — for each lit top face, a side gets a
   segment unless the horizontal neighbour is lit lava with the same surface height,
   so a connected pool is one outline and a step is two. The segment sits at the
   fluid surface (block y + `FluidState` own height, `8/9` for source lava) plus
   0.01 against z-fighting, in orange `0xFFB040` with a gentle 1 Hz alpha pulse
-  between 0.35 and 0.75.
+  between 0.35 and 0.75. Every segment is drawn twice: a see-through under-pass at
+  **40%** of the pulse alpha (`HIDDEN_ALPHA_FACTOR = 0.4`) with the depth test and
+  depth write off, then the depth-tested pass at the full pulse alpha. Visible
+  parts therefore read at the full pulse; parts behind the cab, terrain or a wall
+  keep a dim 40% outline instead of disappearing.
 - **Recompute**: client tick, at most every 2 ticks (10 Hz) and only when a beam
   pose actually changed (lens quantized to 0.5 blocks, axis to 1/64); stationary
   lamps refresh once per 20 ticks to pick up placed/removed lava, world edits and
@@ -199,15 +204,33 @@ Iris) and the same on/off and intensity switches, and it needs no extra mixin.
   ~0.1–0.3 ms per lamp at the defaults, i.e. below the 0.5 ms budget, and only
   every other tick while moving. `-Ddimblend.headlight.diag=true` logs the measured
   scan cost next to the existing GPU timings.
-- **Stage**: `RenderType.lines()` at `AFTER_TRANSLUCENT_BLOCKS`. The lava top face
-  is opaque terrain written in the solid chunk layer, so the outline must come after
-  it; waiting for the translucent layer means water and stained glass already hold
-  depth, so they hide the outline instead of being painted over by it. The type is
-  LEQUAL depth-tested, so walls, terrain and the train (entities are drawn before
-  translucent blocks) hide it. Under Fabulous graphics the type's
-  `ITEM_ENTITY_TARGET` output hands the segments to the transparency post chain,
-  which composites them depth-sorted against the final main depth, so occlusion
-  still works there.
+- **Stage**: two line passes over the same edge list at `AFTER_TRANSLUCENT_BLOCKS`.
+  The lava top face is opaque terrain written in the solid chunk layer, so the
+  outline must come after it; waiting for the translucent layer means water and
+  stained glass already hold depth, so the depth-tested pass still treats them as
+  nearer than the outline. The under-pass is a custom line RenderType with the same
+  shader, line width, blend and `POSITION_COLOR_NORMAL`/`LINES` format as
+  `RenderType.lines()`, but `NO_DEPTH_TEST` and `COLOR_WRITE` (no depth write).
+  Vanilla's `NO_DEPTH_TEST` shard is a no-op for `GL_ALWAYS` (it assumes the test is
+  already off), while this stage still has the translucent layer's LEQUAL enabled, so
+  a custom depth shard explicitly disables the test and restores the previous enabled
+  state on clear. It writes to the **main** target, not `ITEM_ENTITY_TARGET`: under
+  Fabulous the vanilla line type's item-entity target is composited by the transparency chain,
+  which blends `dst * (1 - a) + rgb` (no alpha scaling of the colour), so a 40%
+  line would not read as 40%. Vanilla's `MAIN_TARGET` shard cannot be used verbatim
+  because its setup and clear are no-ops and this stage runs inside the translucent
+  chunk layer, before that layer's state is cleared, with the translucent target
+  bound; a custom output shard binds main for the pass and restores the translucent
+  target afterwards. Under Fabulous, main colour is the base layer that
+  `transparency.fsh` composites the translucent/particle/cloud/weather layers
+  over, so the dim line survives every later opaque pass (a nearer translucent or
+  particle layer still tints it, as it tints the world behind it). The full-alpha
+  pass remains the ordinary LEQUAL depth-tested `RenderType.lines()`, so visible
+  parts stay at the current brightness and, under Fabulous, the chain composites
+  them at their own depth on top of the dim base. Under Fancy and Fast there is no
+  chain and main is already bound, so the extra bind is a no-op. Both batches are
+  ended inside the event; the existing `sable_headlight_lava_highlight` switch
+  turns both passes off and there is no new option.
 
 Radial streaks seen around the glow from the driver's seat in the 2026-10-19
 captures were scene geometry, not sampling noise: the stepped walls of a tunnel

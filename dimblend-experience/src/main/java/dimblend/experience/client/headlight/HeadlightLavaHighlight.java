@@ -30,15 +30,21 @@ import org.slf4j.Logger;
  * client thread; the hard {@link HeadlightLavaScan#VOXEL_BUDGET} caps a pathological scene and
  * {@code -Ddimblend.headlight.diag=true} logs the measured cost.
  *
- * <p><b>Drawing.</b> {@code RenderType.lines()} at {@code AFTER_TRANSLUCENT_BLOCKS}: the lava top face is
- * opaque terrain written in the solid chunk layer ({@code LevelRenderer.java:955-957}), so the outline only
- * needs to come after it, but translucent blocks must already be in the depth buffer (or, under Fabulous, in
- * the transparency chain) for water and stained glass in front to hide it. {@code RenderType.lines()}
+ * <p><b>Drawing.</b> Two passes at {@code AFTER_TRANSLUCENT_BLOCKS}, both over the same edge list: first a
+ * see-through pass (no depth test, no depth write, main-target output) at
+ * {@link HeadlightLavaMath#HIDDEN_ALPHA_FACTOR} of the pulse alpha, then the ordinary depth-tested
+ * {@code RenderType.lines()} pass at the full pulse alpha. Camera-visible segments stay bright; segments
+ * behind the cab, terrain or a wall keep a dim outline instead of disappearing. The lava top face is opaque
+ * terrain written in the solid chunk layer ({@code LevelRenderer.java:955-957}), so both passes come after it,
+ * but the depth-tested pass must also come after translucent blocks so water and stained glass in front can
+ * hide the bright line (the dim line is still drawn behind them). {@code RenderType.lines()}
  * ({@code RenderType.java:599-613}) is LEQUAL depth-tested, blends, and writes depth; under Fabulous its
  * {@code ITEM_ENTITY_TARGET} output ({@code RenderStateShard.java:339-347}) hands the segments to the
  * transparency post chain, which composites them depth-sorted against the final main depth
- * ({@code transparency.fsh}), so nearer terrain, vehicles and translucent surfaces still cover them. Nothing
- * outside the render type is changed: no depth/blend/shader state is touched here.
+ * ({@code transparency.fsh}), so nearer terrain, vehicles and translucent surfaces still cover the bright
+ * line. The see-through type and why it writes to main (rather than {@code ITEM_ENTITY_TARGET}) are
+ * documented in {@link LavaOutlineRenderTypes}. Both batches are ended here; the render types own their
+ * state, so nothing outside them is changed.
  */
 public final class HeadlightLavaHighlight {
     /** Floor between scans: 10 Hz keeps a moving beam's lit edge within two blocks of the light. */
@@ -126,11 +132,22 @@ public final class HeadlightLavaHighlight {
         PoseStack.Pose pose = event.getPoseStack().last();
         float alpha = HeadlightLavaMath.alpha(mc.level.getGameTime() + event.getCamera().getPartialTickTime());
         MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
+        // First the see-through under-pass: every segment at the dimmed alpha, ignoring the depth buffer, so
+        // the parts the depth-tested pass will hide still read as a faint outline through the occluder.
+        VertexConsumer seeThrough = buffers.getBuffer(LavaOutlineRenderTypes.SEE_THROUGH_LINES);
+        for (LavaEdge edge : edges) {
+            append(seeThrough, pose, edge, camera, HeadlightLavaMath.hiddenAlpha(alpha));
+        }
+        buffers.endBatch(LavaOutlineRenderTypes.SEE_THROUGH_LINES);
+        // Then the ordinary depth-tested pass: visible segments repaint the dim base at the full pulse alpha.
         VertexConsumer lines = buffers.getBuffer(RenderType.lines());
         for (LavaEdge edge : edges) {
             append(lines, pose, edge, camera, alpha);
         }
         buffers.endBatch(RenderType.lines());
+        // The vanilla line type's clear rebinds main; put the translucent layer's own target back so the
+        // rest of the event and the layer's clear see the state they expect.
+        LavaOutlineRenderTypes.restoreStageTarget();
     }
 
     /**
