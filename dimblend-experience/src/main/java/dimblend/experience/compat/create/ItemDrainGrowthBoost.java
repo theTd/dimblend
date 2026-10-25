@@ -32,14 +32,14 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler.FluidAction;
  *
  * <p>规则（需求口径）：存水不低于阈值（默认 200mb）时，每周期（默认 30 秒）在
  * 覆盖范围内<b>随机挑一株</b>植物走原版骨粉逻辑催熟；催熟<b>生效才扣</b>
- * 10mb 存水。低于阈值停止催熟（保湿不受影响），回水后自动恢复。范围内
+ * 配置水量（默认 20mb）存水。低于阈值停止催熟（保湿不受影响），回水后自动恢复。范围内
  * <b>无可催熟作物时倒计时停走</b>（不上弦/击发点卸弦），作物出现后下一拍
  * 自动重新计时。</p>
  *
  * <p>“原版骨粉逻辑”= {@code BonemealableBlock} 三段式：
  * {@code isValidBonemealTarget} 筛候选 → {@code isBonemealSuccess} 判生效 →
  * {@code performBonemeal} 执行生长。扣水门 = {@code isBonemealSuccess} 通过
- * （即 {@code performBonemeal} 被调用），据此扣 10mb——注意两点：
+ * （即 {@code performBonemeal} 被调用），据此扣配置水量（默认 20mb）——注意两点：
  * ① 这与原版骨粉物品的消耗时机不同（原版对有效目标无论 success 与否都消耗骨粉），
  * 此处是“生效才扣”的需求口径；② 已知限制：个别 {@code performBonemeal} 实现
  * 可能零世界变化仍被计为生效并扣水（如竹子顶端上方被非空方块遮挡、树苗长成
@@ -56,7 +56,8 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler.FluidAction;
  * {@code isValidBonemealTarget} 的方块。草方块/草丛/苔藓/菌岩/
  * 缠根泥土/海草/粉红色花簇这类蔓延/装饰型骨粉目标<b>不算候选</b>
  * （2026-10-22 修订，见 {@link #isCropCandidate}）：户外农田四周几乎恒有草方块，
- * 算候选时“无作物停走”永远不可观察，击发还会抽中草——照扣 10mb 却零可见变化。</p>
+ * 算候选时“无作物停走”永远不可观察，击发还会抽中草——照扣配置水量（默认 20mb）
+ * 却零可见变化。</p>
  *
  * <p>消耗口径：只认水（与保湿同一水箱，非水时保湿/催熟都不工作）；扣水走公开
  * capability（DOWN 面，理由同 {@link ItemDrainIrrigation}），SIMULATE 先验、
@@ -184,7 +185,7 @@ public final class ItemDrainGrowthBoost {
      * 候选必须是作物型骨粉目标（2026-10-22 修订）：蔓延/装饰型不算——草方块
      * （长草长花）、草丛（拔高）、苔藓（蔓延）、菌岩（抽芽）、缠根泥土（垂根）、
      * 海草/粉红色花簇（拔高/复制）。户外农田四周几乎恒有草方块，它们当候选时
-     * “无作物停走”永不触发，击发抽中草还白扣 10mb 零可见变化。作物（含模组
+     * “无作物停走”永不触发，击发抽中草还白扣默认 20mb 零可见变化。作物（含模组
      * {@code CropBlock} 子类）、茎、可可、浆果丛、树苗、海带、竹子等生长型目标
      * 不受影响。
      */

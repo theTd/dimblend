@@ -16,4 +16,10 @@ public interface LootPoolSingletonContainerAccessor {
 
     @Accessor("functions")
     List<LootItemFunction> dimblend$getFunctions();
+
+    @Accessor("weight")
+    int dimblend$getWeight();
+
+    @Accessor("quality")
+    int dimblend$getQuality();
 }

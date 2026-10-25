@@ -26,10 +26,13 @@ import dimblend.experience.gametest.DeployerIcePlacementGameTests;
 import dimblend.experience.gametest.FireHoseDropGameTests;
 import dimblend.experience.gametest.LimitedWaterGameTests;
 import dimblend.experience.gametest.LootMapFilterGameTests;
+import dimblend.experience.loot.LootMapGlobalModifiers;
 import dimblend.experience.gametest.LinkedTransmitterGameTests;
 import dimblend.experience.gametest.ItemDrainPipeRefillGameTests;
 import dimblend.experience.gametest.ItemDrainGrowthFireGameTests;
 import dimblend.experience.gametest.ItemDrainHudSyncGameTests;
+import dimblend.experience.gametest.ItemDrainNetherEvaporationGameTests;
+import dimblend.experience.gametest.ItemDrainNetherEvaporationSableGameTests;
 import dimblend.experience.gametest.KineticComponentScanGameTests;
 import dimblend.experience.gametest.KineticUnloadedShareGameTests;
 import dimblend.experience.gametest.TrainHornCcaGameTests;
@@ -57,6 +60,9 @@ public class DimBlend {
 
         // 音效事件注册（无条件，播放侧由条件 mixin + Config 门控）
         ModSounds.SOUNDS.register(modEventBus);
+
+        // A10 第三层：地图→纸的全局战利品修饰器序列化器（无条件，规则本体由 Config 门控）
+        LootMapGlobalModifiers.SERIALIZERS.register(modEventBus);
 
         // 探索限制板块的数据附件（远行诅咒层级、村民职业记录等）
         ExplorationAttachments.ATTACHMENTS.register(modEventBus);
@@ -118,6 +124,11 @@ public class DimBlend {
             event.register(ItemDrainPipeRefillGameTests.class);
             event.register(ItemDrainHudSyncGameTests.class);
             event.register(ItemDrainGrowthFireGameTests.class);
+            event.register(ItemDrainNetherEvaporationGameTests.class);
+            // Sable 载具上的下界蒸发路径另需 Sable 类可加载
+            if (ModList.get().isLoaded("sable")) {
+                event.register(ItemDrainNetherEvaporationSableGameTests.class);
+            }
             event.register(KineticComponentScanGameTests.class);
             event.register(KineticUnloadedShareGameTests.class);
             event.register(CdgKineticOverloadGameTests.class);

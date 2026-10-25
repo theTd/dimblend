@@ -59,6 +59,10 @@
 > 无需逐节操作。
 > 2026-10-15 后续用户确认距离刹车正确，解除口径更新为：任意车架的原始红石等级变化即
 > 解除所在编组全列紧急刹车，不再要求完整脉冲。锁存及粒子同步收敛到编组/车厢，其他编组独立。
+> 2026-10-26（分液池下界蒸发 + A10 全量换纸）：N6——下界群系内分液池按
+> `itemDrainNetherEvaporationMbPerSecond`（默认 50 mB/s）蒸干存水，只认水；
+> A10 由「移除部分 destination 地图条目」改为三层「一切地图最终换 1 张纸」
+> （表加载替换 / exploration_map 全目的地短路 / NeoForge GLM 最终网）。
 > 本文件是开发依据；原始清单仅作需求索引，两者冲突时以本文件为准。
 
 ## 0. 环境基线
@@ -143,20 +147,31 @@
 - 昵称与**物品 id** 绑定：本世界内该 id 的所有实例替换显示名
 - 纯显示层：不改 NBT、不动任何属性；数据存世界 SavedData，同步客户端渲染
 
-### A10 战利品探索地图过滤（全局功能，用户拍板）
-- 任何战利品箱不再产出两类探索地图：Dungeons Arise（含七海 `dungeons_arise_seven_seas`）
-  的探险地图，以及原版藏宝图（`#minecraft:on_treasure_maps`，沉船 `shipwreck_map` /
-  水下废墟的 buried_treasure 地图）
-- 判据是 exploration_map 战利品函数的 destination 结构 tag（JSON 省略 destination 时
-  codec 缺省即藏宝图 tag，同样命中），不看地图图标
-- 双层实现：`LootTableLoadEvent` 在每张表加载时移除直挂 pool 下的禁出条目
-  （`/reload` 后重新生效，JEI/JER 展示同步干净；pool entries 是 ImmutableList，
-  经 accessor 整体换引用）；复合条目嵌套与程序化战利品表由
-  `ExplorationMapFunctionBanMixin` 运行时兜底，命中产空堆（箱子少一件物品，地图绝不出现）。
-  兜底拦的是 exploration_map 函数的执行：GLM 经该函数产图同样在覆盖内；
-  直接产出成品地图 ItemStack 的 GLM 不在覆盖内（在案 mod 无此用法）
-- 制图师村民交易不走战利品表，不受影响；空地图（无 exploration_map 函数）不动
-- 新开关 `lootMapFilter`（默认开）
+### A10 战利品地图过滤（全局功能，用户拍板；2026-10-26 修订为「一切地图换纸」）
+- 任何战利品箱不再产出任何地图：空地图、藏宝图、Dungeons Arise（含七海）、
+  Dungeons and Taverns / Nova Structures 等一切 exploration_map 目的地一视同仁，
+  最终都变成 **1 张纸**（`minecraft:paper`）。判定只看物品（`minecraft:map` /
+  `minecraft:filled_map` / 任何 `MapItem` 子类），不再看 exploration_map 的
+  destination 结构 tag——旧版「按 destination 禁出」的清单已删除
+- 三层实现（全部受 `lootMapFilter` 控制）：
+  1. **表加载替换**：`LootTableLoadEvent` 把每张表每个 pool 条目树里的地图条目
+     **替换**为纸条目（不是移除）。保留原条目 weight / quality / conditions，
+     丢弃全部 functions，故产出恒为 1 张纸；alternatives / group / sequence 递归
+     重建（父条目 conditions 保留）。所有命名空间、所有表；`/reload` 后重新生效，
+     JEI/JER 展示同步干净。pool entries 是 ImmutableList，经 accessor 整体换引用
+  2. **运行时短路**：`ExplorationMapFunctionBanMixin` 在 exploration_map 函数
+     `run` HEAD 直接返回 1 张纸——不再区分 destination，**绝不执行
+     `findNearestMapStructure` 结构搜索**（大搜索半径/未加载区块下很贵）。
+     复合条目嵌套、程序化战利品表、经该函数产图的 GLM 都在覆盖内
+  3. **最终网**：`PaperInsteadOfMapsLootModifier`（NeoForge 全局战利品修饰器，
+     无 conditions）把最终生成的任何 map / filled_map / MapItem 堆换成
+     `ItemStack(Items.PAPER, 1)`。序列化器注册在
+     `NeoForgeRegistries.Keys.GLOBAL_LOOT_MODIFIER_SERIALIZERS`；数据见
+     `data/neoforge/loot_modifiers/global_loot_modifiers.json` +
+     `data/dimblend_experience/loot_modifiers/paper_instead_of_maps.json`。
+     前两层覆盖不到的「模组直接往 loot list 塞成品地图」路径由本层兜住
+- 制图师村民交易不走战利品表，不受影响；关 `lootMapFilter` 时三层全部透传（原版行为）
+- 开关 `lootMapFilter`（默认开）
 
 ### A11 藏宝箱贝壳 X 标记（全局功能，用户拍板）
 - 埋藏的宝藏（buried_treasure）生成时，在宝箱正上方的沙滩表层用贝壳标记方块
@@ -928,7 +943,7 @@
 | safeZone | A6 | true |
 | globalBeacon | A7（全局功能） | true |
 | nickname / nicknamePermission | A8（全局功能）/ 命令权限等级 | true / 0 |
-| lootMapFilter | A10（全局功能：战利品箱禁出 DA/七海探险地图与原版藏宝图） | true |
+| lootMapFilter | A10（全局功能：一切战利品地图最终换 1 张纸；表加载替换 + exploration_map 短路 + GLM 最终网三层） | true |
 | treasureShellX | A11（全局功能：藏宝箱上方沙滩摆贝壳 X 标记，需要 dimblend-blocks 在场） | true |
 | dieselEngineBehavior | B | true |
 | dieselLoadGraceSeconds | B6 读档宽限秒数（开服后这段时间内柴油机不判爆，0=关闭） | 5 |
@@ -967,6 +982,8 @@
 | itemDrainGrowthCostMb | N2 配套（每次催熟生效扣除水量 mb，0=免费催熟；经 /dbx 面板可调） | 20 |
 | itemDrainGrowthMinMb | N2 配套（存水低于此值停催熟，保湿不受影响，回水自动恢复） | 200 |
 | itemDrainPipeRefill | N3（分液池管道补水：放开 forbidInsertion + 追加 UP 面流体接口，关闭恢复原版） | true |
+| itemDrainNetherEvaporation | N6（下界群系分液池蒸干存水，只蒸水；Sable 载具按世界位置判群系） | true |
+| itemDrainNetherEvaporationMbPerSecond | N6 配套（mB/秒，0–1500，默认 50；每 10 tick 结算，余数跨拍累加） | 50 |
 | rotatingDimensionId | A1–A6 作用域维度 id | "dimblend:rotating" |
 
 ### CLIENT 诊断配置（`dimblend_experience-client.toml`）
@@ -1003,6 +1020,7 @@
 | compat.create.ItemDrainIrrigationMixin | Create 分液池 BE（tick HEAD 10 tick 降拍保湿驱动 + invalidate TAIL 摘票） | N1 | create 在场 |
 | compat.create.ItemDrainGrowthBoostMixin | Create 分液池 BE（tick HEAD 催熟驱动 + invalidate TAIL 复位倒计时） | N2 | create 在场 |
 | compat.create.ItemDrainPipeRefillMixin | Create 分液池 BE（tick HEAD 注水门逐 tick 双向置位自愈） | N3 | create 在场 |
+| compat.create.ItemDrainNetherEvaporationMixin | Create 分液池 BE（tick HEAD 10 tick 降拍下界蒸发 + invalidate TAIL 清余数） | N6 | create 在场 |
 | compat.create.ItemDrainHudSyncMixin | Create 分液池 BE（write/read TAIL：下次击发绝对 gameTime 仅 clientPacket 捎带，不污染存档） | N4 | create 在场 |
 | compat.create.ItemDrainGoggleMixin | Create 分液池 BE（addToGoggleTooltip RETURN 追加灌溉/催熟 HUD 行） | N4 | create 在场（client 数组） |
 | compat.yat.WaterBottleDrainPurityMixin | Create 分液池 BE（continueProcessing 内 GenericItemEmptying.emptyItem WrapOperation，水瓶倒空保 YAT 纯度组件） | N5 | create + yet_another_thirst 双在场 |
@@ -1035,13 +1053,13 @@
 | compat.fluid.GutterOutletBiomeProjectionMixin | Create: Fluid 集水器 BE（`handlePrecipitationCollection` 内 `getBiome`/`getPrecipitationAt` 的位置参数 WrapOperation，经 `SableWorldPosition.projectBlock` 投影到世界坐标） | Sable 结构群系投影 | fluid 在场 |
 | compat.fluid.SmartGutterOutletBiomeProjectionMixin | Create: Fluid 智能集水器 BE（同上，目标方法 `handlePrecipitationCollectionFiltered`） | Sable 结构群系投影 | fluid 在场 |
 | client.ItemStackNicknameMixin | 原版 ItemStack | A8 | 无条件（原版目标，客户端侧） |
-| ExplorationMapFunctionBanMixin | 原版 ExplorationMapFunction（run HEAD 产空堆，运行时兜底） | A10 | 无条件（原版目标） |
-| ExplorationMapFunctionAccessor | 原版 ExplorationMapFunction（destination 读取） | A10 | 无条件（原版目标） |
+| ExplorationMapFunctionBanMixin | 原版 ExplorationMapFunction（run HEAD 一切地图产 1 张纸，不跑结构搜索） | A10 | 无条件（原版目标） |
 | LootTableAccessor / LootPoolAccessor | 原版 LootTable/LootPool（pools 遍历、entries 整体换引用） | A10 | 无条件（原版目标） |
-| LootPoolSingletonContainerAccessor / LootItemAccessor | 原版条目类（functions/item 读取） | A10 | 无条件（原版目标） |
+| LootPoolSingletonContainerAccessor / LootItemAccessor | 原版条目类（functions/item/weight/quality 读取） | A10 | 无条件（原版目标） |
+| LootPoolEntryContainerAccessor / CompositeEntryBaseAccessor | 原版条目条件、复合 children 读取 | A10 | 无条件（原版目标） |
 | BuriedTreasureShellMarkerMixin | 原版 BuriedTreasurePiece（postProcess 内 createChest 之后读 boundingBox 拿宝箱坐标，调 TreasureShellMarker.mark） | A11 | 无条件（原版目标） |
 
-事件处理器（非 mixin）：DeathRules（A1，LivingExperienceDropEvent + PlayerEvent.Clone）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainDeadmanSync（E7' 锁存状态进服/换维度补发；规则本体 `TrainDeadmanBrake` 在 Simurail 在场时显式注册维度 Post tick 与卸载/停服事件，mixin 仅采样）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、EnderStorageStructureGuard（G5）、ExplorationMapLootFilter（A10，LootTableLoadEvent 战利品表加载时移除禁出地图条目）。
+事件处理器（非 mixin）：DeathRules（A1，LivingExperienceDropEvent + PlayerEvent.Clone）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainDeadmanSync（E7' 锁存状态进服/换维度补发；规则本体 `TrainDeadmanBrake` 在 Simurail 在场时显式注册维度 Post tick 与卸载/停服事件，mixin 仅采样）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、EnderStorageStructureGuard（G5）、ExplorationMapLootFilter（A10，LootTableLoadEvent 战利品表加载时把地图条目替换为纸条目）、PaperInsteadOfMapsLootModifier（A10 第三层，NeoForge 全局战利品修饰器，最终把地图堆换成 1 张纸）。
 
 ### 依赖接线（C 板块例外为版本级对齐）
 
@@ -1065,6 +1083,7 @@
 - **D4 口径（v1.1：阈值 16→64rpm）**：用户补供 startup/stopping 素材，实现为三态（启动→循环→停转）；启动音与循环同时起（启动音盖住循环头，不解析 ogg 时长）；行为开关开启时 CCA 原版马达声被整体静音替代
 - **E2 客户端 tick 前提**：客户端子层级客户绘图需 tick 转向架 BE（tick()V 客户端分支存在渲染插值代码，推定成立）——实机听音验证为最终实证
 - **N2/N3 分液池（2026-10-23 补录在案）**：① N2 催熟「生效才扣」的已知边界——个别 `performBonemeal` 实现零世界变化仍计生效并扣水（竹子顶端被挡/树苗长成失败），严格前后快照检测覆盖不全故不采用；本催熟不走 `BonemealEvent`，靠骨粉事件联动的第三方模组感知不到。② N3 管道回注——加工流体物品的当拍有 1-tick 注水关窗（`continueProcessing` 收尾复位 `forbidInsertion` 晚于本头置位，下一拍自愈）；热切换不调 `invalidateCapabilities`，缓存 UP 面接口存在性的消费者（如 Create 管道）热开启后顶面注水可能需一次方块更新才开始
+- **N6 分液池下界蒸发（2026-10-26）**：按**群系**判定、不按维度——任何下界群系（含旋转维度下界带、模组下界群系）都蒸发；Sable 结构方块先投影到当前世界位置再取群系，列车行驶中逐拍取当前位置，不缓存。与管道回注同拍竞争时按当拍实存水扣：回注补多少扣多少，水箱水位不保证稳定；SIMULATE 因并发/组件失配不足时本拍不扣，且不补扣（避免停机后集中扣水）。
 
 ### 游戏内运行验证清单（待实机，当前仅构建通过）
 
@@ -1102,7 +1121,7 @@
 | v1.2 代码+B5 | 2中3低（全属实） | 首轮：中1 B5 计时无条件推进（停机照涨致重启丢爬梯）、中2 音量 3.0 只扩射程不提响度；低：B5 无闩锁回退、文档债×3、respawn 未清方向记忆。修复：enabled 门控+复位、过载后移（他人应力不牵连）、闩锁给0/加油解闩；ogg 本体线性增益归一 -1dBFS（brake+8.9/loop+11.1/stopping+6.5/train_brake+22.8，另二满幅未动，ffmpeg；3.0 保留射程）；回退对齐 B4；文档债+respawn 全清。第 2 轮（通道 A）：仅剩 spec E2 增益入库一行 → 第 3 轮补后**终止条件达成**。启动验证（23:12 新 jar，0 ERROR 到主菜单、defaultRequire:1 存活） | ✅ 闭环（待实机：B5 ramp/波动/爆机、音效听感、本底噪声） |
 | M 夜视低电量噪点 | 3低（全文档项，代码 6 风险点全无问题） | 首轮：P1 清单标题计数 6→7 未同步、P2 「libs/ 仅剩…」枚举漏 createfirefightingadd/hardcore_nvg、P3 缺 M 板块 spec 条目；已修（另顺修 build.gradle:141 同型过时枚举注释）。第 2 轮（通道 A，原 agent）：4/4 全关、常量逐项对账一致、无新增问题，**终止条件达成** | ✅ 闭环（待实机：50%/25%/10% 密度观感校准、耗尽消失、F1 随图层隐藏） |
 | G2 rotating 跳夜恢复 | 2中（全属实）：①`ServerLevelTickTimeMixin` 前提错误成死代码（rotating 构造即 `tickTime=false`，`tickTime()` 体不执行，无双倍流速可拦）+ 四处机制误述；②`/time add` 逐 level 相对写经穿透叠成 +2X 回归 | 通道 A **通过**（第 2 轮，逐项 file:line 证据）：死 mixin 删净零残留、三处文档改写为 tickTime=false 真实机制；新增 `TimeCommandMixin`（`addTime` 内唯一调用点、private static、require=1 应用实证）跳过 `instanceof RotatingLevelData` 回声写；单测独立复跑绿、GameTest 两轮红均为记录在案 sable 抖动签名 | ✅ 闭环（待实机：rotating 跳夜到早晨/白天小睡不跳日/强制起床清雨、`/time add` 单倍生效） |
-| 分液池催熟组件水探头 | 0（首轮全量即通过） | 独立复核字节码级坐实根因链（`FluidTank.drain` 按类型+组件匹配→新存档供水链路附加组件→裸探头失配 "cannot drain"）；全模块 drain/fill 调用点排查无同类裸探头（保湿只读不消耗、铜水槽探头派生自 SIMULATE 实栈、铜龙头走数量重载）；回归用例对旧代码必红（fill 保组件）、断言恰扣 10mb；无技术债。~~spec 文档债在案：分液池板块（保湿/催熟/管道回注）无条目~~ → **2026-10-23 已补录销账（板块 N，用户拍板「补」）** | ✅ 闭环（待实机：新存档复测催熟+扣水、无作物停走复测） |
+| 分液池催熟组件水探头 | 0（首轮全量即通过） | 独立复核字节码级坐实根因链（`FluidTank.drain` 按类型+组件匹配→新存档供水链路附加组件→裸探头失配 "cannot drain"）；全模块 drain/fill 调用点排查无同类裸探头（保湿只读不消耗、铜水槽探头派生自 SIMULATE 实栈、铜龙头走数量重载）；回归用例对旧代码必红（fill 保组件）、断言恰扣默认 20mb；无技术债。~~spec 文档债在案：分液池板块（保湿/催熟/管道回注）无条目~~ → **2026-10-23 已补录销账（板块 N，用户拍板「补」）** | ✅ 闭环（待实机：新存档复测催熟+扣水、无作物停走复测） |
 | 汽笛音高九项进 tune 面板 | 1中1低（全属实）：①快照协议版本未升版（快照每选项一值，仓纪律每增删选项必升版）；②parameter-tuning.md 主设置表缺汽笛行 | 通道 A **通过**（第 2 轮，逐项 file:line 证据）：`TuningNetwork` registrar "23"→"24" 注释同步、parameter-tuning.md 三处版本号一致 24（含两处历史残留 22 顺修）、主设置表补 3 行（沿用柴油过载合并行风格）；其余 `registrar` 通道独立不受影响；修复 diff 零新增问题 | ✅ 闭环（待实机：面板翻页渲染、缺引擎 mod 灰显、改值即时生效；发布需双端同版本 jar） |
 | spec 分液池板块补录（板块 N） | 2低（全属实，纯文档字面值偏差，同在运行验证行）：①「六面注水全收」与代码不符（实为 DOWN/侧面/UP 三面 1000mb）；②`pipe_refill_toggle` 批次归属不精确（三面注水用例在默认批次） | 通道 A **通过**（第 2 轮）：P1/P2 修复文本与 `ItemDrainPipeRefillGameTests` 断言逐字对码一致、与 N3/实机项自洽、无新增问题；首轮已全量核过 N1-N5 机制描述、Config/Mixin 表新行、日期归因、8 个 GameTest 批次名全部属实 | ✅ 闭环（文档债销账） |
 
@@ -1304,8 +1323,9 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
 > 来源：功能本体早于单仓（2026-09-25 随 8bae78f 合入，此前无 spec 条目、javadoc 为
 > 唯一文档源——即复核闭环表登记的 spec 文档债，本板块补录销账）；2026-10-10 补
 > 护目镜/Jade HUD（18879c2）；2026-10-22 催熟候选收窄为作物型 + 无候选倒计时停走
-> （6cca7d3/cb404a5）；2026-10-23 催熟抽水探头保数据组件修复（3e76931）。
-> 三个子功能全部全局生效、不限维度。
+> （6cca7d3/cb404a5）；2026-10-23 催熟抽水探头保数据组件修复（3e76931）；
+> 2026-10-26 新增 N6 下界群系蒸发（只蒸水，50 mB/s 默认）。
+> 四个子功能全部全局生效、不限维度。
 
 - N1 保湿（`itemDrainIrrigation`，默认开）：水箱只要有水（**无最低水量门槛、不耗
   水**）即持有 NeoForge `FarmlandWaterManager` AABB 票据，覆盖以池为中心、边长
@@ -1322,7 +1342,7 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
   `performBonemeal`）；**生效才扣** `itemDrainGrowthCostMb`（默认 20mb，0=免费），
   扣水门 = `isBonemealSuccess` 通过。候选限**作物型** `BonemealableBlock`
   （2026-10-22 收窄：草方块/草丛/苔藓/菌岩/缠根泥土/海草/粉红色花簇等蔓延/装饰型
-  不算——户外农田恒有草，算候选则「无作物停走」永不触发、抽中草白扣 10mb 零可见
+  不算——户外农田恒有草，算候选则「无作物停走」永不触发、抽中草白扣 20mb 零可见
   变化）。范围内无可催熟作物时**倒计时停走**（不上弦/击发点卸弦），作物出现后下一
   拍自动上弦；刚启动/复位后先上弦满一个周期才首催（防区块重载刷催熟）。生效时发
   原版 1505 成长粒子+骨粉音效；不走 `BonemealEvent`（靠骨粉事件联动的第三方模组
@@ -1358,17 +1378,38 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
   `GenericItemEmptying.emptyItem` 调用——水瓶倒空产出的水附加 YAT 纯度组件
   （Create 内置药水倒空路径先于配方执行、原本丢弃纯度）。**这正是「新存档组件水」
   的来源**：生存模式水瓶倒水入池 → 池内水带纯度组件 → 旧裸探头抽不出（N2 根因）。
+- N6 下界蒸发（`itemDrainNetherEvaporation`，默认开）：分液池位于**下界群系**时，
+  池内存水按 `itemDrainNetherEvaporationMbPerSecond`（默认 50 mB/s，范围 0–1500，
+  0=不蒸发）持续蒸发到完全排空；**只蒸发水**（`stored.is(Fluids.WATER)`，与保湿/
+  催熟同一判据），岩浆等其它流体原样保留；管道回注与蒸发可同时进行（回注补多少
+  扣多少，互不阻断）。驱动：`ItemDrainNetherEvaporationMixin` 挂
+  `ItemDrainBlockEntity.tick` HEAD（服务端、10 tick 降拍），每拍结算
+  速率×10/20 mB（默认 25 mB）；不足 1 mB 的余数跨拍累加，长期平均恰为配置速率
+  （1 mB/s 每两拍扣 1 mB）；单拍最多扣当拍实存水量，排空即止、不会为负。扣水走
+  DOWN 面公开 capability（SIMULATE 先验、探头派生自实存 stack 保数据组件、EXECUTE
+  后 `setChanged`+`sendData`，与 N2 同口径）。群系判定 `level.getBiome(pos)`：
+  原版 `#minecraft:is_nether` 或 NeoForge `#c:is_nether`；Sable 结构上的池子先经
+  `SableWorldPosition.projectBlock` 投影到世界坐标（世界坐标幂等），叠加 Sable 本体
+  `biome_projection`——列车开进旋转维度下界带时按当前世界位置判定并蒸发。
+  关开关/离开下界群系立即停扣、余数清零（不补算离开期间的水量）。
 - 运行验证：`IrrigationMathTest` 纯函数单测（覆盖边界/节拍换算/阈值/秒数向上
   取整）；GameTest——`ItemDrainPipeRefillGameTests`（默认批次
   `pipeRefillAcceptsFillOnAllFaces`：DOWN/侧面/UP 三面注水全收、同箱累加 1000mb；
   `pipe_refill_toggle`：`switchOffRestoresVanilla` 热关恢复原版——三面拒灌且 UP 面
   不再暴露流体接口）、`ItemDrainGrowthFireGameTests`
-  （`item_drain_fire_grow`：注水击发扣 10mb 且作物 age 增长；
-  `item_drain_fire_components`：带 CUSTOM_NAME 组件的水击发恰扣 10mb——对旧代码
+  （`item_drain_fire_grow`：注水击发扣默认 20mb（1000→980）且作物 age 增长；
+  `item_drain_fire_components`：带 CUSTOM_NAME 组件的水击发恰扣默认 20mb——对旧代码
   必红的回归用例；`item_drain_grass_no_candidate`：仅草方块时倒计时停走）、
   `ItemDrainHudSyncGameTests`（`item_drain_hud_armed` 上弦写键值域 /
   `item_drain_hud_disabled` 关开关写 -1 / `item_drain_hud_no_target` 无目标写 -1 /
   `item_drain_hud_disarm` 击发点无目标卸弦）。
+   `ItemDrainNetherEvaporationGameTests`（`item_drain_nether_evaporation` 批次：
+   下界群系水按 25 mB/拍扣、主世界不扣、下界岩浆不扣、100 mB 小池排空不为负；
+   群系用 `GameTestBiomes.overwrite` 改写并在 finally 恢复）+
+   `ItemDrainNetherEvaporationSableGameTests`（`item_drain_nether_evap_sable`：池子组装到
+   Sable 子层级后世界侧改下界群系，plot 上的池子按投影世界群系照样蒸发；create+sable 双在场）+
+   `ItemDrainNetherEvaporationTest` 纯函数单测（默认 50→25/拍、1 mB/s 长期均值、
+   余数跨拍、0/1500 边界）。
 
 ## 16. 板块 O：createfirefightingadd 缺失战利品表补齐（2026-10-23 数据注入）
 
