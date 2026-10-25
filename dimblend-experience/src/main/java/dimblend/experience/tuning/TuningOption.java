@@ -25,16 +25,6 @@ public enum TuningOption {
     STEAM_OVERLOAD("steam_overload", 1.0D, "create"),
     DIESEL_OVERLOAD("diesel_overload", 1.0D, "createdieselgenerators"),
     MOTOR_OVERLOAD("motor_overload", 1.0D, "createaddition"),
-    // 默认值镜像 Config.TRAIN_HORN_*_PITCH_*（小 1.5/中 1.0/大 0.5），由 TuningOptionTest 钉死
-    TRAIN_HORN_STEAM_PITCH_SMALL("train_horn_steam_pitch_small", 1.5D, 0.5D, 2.0D, 1, "create", Section.MAIN),
-    TRAIN_HORN_STEAM_PITCH_MEDIUM("train_horn_steam_pitch_medium", 1.0D, 0.5D, 2.0D, 1, "create", Section.MAIN),
-    TRAIN_HORN_STEAM_PITCH_LARGE("train_horn_steam_pitch_large", 0.5D, 0.5D, 2.0D, 1, "create", Section.MAIN),
-    TRAIN_HORN_DIESEL_PITCH_SMALL("train_horn_diesel_pitch_small", 1.5D, 0.5D, 2.0D, 1, "createdieselgenerators", Section.MAIN),
-    TRAIN_HORN_DIESEL_PITCH_MEDIUM("train_horn_diesel_pitch_medium", 1.0D, 0.5D, 2.0D, 1, "createdieselgenerators", Section.MAIN),
-    TRAIN_HORN_DIESEL_PITCH_LARGE("train_horn_diesel_pitch_large", 0.5D, 0.5D, 2.0D, 1, "createdieselgenerators", Section.MAIN),
-    TRAIN_HORN_ELEC_PITCH_SMALL("train_horn_elec_pitch_small", 1.5D, 0.5D, 2.0D, 1, "createaddition", Section.MAIN),
-    TRAIN_HORN_ELEC_PITCH_MEDIUM("train_horn_elec_pitch_medium", 1.0D, 0.5D, 2.0D, 1, "createaddition", Section.MAIN),
-    TRAIN_HORN_ELEC_PITCH_LARGE("train_horn_elec_pitch_large", 0.5D, 0.5D, 2.0D, 1, "createaddition", Section.MAIN),
     RADIO_STATIC("radio_static", 0.5D, 2.0D, 2, "dimblend_radio"),
     RADIO_END_VOICE_FREQUENCY("radio_end_voice_frequency", 2.0D, 4.0D, 1, "dimblend_radio"),
     // 默认值镜像 dimblend.radio.RadioLiveSettings.DEFAULT_END_VOICE_VOLUME（旧硬编码 0.5 × 1.5），由 TuningOptionTest 钉死

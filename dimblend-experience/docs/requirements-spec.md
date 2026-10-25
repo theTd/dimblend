@@ -1000,7 +1000,6 @@
 | sableLavaMelt | G6（岩浆按 sableLavaMeltSpeed 倍率（默认 4 倍徒手速）熔毁 sable 结构方块并掉落） | true |
 | sableLavaMeltSpeed | G6 配套（熔毁速度倍率 0.5–64.0 步进 0.1，运行中即时生效；经 /dbx 面板可调） | 4.0 |
 | steamEngineOverload | H（蒸汽引擎过载两阶段） | true |
-| trainHorn{Steam,Diesel,Elec}Pitch{Small,Medium,Large} | L（列车汽笛 9 键：音效×汽笛尺寸各自 pitch，0.5–2.0，服务端权威随包下发；无功能开关；经 /dbx 面板可调） | 小 1.5 / 中 1.0 / 大 0.5（小笛高音、大笛低音） |
 | itemDrainIrrigation | N1（分液池保湿：水箱有水即票据维持周围同层耕地湿润，免费、无最低水量门槛） | true |
 | itemDrainCoverageRadius | N1/N2 配套（保湿/催熟半径 1–8，默认 3=7x7；由旧键 itemDrainIrrigationRadius 改名，旧值自动清除） | 3 |
 | itemDrainGrowth | N2（分液池催熟：每周期随机挑一株作物型骨粉目标走原版骨粉逻辑，生效才扣水；无候选倒计时停走） | true |
@@ -1040,9 +1039,9 @@
 | compat.connected.LinkedItemUseOverridesMixin | Create ItemUseOverrides（linked 提前交互改用量化事件命中，跳过格心伪命中及 Connected 二次射线） | G9 | create_connected 在场 |
 | PlayerStandingFitInvoker | 原版 Player（只读调用当前实际站立/蹲下/游泳适配，含 Sable 补丁效果） | G9 诊断 | 无条件（原版目标） |
 | compat.create.SteamEngineOverloadMixin | Create 蒸汽引擎 BE（tick RETURN） | H | create 在场 |
-| compat.create.WhistleHornBlockMixin | Create 蒸汽笛方块（neighborChanged TAIL 双边沿识别） | L | create 在场 |
-| compat.create.WhistleHornBlockEntityMixin | Create 蒸汽笛 BE（鸣笛锁定纯内存字段，经 TrainHornStateAccess 访问） | L | create 在场 |
-| compat.create.WhistleHornClientMixin | Create 蒸汽笛 BE（tick 张嘴驱动 + tickAudio HEAD 特殊模式音频接管/音符粒子） | L | create 在场（client 数组） |
+| compat.create.WhistleHornBlockMixin | Create 蒸汽笛方块（neighborChanged TAIL 双边沿识别 + 特殊模式对账；useItemOn HEAD 特殊模式扳手循环音高并挡掉 Create 原生扳手动作） | L | create 在场 |
+| compat.create.WhistleHornBlockEntityMixin | Create 蒸汽笛 BE（鸣笛锁定纯内存字段；音高刻度 + 特殊模式标志 NBT 落盘/更新包同步；首次 tick 对账，经 TrainHornStateAccess 访问） | L | create 在场 |
+| compat.create.WhistleHornClientMixin | Create 蒸汽笛 BE（tick 张嘴驱动 + tickAudio HEAD 特殊模式音频接管/音符粒子 + addToGoggleTooltip RETURN 护目镜两行） | L | create 在场（client 数组） |
 | compat.create.ItemDrainIrrigationMixin | Create 分液池 BE（tick HEAD 10 tick 降拍保湿驱动 + invalidate TAIL 摘票） | N1 | create 在场 |
 | compat.create.ItemDrainGrowthBoostMixin | Create 分液池 BE（tick HEAD 催熟驱动 + invalidate TAIL 复位倒计时） | N2 | create 在场 |
 | compat.create.ItemDrainPipeRefillMixin | Create 分液池 BE（tick HEAD 注水门逐 tick 双向置位自愈） | N3 | create 在场 |
@@ -1124,7 +1123,7 @@
 - 启动验证（2026-09-19，TrainTripWorld 实例实测两轮）：mod 加载、common setup、全部 mixin 应用（defaultRequire:1 下存活即实证）、0 ERROR/FATAL 到主菜单；期间修复 NeoForge 版本范围硬阻塞（[21.1.251,)→[21.1.249,) 解耦）与 example 脚手架残留
 - 启动验证（2026-09-23 v1.7 批次，dev runClient + CCA 临时 localRuntime）：createaddition 1.5.10 加载、CCA Initialized、Sound engine started 到主菜单，0 ERROR/FATAL/InvalidMixin；本批 4 个 mixin（SoundClient 改版 + AlternatorIdleDrain + Goggle + GeneratorStats）随 CCA BE 注册完成 apply；dev 环境 mixin 库为 sponge-mixin 0.15.2+mixin.0.8.7（fabric fork）。实机听音/看数仍在待办
 - G7 实机项（2026-10-15 验收通过）：TrainTripWorld 实例放产蛋器于 sable 结构内（单块/多块子层级各一）与主世界各一，确认玻璃内嵌鸡可见、明暗与周围方块一致、玻璃仍半透明、孵化器不受影响、物品栏图标正常
-- L 板块实机项：储罐+汽笛（无热源）邻接蒸汽引擎/柴油机/电动马达各放红石，验证鸣笛音效对应、张嘴+音符前冲、持续供能只播一次、播放中断电淡出且立即复电可重播、特殊模式无 Create 原生汽笛叠加（另在有热源锅炉上复核）；256/512 距离衰减与左右方向感听音；Sable 结构上同验（声音随结构当前位置）；9 键 pitch 配置各改一档实测
+- L 板块实机项：储罐+汽笛（无热源）邻接蒸汽引擎/柴油机/电动马达各放红石，验证鸣笛音效对应、张嘴+音符前冲、持续供能只播一次、播放中断电淡出且立即复电可重播、特殊模式无 Create 原生汽笛叠加（另在有热源锅炉上复核）；256/512 距离衰减与左右方向感听音；Sable 结构上同验（声音随结构当前位置）；特殊模式非潜行扳手逐格改音高（三档尺寸切换、动作栏回显、2.0→0.0 回绕、潜行拆除不变、普通模式扳手仍循环尺寸），听感核对 2^(v−1)（1.0 原声 / 0.0 低八度 / 2.0 高八度）；护目镜两行文案（蒸汽/柴油/电动三种种类）与面板已无 9 键汽笛行
 - M 板块实机项：夜视仪开夜视后电量 50%/25%/10% 三档遮罩深度观感校准（50% 应无遮罩、10% 应严重干扰视线）、电量耗尽自动关夜视后遮罩消失、F1 隐藏 HUD 时遮罩随图层一同隐藏、帧率对比无感（对照原噪点版的 FPS 拖累）
 - N 板块实机项：新存档（YAT 组件水链路）催熟生效+默认恰扣 20mb 复测、无候选倒计时停走与作物出现自动恢复、保湿建票拉满与维持、管道侧面/底面/顶面注水与关开关恢复原版、护目镜与 Jade 两行文案同口径、热改半径/周期/单次消耗配置生效
 - O 板块实机项：生存挖掘汲水器/高压泵/锥形喷嘴/扁平喷嘴/水桶控制器各掉自身物品、扳手潜行拆卸返还物品（修复前两者皆凭空消失）
@@ -1273,12 +1272,14 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
   生存潜行拆壳、守卫负向分支、创造旋转×3、创造潜行拆卸、encased 齿轮创造端面翻转、
   生存 encased 无效）常驻防回归。
 
-## 13. 板块 L：列车汽笛（2026-10-21 新增）
+## 13. 板块 L：列车汽笛（2026-10-21 新增，2026-10-24 / 2026-10-26 修订）
 
 > 来源：2026-10-21 用户追加需求 + 两轮拍板澄清（电池组答②按 CCA 1.5.10 实际注册
 > 更正为电动马达+模块化电池；多引擎方向优先级「都可以」→ 定 前→后→左→右→上→下；
 > 范围仅静止世界+Sable 结构；距离 256 全音量/512 衰减至零、立体声、无视遮挡；
-> 音符粒子方案；忽略延长管长度，音阶默认 小 1.5/中 1.0/大 0.5（小笛高音、大笛低音）；无功能开关、9 键 pitch 独立配置）。
+> 音符粒子方案；忽略延长管长度；无功能开关）。2026-10-26 音高改版（用户口径）：
+> **撤销「音效 × 尺寸 9 键 pitch 配置」**，改为每支汽笛自带音高值、扳手像音符盒一样
+> 逐格循环、尺寸随音高档位、播放音高 2^(v−1)，进入特殊模式重置 v=1.0。
 
 - L1 触发语义（2026-10-24 修订）：蒸汽笛六面邻接引擎方块时，**不管所附储罐有无热源**，
   红石上升沿播放对应音效一次，持续高电平不重播，片段自然播完即静默。实现挂
@@ -1305,7 +1306,8 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
   （初始 512 外不起播）；无视遮挡。**在案口径**：广播只在动作发生瞬间按距离过滤——
   触发时刻 528 格外的玩家中途走近不补播残段（3 秒一次性音效，持续追踪玩家 proximity
   的代价不成比例）。素材已降混单声道（立体声源 OpenAL 不做空间化，同 D4 先例）。pitch
-  服务端权威（SERVER 配置 9 键随包下发，客户端不读本地配置，无双端漂移），引擎钳 [0.5,2.0]。
+  仍服务端权威：**触发时刻取本支汽笛的 v 算 2^(v−1)** 随包下发，客户端不读本地配置
+  （无双端漂移），值域恰好是引擎钳制区间 [0.5, 2.0]。
 - L5 距离/时长常量：锁定时长=素材实测（ffprobe 单声道版 steam 2.60s→55 tick、
   diesel 3.04s→64、elec 3.43s→72），换素材须同步改 `TrainHorn.HornKind`。
   （2026-10-22 elec 换正确素材：用户补供 `TrainHorn_Elec (1).ogg` 3.43s，
@@ -1315,10 +1317,41 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
   结构旋转（yaw）后音符粒子的「前冲」方向取 plot 坐标系的汽笛 FACING，不随结构
   姿态旋转（位置投影正确、方向不投影）——需求口径只对声音承诺结构路由，粒子
   方向不在承诺内；如实机观感明显再取 subLevel 姿态旋转向量。
+- L7 特殊模式与每支汽笛的音高（2026-10-26 新增，取代撤销的 9 键配置）：
+  - **特殊模式 = 六面邻接引擎**（与红石供电无关）；标志持久化在汽笛 BE
+    （`DimBlendWhistleSpecial`），音高刻度同处落盘（`DimBlendWhistlePitch`）。
+  - **进入**特殊模式（引擎新邻接，或汽笛放置/读档后首次 tick 发现邻接而标志为假）：
+    v = 1.0、Create 尺寸 = MEDIUM。**离开**只清标志（不保留特殊语义）；再进入再次重置。
+    对账在 `WhistleHornBlockMixin` 的 neighborChanged TAIL 与
+    `WhistleHornBlockEntityMixin` 的首次 tick（`TrainHorn#reconcile`）。
+  - 音高刻度以**整数十分位 0..20**存（v = tenths / 10，避免浮点漂移），随 BE NBT
+    落盘并经 Create BE 更新包（`sendData` → `writeClient`/`readClient`）同步客户端。
+  - **扳手循环**（note block 式）：特殊模式下非潜行右键 Create 扳手 → v += 0.1、
+    2.0 后回 0.0；**不发任何声音**（鸣笛只认红石上升沿）；动作栏回显
+    「列车汽笛 音高=1.2」。挂点 `WhistleBlock.useItemOn` HEAD：Create 6.0.10 的扳手
+    点击在该方法对非汽笛物品返回 PASS 后由 `ServerPlayerGameMode.useItemOn` 转
+    `WrenchItem.useOn` → `IWrenchable.onWrenched`，因此接管时返回 SUCCESS 同时挡掉
+    原生扳手动作；潜行（原版蹲姿在进方块交互前就改走物品 useOn）与普通模式原样放行
+    （普通模式扳手 = `WhistleBlock.getRotatedBlockState` 循环 SIZE，保持原样）。
+  - **尺寸随 v**：0.0–0.6 SMALL / 0.7–1.3 MEDIUM / 1.4–2.0 LARGE。改档写 Create 的
+    SIZE 方块属性（同 Create 扳手路径的 `setBlock(..., 3)`），并显式镜像上方延长管的
+    SIZE（延长管模型按自身 SIZE 选形，只改汽笛会大小不一致）。
+  - **播放音高 = 2^(v−1)**：1.0 原声、0.0 低一个八度（0.5）、2.0 高一个八度（2.0）。
+  - **护目镜**（Create `IHaveGoggleInformation#addToGoggleTooltip`，实现在
+    `WhistleHornClientMixin` RETURN）：特殊模式在 Create 自带 pitch 行之后追加两行——
+    「当前处于特殊工作模式「列车汽笛」」与「<蒸汽/柴油/电动>：音高=1.2」。音高读 BE
+    同步值（服务端权威）；种类在客户端按与服务端同一套六面邻接判定取
+    （`TrainHorn#kindAt`）。
 - 运行验证：`TrainHornGameTests`（create 组：蒸汽触发+kind 断言/无引擎静默/断电立即
-  清锁并重启/持续高电平不重播）、`TrainHornPayloadTest`（start/stop codec）、
-  `TrainHornCdgGameTests`（-PwithCdg：三种柴油引擎各自触发、方向优先级 背面>左侧 /
-  正面>背面）、`TrainHornCcaGameTests`（-PwithCca：电动马达、模块化电池各自触发）。
+  清锁并重启/持续高电平不重播/引擎邻接进入并重置音高与尺寸/贴引擎放置首次 tick 对账/
+  扳手循环+尺寸三档+动作栏+静默/离开与再进入重置/普通模式扳手保持 Create 默认/
+  尺寸档位同步上方延长管/NBT 往返与更新包同步/触发包音高 2^(v−1)）、
+  `TrainHornPitchTest`（单测：循环回绕
+  1.9→2.0→0.0、档位边界 0.6/0.7 与 1.3/1.4、2^(v−1) 三点与全程钳制内）、
+  `TrainHornPayloadTest`（start/stop codec）、`TrainHornCdgGameTests`（-PwithCdg：
+  三种柴油引擎各自触发、方向优先级 背面>左侧 / 正面>背面、柴油进入特殊模式重置音高）、
+  `TrainHornCcaGameTests`（-PwithCca：电动马达、模块化电池各自触发、电动进入特殊模式
+  重置音高）。
 
 ## 14. 板块 M：夜视仪低电量渐褪（2026-10-23 新增，同日修订为渐褪）
 

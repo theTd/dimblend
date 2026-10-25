@@ -386,37 +386,6 @@ public final class Config {
                     + "follows the headlight renderer's Sable/Veil/no-Iris gate and the occlusion option).")
             .define("sableHeadlightLavaHighlight", true);
 
-    // 列车汽笛音高：每个音效 × 汽笛尺寸（小/中/大）独立可调；引擎侧取值范围与
-    // SoundEngine.calculatePitch 钳制区间一致（0.5~2.0），默认小 1.5/中 1.0/大 0.5
-    // （小笛高音、大笛低音）
-    public static final ModConfigSpec.DoubleValue TRAIN_HORN_STEAM_PITCH_SMALL = BUILDER
-            .comment("列车汽笛·蒸汽：小尺寸汽笛的播放音高（0.5~2.0）")
-            .defineInRange("trainHornSteamPitchSmall", 1.5D, 0.5D, 2.0D);
-    public static final ModConfigSpec.DoubleValue TRAIN_HORN_STEAM_PITCH_MEDIUM = BUILDER
-            .comment("列车汽笛·蒸汽：中尺寸汽笛的播放音高（0.5~2.0）")
-            .defineInRange("trainHornSteamPitchMedium", 1.0D, 0.5D, 2.0D);
-    public static final ModConfigSpec.DoubleValue TRAIN_HORN_STEAM_PITCH_LARGE = BUILDER
-            .comment("列车汽笛·蒸汽：大尺寸汽笛的播放音高（0.5~2.0）")
-            .defineInRange("trainHornSteamPitchLarge", 0.5D, 0.5D, 2.0D);
-    public static final ModConfigSpec.DoubleValue TRAIN_HORN_DIESEL_PITCH_SMALL = BUILDER
-            .comment("列车汽笛·柴油：小尺寸汽笛的播放音高（0.5~2.0）")
-            .defineInRange("trainHornDieselPitchSmall", 1.5D, 0.5D, 2.0D);
-    public static final ModConfigSpec.DoubleValue TRAIN_HORN_DIESEL_PITCH_MEDIUM = BUILDER
-            .comment("列车汽笛·柴油：中尺寸汽笛的播放音高（0.5~2.0）")
-            .defineInRange("trainHornDieselPitchMedium", 1.0D, 0.5D, 2.0D);
-    public static final ModConfigSpec.DoubleValue TRAIN_HORN_DIESEL_PITCH_LARGE = BUILDER
-            .comment("列车汽笛·柴油：大尺寸汽笛的播放音高（0.5~2.0）")
-            .defineInRange("trainHornDieselPitchLarge", 0.5D, 0.5D, 2.0D);
-    public static final ModConfigSpec.DoubleValue TRAIN_HORN_ELEC_PITCH_SMALL = BUILDER
-            .comment("列车汽笛·电动：小尺寸汽笛的播放音高（0.5~2.0）")
-            .defineInRange("trainHornElecPitchSmall", 1.5D, 0.5D, 2.0D);
-    public static final ModConfigSpec.DoubleValue TRAIN_HORN_ELEC_PITCH_MEDIUM = BUILDER
-            .comment("列车汽笛·电动：中尺寸汽笛的播放音高（0.5~2.0）")
-            .defineInRange("trainHornElecPitchMedium", 1.0D, 0.5D, 2.0D);
-    public static final ModConfigSpec.DoubleValue TRAIN_HORN_ELEC_PITCH_LARGE = BUILDER
-            .comment("列车汽笛·电动：大尺寸汽笛的播放音高（0.5~2.0）")
-            .defineInRange("trainHornElecPitchLarge", 0.5D, 0.5D, 2.0D);
-
     static final ModConfigSpec SPEC = BUILDER.build();
 
     /**

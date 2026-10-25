@@ -4,20 +4,38 @@ import com.simibubi.create.content.decoration.steamWhistle.WhistleBlock;
 import dimblend.experience.compat.create.TrainHorn;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * 列车汽笛红石触发：Create 原生 {@code neighborChanged} 只在信号有无变化时翻转
+ * 列车汽笛方块侧挂点（Create 6.0.10 {@code WhistleBlock} 字节码核实）：
+ *
+ * <ul>
+ * <li><b>红石双边沿</b>：Create 原生 {@code neighborChanged} 只在信号有无变化时翻转
  * {@code POWERED}（翻转由 {@code setBlock(..., UPDATE_CLIENTS)} 完成，不再级联邻居更新），
  * TAIL 处对比翻转前后即得严格双边沿：false→true 经 {@link TrainHorn#onPoweredEdge}
  * 起播一次，true→false 经 {@link TrainHorn#onPowerLoss} 立即清锁并淡出；持续高电平
- * 不产生新上升沿，普通邻接更新不会重触发。
+ * 不产生新上升沿，普通邻接更新不会重触发。TAIL 处先做一次特殊模式对账
+ * （引擎新邻接/移除，{@link TrainHorn#reconcile}），保证起播读到的音高与尺寸已就位。</li>
+ * <li><b>扳手循环音高</b>：挂在 {@code useItemOn} HEAD（方块自身的右键交互入口，
+ * 与 Create 的「用汽笛物品延长」同一入口）。Create 6.0.10 的扳手点击不走
+ * {@code useItemOn}：该方法对非汽笛物品返回 {@code PASS_TO_DEFAULT_BLOCK_INTERACTION}，
+ * 由 {@code ServerPlayerGameMode.useItemOn} 继续调 {@code WrenchItem.useOn} →
+ * {@code IWrenchable.onWrenched}（{@code WhistleBlock.getRotatedBlockState} 循环 SIZE）。
+ * 因此接管时返回 SUCCESS 即可同时挡掉「物品 useOn」这一路，Create 原生扳手动作不会执行；
+ * 潜行（原版在进入方块交互前就按蹲姿把点击交给物品）与普通模式返回 false，原样放行。</li>
+ * </ul>
  */
 @Mixin(WhistleBlock.class)
 public abstract class WhistleHornBlockMixin {
@@ -33,11 +51,22 @@ public abstract class WhistleHornBlockMixin {
         if (!(current.getBlock() instanceof WhistleBlock)) {
             return;
         }
-        boolean powered = current.getValue(WhistleBlock.POWERED);
+        // 先对账特殊模式：邻接引擎变化可能在本拍发生，进入转换会重置音高与尺寸
+        TrainHorn.reconcile(serverLevel, pos, current);
+        BlockState after = level.getBlockState(pos);
+        boolean powered = after.getValue(WhistleBlock.POWERED);
         if (!previouslyPowered && powered) {
-            TrainHorn.onPoweredEdge(serverLevel, pos, current);
+            TrainHorn.onPoweredEdge(serverLevel, pos, after);
         } else if (previouslyPowered && !powered) {
             TrainHorn.onPowerLoss(serverLevel, pos);
+        }
+    }
+
+    @Inject(method = "useItemOn", at = @At("HEAD"), cancellable = true, require = 1, allow = 1)
+    private void dimblend$wrenchCyclesPitch(ItemStack stack, BlockState state, Level level, BlockPos pos,
+            Player player, InteractionHand hand, BlockHitResult hit, CallbackInfoReturnable<ItemInteractionResult> cir) {
+        if (TrainHorn.onWrenchUsed(level, pos, state, player, stack)) {
+            cir.setReturnValue(ItemInteractionResult.SUCCESS);
         }
     }
 }

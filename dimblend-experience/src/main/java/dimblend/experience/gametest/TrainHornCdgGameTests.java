@@ -46,6 +46,20 @@ public final class TrainHornCdgGameTests {
         assertDieselTrigger(helper, CDGBlocks.MODULAR_DIESEL_ENGINE.get().defaultBlockState());
     }
 
+    /** 柴油机邻接同样算特殊模式：进入时重置音高 1.0（刻度 10）。 */
+    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", timeoutTicks = 40)
+    public static void dieselEngineEntersSpecialModeResetsPitch(GameTestHelper helper) {
+        TrainHornGameTests.placeWhistleRig(helper);
+        helper.setBlock(ENGINE, CDGBlocks.DIESEL_ENGINE.get().defaultBlockState());
+        helper.runAfterDelay(2, () -> {
+            helper.assertTrue(TrainHornGameTests.specialMode(helper),
+                    "diesel engine neighbor must enter special mode");
+            helper.assertTrue(TrainHornGameTests.pitchTenths(helper) == TrainHorn.PITCH_TENTHS_DEFAULT,
+                    "diesel entry must reset the pitch to 1.0, tenths=" + TrainHornGameTests.pitchTenths(helper));
+            helper.succeed();
+        });
+    }
+
     /** 背面优先于左侧：柴油@背面 + 蒸汽@左侧 → 识别为柴油。 */
     @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", timeoutTicks = 40)
     public static void directionPriorityPrefersBackOverLeft(GameTestHelper helper) {

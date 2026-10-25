@@ -36,6 +36,20 @@ public final class TrainHornCcaGameTests {
         assertElecTrigger(helper, CABlocks.MODULAR_ACCUMULATOR.get().defaultBlockState());
     }
 
+    /** 电动马达邻接同样算特殊模式：进入时重置音高 1.0（刻度 10）。 */
+    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", timeoutTicks = 40)
+    public static void electricMotorEntersSpecialModeResetsPitch(GameTestHelper helper) {
+        TrainHornGameTests.placeWhistleRig(helper);
+        helper.setBlock(ENGINE, CABlocks.ELECTRIC_MOTOR.get().defaultBlockState());
+        helper.runAfterDelay(2, () -> {
+            helper.assertTrue(TrainHornGameTests.specialMode(helper),
+                    "electric motor neighbor must enter special mode");
+            helper.assertTrue(TrainHornGameTests.pitchTenths(helper) == TrainHorn.PITCH_TENTHS_DEFAULT,
+                    "electric entry must reset the pitch to 1.0, tenths=" + TrainHornGameTests.pitchTenths(helper));
+            helper.succeed();
+        });
+    }
+
     private static void assertElecTrigger(GameTestHelper helper,
             net.minecraft.world.level.block.state.BlockState engine) {
         TrainHornGameTests.placeWhistleRig(helper);

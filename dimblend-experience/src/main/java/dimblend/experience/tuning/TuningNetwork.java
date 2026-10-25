@@ -18,9 +18,8 @@ public final class TuningNetwork {
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
         // The snapshot carries one value per option: adding options changes the protocol.
-        // v26 redefines rotating_monster_cap from "natural cap only" to the density
-        // percentage applied to every covered monster spawn source.
-        var registrar = event.registrar("26");
+        // v27 drops the nine train horn pitch presets (each whistle now stores its own pitch).
+        var registrar = event.registrar("27");
         registrar.playToServer(TuningEditPayload.TYPE, TuningEditPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof ServerPlayer player) {
