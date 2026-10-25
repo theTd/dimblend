@@ -55,7 +55,7 @@ import net.minecraft.world.level.levelgen.structure.placement.StructurePlacement
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
-public final class RotatingChunkGenerator extends ChunkGenerator {
+public final class RotatingChunkGenerator extends ChunkGenerator implements StructureStateProvider {
     public static final MapCodec<RotatingChunkGenerator> CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
             ChunkGenerator.CODEC.listOf().fieldOf("delegates").forGetter(generator -> generator.delegates),
             Codec.INT.optionalFieldOf("band_size", BandIndex.DEFAULT_BAND_SIZE).forGetter(generator -> generator.bandSize)
@@ -221,19 +221,63 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
     }
 
     @Override
+    public List<StructureStateBand> structureStatesFor(
+            int minChunkX,
+            int minChunkZ,
+            int maxChunkX,
+            int maxChunkZ
+    ) {
+        this.ensureRuntimeOrThrow();
+        RuntimeState current = this.requireRuntime();
+        this.ensureDelegateStructuresGenerated();
+        List<StructureStateBand> bands = new ArrayList<>();
+        for (RotatingBandRanges.Range range : RotatingBandRanges.split(
+                minChunkX, maxChunkX, this.bandSize, this::bandIndexBlock)) {
+            bands.add(new StructureStateBand(
+                    current.state(range.delegateIndex()),
+                    range.minChunkX(),
+                    minChunkZ,
+                    range.maxChunkX(),
+                    maxChunkZ));
+        }
+        return List.copyOf(bands);
+    }
+
+    /**
+     * Runs the lazy placement/ring generation of every delegate state. Vanilla only ever calls
+     * {@code ensureStructuresGenerated()} for the main state (ServerLevel.java:266); the delegate
+     * states are otherwise first touched by whoever reads them, which is unsynchronized and would
+     * run the concentric-ring biome searches on that thread. Server thread only.
+     */
+    private void ensureDelegateStructuresGenerated() {
+        RuntimeState current = this.requireRuntime();
+        for (ChunkGeneratorStructureState state : current.states) {
+            state.ensureStructuresGenerated();
+        }
+    }
+
+    @Override
     public synchronized ChunkGeneratorStructureState createState(
             HolderLookup<StructureSet> lookup,
             RandomState randomState,
             long seed
     ) {
         RuntimeState current = this.runtime;
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (current == null || current.seed != seed || current.randoms == null) {
-            MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
             if (server != null) {
                 this.runtime = this.buildRuntime(server.registryAccess(), seed);
             } else {
                 this.runtime = new RuntimeState(seed, null, null, new BandLayout(this.delegates, seed));
             }
+        }
+        // ChunkMap calls createState from the ServerLevel constructor, i.e. on the server thread
+        // before the level is handed out (ChunkMap.java:177, ServerLevel.java:266). Run the delegate
+        // init on every server-thread call, not only when the runtime is rebuilt here: if something
+        // built it off-thread first, this is the call that must still publish the placement state.
+        // ensureStructuresGenerated() is idempotent.
+        if (server != null && server.isSameThread() && this.runtime.randoms != null) {
+            this.ensureDelegateStructuresGenerated();
         }
         return ChunkGeneratorStructureState.createForNormal(randomState, seed, this.getBiomeSource(), lookup);
     }
@@ -500,6 +544,11 @@ public final class RotatingChunkGenerator extends ChunkGenerator {
             throw new IllegalStateException("dimblend delegate RandomState requires a running server");
         }
         this.ensureRuntime(server.registryAccess());
+        // A worker thread may be the first to build the runtime; only the server thread may publish
+        // the lazy structure placement state (see StructureStateProvider).
+        if (server.isSameThread()) {
+            this.ensureDelegateStructuresGenerated();
+        }
     }
 
     @Override
