@@ -53,7 +53,7 @@ The spotlight works in the world and on Sable vehicles whenever the lamp is lit.
 Breaking or wrenching the lamp yields an ordinary item that needs activation again;
 chunk reloads and vehicle assembly retain activation. Iris still disables this renderer.
 
-The Sable page includes eight **experience-owned, server-authoritative** options.
+The Sable page includes nine **experience-owned, server-authoritative** options.
 Edits persist in `serverconfig/dimblend_experience-server.toml` and broadcast to
 all clients through the tuning snapshot (protocol 25, 64-bit availability mask).
 
@@ -67,6 +67,7 @@ all clients through the tuning snapshot (protocol 25, 64-bit availability mask).
 | `sable_headlight_fog_density` | `sableHeadlightFogDensity` | 0.35 | 0–2 / 0.01 |
 | `sable_headlight_fog_samples` | `sableHeadlightFogSamples` | 8 | 4–24 / 1 |
 | `sable_headlight_occlusion` | `sableHeadlightOcclusion` | on | boolean |
+| `sable_headlight_lava_highlight` | `sableHeadlightLavaHighlight` | on | boolean |
 
 Only lit `dndecor:*_frontlight` blocks on Sable sublevels participate. The lens
 is at block center, shifted 0.25 blocks opposite facing for `no_base`. Interpolated
@@ -161,6 +162,53 @@ Block-grid (voxel) shadows, independent of which renderer drew the terrain
   window (camera-centred) are unoccluded there; vehicles larger than 64 blocks are
   clipped around the lamp.
 
+### Lava highlight (`sable_headlight_lava_highlight`)
+
+A glowing orange outline marks the lava the headlight actually lights. Pure client
+drawing; it follows the same registration as the beams (Sable + Veil present, no
+Iris) and the same on/off and intensity switches, and it needs no extra mixin.
+
+- **Lit test**: a lava block (source or flowing, `FluidTags.LAVA`) counts when its
+  top face is exposed (no same fluid above, no full solid block above,
+  `BlockBehaviour.isSolidRender`) and the beam strength at the top-face centre is
+  above **0.04** of full intensity. Strength is the shader's own
+  `cone × attenuation(distance)` (`HeadlightMath`), so the outline covers exactly
+  the pool the surface light reaches: at the defaults (range 24, angle 50,
+  intensity 1) the axial reach is 22.1 blocks (92% of the range), and the soft
+  shoulder trims the lit width to 84–91% of the cone radius off axis. With the
+  occlusion option on, the block must also pass a block-grid raycast from the lens
+  that uses the same occluder predicate as the shadow grids, so a wall or a car
+  body hides the outline wherever it hides the light.
+- **Outline**: only perimeter edges are drawn — for each lit top face, a side gets a
+  segment unless the horizontal neighbour is lit lava with the same surface height,
+  so a connected pool is one outline and a step is two. The segment sits at the
+  fluid surface (block y + `FluidState` own height, `8/9` for source lava) plus
+  0.01 against z-fighting, in orange `0xFFB040` with a gentle 1 Hz alpha pulse
+  between 0.35 and 0.75.
+- **Recompute**: client tick, at most every 2 ticks (10 Hz) and only when a beam
+  pose actually changed (lens quantized to 0.5 blocks, axis to 1/64); stationary
+  lamps refresh once per 20 ticks to pick up placed/removed lava, world edits and
+  chunks arriving. A train at 20 m/s moves 2 blocks between updates, so a moving
+  beam's lit edge never lags more than that. Hard cap: 1024 highlighted blocks
+  (nearest to the camera first) and 65,536 section voxel reads per recompute,
+  nearest section first.
+- **Cost**: with the default beam the cone's box is ~12k blocks, but sections
+  beyond the beam's reach and sections whose palette contains no lava are skipped
+  before a single voxel is read (one lava sea costs ~3k voxel reads); with shadows
+  on, one voxel DDA per lit block adds ~25 cached state lookups. Estimated
+  ~0.1–0.3 ms per lamp at the defaults, i.e. below the 0.5 ms budget, and only
+  every other tick while moving. `-Ddimblend.headlight.diag=true` logs the measured
+  scan cost next to the existing GPU timings.
+- **Stage**: `RenderType.lines()` at `AFTER_TRANSLUCENT_BLOCKS`. The lava top face
+  is opaque terrain written in the solid chunk layer, so the outline must come after
+  it; waiting for the translucent layer means water and stained glass already hold
+  depth, so they hide the outline instead of being painted over by it. The type is
+  LEQUAL depth-tested, so walls, terrain and the train (entities are drawn before
+  translucent blocks) hide it. Under Fabulous graphics the type's
+  `ITEM_ENTITY_TARGET` output hands the segments to the transparency post chain,
+  which composites them depth-sorted against the final main depth, so occlusion
+  still works there.
+
 Radial streaks seen around the glow from the driver's seat in the 2026-10-19
 captures were scene geometry, not sampling noise: the stepped walls of a tunnel
 along the beam axis converge on the vanishing point (`/dbxheadlight debug albedo`
@@ -178,8 +226,9 @@ compile shader variants when the buffer mask changes. First activation and
 resource reload behavior still require runtime verification.
 
 Client-only diagnostics: `/dbxheadlight debug off|albedo|normal|depth|light|fog|occlusion`;
-`/dbxheadlight list` prints active beams' world lens positions and axes (chat and
-log), `/dbxheadlight reload` reloads resource packs (shader iteration via a pack).
+`/dbxheadlight list` prints active beams' world lens positions and axes plus the
+current count of highlighted lava faces (chat and log), `/dbxheadlight reload`
+reloads resource packs (shader iteration via a pack).
 `off` restores additive lighting; the other modes replace the opaque scene with
 the selected data while an eligible lamp is active. Normal colors show view-space
 normals; depth shows reconstructed distance divided by headlight range. `light`

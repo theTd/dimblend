@@ -55,6 +55,7 @@ public final class HeadlightRenderer {
         NeoForge.EVENT_BUS.addListener(HeadlightRenderer::beforeFrame);
         NeoForge.EVENT_BUS.addListener(HeadlightRenderer::render);
         NeoForge.EVENT_BUS.addListener(HeadlightRenderer::commands);
+        NeoForge.EVENT_BUS.addListener(HeadlightLavaHighlight::onClientTick);
         NeoForge.EVENT_BUS.addListener((LevelEvent.Unload event) -> {
             if (event.getLevel() == Minecraft.getInstance().level) reset();
         });
@@ -63,7 +64,8 @@ public final class HeadlightRenderer {
 
     private static double value(TuningOption option) { return TuningSettings.get(option); }
 
-    private static boolean enabled() {
+    /** Whether the beam renderer is on; the lava highlight follows the same switch (see {@link HeadlightLavaHighlight}). */
+    static boolean enabled() {
         return Minecraft.getInstance().level != null && value(TuningOption.SABLE_HEADLIGHT) == 1.0
                 && value(TuningOption.SABLE_HEADLIGHT_INTENSITY) > 0.0;
     }
@@ -105,6 +107,7 @@ public final class HeadlightRenderer {
         TARGETS.close();
         fogBeams = List.of();
         debug = DebugView.OFF;
+        HeadlightLavaHighlight.clear();
     }
 
     private static void commands(RegisterClientCommandsEvent event) {
@@ -133,7 +136,8 @@ public final class HeadlightRenderer {
         List<HeadlightBeam> beams = HeadlightCollector.collect(mc.level, camera, null, value(TuningOption.SABLE_HEADLIGHT_RANGE));
         var indexed = FrontlightIndex.reconcile(mc.level, camera);
         int lamps = indexed.values().stream().mapToInt(java.util.Set::size).sum();
-        String summary = "Headlight beams: " + beams.size() + "; indexed lamps: " + lamps;
+        String summary = "Headlight beams: " + beams.size() + "; indexed lamps: " + lamps
+                + "; lit lava faces: " + HeadlightLavaHighlight.surfaces();
         LOGGER.info("[headlight-list] {}", summary);
         source.sendSuccess(() -> Component.literal(summary), false);
         if (mc.hitResult instanceof BlockHitResult hit) {
@@ -168,6 +172,9 @@ public final class HeadlightRenderer {
             fogBeams = List.of();
             try {
                 renderHaze(event, beams);
+                // After translucency and after the haze: the outline sits on the lava surface, behind nearer
+                // terrain, and is not tinted by the in-scatter in front of it.
+                HeadlightLavaHighlight.render(event);
             } finally {
                 HeadlightDiagnostics.publish();
             }

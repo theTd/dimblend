@@ -56,6 +56,8 @@
   "screen.dimblend_experience.tuning.sable_headlight_fog_samples.description": "Default: 8. Range: 4-24, step 1. More samples reduce noise at a higher GPU cost.",
   "screen.dimblend_experience.tuning.sable_headlight_occlusion": "Headlight shadows",
   "screen.dimblend_experience.tuning.sable_headlight_occlusion.description": "Default: on. Solid blocks of the world and of vehicles block headlight light and haze (glass, leaves and fluids let it through). Off saves a little CPU and GPU time.",
+  "screen.dimblend_experience.tuning.sable_headlight_lava_highlight": "Headlight lava highlight",
+  "screen.dimblend_experience.tuning.sable_headlight_lava_highlight.description": "Default: on. Outlines the top surface of lava a lit headlight beam reaches with a gently pulsing orange line, hidden by walls, terrain and vehicles. Follows the headlight and shadow options; the world is re-scanned ten times a second only while a beam moves.",
   "screen.dimblend_experience.tuning.copper_sink_infinite": "Infinite copper sink water",
   "screen.dimblend_experience.tuning.sky_time_trace": "Sky/time diagnostics (this client)",
   "screen.dimblend_experience.tuning.sky_time_trace.description": "Default: off. Record this client's sky/time changes in logs/latest.log. Changes apply immediately and are saved locally; other players are unaffected.",

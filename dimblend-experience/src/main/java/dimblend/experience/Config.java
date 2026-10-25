@@ -362,6 +362,10 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue SABLE_HEADLIGHT_OCCLUSION = BUILDER
             .comment("Block-grid shadows for headlight surface light and haze (walls, pillars, vehicles).")
             .define("sableHeadlightOcclusion", true);
+    public static final ModConfigSpec.BooleanValue SABLE_HEADLIGHT_LAVA_HIGHLIGHT = BUILDER
+            .comment("Pulsing orange outline around the top surface of lava a lit headlight beam reaches (client-only drawing, "
+                    + "follows the headlight renderer's Sable/Veil/no-Iris gate and the occlusion option).")
+            .define("sableHeadlightLavaHighlight", true);
 
     // 列车汽笛音高：每个音效 × 汽笛尺寸（小/中/大）独立可调；引擎侧取值范围与
     // SoundEngine.calculatePitch 钳制区间一致（0.5~2.0），默认小 1.5/中 1.0/大 0.5

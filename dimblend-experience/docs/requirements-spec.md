@@ -905,6 +905,17 @@
 - 诊断：CLIENT 配置 `linkedTransmitterDiagnostics`（默认 false），`/dbx linkeddiag`（权限 2 级）可切换；无权限玩家由管理员或配置文件开启。日志前缀 `[linked-diag]`，记录双端命中、频率判定、物品/Shift/实际蹲姿/三种姿态适配/AABB，以及 Sable 的 `lastPose`/`logicalPose`/客户端 `renderPose`。dedicated server 的客户端与服务端需分别开启，不能用客户端开关代替服务端日志。
 - 自动验证：`LinkedTransmitterInteractionTest` 量化单测；`LinkedTransmitterGameTests` 覆盖两个频率槽、底座提前交互、蜜脾/斧/蜡锁、潜行 `CONSUME`、FakePlayer 对照。重跑：`JAVA_HOME='C:\Program Files\Java\jdk-21' ./gradlew :dimblend-experience:test` 与 `./gradlew :dimblend-experience:runGameTestServer -PwithLinkedTransmitter`。
 
+### G10 车灯照亮岩浆高亮（2026-10-26，纯客户端）
+
+- 需求：被前照灯光锥实际照到的岩浆顶面高亮；用户选定样式为「发光橙色描边、只描连接区域的顶面外缘、做深度测试，墙体/地形/列车能遮挡」。
+- 实现：`client.headlight` 的 `HeadlightLavaHighlight`（10 Hz 重算调度 + 描边绘制）、`HeadlightLavaScan`（世界扫描 + 遮挡射线）、`HeadlightLavaMath`（纯函数：照亮判定、周长边、上限、脉动）、`LavaSurface`/`LavaEdge`。无新增 mixin。
+- 照亮判定：流体为岩浆（源/流动均可）、顶面暴露（上方非同流体且非实心整方块）、顶面中心在光锥内且在射程内、`cone × attenuation > 0.04`；遮挡开关打开时再用与阴影网格同一套 occluder 判据做方块 DDA 射线（`HeadlightOccluders` + `HeadlightOcclusionMath.trace`，跳过灯所在格）。默认参数（射程 24/全角 50/强度 1）下轴向照亮到 22.1 格，软肩使离轴照亮宽度为锥半径的 84–91%。
+- 描边：仅画「水平邻居不是同高度照亮岩浆」的顶面边（连通岩浆海只出一圈轮廓，台阶两侧各画一条）；高度 = 方块 y + 流体自身高度（源岩浆 8/9）+ 0.01；颜色 0xFFB040，alpha 以 1 Hz 在 0.35–0.75 间脉动。
+- 绘制：`RenderType.lines()` 在 `AFTER_TRANSLUCENT_BLOCKS`（岩浆顶面属 solid 层、实体在其前绘制，故 LEQUAL 深度测试即被墙/地形/列车遮挡；半透明块已写深度，水/玻璃同样遮挡）。Fabulous 下该渲染类型的 `ITEM_ENTITY_TARGET` 输出交给 transparency 后处理链按最终主深度排序合成，遮挡语义不变；不额外改动渲染状态。
+- 节流：客户端 tick，最快每 2 tick（10 Hz）且仅在光锥位姿变化时重算（灯位量化 0.5 格、朝向量化 1/64），静止灯每 20 tick 兜底刷新；单次最多 1024 个照亮方块（按相机距离保留最近）与 65536 次 section 体素读取（离灯最近的 section 优先；超出射程或调色板无岩浆的 section 直接跳过、一次体素都不读）。默认单灯估计 0.1–0.3 ms；`-Ddimblend.headlight.diag=true` 可实测（日志前缀 `[headlight-lava]`）。
+- 开关：`sableHeadlightLavaHighlight`（默认 true）在 Sable 面板、与前照灯参数同属 experience 的服务端配置并经快照下发；仍要求 Sable/Veil 在场且未安装 Iris（与渲染器同一注册条件），并随前照灯总开关与强度为零关闭。
+- 验证：`HeadlightLavaMathTest` 覆盖锥体/射程/阈值边界、周长去重（同高/台阶/对角/2×2）、上限就近取整与乱序稳定、1 Hz 脉动；渲染观感（移动列车跟随、Fabulous、水/玻璃遮挡）待实机验收。
+
 ## 8. 实现覆盖对账（实现完毕时点）
 
 ### Config 开关清单（server 端 `dimblend_experience-server.toml`）
