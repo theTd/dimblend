@@ -253,13 +253,13 @@ class TuningOptionTest {
     }
 
     @Test
-    void rotatingMonsterCapIsVanillaPercentageMirroringConfig() {
+    void rotatingMonsterDensityIsVanillaPercentageMirroringConfig() {
         var option = TuningOption.ROTATING_MONSTER_CAP;
         assertFalse(option.isCheckbox());
         assertSame(TuningOption.Section.MAIN, option.section());
         assertEquals("", option.modId());
-        // 面板默认值与 Config.ROTATING_MONSTER_CAP_MULTIPLIER 默认倍率 ×100 互为镜像，漂移即失败
-        assertEquals(Config.ROTATING_MONSTER_CAP_MULTIPLIER.getDefault() * 100.0D, option.defaultValue());
+        // 面板默认值与 Config.ROTATING_MONSTER_DENSITY 默认值 ×100 互为镜像，漂移即失败
+        assertEquals(Config.ROTATING_MONSTER_DENSITY.getDefault() * 100.0D, option.defaultValue());
         assertEquals(50.0D, option.defaultValue());
         for (double valid : new double[] {0.0D, 1.0D, 50.0D, 100.0D}) {
             assertTrue(option.isValid(valid));

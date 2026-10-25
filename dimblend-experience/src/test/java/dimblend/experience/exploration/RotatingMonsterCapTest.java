@@ -31,6 +31,16 @@ class RotatingMonsterCapTest {
     }
 
     @Test
+    void positiveLowRateKeepsAtLeastOnePerChunkCap() {
+        // ceil：1% 仍保留 1 只/289 区块的自然上限，再靠每次生成 p 的概率把人口压到 1%
+        assertEquals(1, RotatingMonsterCap.scaledCap(MONSTER_CAP, 289, 0.01D));
+        assertEquals(1, RotatingMonsterCap.scaledCap(MONSTER_CAP, 289, 0.014D));
+        assertEquals(2, RotatingMonsterCap.scaledCap(MONSTER_CAP, 289, 0.015D));
+        // 最终仍是原版整数除法：极小可刷区域照原版口径截断
+        assertEquals(0, RotatingMonsterCap.scaledCap(MONSTER_CAP, 100, 0.01D));
+    }
+
+    @Test
     void capIsMonotonicInMultiplierAndChunkCount() {
         int previous = -1;
         for (int percent = 0; percent <= 100; percent++) {

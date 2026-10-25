@@ -41,7 +41,7 @@ Missing optional mods leave their controls disabled.
 | Radio End voice volume | 0.75 | 0.00-2.00, step 0.01; 0.5 = former hard-coded loudness, 0 = no voices (music not ducked) | radio |
 | Radio acoustic simulation intensity | 1.00 | 0.00-2.00, step 0.01; 0 = no simulated echo | radio |
 | Experience clear ratio on respawn | 1.00 | 0.00-1.00, step 0.01; rotating dimension only, ignores keepInventory, no experience orb drops | experience |
-| Rotating monster cap (% of vanilla) | 50 | 0-100, step 1; 100 = vanilla density, 0 = no natural monster spawns; scales only the global cap, per-attempt odds and per-player local caps unchanged | experience |
+| Rotating monster density (% of vanilla) | 50 | 0-100, step 1; 100 = vanilla density, 0 = no covered monster spawns; natural spawns scale the global cap and keep each spawn with probability p, spawner/trial spawner/structure/chunk generation/patrol/reinforcement cancel with 1-p; bosses and player-caused spawns are never suppressed; other dimensions unaffected | experience |
 | Item drain growth boost water cost | 20 mB | 0-1500, step 1; drained per successful boost, 0 = free | experience |
 
 ## Vehicle headlights (surface and volumetric haze)

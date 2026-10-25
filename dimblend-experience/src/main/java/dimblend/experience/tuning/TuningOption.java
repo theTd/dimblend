@@ -41,7 +41,8 @@ public enum TuningOption {
     RADIO_END_VOICE_VOLUME("radio_end_voice_volume", 0.75D, 2.0D, 2, "dimblend_radio"),
     RADIO_ACOUSTIC_INTENSITY("radio_acoustic_intensity", 1.0D, 2.0D, 2, "dimblend_radio"),
     EXP_CLEAR_RATIO("exp_clear_ratio", 1.0D, 1.0D, 2, ""),
-    // 默认值镜像 Config.ROTATING_MONSTER_CAP_MULTIPLIER ×100（0.5→50%），由 TuningOptionTest 钉死
+    // 默认值镜像 Config.ROTATING_MONSTER_DENSITY ×100（0.5→50%），由 TuningOptionTest 钉死；
+    // 2026-10-26 起该百分比作用于旋转维度全部受控怪物生成来源（不止自然刷怪全局上限）
     ROTATING_MONSTER_CAP("rotating_monster_cap", 50.0D, 0.0D, 100.0D, 0, "", Section.MAIN),
     // 默认值镜像 Config.ITEM_DRAIN_GROWTH_COST_MB（20mb），由 TuningOptionTest 钉死
     ITEM_DRAIN_GROWTH_COST("item_drain_growth_cost", 20.0D, 0.0D, 1500.0D, 0, "create", Section.MAIN),

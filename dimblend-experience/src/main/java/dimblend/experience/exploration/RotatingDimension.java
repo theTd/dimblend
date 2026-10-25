@@ -5,8 +5,11 @@ import dimblend.experience.DimBlend;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
 
 /**
  * 探索限制规则的作用域：dimblend 的旋转维度（默认 dimblend:rotating）。
@@ -40,6 +43,21 @@ public final class RotatingDimension {
 
     public static boolean is(Level level) {
         return level.dimension().equals(key());
+    }
+
+    /**
+     * Worldgen structure/chunk spawns carry a {@link WorldGenRegion} in
+     * {@code FinalizeSpawnEvent}; unwrap it to the real level. Unknown accessors
+     * fail closed (not the rotating dimension).
+     */
+    public static boolean is(LevelAccessor level) {
+        if (level instanceof ServerLevel serverLevel) {
+            return is(serverLevel);
+        }
+        if (level instanceof WorldGenRegion region) {
+            return is(region.getLevel());
+        }
+        return false;
     }
 
     private RotatingDimension() {

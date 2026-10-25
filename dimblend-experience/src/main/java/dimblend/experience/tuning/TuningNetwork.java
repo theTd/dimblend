@@ -18,8 +18,9 @@ public final class TuningNetwork {
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
         // The snapshot carries one value per option: adding options changes the protocol.
-        // v25 adds rotating_monster_cap and item_drain_growth_cost.
-        var registrar = event.registrar("25");
+        // v26 redefines rotating_monster_cap from "natural cap only" to the density
+        // percentage applied to every covered monster spawn source.
+        var registrar = event.registrar("26");
         registrar.playToServer(TuningEditPayload.TYPE, TuningEditPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof ServerPlayer player) {

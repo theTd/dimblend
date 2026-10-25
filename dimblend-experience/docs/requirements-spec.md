@@ -188,18 +188,44 @@
 - 仅对新探索区块生效：旧存档已生成的藏宝箱不补标记
 - 新开关 `treasureShellX`（默认开）
 
-### A12 旋转维度怪物密度上限压制（2026-10-21 用户拍板）
-- 起因：用户实测体感 rotating 怪物密度约为原版两倍，要求压回一半；只做新机制，
-  不动「睡觉清雨」等既有行为
-- 实现：`NaturalSpawnerCapMixin` 包 `spawnForChunk` 内对
-  `SpawnState.canSpawnForCategory` 的调用——rotating 维度且类别为 MONSTER 时，
-  全局上限改按 `70×倍率取整 × 可刷区块数/289` 判定（289=NaturalSpawner.MAGIC_NUMBER，
-  包私有只能复刻），当前怪物数达缩放上限本轮不刷；未达上限交回原判定
-  （原版全局+单玩家局部上限照跑）
-- 只压全局密度上限，不改单次刷怪概率；被动/水生等其它类别与其它维度完全走原版；
-  纯函数 `RotatingMonsterCap.scaledCap` + 单测
-- 新配置 `rotatingMonsterCapMultiplier`（DoubleValue，默认 0.5，范围 0-1；
-  1.0 等效原版、0=不自然刷怪；经 /dbx 面板按原版百分比 0–100 可调）
+### A12 旋转维度怪物密度压制（2026-10-21 用户拍板；2026-10-26 扩展为全来源百分比）
+- 起因：用户实测体感 rotating 怪物密度约为原版两倍，要求压回一半；2026-10-26 用户
+  反馈「仍然偏高」，拍板一个百分比缩放旋转维度所有怪物生成，并加 `/dbx mobcensus`
+  现场核对；不动「睡觉清雨」等既有行为
+- 一个旋钮：`rotatingMonsterCapMultiplier`（键名沿用，旧存档设置保留；DoubleValue，
+  默认 0.5，范围 0-1；/dbx 面板 `ROTATING_MONSTER_CAP` 按 0-100% 显示，默认 50%）。
+  p = 面板值/100；p>=1 完全走原版，p=0 停止全部受控生成（BOSS 与玩家侧生成除外）
+- 自然刷怪（NATURAL；结构覆盖也走同一入口）：
+  - 保留 2026-10-21 的全局上限缩放：`NaturalSpawnerCapMixin` 包 `spawnForChunk` 内对
+    `SpawnState.canSpawnForCategory` 的调用，上限 =
+    `ceil(70×p) × 可刷区块数/289`（289=NaturalSpawner.MAGIC_NUMBER，包私有只能复刻），
+    当前怪物数达上限本轮不刷；未达上限交回原判定（原版全局+单玩家局部上限照跑）
+  - 另在 `FinalizeSpawnEvent` 对每个自然生成按 p 保留（`MonsterDensitySpawnGuard`）。
+    上限是人口上限、概率是存活率，两者不是 p²：平衡人口约
+    `min(p·C, p·R) = p·min(C,R)`，即原版的 p
+  - 每区块上限按 ceil(70p)（p>0 时至少 1，避免低百分比先把自然上限归零）；
+    最终仍沿用原版整数除法截断，极小可刷区域可能取整到 0
+- 其它受控来源：SPAWNER、TRIAL_SPAWNER、STRUCTURE、CHUNK_GENERATION、PATROL、
+  REINFORCEMENT、JOCKEY（原版 JOCKEY 只 finalize 鸡，实际不会命中 MONSTER）在
+  `FinalizeSpawnEvent` 按 1-p 取消（`setCanceled` + `setSpawnCancelled`）。
+  NeoForge 21.1.249 的 BaseSpawner/TrialSpawner 即使刷怪 NBT 含额外字段也调用
+  `EventHooks.finalizeMobSpawnSpawner`；自然/区块/结构/巡逻/增援都经 `finalizeSpawn`
+  （coremod 重定向到事件）。刷怪蛋/命令/桶/发射器/繁殖/MOB_SUMMONED/CONVERSION/
+  TRIGGERED/EVENT 不在受控集合，永不压制；/summon 与数据包函数经 SummonCommand 以
+  COMMAND 调 finalizeSpawn（事件照常触发、按来源排除）。原版覆盖范围内的已知绕过
+  是转换（CONVERSION，不调 finalizeSpawn，本身即排除项）；不调 finalizeSpawn 直接
+  加实体的 mod 也会绕过，原版无此受控路径
+- 永不压制：`Tags.EntityTypes.BOSSES`（末影龙/凋灵）+ 显式 elder_guardian、凋灵、
+  末影龙；非 MONSTER 类别；非旋转维度
+- 新命令 `/dbx mobcensus [radius]`（权限 2，默认 128，范围 1-512）：统计执行玩家
+  半径内已加载的 MONSTER，按实体类型与 `Mob#getSpawnType()` 分组，聊天栏打印前 15
+  类型（含来源明细）与总计；`getSpawnType()` 为 null（旧存档/未 finalize）归 unknown
+- 协议：快照 v25→v26（同一选项的含义变化；编码仍为每选项一个 double，无尾部默认值
+  解码分支——上一版 v24→v25 也只做了版本号与注释，本版保持一致）
+- 测试：纯判定 `MonsterSpawnDensityTest`（来源×类别×BOSS×维度×p×注入随机）；
+  GameTest `MonsterDensityGameTests`（旋转维度=主世界的维度门注入下，p=0 刷怪笼 0 只、
+  p=1 刷出；census 命令注册并可执行）；`TuningOptionTest` 钉默认值镜像；
+  `TuningTranslationsTest` 覆盖中英标签
 
 ## 2. 板块 B：CDG 柴油机行为
 
