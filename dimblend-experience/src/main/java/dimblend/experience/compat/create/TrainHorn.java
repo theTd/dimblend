@@ -36,7 +36,8 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 列车汽笛（需求追加 2026-10-21、同日两轮拍板、2026-10-24 修订、2026-10-26 音高改版）。
+ * 列车汽笛（需求追加 2026-10-21、同日两轮拍板、2026-10-24 修订、2026-10-26 音高改版、
+ * 2026-10-26 起播即完整播放）。
  * 蒸汽笛六面邻接特定引擎方块时进入「特殊模式」，红石上升沿触发一次性对应音效，
  * <b>不要求所附储罐有热源</b>（Create 原生汽笛只在锅炉激活时响，本功能补的是无热源
  * 场景的机车鸣笛）。
@@ -47,9 +48,12 @@ import org.jetbrains.annotations.Nullable;
  * 标志与音高都存 BE 且落盘。引擎新邻接、汽笛放置或读档后首次 tick 发现邻接而标志
  * 为假时算「进入」：音高重置 v=1.0、Create 尺寸重置 MEDIUM。离开只清标志，
  * 再进入再次重置。</li>
- * <li>触发：{@code WhistleBlock.neighborChanged} TAIL 处识别 POWERED 双边沿
- * （{@code WhistleHornBlockMixin}）。持续高电平只播一次；播放中断电立即清锁并淡出，
- * 重新供能可马上从头播放。特殊供电期间 Create 原生汽笛声与蒸汽粒子完全禁用。</li>
+ * <li>触发（2026-10-26 规则 B，用户拍板）：{@code WhistleBlock.neighborChanged}
+ * TAIL 处只认 POWERED false→true 上升沿（{@code WhistleHornBlockMixin}）。起播后锁定到
+ * 素材时长结束：<b>断电不改锁、不下发停止包</b>，片段一定播满全长（短 ON 段不会把汽笛
+ * 切成听不见的气声）；锁定期间的上升沿（快速时钟、连续扳动拉杆）一律无视；锁定过期后
+ * 还需要新的上升沿——持续高电平不重播，断电再上电才再次触发。特殊模式期间 Create
+ * 原生汽笛声与蒸汽粒子完全禁用。</li>
  * <li>六面扫描按方向优先级取第一个命中：以汽笛朝向为基准
  * 正面 → 背面 → 左侧 → 右侧 → 上方 → 下方（附着储罐一面永不命中引擎）。</li>
  * <li>引擎映射：Create 蒸汽引擎 → 蒸汽音；CDG 三种柴油机
@@ -173,19 +177,6 @@ public final class TrainHorn {
         // 实机排障（2026-10-23 报"音高仍反"）：留下服务端权威的 音高刻度→播放音高 证据
         DimBlend.LOGGER.debug("train horn at {}: kind={}, tenths={}, pitch={}", pos, kind, tenths, pitch);
         broadcast(level, pos, new TrainHornPayload(pos, (byte) kind.ordinal(), pitch, true));
-    }
-
-    /** 断电立即结束本次特殊鸣笛；停止包幂等，片段已自然结束也要撤销客户端特殊表现。 */
-    public static void onPowerLoss(ServerLevel level, BlockPos pos) {
-        BlockEntity be = level.getBlockEntity(pos);
-        if (!(be instanceof TrainHornStateAccess access)) {
-            return;
-        }
-        int previousKind = access.dimblend$hornKind();
-        access.dimblend$setHornLock(0L, previousKind);
-        if (previousKind >= 0) {
-            broadcast(level, pos, new TrainHornPayload(pos, (byte) 0, 1.0F, false));
-        }
     }
 
     private static void broadcast(ServerLevel level, BlockPos pos, TrainHornPayload payload) {

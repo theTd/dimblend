@@ -22,12 +22,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * 列车汽笛方块侧挂点（Create 6.0.10 {@code WhistleBlock} 字节码核实）：
  *
  * <ul>
- * <li><b>红石双边沿</b>：Create 原生 {@code neighborChanged} 只在信号有无变化时翻转
- * {@code POWERED}（翻转由 {@code setBlock(..., UPDATE_CLIENTS)} 完成，不再级联邻居更新），
- * TAIL 处对比翻转前后即得严格双边沿：false→true 经 {@link TrainHorn#onPoweredEdge}
- * 起播一次，true→false 经 {@link TrainHorn#onPowerLoss} 立即清锁并淡出；持续高电平
- * 不产生新上升沿，普通邻接更新不会重触发。TAIL 处先做一次特殊模式对账
- * （引擎新邻接/移除，{@link TrainHorn#reconcile}），保证起播读到的音高与尺寸已就位。</li>
+ * <li><b>红石上升沿</b>（2026-10-26 规则 B）：Create 原生 {@code neighborChanged} 只在
+ * 信号有无变化时翻转 {@code POWERED}（翻转由 {@code setBlock(..., UPDATE_CLIENTS)} 完成，
+ * 不再级联邻居更新），TAIL 处对比翻转前后即得严格边沿：false→true 经
+ * {@link TrainHorn#onPoweredEdge} 起播一次；true→false <b>刻意不处理</b>——起播后
+ * 片段必须播满全长，断电既不清锁也不下发停止包。持续高电平不产生新上升沿，普通邻接
+ * 更新不会重触发。TAIL 处先做一次特殊模式对账（引擎新邻接/移除，
+ * {@link TrainHorn#reconcile}），保证起播读到的音高与尺寸已就位。</li>
  * <li><b>扳手循环音高</b>：挂在 {@code useItemOn} HEAD（方块自身的右键交互入口，
  * 与 Create 的「用汽笛物品延长」同一入口）。Create 6.0.10 的扳手点击不走
  * {@code useItemOn}：该方法对非汽笛物品返回 {@code PASS_TO_DEFAULT_BLOCK_INTERACTION}，
@@ -41,7 +42,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class WhistleHornBlockMixin {
 
     @Inject(method = "neighborChanged", at = @At("TAIL"), require = 1, allow = 1)
-    private void dimblend$hornOnPowerChanged(BlockState state, Level level, BlockPos pos, Block block,
+    private void dimblend$hornOnRisingEdge(BlockState state, Level level, BlockPos pos, Block block,
             BlockPos fromPos, boolean isMoving, CallbackInfo ci) {
         if (!(level instanceof ServerLevel serverLevel)) {
             return;
@@ -54,11 +55,9 @@ public abstract class WhistleHornBlockMixin {
         // 先对账特殊模式：邻接引擎变化可能在本拍发生，进入转换会重置音高与尺寸
         TrainHorn.reconcile(serverLevel, pos, current);
         BlockState after = level.getBlockState(pos);
-        boolean powered = after.getValue(WhistleBlock.POWERED);
-        if (!previouslyPowered && powered) {
+        // 只认上升沿：下降沿不清锁、不发停止包（规则 B：起播后播满全长）
+        if (!previouslyPowered && after.getValue(WhistleBlock.POWERED)) {
             TrainHorn.onPoweredEdge(serverLevel, pos, after);
-        } else if (previouslyPowered && !powered) {
-            TrainHorn.onPowerLoss(serverLevel, pos);
         }
     }
 

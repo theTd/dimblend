@@ -23,12 +23,13 @@ import java.util.Map;
  *
  * <p>「张嘴动画 + 音符粒子」窗口与声音实例共用同一份到达时刻（客户端 gameTime +
  * 素材时长），按汽笛 plot 坐标登记；{@code WhistleHornClientMixin} 在汽笛 BE 的客户端
- * tick 里查询本类驱动动画/粒子并抑制特殊模式的原生音频。停止包或断电对账清除窗口、
- * 淡出声音；重新起播与登出都会精确停止旧实例，窗口过期在读取时惰性清除。</p>
+ * tick 里查询本类驱动动画/粒子并抑制特殊模式的原生音频。窗口一旦登记就跑到截止 tick：
+ * <b>红石断电不缩短鸣笛</b>（2026-10-26 规则 B，用户拍板），声音、张嘴与
+ * 粒子照常走完；只有显式停止包、汽笛方块失效、重新起播与登出才会提前收尾。</p>
  */
 public final class TrainHornClient {
 
-    /** 鸣笛窗口：截止 tick（客户端 gameTime）+ 音效种类（粒子配色用）。 */
+    /** 鸣笛窗口：截止 tick（客户端 gameTime）+ 音效种类（粒子配色与时长用）。 */
     private record HornWindow(long untilTick, TrainHorn.HornKind kind) {
     }
 
@@ -72,8 +73,9 @@ public final class TrainHornClient {
     }
 
     /**
-     * 特殊供电期间彻底接管 Create 原生音频；断电对账是停止包之外的兜底。
-     * 直接读客户端红石与邻接引擎，开始包到达前也不会漏出原生汽笛。
+     * 特殊模式期间彻底接管 Create 原生音频（判定只看邻接引擎、<b>与红石供电无关</b>，
+     * 未通电的特殊模式汽笛也不会漏出原生声）。这里不做任何停电对账：规则 B 下断电不影响
+     * 已在播的片段，窗口到期由 {@link #isHornActive} 惰性清除。
      */
     public static boolean tickSpecialMode(WhistleBlockEntity be) {
         BlockPos pos = be.getBlockPos();
@@ -85,9 +87,6 @@ public final class TrainHornClient {
         if (!(state.getBlock() instanceof WhistleBlock) || be.getLevel() == null) {
             stopHorn(pos);
             return false;
-        }
-        if (!state.getValue(WhistleBlock.POWERED)) {
-            stopHorn(pos);
         }
         if (!TrainHorn.isSpecialMode(be.getLevel(), pos, state)) {
             return false;

@@ -25,7 +25,9 @@ import net.minecraft.world.phys.Vec3;
  * <li><b>Sable</b>：存 plot 坐标，每 tick 经 {@link SableWorldPosition} 投影到结构当前
  * 世界位置——声源随移动中的结构走。</li>
  * <li><b>生命周期</b>：非循环素材播完由引擎收通道；另加 duration+10 tick 兜底自停。
- * 播放中断电时每 tick 减少 0.25 淡出系数，与距离音量相乘，约 4 tick 归零停止。</li>
+ * 显式停止（停止包、汽笛方块失效等）时每 tick 减少 0.25 淡出系数，与距离音量相乘，
+ * 约 4 tick 归零停止。<b>断电不是停止理由</b>（2026-10-26 规则 B：起播后片段播满全长，
+ * 红石断电只影响下一次能否起播）。</li>
  * </ul>
  */
 public class TrainHornSoundInstance extends AbstractTickableSoundInstance {

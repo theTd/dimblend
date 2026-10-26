@@ -47,6 +47,11 @@ import java.util.UUID;
  * （neighborChanged 在 setBlock 内同步调用），故 until == 放置时 gameTime +
  * {@link TrainHorn.HornKind#durationTicks()} 可精确断言。</p>
  *
+ * <p>2026-10-26 规则 B（用户拍板）：断电不清锁、不发停止包，起播片段播满
+ * 全长；快速时钟/连拉每锁窗口只起播一次，锁过期后需新的上升沿
+ * （{@code powerLossKeepsFullHornAndRetriggersAfterLock} 与 {@code train_horn_clock}
+ * 批的两条时钟用例钉死）。</p>
+ *
  * <p>2026-10-26 音高改版新增：特殊模式进入重置（音高 1.0 + 尺寸 MEDIUM）、放置邻接的首次
  * tick 对账、非潜行扳手循环（刻度/尺寸/动作栏/静音）、离开与再进入、普通模式扳手保持
  * Create 默认（循环 SIZE）、NBT 落盘与客户端更新包同步、触发包音高 = 2^(v−1)。
@@ -96,28 +101,132 @@ public final class TrainHornGameTests {
         });
     }
 
-    /** 播放期间断电立即停止并清锁；不等片段结束即可重新供能、从头播放。 */
-    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", timeoutTicks = 40)
-    public static void powerLossStopsAndRearmsImmediately(GameTestHelper helper) {
+    /**
+     * 规则 B（2026-10-26，用户拍板）：断电既不缩短片段也不清锁；断电后的
+     * 上升沿仍在锁内被无视；锁过期后持续高电平不重播，断电再上电（新上升沿）才重新起播。
+     * 停止包的生产方就是被删掉的断电分支，故「不回切/不清锁」即「不发停止包」。
+     */
+    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", timeoutTicks = 80)
+    public static void powerLossKeepsFullHornAndRetriggersAfterLock(GameTestHelper helper) {
         placeWhistleRig(helper);
         helper.setBlock(ENGINE, AllBlocks.STEAM_ENGINE.get().defaultBlockState());
+        long t0 = helper.getLevel().getGameTime();
         helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
+        long firstUntil = hornUntil(helper);
+        helper.assertTrue(firstUntil == t0 + TrainHorn.HornKind.STEAM.durationTicks(),
+                "precondition: the first edge must lock the full horn, until=" + firstUntil);
         helper.runAfterDelay(2, () -> {
-            helper.assertTrue(hornUntil(helper) > 0L, "precondition: horn must be locked after first edge");
             helper.setBlock(SIGNAL, Blocks.AIR);
-            helper.runAfterDelay(2, () -> {
-                helper.assertTrue(hornUntil(helper) == 0L,
-                        "power loss must immediately clear horn lock, until=" + hornUntil(helper));
-                long restartedAt = helper.getLevel().getGameTime();
+            helper.runAfterDelay(1, () -> {
+                helper.assertTrue(hornUntil(helper) == firstUntil,
+                        "power loss must keep the lock (rule B: the clip plays out), until="
+                                + hornUntil(helper) + " expected=" + firstUntil);
                 helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
-                helper.runAfterDelay(2, () -> {
-                    helper.assertTrue(hornUntil(helper) == restartedAt + TrainHorn.HornKind.STEAM.durationTicks(),
-                            "fresh power must immediately restart the full horn duration, until="
-                                    + hornUntil(helper) + " expected="
-                                    + (restartedAt + TrainHorn.HornKind.STEAM.durationTicks()));
-                    helper.succeed();
-                });
+                helper.runAfterDelay(1, () -> helper.assertTrue(hornUntil(helper) == firstUntil,
+                        "a rising edge inside the lock must stay ignored, until=" + hornUntil(helper)));
             });
+        });
+        helper.runAfterDelay(56, () -> {
+            helper.assertTrue(hornUntil(helper) == firstUntil,
+                    "held power must not retrigger after the lock expires, until=" + hornUntil(helper));
+            helper.setBlock(SIGNAL, Blocks.AIR);
+            helper.runAfterDelay(1, () -> {
+                long rise = helper.getLevel().getGameTime();
+                helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
+                helper.assertTrue(hornUntil(helper) == rise + TrainHorn.HornKind.STEAM.durationTicks(),
+                        "a new rising edge after the lock must restart the full horn, until="
+                                + hornUntil(helper) + " expected="
+                                + (rise + TrainHorn.HornKind.STEAM.durationTicks()));
+                helper.succeed();
+            });
+        });
+    }
+
+    /**
+     * 快速通断（1 tick 高 / 1 tick 低）：一次起播吃掉整个锁窗口，锁内每个上升沿都被无视；
+     * 锁过期后的第一个上升沿再起播一次，其锁内的后续上升沿同样无视。锁始终不被断电清掉。
+     */
+    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", batch = "train_horn_clock",
+            timeoutTicks = 80)
+    public static void fastClockPlaysOncePerLockWindow(GameTestHelper helper) {
+        placeWhistleRig(helper);
+        helper.setBlock(ENGINE, AllBlocks.STEAM_ENGINE.get().defaultBlockState());
+        long t0 = helper.getLevel().getGameTime();
+        helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
+        long firstUntil = hornUntil(helper);
+        helper.assertTrue(firstUntil == t0 + TrainHorn.HornKind.STEAM.durationTicks(),
+                "precondition: the first edge must lock the full horn, until=" + firstUntil);
+        long[] secondUntil = {firstUntil};
+        for (int tick = 1; tick <= 58; tick++) {
+            final int at = tick;
+            helper.runAfterDelay(tick, () -> {
+                helper.setBlock(SIGNAL, at % 2 == 1 ? Blocks.AIR : Blocks.REDSTONE_BLOCK);
+                if (at == 2 || at == 54) {
+                    helper.assertTrue(hornUntil(helper) == firstUntil,
+                            "rise at +" + at + " inside the lock must be ignored, until="
+                                    + hornUntil(helper) + " expected=" + firstUntil);
+                } else if (at == 56) {
+                    long rise = helper.getLevel().getGameTime();
+                    secondUntil[0] = rise + TrainHorn.HornKind.STEAM.durationTicks();
+                    helper.assertTrue(hornUntil(helper) == secondUntil[0],
+                            "the first rise after the lock expires must start a new horn, until="
+                                    + hornUntil(helper) + " expected=" + secondUntil[0]);
+                } else if (at == 58) {
+                    helper.assertTrue(hornUntil(helper) == secondUntil[0],
+                            "rise at +58 inside the new lock must be ignored, until=" + hornUntil(helper));
+                }
+            });
+        }
+        helper.runAfterDelay(59, () -> {
+            helper.assertTrue(hornUntil(helper) == secondUntil[0],
+                    "a fast clock must play one horn per lock window, until=" + hornUntil(helper));
+            helper.succeed();
+        });
+    }
+
+    /**
+     * 周期短于锁定窗口的时钟（10 tick 高 / 10 tick 低，周期 20 小于 steam 55）：10/30/50 的
+     * 断电不动锁，+20/+40 的上升沿仍在锁内被无视；+60 是锁过期后的第一个上升沿，重新起播
+     * 一次，+80 又落进新锁内被无视。
+     */
+    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", batch = "train_horn_clock",
+            timeoutTicks = 120)
+    public static void clockShorterThanLockPlaysOncePerWindow(GameTestHelper helper) {
+        placeWhistleRig(helper);
+        helper.setBlock(ENGINE, AllBlocks.STEAM_ENGINE.get().defaultBlockState());
+        long t0 = helper.getLevel().getGameTime();
+        helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
+        long firstUntil = hornUntil(helper);
+        helper.assertTrue(firstUntil == t0 + TrainHorn.HornKind.STEAM.durationTicks(),
+                "precondition: the first edge must lock the full horn, until=" + firstUntil);
+        long[] secondUntil = {firstUntil};
+        helper.runAfterDelay(10, () -> helper.setBlock(SIGNAL, Blocks.AIR));
+        helper.runAfterDelay(20, () -> {
+            helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
+            helper.assertTrue(hornUntil(helper) == firstUntil,
+                    "rise at +20 inside the lock must be ignored, until=" + hornUntil(helper));
+        });
+        helper.runAfterDelay(30, () -> helper.setBlock(SIGNAL, Blocks.AIR));
+        helper.runAfterDelay(40, () -> {
+            helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
+            helper.assertTrue(hornUntil(helper) == firstUntil,
+                    "rise at +40 inside the lock must be ignored, until=" + hornUntil(helper));
+        });
+        helper.runAfterDelay(50, () -> helper.setBlock(SIGNAL, Blocks.AIR));
+        helper.runAfterDelay(60, () -> {
+            long rise = helper.getLevel().getGameTime();
+            helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
+            secondUntil[0] = rise + TrainHorn.HornKind.STEAM.durationTicks();
+            helper.assertTrue(hornUntil(helper) == secondUntil[0],
+                    "the first rise after the lock expires must start a new horn, until="
+                            + hornUntil(helper) + " expected=" + secondUntil[0]);
+        });
+        helper.runAfterDelay(70, () -> helper.setBlock(SIGNAL, Blocks.AIR));
+        helper.runAfterDelay(80, () -> {
+            helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
+            helper.assertTrue(hornUntil(helper) == secondUntil[0],
+                    "rise at +80 inside the new lock must be ignored, until=" + hornUntil(helper));
+            helper.succeed();
         });
     }
 
@@ -312,8 +421,11 @@ public final class TrainHornGameTests {
         });
     }
 
-    /** 触发包音高 = 2^(v−1)：v=0.0 → 0.5，v=2.0 → 2.0（服务端权威，随包下发）。 */
-    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", timeoutTicks = 40)
+    /**
+     * 触发包音高 = 2^(v−1)：v=0.0 → 0.5，v=2.0 → 2.0（服务端权威，随包下发）。
+     * 规则 B 下断电不清锁，第二次触发必须等第一段播满（锁过期）后再断电/上电。
+     */
+    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", timeoutTicks = 100)
     public static void triggerPayloadPitchFollowsPitchValue(GameTestHelper helper) {
         placeWhistleRig(helper);
         helper.setBlock(ENGINE, AllBlocks.STEAM_ENGINE.get().defaultBlockState());
@@ -321,13 +433,16 @@ public final class TrainHornGameTests {
             setPitchTenths(helper, TrainHorn.PITCH_TENTHS_MIN);
             helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
             helper.runAfterDelay(2, () -> {
-                helper.assertTrue(hornUntil(helper) > 0L, "precondition: the rising edge must start the horn");
+                long firstUntil = hornUntil(helper);
+                helper.assertTrue(firstUntil > 0L, "precondition: the rising edge must start the horn");
                 helper.assertTrue(Math.abs(hornPitch(helper) - 0.5F) < 1.0E-6F,
                         "v=0.0 must play one octave lower (0.5), got " + hornPitch(helper));
                 helper.assertTrue(hornPitch(helper) == TrainHorn.heardPitch(TrainHorn.PITCH_TENTHS_MIN),
                         "the payload pitch must equal 2^(v-1)");
                 helper.setBlock(SIGNAL, Blocks.AIR);
-                helper.runAfterDelay(2, () -> {
+                helper.runAfterDelay(60, () -> {
+                    helper.assertTrue(helper.getLevel().getGameTime() > firstUntil,
+                            "precondition: the first clip must have ended before retriggering");
                     setPitchTenths(helper, TrainHorn.PITCH_TENTHS_MAX);
                     helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
                     helper.runAfterDelay(2, () -> {
