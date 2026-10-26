@@ -1391,9 +1391,15 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
   仍服务端权威：**触发时刻取本支汽笛的 v 算 2^(v−1)** 随包下发，客户端不读本地配置
   （无双端漂移），值域恰好是引擎钳制区间 [0.5, 2.0]。
 - L5 距离/时长常量：锁定时长=素材实测（ffprobe 单声道版 steam 2.60s→55 tick、
-  diesel 3.04s→64、elec 3.43s→72），换素材须同步改 `TrainHorn.HornKind`。
+  diesel 3.04s→64、elec 2.78s→59；取整规则 = ceil(秒×20)+3），换素材须同步改 `TrainHorn.HornKind`。
   （2026-10-22 elec 换正确素材：用户补供 `TrainHorn_Elec (1).ogg` 3.43s，
-  原 `TrainHorn_Elec.ogg` 3.04s 为发错的素材，已降混单声道入库替换。）
+  原 `TrainHorn_Elec.ogg` 3.04s 为发错的素材，已降混单声道入库替换。
+  2026-10-26 elec 再换 `TrainHorn_Elec (2).ogg`（2.78s）并做响度处理：降混单声道 → 170 Hz
+  四阶高通（去 50–220 Hz 电机隆隆声/颤动）→ 4× 过采样慢限幅（250 ms 释放，拉平包络）→
+  tanh 软削波（用户接受少量失真换响度）→ 快限幅 → 头 8 ms / 尾 0.3 s 淡入淡出（去起止爆音）→
+  Vorbis q6；成品 −6.4 LUFS，解码样本峰 −0.18 dBFS（游戏按 16 bit 解码，不削顶）。
+  原素材立体声 160 kbps、8 kHz 以上已被截掉，高频无法恢复；处理脚本与候选试听版留在
+  仓库外 `E:\misc\_horn-elec-2026-10-26\`。）
 - L6 范围：静止世界 + Sable 结构（声音按结构当前世界位置路由，粒子/声像每 tick
   重投影跟随）；Create contraption（活塞/轴承上的汽笛）不管。**在案限制**：Sable
   结构旋转（yaw）后音符粒子的「前冲」方向取 plot 坐标系的汽笛 FACING，不随结构

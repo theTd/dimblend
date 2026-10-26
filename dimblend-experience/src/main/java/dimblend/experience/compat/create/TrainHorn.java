@@ -66,8 +66,8 @@ import org.jetbrains.annotations.Nullable;
  * 1.4–2.0 大（{@link #sizeForTenths}）。播放音高 = 2^(v−1)（{@link #heardPitch}）：
  * 1.0 为原声，0.0 低一个八度（0.5），2.0 高一个八度（2.0）——恰好落在引擎
  * {@code SoundEngine.calculatePitch} 的 [0.5, 2.0] 钳制区间内。</li>
- * <li>锁定：时长 = 素材实测时长（ffprobe：steam 2.60s / diesel 3.04s / elec 3.43s
- * （2026-10-22 换正确素材），换素材须同步改 {@link HornKind#durationTicks}），存服务端 BE
+ * <li>锁定：时长 = 素材实测时长（ffprobe：steam 2.60s / diesel 3.04s / elec 2.78s
+ * （2026-10-26 换新素材），换素材须同步改 {@link HornKind#durationTicks}），存服务端 BE
  * （{@link TrainHornStateAccess}，纯内存不落盘，区块卸载/重进清零——同 SteamEngineOverload
  * 口径）。音高刻度与特殊模式标志则相反：落盘并随 BE 更新包同步客户端。</li>
  * <li>声音下发：自定义 payload 广播到投影后世界坐标 528 格内玩家；客户端
@@ -117,7 +117,7 @@ public final class TrainHorn {
     public enum HornKind {
         STEAM(ModSounds.TRAIN_HORN_STEAM, 55, 0.60D, "hud.dimblend_experience.train_horn.kind.steam"),
         DIESEL(ModSounds.TRAIN_HORN_DIESEL, 64, 0.08D, "hud.dimblend_experience.train_horn.kind.diesel"),
-        ELEC(ModSounds.TRAIN_HORN_ELEC, 72, 0.35D, "hud.dimblend_experience.train_horn.kind.elec");
+        ELEC(ModSounds.TRAIN_HORN_ELEC, 59, 0.35D, "hud.dimblend_experience.train_horn.kind.elec");
 
         private final DeferredHolder<SoundEvent, SoundEvent> sound;
         /** 锁定/张嘴时长（tick）：素材时长上取整 + 少量收尾余量。 */
