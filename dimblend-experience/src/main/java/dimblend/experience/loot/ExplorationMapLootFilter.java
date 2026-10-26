@@ -32,7 +32,8 @@ import net.neoforged.neoforge.event.LootTableLoadEvent;
  * 运行时短路一切 exploration_map 目的地并产纸（不跑昂贵的结构搜索，覆盖复合条目/
  * 程序化战利品表/模组 GLM 路径）；③ {@link PaperInsteadOfMapsLootModifier} 全局
  * 战利品修饰器兜底，把最终生成的任何地图堆换成 1 张纸。
- * 制图师村民交易不走战利品表，不受影响。</p>
+ * 制图师村民交易不走战利品表；那条路径由 A13 直接禁止探险图条目
+ * （{@link dimblend.experience.mixin.TreasureMapTradeMixin}，与维度无关、无开关）。</p>
  */
 @EventBusSubscriber(modid = DimBlend.MODID)
 public final class ExplorationMapLootFilter {

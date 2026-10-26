@@ -63,6 +63,10 @@
 > `itemDrainNetherEvaporationMbPerSecond`（默认 50 mB/s）蒸干存水，只认水；
 > A10 由「移除部分 destination 地图条目」改为三层「一切地图最终换 1 张纸」
 > （表加载替换 / exploration_map 全目的地短路 / NeoForge GLM 最终网）。
+> 2026-10-26（A13 制图师，复现实测后拍板）：G1 收编制图师触发 4 次探险图结构搜索，
+> dimblend:rotating 单 tick 卡死 430.4 秒——探险图交易一律不产 offer（绝不搜结构），
+> 制图台移出 #minecraft:acquirable_job_site（旧存档潜在工作站点由原版 ValidateNearbyPoi
+> 擦除）；村庄生成、合成配方与已有制图师的职业不变。
 > 本文件是开发依据；原始清单仅作需求索引，两者冲突时以本文件为准。
 
 ## 0. 环境基线
@@ -170,7 +174,7 @@
      `data/neoforge/loot_modifiers/global_loot_modifiers.json` +
      `data/dimblend_experience/loot_modifiers/paper_instead_of_maps.json`。
      前两层覆盖不到的「模组直接往 loot list 塞成品地图」路径由本层兜住
-- 制图师村民交易不走战利品表，不受影响；关 `lootMapFilter` 时三层全部透传（原版行为）
+- 制图师村民交易不走战利品表；该路径由 A13 直接禁止探险图条目（见下）；关 `lootMapFilter` 时三层全部透传（原版行为）
 - 开关 `lootMapFilter`（默认开）
 
 ### A11 藏宝箱贝壳 X 标记（全局功能，用户拍板）
@@ -226,6 +230,45 @@
   GameTest `MonsterDensityGameTests`（旋转维度=主世界的维度门注入下，p=0 刷怪笼 0 只、
   p=1 刷出；census 命令注册并可执行）；`TuningOptionTest` 钉默认值镜像；
   `TuningTranslationsTest` 覆盖中英标签
+
+### A13 制图师工作站与探险图交易（全局功能，2026-10-26 用户拍板）
+
+- 起因：2026-10-26 复现（`_batch-2026-10-26/village-freeze`，工作树 fix/village-freeze）——
+  G1 收编制图师时 `rebuildTrades` 一次物化 1–5 级交易，其中 4 条是
+  `TreasureMapForEmeralds`；每条都走 `ServerLevel.findNearestMapStructure(tag, pos, 100, true)`，
+  在 `dimblend:rotating` 里还要**每个 band delegate 各扫一遍**，逐候选区块
+  `StructureCheck.checkStart` → `scanChunk().join()` + 阻塞 `getChunk(STRUCTURE_STARTS)`。
+  实测（dev 专用服，盖章制图师+40 tick 扫描）：单 tick 运行 **430444 ms**、
+  `Can't keep up! Running 430440ms behind`，13574 个栈采样里 99.6% 在
+  `StructureCheck.checkStart`；玩家侧表现就是整局永久冻结（单机没有 60 秒服务端 watchdog，
+  只能杀进程 → 回档）。栈见 `repro/NOTES.md`。
+- 规则 1（探险图交易，全局、不限维度）：`VillagerTrades.TreasureMapForEmeralds.getOffer`
+  一律返回 null，**任何调用者都不再执行结构搜索**。覆盖原版升级物化、G1 收编重建、
+  交易重平衡 `TypeSpecificTrade` 包装（包装类转调本类）、模组/数据包直接 new 的路径；
+  `AbstractVillager.addOffersFromItemListings` 会跳过 null 并继续抽下一条，所以同级的
+  其余交易照旧（不需要在 `rebuildTrades` 里再过滤）。实现：`TreasureMapTradeMixin`
+  （getOffer HEAD 短路，包私有嵌套类用 targets 字符串）。空地图（`ItemsForEmeralds(MAP)`）
+  不是探险图、不搜索，保留。
+- 规则 2（制图台不再是村民工作站，全局、不限维度）：`#minecraft:acquirable_job_site`
+  里 `remove` 掉 `minecraft:cartographer`（NeoForge 21.1 `TagLoader` 的 remove 段，
+  见 `data/minecraft/tags/point_of_interest_type/acquirable_job_site.json`）。逐路径：
+  - 新认领：`AcquirePoi` 用 `Villager.POI_MEMORIES` 的 `POTENTIAL_JOB_SITE` 谓词
+    （= `VillagerProfession.ALL_ACQUIRABLE_JOBS` → 该 tag）扫描 48 格内 POI，制图台不再入选
+  - 旧存档已存的 `POTENTIAL_JOB_SITE`：原版 `ValidateNearbyPoi`（core 包 priority 0）
+    在 16 格内用同一谓词校验并擦除记忆，时序上先于 `AssignProfessionFromJobSite`
+    （priority 10），所以村民走到桌前也不会被认领；GameTest 用人工记忆覆盖此路径
+  - 村庄生成/结构模板：照旧放制图台方块（方块、POI 注册、合成配方都不动），
+    模板村民的 `assignProfessionWhenSpawned` 只会认领仍在 tag 里的工作站
+  - 允许且不改：已有制图师保留职业（其 `heldJobSite` 谓词是 `PoiTypes.CARTOGRAPHER`，
+    与该 tag 无关，工作站点记忆校验也不受影响）；`/summon`、刷怪蛋、治愈僵尸村民
+    （恢复僵尸身上已存的职业）是显式数据选择，按用户口径不拦
+- 不新增开关（两条都是规则）；`lootMapFilter` 只控制 A10 三层，与 A13 无关
+- 测试：`CartographerJobSiteTagTest`（tag 资源语义：只 remove 制图师、不整表 replace、
+  不误删其他工作站）；GameTest `CartographerRuleGameTests`：① 直调列表 `getOffer(null, …)`
+  返回 null 且不 NPE（= 未进入搜索）② 制图师升级物化无探险图 ③ tag 谓词拒绝制图台、
+  图书馆员仍可认领 ④ 无业村民挨着制图台 60 tick 不转职 ⑤ 旧存档潜在工作站点被擦除
+  ⑥ G1 收编一次扫描 <500 ms、等级 5、无探险图、全部 maxUses=1
+
 
 ## 2. 板块 B：CDG 柴油机行为
 
@@ -1109,6 +1152,7 @@
 | LootPoolSingletonContainerAccessor / LootItemAccessor | 原版条目类（functions/item/weight/quality 读取） | A10 | 无条件（原版目标） |
 | LootPoolEntryContainerAccessor / CompositeEntryBaseAccessor | 原版条目条件、复合 children 读取 | A10 | 无条件（原版目标） |
 | BuriedTreasureShellMarkerMixin | 原版 BuriedTreasurePiece（postProcess 内 createChest 之后读 boundingBox 拿宝箱坐标，调 TreasureShellMarker.mark） | A11 | 无条件（原版目标） |
+| TreasureMapTradeMixin | 原版 VillagerTrades$TreasureMapForEmeralds（getOffer HEAD 返回 null，不跑结构搜索） | A13 | 无条件（原版目标，包私有嵌套类按 targets 指定） |
 
 事件处理器（非 mixin）：DeathRules（A1，LivingExperienceDropEvent + PlayerEvent.Clone）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainDeadmanSync（E7' 锁存状态进服/换维度补发；规则本体 `TrainDeadmanBrake` 在 Simurail 在场时显式注册维度 Post tick 与卸载/停服事件，mixin 仅采样）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、EnderStorageStructureGuard（G5）、ExplorationMapLootFilter（A10，LootTableLoadEvent 战利品表加载时把地图条目替换为纸条目）、PaperInsteadOfMapsLootModifier（A10 第三层，NeoForge 全局战利品修饰器，最终把地图堆换成 1 张纸）。
 

@@ -60,7 +60,8 @@ public final class Config {
                     + "最终都变成 1 张纸（minecraft:paper）。三层：战利品表加载时把 map/filled_map/MapItem 条目"
                     + "替换为纸条目（保留权重/品质/条件、丢弃函数，含 alternatives/group/sequence 嵌套）；"
                     + "运行时 exploration_map 函数一律短路产纸（不搜索结构）；全局战利品修饰器兜底"
-                    + "把所有最终生成的地图堆换成 1 张纸。制图师村民交易不走战利品表、不受影响")
+                    + "把所有最终生成的地图堆换成 1 张纸。制图师交易不走战利品表；该路径由 A13 直接禁止"
+                    + "探险图条目（与维度无关，无开关），本开关只管战利品表")
             .define("lootMapFilter", true);
 
     public static final ModConfigSpec.BooleanValue TREASURE_SHELL_X = BUILDER

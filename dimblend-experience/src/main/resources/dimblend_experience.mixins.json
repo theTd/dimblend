@@ -16,6 +16,7 @@
 		"MerchantOfferAccessor",
 		"VillagerAccessor",
 		"VillagerMasterMixin",
+		"TreasureMapTradeMixin",
 		"LimitedWaterMixin",
 		"IcePlacementBanMixin",
 		"ChunkMapVoidFitStripMixin",

@@ -53,21 +53,25 @@ public final class VillagerMasterRules {
         // Named profiler section, so /dimblend slowticks can attribute this listener.
         event.getLevel().getProfiler().push("dimblend:villager_master");
         try {
-            tickLevel(event);
+            Level raw = event.getLevel();
+            if (raw instanceof ServerLevel level && level.getGameTime() % SCAN_INTERVAL == 0) {
+                scanLevel(level);
+            }
         } finally {
             event.getLevel().getProfiler().pop();
         }
     }
 
-    private static void tickLevel(LevelTickEvent.Post event) {
-        Level raw = event.getLevel();
-        if (!(raw instanceof ServerLevel level) || !RotatingDimension.is(level)) {
+    /**
+     * One unconditional scan pass over a level (dimension/config gates inside, cadence outside).
+     * The tick handler calls it on the 40-tick boundary; GameTests call it directly so the
+     * adoption cost can be measured without waiting for the cadence.
+     */
+    public static void scanLevel(ServerLevel level) {
+        if (!RotatingDimension.is(level)) {
             return;
         }
         if (!Config.VILLAGER_MASTER.get()) {
-            return;
-        }
-        if (level.getGameTime() % SCAN_INTERVAL != 0) {
             return;
         }
         for (Entity entity : level.getAllEntities()) {
