@@ -13,7 +13,7 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 /**
  * Registry entries of the observer blaze: one block (no BlockItem: the mode is entered on a placed burner and
  * left again, never carried), and its block entity type. Registered only while Create and Sable are loaded,
- * because the block reuses Create's heater shape and cage model and only ever exists on a Sable vehicle.
+ * because the block reuses Create's heater shape and blaze renderer and only ever exists on a Sable vehicle.
  *
  * <p>The block entity type resolves its block through {@link #OBSERVER_BLAZE}, so the supplier indirection keeps
  * static-initialisation order safe: the block is registered before the type supplier runs.</p>

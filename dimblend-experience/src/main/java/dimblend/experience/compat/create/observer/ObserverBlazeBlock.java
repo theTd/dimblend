@@ -26,7 +26,7 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
- * The observer blaze: a blaze burner cage holding a stock keeper blaze and a floating spyglass. It accepts no
+ * The observer blaze: a stock keeper blaze and a floating spyglass, with no cage. It accepts no
  * fuel and provides no heat (it has no heat property and is in no Create heater registration), and it emits
  * weak redstone power on all sides while a searchlight marks lava near it.
  */
@@ -117,7 +117,7 @@ public final class ObserverBlazeBlock extends Block implements EntityBlock {
         }
     }
 
-    /** A few flames around the top of the cage, in the style of Create's burner particles. */
+    /** A few flames above the blaze, in the style of Create's burner particles. */
     static void emitFlame(Level level, BlockPos pos, RandomSource random, int count) {
         for (int i = 0; i < count; i++) {
             double x = pos.getX() + 0.2 + random.nextDouble() * 0.6;

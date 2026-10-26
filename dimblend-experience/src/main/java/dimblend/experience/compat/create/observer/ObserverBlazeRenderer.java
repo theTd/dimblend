@@ -24,7 +24,7 @@ import org.joml.Vector3d;
 
 /**
  * Draws the observer blaze: Create's stock keeper blaze (logistics hat, FADING heat so it is animated, head turned
- * towards the nearest player) and a slowly spinning spyglass half a block above the cage.
+ * towards the nearest player) and a slowly spinning spyglass half a block above the block, with no cage.
  *
  * <p>Two details matter for blocks on a Sable plot. The block entity lives at plot coordinates, so the camera
  * distance the vanilla dispatcher would use is meaningless -- {@link #shouldRender} therefore never culls. And the

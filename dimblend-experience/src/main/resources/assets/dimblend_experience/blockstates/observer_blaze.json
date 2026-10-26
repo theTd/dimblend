@@ -1,7 +1,7 @@
 {
   "variants": {
     "": {
-      "model": "create:block/blaze_burner/block"
+      "model": "dimblend_experience:block/observer_blaze"
     }
   }
 }
