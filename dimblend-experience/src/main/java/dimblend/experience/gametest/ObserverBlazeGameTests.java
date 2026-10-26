@@ -273,7 +273,7 @@ public final class ObserverBlazeGameTests {
         Vec3 direction = beamDirection(vehicle, Direction.EAST);
         BlockPos lava = BlockPos.containing(lens.add(direction.scale(3.0)));
         BlockPos near = lava.south(2);
-        BlockPos far = lava.south(11);
+        BlockPos far = lava.south(20);
         BlockPos redstoneLamp = near.east();
         fixture.track(lava.below());
         fixture.track(lava);
@@ -312,7 +312,7 @@ public final class ObserverBlazeGameTests {
                     // Lit again, but the radius shrinks below the far observer's distance.
                     level.setBlock(lampPlot, level.getBlockState(lampPlot).setValue(BlockStateProperties.LIT, true),
                             Block.UPDATE_ALL);
-                    Config.OBSERVER_BLAZE_RADIUS.set(8);
+                    Config.OBSERVER_BLAZE_RADIUS.set(16);
                     helper.runAfterDelay(25, fixture.phase(() -> {
                         helper.assertTrue(powered(level, near),
                                 "the near observer is still inside the minimum radius");
@@ -378,12 +378,12 @@ public final class ObserverBlazeGameTests {
         MarkedLavaFixture fixture = new MarkedLavaFixture(level, saveConfig());
         try {
             applyMarkedLavaDefaults();
-            Config.OBSERVER_BLAZE_RADIUS.set(8);
+            Config.OBSERVER_BLAZE_RADIUS.set(16);
             BlockPos lampWorld = helper.absolutePos(WORLD_LAMP);
             helper.setBlock(WORLD_LAMP, lamp(Direction.EAST, true, true));
             BlockPos lava = lampWorld.east(3);
             BlockPos near = lava.south(2);
-            BlockPos far = lava.south(11);
+            BlockPos far = lava.south(20);
             fixture.track(lampWorld);
             fixture.track(lava.below());
             fixture.track(lava);
@@ -398,7 +398,7 @@ public final class ObserverBlazeGameTests {
                         "the lava two blocks from the near observer is inside the radius, got "
                                 + level.getBlockState(near));
                 helper.assertTrue(!powered(level, far),
-                        "the same scan must not power an observer eleven blocks away at radius 8, got "
+                        "the same scan must not power an observer twenty blocks away at radius 16, got "
                                 + level.getBlockState(far));
                 fixture.cleanup();
                 helper.succeed();
@@ -585,7 +585,7 @@ public final class ObserverBlazeGameTests {
         Config.SABLE_HEADLIGHT_INTENSITY.set(1.0D);
         Config.SABLE_HEADLIGHT_OCCLUSION.set(true);
         Config.SABLE_HEADLIGHT_LAVA_HIGHLIGHT.set(true);
-        Config.OBSERVER_BLAZE_RADIUS.set(24);
+        Config.OBSERVER_BLAZE_RADIUS.set(32);
     }
 
     /**

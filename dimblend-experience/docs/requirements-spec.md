@@ -1021,7 +1021,7 @@
 - 共享化：`HeadlightMath` / `HeadlightLavaMath` / `HeadlightOcclusionMath` / `HeadlightOccluders` / `LavaSurface` / `LavaEdge` / `HeadlightLavaScan` / `LoadedChunks` 移入 `dimblend.experience.headlight`；扫描改成 `Level` 型，客户端描边与服务端标记集都是同一个 `HeadlightLavaScan.scan(...)`，服务端再用 `HeadlightLavaMath.anyWithin` 按观察者的半径作答。`HeadlightBeam` / `HeadlightCollector` / 全部 GL 代码留在客户端；occluder 缓存换成并发 map，因为渲染线程与服务端 tick 现在共用它。
 - 灯具枚举：`MarkedLavaTracker` 按 **ServerLevel 实例**记账（维度键会让同维度的两局共用缓存），只在有观察者登记时工作，服务器停止（`ServerStoppedEvent`）或维度卸载（`LevelEvent.Unload`）即丢弃。载具来自 `ServerSubLevelContainer.getContainer(level).getAllSubLevels()`；每辆车用 `maybeHas` 按调色板剪枝扫 plot 区块，缓存**灯的位置**最多 40 tick。**世界里的灯与客户端同口径参与**（客户端 `HeadlightCollector` 对 `Sable.getContainingClient == null` 的灯同样出光束、同样描边）：以每个观察者投影后的世界中心为圆心、`observerBlazeRadius + 射程` 为半径，只扫**已加载**的世界区块（`getChunkSource().getChunk(..., FULL, false)`，绝不加载或生成区块），同样 `maybeHas` 剪枝，按区块缓存灯位置最多 40 tick。载具灯的镜头位置与朝向每轮用 `logicalPose()` 现算（客户端用 `renderPose()`），世界灯直接用方块中心与朝向；亮/激活状态每轮现读，所以开关灯不必等重扫。所有方块读取经 `LoadedChunks`（未加载区块一律当「未知」跳过），扫描与遮挡轨迹都不会把区块读进来。
 - 频率与预算：整张灯表与**一次完整扫描**（与客户端同一个 `HeadlightLavaScan.scan`，同样的 0.04 阈值、65536 体素预算与 1024 面上限）最多每 2 tick 做一次（10 Hz，与客户端描边同频；2026-10-26 玩家反馈原 10 tick 窗口叠加观察者自身 10 tick 查询相位、最坏约 1 秒才出红石，改为扫描 2 tick + 观察者每 tick 查询，最坏约 0.1 秒），之后每个观察者每 tick 只对同一份照亮顶面列表做距离判定（`HeadlightLavaMath.anyWithin`）——扫描成本与观察者数量无关；查询前先用 `range + radius` 的球剪掉够不到的灯。
-- 开关：`sableHeadlight` 与 `sableHeadlightLavaHighlight` 必须同时开，并沿用射程/角度/强度/遮挡四项；新增 `observerBlazeRadius`（8–64，默认 24，步长 1）定义「顶面中心在 N 格内」的欧氏半径，见 parameter-tuning。
+- 开关：`sableHeadlight` 与 `sableHeadlightLavaHighlight` 必须同时开，并沿用射程/角度/强度/遮挡四项；新增 `observerBlazeRadius`（16–64，默认 32，步长 1；2026-10-26 由 8–64/默认 24 调整）定义「顶面中心在 N 格内」的欧氏半径，见 parameter-tuning。
 - 接受的偏差（用户口径）：① 服务端遮挡只测世界方块，载具（plot）方块不当遮挡——plot 方块的遮挡要按载具位姿投影，而载具外壳很少挡自己的灯；② 客户端「最近 8 盏灯」是渲染上限，服务端没有摄像机，不适用，改由体素预算兜底；③ 客户端「位姿变化才重算」的签名节流不搬到服务端，代之以固定 2 tick 节拍；④ 1024 面上限在客户端按相机距离保留最近面，服务端没有相机，按扫描顺序保留前 1024 面（只在光锥覆盖超大岩浆海时可能不同）；⑤ 世界灯按观察者周围（射程 + 半径）的已加载区块枚举，而客户端按渲染距离索引全部已加载区块，两者对「能照到本观察者的灯」一致。五处都记入已知限制。
 - 验证：`ObserverBlazeGameTests` 9 条（入口消耗 + NBT 存档、世界燃烧室拒绝、退出还原燃料、副手持物时潜行退出、破坏掉落、载具灯标记岩浆通电与四类关断、世界（非载具）灯点亮观察者、两个观察者共用一次扫描但各按自己的半径作答、无热源且读已放置的盆）；半径门限、共用扫描的距离判定与灯预筛的纯函数由 `ObserverBlazeRadiusTest` 覆盖，调参行边界与协议由 `TuningOptionTest` / `TuningSignBitTest` 钉死。
 
@@ -1077,7 +1077,7 @@
 | itemDrainPipeRefill | N3（分液池管道补水：放开 forbidInsertion + 追加 UP 面流体接口，关闭恢复原版） | true |
 | itemDrainNetherEvaporation | N6（下界群系分液池蒸干存水，只蒸水；Sable 载具按世界位置判群系） | true |
 | itemDrainNetherEvaporationMbPerSecond | N6 配套（mB/秒，0–1500，默认 50；每 10 tick 结算，余数跨拍累加） | 50 |
-| observerBlazeRadius | G12（观察者烈焰人标记岩浆探测半径，8–64 格，默认 24；/dbx 面板可调，需 sableHeadlight 与 sableHeadlightLavaHighlight 同开） | 24 |
+| observerBlazeRadius | G12（观察者烈焰人标记岩浆探测半径，16–64 格，默认 32；/dbx 面板可调，需 sableHeadlight 与 sableHeadlightLavaHighlight 同开） | 32 |
 | rotatingDimensionId | A1–A6 作用域维度 id | "dimblend:rotating" |
 
 ### CLIENT 诊断配置（`dimblend_experience-client.toml`）

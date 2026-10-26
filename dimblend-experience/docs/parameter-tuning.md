@@ -72,7 +72,7 @@ all clients through the tuning snapshot (protocol 28, 64-bit availability mask).
 | `sable_headlight_fog_samples` | `sableHeadlightFogSamples` | 8 | 4–24 / 1 |
 | `sable_headlight_occlusion` | `sableHeadlightOcclusion` | on | boolean |
 | `sable_headlight_lava_highlight` | `sableHeadlightLavaHighlight` | on | boolean |
-| `observer_blaze_radius` | `observerBlazeRadius` | 24 blocks | 8–64 / 1 |
+| `observer_blaze_radius` | `observerBlazeRadius` | 32 blocks | 16–64 / 1 |
 
 Only lit `dndecor:*_frontlight` blocks participate: lamps on Sable sublevels
 and lamps placed in the world, exactly as the collector indexes both. The lens
@@ -261,9 +261,10 @@ same 0.04 threshold, the same voxel budget and face cap), so:
 - only lava lit by an **enabled and lit** lamp counts, whether the lamp sits on a
   vehicle or is placed in the world -- the client emits a beam for both;
 - the new row is the Euclidean radius, measured from a lava **top-face centre** to
-  the observer's projected world position. Default 24 blocks covers the default
-  beam's whole reach (22.1 blocks axial) with a little margin; 8 matches a short
-  yard lamp, 64 a long-range searchlight.
+  the observer's projected world position. Default 32 blocks covers the default
+  beam's whole reach (22.1 blocks axial) with room to spare, so lava anywhere in a
+  default beam trips an observer on the same train; 16 is a tight yard guard, 64 a
+  long-range searchlight.
 
 Cost and cadence: one full lava scan is shared by the whole tracker and run at most
 every 2 ticks (10 Hz, the client outline's own rate); each observer queries every tick and answers with a distance test against that one

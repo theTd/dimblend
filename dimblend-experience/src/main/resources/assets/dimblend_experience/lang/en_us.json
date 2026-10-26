@@ -59,7 +59,7 @@
   "screen.dimblend_experience.tuning.sable_headlight_lava_highlight": "Headlight lava highlight",
   "screen.dimblend_experience.tuning.sable_headlight_lava_highlight.description": "Default: on. Wraps lava a lit headlight beam reaches in a gently pulsing orange wireframe box (2x2x2 per block, touching boxes merged); parts behind walls, terrain and vehicles show dimmed. Follows the headlight and shadow options; the world is re-scanned ten times a second only while a beam moves.",
   "screen.dimblend_experience.tuning.observer_blaze_radius": "Observer blaze detection radius",
-  "screen.dimblend_experience.tuning.observer_blaze_radius.description": "Default: 24 blocks. Range: 8-64, step 1. An observer blaze emits redstone strength 15 while a lit searchlight beam marks lava whose top-face centre is within this distance of it. Requires the headlight and lava highlight options.",
+  "screen.dimblend_experience.tuning.observer_blaze_radius.description": "Default: 32 blocks. Range: 16-64, step 1. An observer blaze emits redstone strength 15 while a lit searchlight beam marks lava whose top-face centre is within this distance of it. Requires the headlight and lava highlight options.",
   "block.dndecor.andesite_frontlight": "Andesite Train Searchlight",
   "block.dndecor.brass_frontlight": "Brass Train Searchlight",
   "block.dndecor.copper_frontlight": "Copper Train Searchlight",

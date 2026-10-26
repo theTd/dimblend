@@ -387,10 +387,10 @@ public final class Config {
                     + "follows the headlight renderer's Sable/Veil/no-Iris gate and the occlusion option).")
             .define("sableHeadlightLavaHighlight", true);
     public static final ModConfigSpec.IntValue OBSERVER_BLAZE_RADIUS = BUILDER
-            .comment("Observer blaze detection radius in blocks (8-64, default 24): the block emits redstone strength 15 "
+            .comment("Observer blaze detection radius in blocks (16-64, default 32): the block emits redstone strength 15 "
                     + "while a lit headlight beam marks lava whose top-face centre is within this distance of its world "
                     + "position. Both sableHeadlight and sableHeadlightLavaHighlight must be on; no client is involved.")
-            .defineInRange("observerBlazeRadius", 24, 8, 64);
+            .defineInRange("observerBlazeRadius", 32, 16, 64);
 
     static final ModConfigSpec SPEC = BUILDER.build();
 
