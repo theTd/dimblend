@@ -957,6 +957,31 @@
 - 开关：`sableHeadlightLavaHighlight`（默认 true）在 Sable 面板、与前照灯参数同属 experience 的服务端配置并经快照下发；仍要求 Sable/Veil 在场且未安装 Iris（与渲染器同一注册条件），并随前照灯总开关与强度为零关闭。
 - 验证：`HeadlightLavaMathTest` 11 条覆盖锥体/射程/阈值边界、周长去重（同高/台阶/对角/2×2）、上限就近取整与乱序稳定、1 Hz 脉动、遮挡暗化系数 0.4 与 `hiddenAlpha`；模块单测 230 条全绿。渲染观感（移动列车跟随、Fabulous、水/玻璃遮挡）待实机验收。
 
+### G10 配套 A：探照灯命名与物品提示（2026-10-26）
+
+- 命名：8 种 DnDecor 前灯经我们的 lang 文件改名为「<材质>列车探照灯」（zh_cn / en_us 各 8 条 `block.dndecor.<id>_frontlight`）。DnDecor 不提供 zh_cn，中文改名完全可靠；en_us 的同一键会被 DnDecor 自己的 en_us 覆盖，最终谁生效取决于多命名空间 HashMap 的迭代顺序（随玩家装了多少模组变化），按用户口径接受该不确定性，不做 hack。
+- 提示：新增客户端 `ItemTooltipEvent`（本模块首个），实现为 `client/SearchlightTooltips`，只按注册名判定、不解析第三方类型，任何客户端都安全。8 种前灯在提示末尾追加两行灰色文案（「手持紫水晶碎片右键启用探照模式」/「探照模式可探测并标记岩浆威胁」）；仅 `create:blaze_burner`（不含 `create:empty_blaze_burner`，二者是不同物品 id）追加两行（「手持望远镜右键使其守护列车」/「探测到被标记的岩浆威胁时可发出红石信号」）。四组键均在 zh_cn / en_us 双份落地，永远可见、不受 Shift 门控。
+- 行为不变：紫水晶激活仍是单向、生存消耗 1 个、拆除不返还；本轮只改名称与提示。
+
+### G11 观察者烈焰人（Observer Blaze，2026-10-26）
+
+- 方块 `dimblend_experience:observer_blaze`（无 BlockItem）、其 BE 与客户端 BER 仅在 Create + Sable 同时在场时注册。外观复用 Create 的笼子方块模型（blockstate 指向 `create:block/blaze_burner/block`），烈焰人由 BER 调 `BlazeBurnerRenderer.renderShared(..., HeatLevel.FADING, ..., AllPartialModels.LOGISTICS_HAT, ...)` 画出（与 Create 仓库管理员 GUI 预览同一入口；FADING 才有动画且不画火焰贴片），头顶 0.5 格悬浮、0.5 倍大小、缓慢旋转的望远镜；头部朝最近玩家，Sable plot 内先把玩家按 `renderPose` 投影进 plot 再取水平角。
+- 进入：手持望远镜（任一手）右键 **Sable 载具上** 的 `create:blaze_burner`（不是空燃烧室：`HEAT_LEVEL != NONE` 因而有 BE；也不是 `create:lit_blaze_burner`）。`PlayerInteractEvent.RightClickBlock` 双端取消（望远镜不会进入缩放），服务端先抓原方块状态与完整 BE NBT（`saveWithFullMetadata`），再 `setBlock` 本方块，生存消耗 1 个望远镜（创造不消耗），在原世界位置播一次 `entity.player.levelup`。
+- 退出：潜行 + 主手空手右键。原版 `ServerPlayerGameMode.useItemOn` 在主手为空时必走 `useWithoutItem`（潜行时也走，只有「潜行 + 手持物品」才跳过），本方块在该钩子拦截：服务端把望远镜放回空的主手（放不下进背包、再放不下掉落），恢复原方块状态后把 NBT 灌回新建的燃烧室 BE（燃料、剩余燃烧时间、护目镜、创造标记全部还原），并刷新正上方盆的缓存。
+- 无燃料、无热量：本方块不在 `BoilerHeater` 直接注册表、不在 `create:passive_boiler_heaters` 标签、也没有 `HEAT_LEVEL` 属性，故锅炉 `BoilerHeater.findHeat == -1`、盆 `BasinBlockEntity.getHeatLevelOf == NONE`；它没有物品处理器与 `useItemOn` 燃料路径，漏斗/溜槽/机械臂/发射器都不认它。破坏走战利品表，只掉 `create:blaze_burner` + `minecraft:spyglass`（与 Create 自身「燃烧室掉燃烧室」一致，NBT 不随物品走）；`getCloneItemStack` 给燃烧室。
+- 红石：`isSignalSource` 恒真、`getSignal` 在 POWERED 时六面皆 15（弱电，等价红石块）；POWERED 变更用 flag 3 写回并通知邻居，邻居当拍即读到新电平。`animateTick` 在 POWERED 时喷 3 个 `ParticleTypes.FLAME`，另由 BE 客户端 tick 每 2 tick 补 1 个——`animateTick` 是采样钩子（客户端每 tick 随机抽约 1334 个方块位置，单块命中率只有百分之几），两者合起来才是持续火苗。
+- 渲染注意：BE 位于 plot 坐标，摄像机距离无意义，BER 的 `shouldRender` 恒真不剔除；且不注册 Flywheel visualizer，BER 在任何客户端都会执行（Create 自己的燃烧室用 `skipVanillaRender(true)`，其 BER 在 Flywheel 下永不执行，这正是本方案不选「给燃烧室加标记 mixin」的原因）。
+
+### G12 服务端「标记岩浆」检测（2026-10-26，服务端）
+
+- 定义：与客户端描边同一判据——被 **已激活且点亮** 的前灯（载具上的，或直接放在世界里的）照亮的暴露岩浆顶面。阈值 0.04、单次 65536 体素预算、1024 面上限全部沿用客户端常量。
+- 共享化：`HeadlightMath` / `HeadlightLavaMath` / `HeadlightOcclusionMath` / `HeadlightOccluders` / `LavaSurface` / `LavaEdge` / `HeadlightLavaScan` / `LoadedChunks` 移入 `dimblend.experience.headlight`；扫描改成 `Level` 型，客户端描边与服务端标记集都是同一个 `HeadlightLavaScan.scan(...)`，服务端再用 `HeadlightLavaMath.anyWithin` 按观察者的半径作答。`HeadlightBeam` / `HeadlightCollector` / 全部 GL 代码留在客户端；occluder 缓存换成并发 map，因为渲染线程与服务端 tick 现在共用它。
+- 灯具枚举：`MarkedLavaTracker` 按 **ServerLevel 实例**记账（维度键会让同维度的两局共用缓存），只在有观察者登记时工作，服务器停止（`ServerStoppedEvent`）或维度卸载（`LevelEvent.Unload`）即丢弃。载具来自 `ServerSubLevelContainer.getContainer(level).getAllSubLevels()`；每辆车用 `maybeHas` 按调色板剪枝扫 plot 区块，缓存**灯的位置**最多 40 tick。**世界里的灯与客户端同口径参与**（客户端 `HeadlightCollector` 对 `Sable.getContainingClient == null` 的灯同样出光束、同样描边）：以每个观察者投影后的世界中心为圆心、`observerBlazeRadius + 射程` 为半径，只扫**已加载**的世界区块（`getChunkSource().getChunk(..., FULL, false)`，绝不加载或生成区块），同样 `maybeHas` 剪枝，按区块缓存灯位置最多 40 tick。载具灯的镜头位置与朝向每轮用 `logicalPose()` 现算（客户端用 `renderPose()`），世界灯直接用方块中心与朝向；亮/激活状态每轮现读，所以开关灯不必等重扫。所有方块读取经 `LoadedChunks`（未加载区块一律当「未知」跳过），扫描与遮挡轨迹都不会把区块读进来。
+- 频率与预算：整张灯表与**一次完整扫描**（与客户端同一个 `HeadlightLavaScan.scan`，同样的 0.04 阈值、65536 体素预算与 1024 面上限）最多每 10 tick 做一次，之后每个观察者只对同一份照亮顶面列表做距离判定（`HeadlightLavaMath.anyWithin`）——扫描成本与观察者数量无关；查询前先用 `range + radius` 的球剪掉够不到的灯。
+- 开关：`sableHeadlight` 与 `sableHeadlightLavaHighlight` 必须同时开，并沿用射程/角度/强度/遮挡四项；新增 `observerBlazeRadius`（8–64，默认 24，步长 1）定义「顶面中心在 N 格内」的欧氏半径，见 parameter-tuning。
+- 接受的偏差（用户口径）：① 服务端遮挡只测世界方块，载具（plot）方块不当遮挡——plot 方块的遮挡要按载具位姿投影，而载具外壳很少挡自己的灯；② 客户端「最近 8 盏灯」是渲染上限，服务端没有摄像机，不适用，改由体素预算兜底；③ 客户端「位姿变化才重算」的签名节流不搬到服务端，代之以固定 10 tick 节拍；④ 1024 面上限在客户端按相机距离保留最近面，服务端没有相机，按扫描顺序保留前 1024 面（只在光锥覆盖超大岩浆海时可能不同）；⑤ 世界灯按观察者周围（射程 + 半径）的已加载区块枚举，而客户端按渲染距离索引全部已加载区块，两者对「能照到本观察者的灯」一致。五处都记入已知限制。
+- 验证：`ObserverBlazeGameTests` 9 条（入口消耗 + NBT 存档、世界燃烧室拒绝、退出还原燃料、副手持物时潜行退出、破坏掉落、载具灯标记岩浆通电与四类关断、世界（非载具）灯点亮观察者、两个观察者共用一次扫描但各按自己的半径作答、无热源且读已放置的盆）；半径门限、共用扫描的距离判定与灯预筛的纯函数由 `ObserverBlazeRadiusTest` 覆盖，调参行边界与协议由 `TuningOptionTest` / `TuningSignBitTest` 钉死。
+
 ## 8. 实现覆盖对账（实现完毕时点）
 
 ### Config 开关清单（server 端 `dimblend_experience-server.toml`）
@@ -1009,6 +1034,7 @@
 | itemDrainPipeRefill | N3（分液池管道补水：放开 forbidInsertion + 追加 UP 面流体接口，关闭恢复原版） | true |
 | itemDrainNetherEvaporation | N6（下界群系分液池蒸干存水，只蒸水；Sable 载具按世界位置判群系） | true |
 | itemDrainNetherEvaporationMbPerSecond | N6 配套（mB/秒，0–1500，默认 50；每 10 tick 结算，余数跨拍累加） | 50 |
+| observerBlazeRadius | G12（观察者烈焰人标记岩浆探测半径，8–64 格，默认 24；/dbx 面板可调，需 sableHeadlight 与 sableHeadlightLavaHighlight 同开） | 24 |
 | rotatingDimensionId | A1–A6 作用域维度 id | "dimblend:rotating" |
 
 ### CLIENT 诊断配置（`dimblend_experience-client.toml`）
@@ -1108,6 +1134,7 @@
 - **D4 口径（v1.1：阈值 16→64rpm）**：用户补供 startup/stopping 素材，实现为三态（启动→循环→停转）；启动音与循环同时起（启动音盖住循环头，不解析 ogg 时长）；行为开关开启时 CCA 原版马达声被整体静音替代
 - **E2 客户端 tick 前提**：客户端子层级客户绘图需 tick 转向架 BE（tick()V 客户端分支存在渲染插值代码，推定成立）——实机听音验证为最终实证
 - **N2/N3 分液池（2026-10-23 补录在案）**：① N2 催熟「生效才扣」的已知边界——个别 `performBonemeal` 实现零世界变化仍计生效并扣水（竹子顶端被挡/树苗长成失败），严格前后快照检测覆盖不全故不采用；本催熟不走 `BonemealEvent`，靠骨粉事件联动的第三方模组感知不到。② N3 管道回注——加工流体物品的当拍有 1-tick 注水关窗（`continueProcessing` 收尾复位 `forbidInsertion` 晚于本头置位，下一拍自愈）；热切换不调 `invalidateCapabilities`，缓存 UP 面接口存在性的消费者（如 Create 管道）热开启后顶面注水可能需一次方块更新才开始
+- **G11/G12 观察者烈焰人（2026-10-26）**：① 服务端「标记岩浆」遮挡只测世界方块，载具方块不算遮挡，与客户端描边的可见性可能在该情形下不一致（已接受）；② 灯表（载具灯与世界灯分表）最多缓存 40 tick，新放/拆掉的灯最迟 2 秒后才被服务端看到（灯的亮灭与激活状态现读，不受此限）；③ 世界里的灯与载具灯同口径参与（与客户端一致）；服务端只按观察者周围（探测半径 + 射程）的**已加载**区块枚举世界灯，扫描、遮挡轨迹与灯状态回读都不加载/生成区块——未加载区块里的岩浆、遮挡与灯一律跳过，客户端按同样的「缺区块即空」口径处理；④ 一个跟踪器每 10 tick 只扫一次、所有观察者共用，1024 面上限在服务端按扫描顺序截取（客户端按相机距离，只在超大岩浆海时可能不同）；⑤ 载具在 Sable 物理里是刚体，会落到地面——GameTest 因此等载具静止后再摆世界侧的岩浆与观察者；⑥ 破坏掉落不含被替换燃烧室的燃料/护目镜（与 Create 自身一致），只有潜行退出会还原 NBT。
 - **N6 分液池下界蒸发（2026-10-26）**：按**群系**判定、不按维度——任何下界群系（含旋转维度下界带、模组下界群系）都蒸发；Sable 结构方块先投影到当前世界位置再取群系，列车行驶中逐拍取当前位置，不缓存。与管道回注同拍竞争时按当拍实存水扣：回注补多少扣多少，水箱水位不保证稳定；SIMULATE 因并发/组件失配不足时本拍不扣，且不补扣（避免停机后集中扣水）。
 
 ### 游戏内运行验证清单（待实机，当前仅构建通过）

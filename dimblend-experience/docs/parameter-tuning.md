@@ -43,16 +43,23 @@ Missing optional mods leave their controls disabled.
 
 ## Vehicle headlights (surface and volumetric haze)
 
+DnDecor frontlights are renamed to "<Material> Train Searchlight" and carry two
+always-visible gray tooltip lines describing searchlight mode and marked-lava
+detection (the nine-lamp list below is unaffected; the English rename is a lang key
+that DnDecor also defines, so its namespace may win -- accepted). A blaze burner's
+item shows the two observer-blaze lines instead.
+
 DnDecor frontlights start with the spotlight disabled. Right-click a placed lamp
-with an amethyst shard to enable it (the shard is not consumed). Activation plays
+with an amethyst shard to enable it (survival consumes one shard, creative does
+not; breaking the lamp does not refund it). Activation plays
 the end portal frame eye-insertion sound and one burst of redstone particles.
 The spotlight works in the world and on Sable vehicles whenever the lamp is lit.
 Breaking or wrenching the lamp yields an ordinary item that needs activation again;
 chunk reloads and vehicle assembly retain activation. Iris still disables this renderer.
 
-The Sable page includes nine **experience-owned, server-authoritative** options.
+The Sable page includes ten **experience-owned, server-authoritative** options.
 Edits persist in `serverconfig/dimblend_experience-server.toml` and broadcast to
-all clients through the tuning snapshot (protocol 27, 64-bit availability mask).
+all clients through the tuning snapshot (protocol 28, 64-bit availability mask).
 
 | `/dbx` option | Config key | Default | Range / step |
 |---|---|---|---|
@@ -65,13 +72,16 @@ all clients through the tuning snapshot (protocol 27, 64-bit availability mask).
 | `sable_headlight_fog_samples` | `sableHeadlightFogSamples` | 8 | 4–24 / 1 |
 | `sable_headlight_occlusion` | `sableHeadlightOcclusion` | on | boolean |
 | `sable_headlight_lava_highlight` | `sableHeadlightLavaHighlight` | on | boolean |
+| `observer_blaze_radius` | `observerBlazeRadius` | 24 blocks | 8–64 / 1 |
 
-Only lit `dndecor:*_frontlight` blocks on Sable sublevels participate. The lens
+Only lit `dndecor:*_frontlight` blocks participate: lamps on Sable sublevels
+and lamps placed in the world, exactly as the collector indexes both. The lens
 is at block center, shifted 0.25 blocks opposite facing for `no_base`. Interpolated
-render poses transform both the lens and facing. The nearest eight eligible
-lamps are used, with conservative frustum/range culling. Static-world lamps are
-excluded. Veil and Sable are required; Iris disables this renderer. No Create
-Dynamic Lights, Sodium Dynamic Lights, or Veil area lights are used.
+render poses transform both the lens and facing of a vehicle lamp; a world lamp
+keeps its own block center and facing. The nearest eight eligible lamps are used,
+with conservative frustum/range culling. Veil and Sable are required; Iris
+disables this renderer. No Create Dynamic Lights, Sodium Dynamic Lights, or Veil
+area lights are used.
 
 The surface pass runs after block entities, before translucency. Veil's dynamic
 albedo and view-space normal buffers are sampled through shader texture sources
@@ -228,6 +238,46 @@ Iris) and the same on/off and intensity switches, and it needs no extra mixin.
   chain and main is already bound, so the extra bind is a no-op. Both batches are
   ended inside the event; the existing `sable_headlight_lava_highlight` switch
   turns both passes off and there is no new option.
+
+### Observer blaze detection (`observer_blaze_radius`)
+
+An **observer blaze** (`dimblend_experience:observer_blaze`, no item) is a blaze
+burner cage holding a stock-keeper blaze and a floating spyglass. It has no fuel
+slot and gives no heat: it is in no `BoilerHeater` registration, no
+`create:passive_boiler_heaters` tag, and has no heat property, so a boiler above it
+reads `findHeat == -1` and a basin `HeatLevel.NONE`. Right-click a burner that sits
+on a Sable vehicle with a spyglass to swap it in (one spyglass, not in creative);
+sneak-right-click it with an empty main hand to get the burner back with its fuel,
+remaining burn time and goggles intact. Breaking it drops the burner and the
+spyglass.
+
+While a searchlight marks lava near it the block emits **redstone strength 15 on
+all six sides** (weak power, like a redstone block) and burns with flame particles.
+"Marked lava" is exactly what the client outlines (the same shared lit test, the
+same 0.04 threshold, the same voxel budget and face cap), so:
+
+- it needs both `sable_headlight` and `sable_headlight_lava_highlight` on, plus the
+  range / angle / intensity / occlusion values above;
+- only lava lit by an **enabled and lit** lamp counts, whether the lamp sits on a
+  vehicle or is placed in the world -- the client emits a beam for both;
+- the new row is the Euclidean radius, measured from a lava **top-face centre** to
+  the observer's projected world position. Default 24 blocks covers the default
+  beam's whole reach (22.1 blocks axial) with a little margin; 8 matches a short
+  yard lamp, 64 a long-range searchlight.
+
+Cost and cadence: one full lava scan is shared by the whole tracker and run at most
+every 10 ticks; each observer then answers with a distance test against that one
+list, so more observers never mean more scans. Vehicle and world-chunk lamp lists
+are each cached at most 40 ticks (world lamps are enumerated in the already-loaded
+chunks within radius + range of an observer), while lamp position, direction and
+lit state are read fresh on every recompute; nothing runs while no observer blaze
+is loaded. No chunk is ever loaded or generated by the scan: a cell in an unloaded
+chunk is treated as unknown (no block, no occluder), the same answer the client gets
+for a chunk it does not have. Accepted divergences from the client are on record:
+vehicle blocks are not occluders server-side (only world blocks are traced), the
+client's eight-nearest-lamp render cap does not apply (there is no camera; the
+per-scan voxel budget bounds the work instead), and the 1024-face cut keeps the
+first faces in scan order rather than the nearest to a camera.
 
 Radial streaks seen around the glow from the driver's seat in the 2026-10-19
 captures were scene geometry, not sampling noise: the stepped walls of a tunnel

@@ -1,13 +1,17 @@
-package dimblend.experience.client.headlight;
+package dimblend.experience.headlight;
 
 import java.util.Comparator;
 import java.util.List;
 import net.minecraft.world.phys.Vec3;
 
-/** CPU reference for the shader's photometry and frame selection. */
+/**
+ * CPU reference for the shader's photometry and frame selection. Shared by the client renderer and the
+ * server's marked-lava query so both agree on where a beam reaches and how strong it is there.
+ */
 public final class HeadlightMath {
     public static final int MAX_LIGHTS = 8;
 
+    /** Lens position of a lamp: the block centre, shifted a quarter block opposite facing when there is no base plate. */
     public static Vec3 lens(Vec3 blockCenter, Vec3 facing, boolean noBase) {
         return noBase ? blockCenter.subtract(facing.scale(0.25)) : blockCenter;
     }
@@ -31,13 +35,16 @@ public final class HeadlightMath {
         return -Math.expm1(-linear) * (1.0 - smoothstep(range * 0.8, range, d));
     }
 
-    public static List<HeadlightBeam> nearest(List<HeadlightBeam> beams, Vec3 camera) {
-        // Position tie-breakers prevent equal-distance lamps flickering when hash iteration order changes.
-        return beams.stream().sorted(Comparator
-                .comparingDouble((HeadlightBeam beam) -> beam.lens().distanceToSqr(camera))
-                .thenComparingDouble(beam -> beam.lens().x)
-                .thenComparingDouble(beam -> beam.lens().y)
-                .thenComparingDouble(beam -> beam.lens().z))
+    /**
+     * Nearest {@link #MAX_LIGHTS} beams by lens distance. Position tie-breakers prevent equal-distance
+     * lamps flickering when hash iteration order changes.
+     */
+    public static <T extends HeadlightRay> List<T> nearest(List<T> rays, Vec3 camera) {
+        return rays.stream().sorted(Comparator
+                .comparingDouble((T ray) -> ray.lens().distanceToSqr(camera))
+                .thenComparingDouble(ray -> ray.lens().x)
+                .thenComparingDouble(ray -> ray.lens().y)
+                .thenComparingDouble(ray -> ray.lens().z))
                 .limit(MAX_LIGHTS).toList();
     }
 

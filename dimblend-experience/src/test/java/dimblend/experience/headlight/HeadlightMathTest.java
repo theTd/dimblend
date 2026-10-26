@@ -1,4 +1,4 @@
-package dimblend.experience.client.headlight;
+package dimblend.experience.headlight;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -57,8 +57,8 @@ class HeadlightMathTest {
     @Test
     void nearestEightUseCameraDistanceAndStableTies() {
         Vec3 camera = new Vec3(100, 0, 0);
-        var beams = new ArrayList<HeadlightBeam>();
-        for (int i = 0; i < 20; i++) beams.add(new HeadlightBeam(new Vec3(90 + i, 0, 0), new Vec3(1, 0, 0)));
+        var beams = new ArrayList<HeadlightLens>();
+        for (int i = 0; i < 20; i++) beams.add(new HeadlightLens(new Vec3(90 + i, 0, 0), new Vec3(1, 0, 0)));
         var selected = HeadlightMath.nearest(beams, camera);
         assertEquals(8, selected.size());
         assertEquals(100, selected.getFirst().lens().x);

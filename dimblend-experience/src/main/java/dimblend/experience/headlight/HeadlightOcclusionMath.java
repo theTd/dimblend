@@ -1,4 +1,4 @@
-package dimblend.experience.client.headlight;
+package dimblend.experience.headlight;
 
 /**
  * Pure parts of headlight occlusion, mirrored by {@code occlusion_trace.fsh} / {@code occlusion.glsl}:

@@ -1,6 +1,7 @@
 package dimblend.experience.client.headlight;
 
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
+import dimblend.experience.headlight.HeadlightOccluders;
 import java.nio.ByteBuffer;
 import java.util.List;
 import net.minecraft.core.BlockPos;

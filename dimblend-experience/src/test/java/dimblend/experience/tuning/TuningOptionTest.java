@@ -272,6 +272,32 @@ class TuningOptionTest {
     }
 
     @Test
+    void observerBlazeRadiusMirrorsConfigDefaultAndAcceptsWholeBlocksInRange() {
+        var option = TuningOption.OBSERVER_BLAZE_RADIUS;
+        assertFalse(option.isCheckbox());
+        assertSame(TuningOption.Section.SABLE, option.section());
+        assertEquals("sable", option.modId());
+        // 面板默认值与 Config.OBSERVER_BLAZE_RADIUS 默认探测半径互为镜像，漂移即失败
+        assertEquals((double) Config.OBSERVER_BLAZE_RADIUS.getDefault(), option.defaultValue());
+        assertEquals(24.0D, option.defaultValue());
+        assertEquals(8.0D, option.minimum());
+        assertEquals(64.0D, option.maximum());
+        assertEquals(1.0D, option.step());
+        for (double valid : new double[] {8.0D, 16.0D, 24.0D, 63.0D, 64.0D}) {
+            assertTrue(option.isValid(valid));
+        }
+        for (double invalid : new double[] {7.0D, 8.5D, 24.5D, 64.1D, 65.0D, -1.0D}) {
+            assertFalse(option.isValid(invalid));
+        }
+        assertEquals("24", option.format(option.defaultValue()));
+        // experience owns the row even though it is listed on the Sable page: it must not be routed into
+        // Sable's physics config (which throws for it), and the headlight predicate stays about headlights.
+        assertTrue(option.experienceOwned());
+        assertFalse(option.sable());
+        assertFalse(option.headlight());
+    }
+
+    @Test
     void formattingKeepsDeclaredPrecisionAndUsesDecimalPoint() {
         assertEquals("2.0", TuningOption.SHAKE_INTERVAL.format(2.0D));
         assertEquals("1200", TuningOption.SHAKE_FORCE.format(1200.0D));

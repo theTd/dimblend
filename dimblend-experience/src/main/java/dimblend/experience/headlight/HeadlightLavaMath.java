@@ -1,4 +1,4 @@
-package dimblend.experience.client.headlight;
+package dimblend.experience.headlight;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -9,9 +9,11 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Pure parts of the lit-lava highlight: the beam lit test, the top-face perimeter of a connected lit region
- * and the highlight cap. Photometry mirrors {@code beam.glsl:20-31} through {@link HeadlightMath}, the same
- * functions the surface shader's {@code coneFactor * attenuation(distance)} uses ({@code surface.fsh:23-30}).
+ * Pure parts of the lit-lava highlight: the beam lit test, the top-face perimeter of a connected lit region,
+ * the highlight cap and the radius query the server answers with. Photometry mirrors {@code beam.glsl:20-31}
+ * through {@link HeadlightMath}, the same functions the surface shader's {@code coneFactor * attenuation(distance)}
+ * uses ({@code surface.fsh:23-30}); the server calls {@link #lit} unchanged, so "marked lava" is exactly what the
+ * client outlines.
  */
 public final class HeadlightLavaMath {
     /** Warm highlight color (0xFFB040). */
@@ -24,7 +26,7 @@ public final class HeadlightLavaMath {
      * (range 24, full angle 50, intensity 1) the axial falloff drops below this at 22.06 blocks, so the
      * outline follows the pool to where the shader still adds a visible 4%; the last ~2 blocks, where the
      * surface light has faded to near nothing, do not pull the outline past the visible light. Off-axis the
-     * soft shoulder ({@code HeadlightMath.cone}) narrows the lit area to 84-91% of the cone radius.
+     * soft shoulder ({@link HeadlightMath#cone}) narrows the lit area to 84-91% of the cone radius.
      */
     public static final double LIT_THRESHOLD = 0.04;
 
@@ -53,8 +55,8 @@ public final class HeadlightLavaMath {
 
     /**
      * Beam strength at a point, mirroring the surface shader. {@code direction} must be a unit vector
-     * ({@code HeadlightCollector} normalizes it). Samples at or past the range are skipped as in
-     * {@code surface.fsh:23}; a zero-length offset has no direction and is skipped too.
+     * ({@code HeadlightCollector} and {@link HeadlightLens} normalise it). Samples at or past the range are
+     * skipped as in {@code surface.fsh:23}; a zero-length offset has no direction and is skipped too.
      */
     public static double intensity(Vec3 lens, Vec3 direction, double x, double y, double z,
                                    double range, double fullAngle, double strength) {
@@ -73,6 +75,48 @@ public final class HeadlightLavaMath {
     public static boolean lit(Vec3 lens, Vec3 direction, double x, double y, double z,
                               double range, double fullAngle, double strength) {
         return intensity(lens, direction, x, y, z, range, fullAngle, strength) > LIT_THRESHOLD;
+    }
+
+    /**
+     * Whether a lava top face lies within {@code radius} blocks (Euclidean) of {@code center}. Measured from the
+     * face's centre -- the same point the lit test samples -- and including the fluid's own height, so a
+     * source block and a flowing step at the same block coordinates are not conflated.
+     */
+    public static boolean withinRadius(int x, int y, int z, float height, Vec3 center, double radius) {
+        return surfaceDistanceSqr(x, y, z, height, center) <= radius * radius;
+    }
+
+    /**
+     * Whether any lit top face in {@code surfaces} lies within {@code radius} blocks of {@code center}. The server
+     * scans once per recompute window and answers every observer with this test, so the scan cost is paid per
+     * tracker, not per observer.
+     */
+    public static boolean anyWithin(List<LavaSurface> surfaces, Vec3 center, double radius) {
+        double limit = radius * radius;
+        for (LavaSurface surface : surfaces) {
+            if (surfaceDistanceSqr(surface.x(), surface.y(), surface.z(), surface.height(), center) <= limit) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Squared distance from {@code center} to a lava top face's centre. */
+    public static double surfaceDistanceSqr(int x, int y, int z, float height, Vec3 center) {
+        double dx = x + 0.5 - center.x;
+        double dy = (double) y + height - center.y;
+        double dz = z + 0.5 - center.z;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    /**
+     * Conservative bound on whether a beam can light anything within {@code radius} of {@code point}: the lens
+     * sits at most {@code range} from every point the cone can reach, so a lamp farther than
+     * {@code range + radius} cannot mark anything there. Used to skip lamps before their cone is scanned.
+     */
+    public static boolean coneReaches(Vec3 lens, Vec3 point, double range, double radius) {
+        double reach = range + radius;
+        return lens.distanceToSqr(point) <= reach * reach;
     }
 
     /**

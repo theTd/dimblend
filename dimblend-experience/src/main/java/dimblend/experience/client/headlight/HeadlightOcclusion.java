@@ -3,6 +3,8 @@ package dimblend.experience.client.headlight;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import dimblend.experience.DimBlend;
+import dimblend.experience.headlight.HeadlightOccluders;
+import dimblend.experience.headlight.HeadlightOcclusionMath;
 import foundry.veil.api.client.render.VeilRenderSystem;
 import foundry.veil.api.client.render.framebuffer.AdvancedFbo;
 import foundry.veil.api.client.render.shader.program.ShaderProgram;

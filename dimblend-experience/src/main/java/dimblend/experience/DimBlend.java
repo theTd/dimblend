@@ -88,6 +88,15 @@ public class DimBlend {
             dimblend.experience.compat.sable.SableLavaMelt.register();
         }
 
+        // G11 观察者烈焰人：方块/BE/交互都复用 Create 的加热器外形与烈焰人渲染，且只存在于 Sable 载具上，
+        // 仅 Create + Sable 同时在场时注册（无 Create 时不得解析本类）
+        if (ModList.get().isLoaded("create") && ModList.get().isLoaded("sable")) {
+            dimblend.experience.compat.create.observer.ObserverBlazeBlocks.register(modEventBus);
+            dimblend.experience.compat.create.observer.ObserverBlazeInteraction.register();
+            // G12 标记岩浆缓存按 ServerLevel 实例记账：服务器停止或维度卸载时整体丢弃，换局不会继承上一局的灯表与扫描结果
+            dimblend.experience.headlight.MarkedLavaTracker.registerLifecycle();
+        }
+
         // 分液池管道补水：补齐 UP 面流体接口，仅 Create 在场时注册（避免无 Create 环境类加载失败）
         if (ModList.get().isLoaded("create")) {
             modEventBus.addListener(ItemDrainPipeRefill::registerCapabilities);
@@ -166,6 +175,10 @@ public class DimBlend {
         }
         if (ModList.get().isLoaded("dndecor") && ModList.get().isLoaded("sable")) {
             event.register(dimblend.experience.gametest.FrontlightActivationGameTests.class);
+            // G11 观察者烈焰人：入口/退出/掉落/标记岩浆/无热源，同样需要 DnDecor 的可激活前灯
+            if (ModList.get().isLoaded("create")) {
+                event.register(dimblend.experience.gametest.ObserverBlazeGameTests.class);
+            }
         }
     }
 }

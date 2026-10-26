@@ -1,6 +1,8 @@
 package dimblend.experience.client.headlight;
 
 import dev.ryanhcode.sable.Sable;
+import dimblend.experience.headlight.HeadlightOccluders;
+import dimblend.experience.headlight.HeadlightOcclusionMath;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import java.nio.ByteBuffer;
 import net.minecraft.client.multiplayer.ClientLevel;

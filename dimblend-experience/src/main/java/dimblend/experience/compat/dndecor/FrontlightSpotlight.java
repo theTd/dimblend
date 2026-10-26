@@ -32,6 +32,19 @@ public final class FrontlightSpotlight {
         return isFrontlight(state) && state.hasProperty(ENABLED) && state.getValue(ENABLED);
     }
 
+    /**
+     * Whether this lamp was sneak-placed without its back plate (DnD's {@code no_base} property): the lens then
+     * sits a quarter block further out. Shared so the client collector and the server lamp scan agree.
+     */
+    public static boolean hasNoBase(BlockState state) {
+        for (var property : state.getProperties()) {
+            if (property.getName().equals("no_base") && Boolean.TRUE.equals(state.getValue(property))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @SubscribeEvent
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         var player = event.getEntity();

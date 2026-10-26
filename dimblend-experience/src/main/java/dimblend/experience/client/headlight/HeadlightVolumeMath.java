@@ -1,5 +1,6 @@
 package dimblend.experience.client.headlight;
 
+import dimblend.experience.headlight.HeadlightMath;
 import net.minecraft.world.phys.Vec3;
 
 /**

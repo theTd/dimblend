@@ -1,4 +1,4 @@
-package dimblend.experience.client.headlight;
+package dimblend.experience.headlight;
 
 /**
  * One lit lava top face: block coordinates and the fluid's own height above the block base
@@ -8,7 +8,7 @@ package dimblend.experience.client.headlight;
  * and such a block is not an exposed top face here).
  */
 public record LavaSurface(int x, int y, int z, float height) {
-    /** Center of the top face: the point the lit test samples. */
+    /** Center of the top face: the point the lit test samples and the point the server's radius query measures from. */
     public double centerX() {
         return this.x + 0.5;
     }

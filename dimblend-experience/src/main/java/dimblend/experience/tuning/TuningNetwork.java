@@ -15,11 +15,16 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 
 @EventBusSubscriber(modid = DimBlend.MODID, bus = EventBusSubscriber.Bus.MOD)
 public final class TuningNetwork {
+    /**
+     * Snapshot protocol version. The snapshot carries one value per option, so adding or removing an option
+     * changes the wire length: v27 dropped the nine train horn pitch presets, v28 adds the observer blaze
+     * detection radius.
+     */
+    public static final String PROTOCOL_VERSION = "28";
+
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
-        // The snapshot carries one value per option: adding options changes the protocol.
-        // v27 drops the nine train horn pitch presets (each whistle now stores its own pitch).
-        var registrar = event.registrar("27");
+        var registrar = event.registrar(PROTOCOL_VERSION);
         registrar.playToServer(TuningEditPayload.TYPE, TuningEditPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof ServerPlayer player) {

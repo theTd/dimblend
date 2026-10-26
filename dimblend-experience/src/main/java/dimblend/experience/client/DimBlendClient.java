@@ -28,6 +28,8 @@ public final class DimBlendClient {
             event.enqueueWork(dimblend.experience.client.headlight.HeadlightRenderer::initialize);
         }
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(LinkedTransmitterDebugClient::tick));
+        // G8/G11 探照灯与观察者烈焰人的物品提示（纯客户端，按注册名判定，不解析第三方类型）
+        event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(SearchlightTooltips::onItemTooltip));
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(
                 (ClientPlayerNetworkEvent.LoggingOut logout) -> {
                     ClientFarCurseTier.reset();

@@ -1,4 +1,4 @@
-package dimblend.experience.client.headlight;
+package dimblend.experience.headlight;
 
 import static org.junit.jupiter.api.Assertions.*;
 

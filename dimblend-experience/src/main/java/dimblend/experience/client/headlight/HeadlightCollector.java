@@ -3,6 +3,7 @@ package dimblend.experience.client.headlight;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import dimblend.experience.compat.dndecor.FrontlightSpotlight;
+import dimblend.experience.headlight.HeadlightMath;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;
@@ -24,9 +25,7 @@ public final class HeadlightCollector {
                 var sub = Sable.HELPER.getContainingClient(pos);
                 var facing = state.getValue(BlockStateProperties.FACING);
                 Vec3 localDirection = new Vec3(facing.getStepX(), facing.getStepY(), facing.getStepZ());
-                boolean noBase = state.getProperties().stream()
-                        .filter(property -> property.getName().equals("no_base"))
-                        .anyMatch(property -> Boolean.TRUE.equals(state.getValue(property)));
+                boolean noBase = FrontlightSpotlight.hasNoBase(state);
                 Vec3 localLens = HeadlightMath.lens(pos.getCenter(), localDirection, noBase);
                 Vec3 lens = sub == null ? localLens : sub.renderPose().transformPosition(localLens);
                 // A range sphere bounds the entire finite cone, including points behind the camera.
