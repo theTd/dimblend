@@ -266,7 +266,7 @@ same 0.04 threshold, the same voxel budget and face cap), so:
   yard lamp, 64 a long-range searchlight.
 
 Cost and cadence: one full lava scan is shared by the whole tracker and run at most
-every 10 ticks; each observer then answers with a distance test against that one
+every 2 ticks (10 Hz, the client outline's own rate); each observer queries every tick and answers with a distance test against that one
 list, so more observers never mean more scans. Vehicle and world-chunk lamp lists
 are each cached at most 40 ticks (world lamps are enumerated in the already-loaded
 chunks within radius + range of an observer), while lamp position, direction and

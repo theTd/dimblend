@@ -21,13 +21,17 @@ import net.minecraft.world.phys.Vec3;
  * Holds the burner this block replaced -- its block state and its full block entity NBT, so fuel, burn time,
  * goggles and the creative flag all come back on exit -- and drives the marked-lava query.
  *
- * <p>Server tick: every {@value #QUERY_TICKS} ticks ask the level's {@link MarkedLavaTracker} whether marked lava
+ * <p>Server tick: every tick ask the level's {@link MarkedLavaTracker} whether marked lava
  * lies within the tuned detection radius of this block's projected world centre, then write POWERED with a
  * neighbour-notifying update. Client tick: nothing here; the head chase and the particles' continuous stream live
  * in {@code ObserverBlazeRenderer} and the block's {@code animateTick}.</p>
  */
 public final class ObserverBlazeBlockEntity extends BlockEntity {
-    private static final int QUERY_TICKS = MarkedLavaTracker.RECOMPUTE_TICKS;
+    /**
+     * Every tick: the answer is a distance test against the tracker's shared list, so polling is cheap, and querying
+     * on a slower phase of its own would stack on the tracker's {@link MarkedLavaTracker#RECOMPUTE_TICKS} window.
+     */
+    private static final int QUERY_TICKS = 1;
     private static final String STORED_STATE = "OriginalState";
     private static final String STORED_DATA = "OriginalData";
     private static final float DEFAULT_HEAD_ANGLE = 90.0F;

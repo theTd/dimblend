@@ -68,8 +68,12 @@ import org.joml.Vector3d;
  * observer (range + radius) rather than the client's render-distance index.</p>
  */
 public final class MarkedLavaTracker {
-    /** One scan for the whole tracker is this many ticks old at most: ten answers a second, as on the client. */
-    public static final int RECOMPUTE_TICKS = 10;
+    /**
+     * One scan for the whole tracker is this many ticks old at most: ten scans a second, the client outline's own
+     * 10 Hz, so the redstone output follows the outline the player sees within a tenth of a second (players found
+     * the earlier 10-tick window, up to ~1 s with the observer's own query phase stacked on it, too laggy).
+     */
+    public static final int RECOMPUTE_TICKS = 2;
     /** A vehicle's or a world chunk's lamp positions are re-scanned this often; lamp state is read fresh always. */
     public static final int LAMP_REFRESH_TICKS = 40;
 
