@@ -991,14 +991,14 @@
 
 ### G10 车灯照亮岩浆高亮（2026-10-26，纯客户端）
 
-- 需求：被前照灯光锥实际照到的岩浆顶面高亮；用户选定样式为「发光橙色描边、只描连接区域的顶面外缘、1 Hz 脉动；未被相机看到的边（墙体/地形/列车车体遮挡）以约 40% 脉动 alpha 透墙显示，可见边保持全脉动 alpha」。
-- 实现：`client.headlight` 的 `HeadlightLavaHighlight`（10 Hz 重算调度 + 描边绘制）、`HeadlightLavaScan`（世界扫描 + 遮挡射线）、`HeadlightLavaMath`（纯函数：照亮判定、周长边、上限、脉动、遮挡暗化）、`LavaOutlineRenderTypes`（透墙线条 RenderType）、`LavaSurface`/`LavaEdge`。无新增 mixin。
+- 需求：被前照灯光锥实际照到的岩浆高亮；用户选定样式为「发光橙色描边、1 Hz 脉动；未被相机看到的边（墙体/地形/列车车体遮挡）以约 40% 脉动 alpha 透墙显示，可见边保持全脉动 alpha」。
+- 实现：`client.headlight` 的 `HeadlightLavaHighlight`（10 Hz 重算调度 + 描边绘制）、`HeadlightLavaScan`（世界扫描 + 遮挡射线）、`HeadlightLavaMath`（纯函数：照亮判定、上限、脉动、遮挡暗化）、`LavaBoxOutline`（2×2×2 包围盒并集的线框）、`LavaOutlineRenderTypes`（透墙线条 RenderType）、`LavaSurface`/`LavaEdge`。无新增 mixin。
 - 照亮判定：流体为岩浆（源/流动均可）、顶面暴露（上方非同流体且非实心整方块）、顶面中心在光锥内且在射程内、`cone × attenuation > 0.04`；遮挡开关打开时再用与阴影网格同一套 occluder 判据做方块 DDA 射线（`HeadlightOccluders` + `HeadlightOcclusionMath.trace`，跳过灯所在格）。默认参数（射程 24/全角 50/强度 1）下轴向照亮到 22.1 格，软肩使离轴照亮宽度为锥半径的 84–91%。
-- 描边：仅画「水平邻居不是同高度照亮岩浆」的顶面边（连通岩浆海只出一圈轮廓，台阶两侧各画一条）；高度 = 方块 y + 流体自身高度（源岩浆 8/9）+ 0.01；颜色 0xFFB040，alpha 以 1 Hz 在 0.35–0.75 间脉动。遮挡暗化系数 `HIDDEN_ALPHA_FACTOR = 0.4`（`HeadlightLavaMath.hiddenAlpha`）：被遮挡（第二遍深度测试失败）的边取脉动 alpha × 0.4。
+- 描边（2026-10-26 玩家反馈改版：原「只描连通区域顶面外缘」的平面描边在列车视角下几乎贴着岩浆面、不显眼，且只覆盖顶面）：每个照亮的岩浆方块套一个**以该方块为中心的 2×2×2 盒子**（方块向六个方向各外扩 0.5 格，世界坐标 `[x-0.5, x+1.5]`，y、z 同理），相邻/重叠的盒子合并为一个体，只画这个体的轮廓线（`LavaBoxOutline`）：孤立一格 = 12 条长 2 的棱；矩形岩浆池 = 一个外扩半格的大盒；对角、台阶（流动岩浆下坡）、岩浆瀑布顶出阶梯形外壳。判据：在半格偏移的单元网格上，每条单位棱周围四个单元「1 或 3 个占用（凸/凹角）或 2 个对角占用（折痕）」才画，全空/全满/两格并排（平面）不画；共线单位棱再合并为长段。所有线段都落在方块中心平面（半整数坐标）上，不与方块面重合，不会 z-fighting，因此不再需要原 0.01 抬升。盒顶比岩浆面高约 0.6 格、竖棱伸出地面，侧面也能看到；盒子下半截埋在岩浆/地面里，由透墙层以 40% 显示。注意：间隔一格的两块岩浆（盒子在 `x+1.5` 面上相接）会合成一个盒，间隔两格才分开。照亮判定与服务端标记集不变（仍按暴露顶面）。颜色 0xFFB040，alpha 以 1 Hz 在 0.35–0.75 间脉动。遮挡暗化系数 `HIDDEN_ALPHA_FACTOR = 0.4`（`HeadlightLavaMath.hiddenAlpha`）：被遮挡（第二遍深度测试失败）的边取脉动 alpha × 0.4。
 - 绘制：同一批边在 `AFTER_TRANSLUCENT_BLOCKS` 画两遍。先画透墙下层：自建 `dimblend_lava_outline_see_through` 线条 RenderType，shader/线宽/透明/顶点格式与 `RenderType.lines()` 相同，但 `NO_DEPTH_TEST` + `COLOR_WRITE`（不写深度），alpha 取脉动 alpha × 0.4，输出到主目标。注意原版 `NO_DEPTH_TEST` 对 `GL_ALWAYS` 的 setup 是空操作（它假定前一个深度类型 clear 时已关掉测试），而本阶段半透明层仍启用 LEQUAL，故用显式 `disableDepthTest` 的 `DepthTestStateShard` 并在 clear 恢复，否则透墙层仍会被深度测试挡住。然后画原有 `RenderType.lines()`（LEQUAL 深度测试、写深度）全 alpha。可见边由第二遍覆盖为全亮，被墙/地形/列车挡住的边只留下 40% 暗色下层。Fabulous 下不能直接用 `MAIN_TARGET`：其 setup/clear 均为空操作，而本阶段位于 `renderSectionLayer(RenderType.translucent())` 内、半透明目标仍绑定；透墙层因此用自定义 `OutputStateShard` 显式绑定主目标、在 clear 恢复半透明目标，使暗线以正常 alpha 混入主色缓冲（若落进半透明/物品实体目标，transparency 链的 `dst*(1-a)+rgb` 不会乘 alpha，40% 会失真）。transparency 链以主色+主深度为第 0 层再按深度合成半透明/物品实体/粒子/云/天气，已写入主色的暗线不会被后续不透明物覆盖；更近的半透明/粒子层仍会像遮住世界一样给它着色。Fast/Fancy 无后处理链且主目标已绑定，额外绑定为空操作，两遍都在不透明与半透明地形之后直接混入画面。两遍都在同一事件内 `endBatch` 各自类型，不留下深度/混合/绑定状态。
 - 节流：客户端 tick，最快每 2 tick（10 Hz）且仅在光锥位姿变化时重算（灯位量化 0.5 格、朝向量化 1/64），静止灯每 20 tick 兜底刷新；单次最多 1024 个照亮方块（按相机距离保留最近）与 65536 次 section 体素读取（离灯最近的 section 优先；超出射程或调色板无岩浆的 section 直接跳过、一次体素都不读）。默认单灯估计 0.1–0.3 ms；`-Ddimblend.headlight.diag=true` 可实测（日志前缀 `[headlight-lava]`）。
 - 开关：`sableHeadlightLavaHighlight`（默认 true）在 Sable 面板、与前照灯参数同属 experience 的服务端配置并经快照下发；仍要求 Sable/Veil 在场且未安装 Iris（与渲染器同一注册条件），并随前照灯总开关与强度为零关闭。
-- 验证：`HeadlightLavaMathTest` 11 条覆盖锥体/射程/阈值边界、周长去重（同高/台阶/对角/2×2）、上限就近取整与乱序稳定、1 Hz 脉动、遮挡暗化系数 0.4 与 `hiddenAlpha`；模块单测 230 条全绿。渲染观感（移动列车跟随、Fabulous、水/玻璃遮挡）待实机验收。
+- 验证：`HeadlightLavaMathTest` 6 条覆盖锥体/射程/阈值边界、上限就近取整与乱序稳定、1 Hz 脉动、遮挡暗化系数 0.4 与 `hiddenAlpha`；`LavaBoxOutlineTest` 8 条覆盖孤立盒 12 棱与边界、并排/矩形池合并无内线、隔一格相接合并/隔两格分开、对角与台阶的凹角、半格网格轴对齐与乱序/重复输入稳定、四单元判据真值表。渲染观感（移动列车跟随、Fabulous、水/玻璃遮挡）待实机验收。
 
 ### G10 配套 A：探照灯命名与物品提示（2026-10-26）
 

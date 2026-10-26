@@ -5,6 +5,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.logging.LogUtils;
 import dimblend.experience.headlight.HeadlightLavaMath;
 import dimblend.experience.headlight.HeadlightLavaScan;
+import dimblend.experience.headlight.LavaBoxOutline;
 import dimblend.experience.headlight.LavaEdge;
 import dimblend.experience.headlight.LavaSurface;
 import dimblend.experience.tuning.TuningOption;
@@ -20,7 +21,9 @@ import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import org.slf4j.Logger;
 
 /**
- * Lit-lava highlight: a pulsing orange outline around the top surface of the lava a headlight beam reaches.
+ * Lit-lava highlight: a pulsing orange wireframe around the lava a headlight beam reaches -- each lit block
+ * wrapped in a 2x2x2 box centred on it, touching boxes merged into one shell ({@link LavaBoxOutline}), so the
+ * highlight stands up above the pool and reads from the side, not only as a ring on the surface.
  * Only registered with the rest of the headlight renderer (sable + veil present, iris absent), and only lit
  * while that renderer is: no beam, no highlight.
  *
@@ -106,7 +109,7 @@ public final class HeadlightLavaHighlight {
         HeadlightLavaScan.Result result = HeadlightLavaScan.scan(mc.level, beams, range, angle, intensity, occlusion);
         List<LavaSurface> lit = HeadlightLavaMath.capped(result.surfaces(), camera, HeadlightLavaMath.MAX_SURFACES);
         surfaces = lit.size();
-        edges = HeadlightLavaMath.edges(lit);
+        edges = LavaBoxOutline.edges(lit);
         if (DIAGNOSTIC) diagnose(System.nanoTime() - start, result.reads(), surfaces);
     }
 

@@ -57,7 +57,7 @@
 	"screen.dimblend_experience.tuning.sable_headlight_occlusion": "前照灯遮挡阴影",
 	"screen.dimblend_experience.tuning.sable_headlight_occlusion.description": "默认：开启。世界与载具上的实心方块会遮挡前照灯的照明和光雾（玻璃、树叶、流体可透光）；关闭可略微节省处理器与显卡开销。",
 	"screen.dimblend_experience.tuning.sable_headlight_lava_highlight": "前照灯照亮岩浆描边",
-	"screen.dimblend_experience.tuning.sable_headlight_lava_highlight.description": "默认：开启。被前照灯光锥照到的岩浆顶面会描出缓慢脉动的橙色轮廓，墙体、地形和载具会正常遮挡；随前照灯与遮挡阴影开关生效，仅在光锥移动时每秒重扫 10 次世界。",
+	"screen.dimblend_experience.tuning.sable_headlight_lava_highlight.description": "默认：开启。被前照灯光锥照到的岩浆会套上缓慢脉动的橙色线框盒（每格 2×2×2，相邻合并）；被墙体、地形和载具挡住的部分以暗色透出；随前照灯与遮挡阴影开关生效，仅在光锥移动时每秒重扫 10 次世界。",
 	"screen.dimblend_experience.tuning.observer_blaze_radius": "观察者烈焰人探测半径",
 	"screen.dimblend_experience.tuning.observer_blaze_radius.description": "默认：24 格。范围 8–64，步长 1；探照灯照亮岩浆顶面中心落在该距离内时，观察者烈焰人输出强度 15 的红石信号。需同时开启前照灯与岩浆描边。",
 	"block.dndecor.andesite_frontlight": "安山列车探照灯",

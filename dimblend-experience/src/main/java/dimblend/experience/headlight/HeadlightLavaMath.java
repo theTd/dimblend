@@ -2,15 +2,12 @@ package dimblend.experience.headlight;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Pure parts of the lit-lava highlight: the beam lit test, the top-face perimeter of a connected lit region,
- * the highlight cap and the radius query the server answers with. Photometry mirrors {@code beam.glsl:20-31}
+ * Pure parts of the lit-lava highlight: the beam lit test, the highlight cap and the radius query the server
+ * answers with (the box outline drawn around the lit blocks is {@link LavaBoxOutline}). Photometry mirrors {@code beam.glsl:20-31}
  * through {@link HeadlightMath}, the same functions the surface shader's {@code coneFactor * attenuation(distance)}
  * uses ({@code surface.fsh:23-30}); the server calls {@link #lit} unchanged, so "marked lava" is exactly what the
  * client outlines.
@@ -29,12 +26,6 @@ public final class HeadlightLavaMath {
      * soft shoulder ({@link HeadlightMath#cone}) narrows the lit area to 84-91% of the cone radius.
      */
     public static final double LIT_THRESHOLD = 0.04;
-
-    /** Outline height above the fluid surface; {@code RenderType.lines()} is LEQUAL depth-tested against it. */
-    public static final double SURFACE_LIFT = 0.01;
-
-    /** Neighbouring surfaces this close in height are the same step: no segment between them. */
-    public static final double SAME_HEIGHT = 1.0E-4;
 
     /** Hard cap on highlighted blocks per recompute; a 24-block beam covers far fewer even over a lava sea. */
     public static final int MAX_SURFACES = 1024;
@@ -117,48 +108,6 @@ public final class HeadlightLavaMath {
     public static boolean coneReaches(Vec3 lens, Vec3 point, double range, double radius) {
         double reach = range + radius;
         return lens.distanceToSqr(point) <= reach * reach;
-    }
-
-    /**
-     * A top-face side needs a segment unless the horizontal neighbour is lit lava at the same surface
-     * height: equal-height lit neighbours hide the side, a step keeps both sides (each at its own height).
-     */
-    public static boolean drawsEdge(boolean neighbourLit, float height, float neighbourHeight) {
-        return !neighbourLit || Math.abs(height - neighbourHeight) > SAME_HEIGHT;
-    }
-
-    /** Perimeter segments of the lit region, in input order: one to four per lit top face. */
-    public static List<LavaEdge> edges(List<LavaSurface> surfaces) {
-        Map<Long, Float> heights = new HashMap<>(Math.max(16, surfaces.size() * 2));
-        for (LavaSurface surface : surfaces) {
-            heights.put(BlockPos.asLong(surface.x(), surface.y(), surface.z()), surface.height());
-        }
-        List<LavaEdge> edges = new ArrayList<>(surfaces.size() * 4);
-        for (LavaSurface surface : surfaces) {
-            int x = surface.x();
-            int y = surface.y();
-            int z = surface.z();
-            double outline = surface.outlineY();
-            // The four sides of the top face; each neighbour is compared at the same block layer.
-            if (needsEdge(heights, x + 1, y, z, surface.height())) {
-                edges.add(new LavaEdge(x + 1, outline, z, x + 1, outline, z + 1));
-            }
-            if (needsEdge(heights, x - 1, y, z, surface.height())) {
-                edges.add(new LavaEdge(x, outline, z, x, outline, z + 1));
-            }
-            if (needsEdge(heights, x, y, z - 1, surface.height())) {
-                edges.add(new LavaEdge(x, outline, z, x + 1, outline, z));
-            }
-            if (needsEdge(heights, x, y, z + 1, surface.height())) {
-                edges.add(new LavaEdge(x, outline, z + 1, x + 1, outline, z + 1));
-            }
-        }
-        return edges;
-    }
-
-    private static boolean needsEdge(Map<Long, Float> heights, int x, int y, int z, float height) {
-        Float neighbour = heights.get(BlockPos.asLong(x, y, z));
-        return drawsEdge(neighbour != null, height, neighbour != null ? neighbour : 0.0F);
     }
 
     /**

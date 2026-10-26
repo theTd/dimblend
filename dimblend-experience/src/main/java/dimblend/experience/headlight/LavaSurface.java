@@ -20,14 +20,4 @@ public record LavaSurface(int x, int y, int z, float height) {
     public double centerZ() {
         return this.z + 0.5;
     }
-
-    /**
-     * World y the outline is drawn at: the fluid surface lifted by {@link HeadlightLavaMath#SURFACE_LIFT}
-     * against z-fighting with the lava top face, which is drawn depth-writing in the solid chunk layer
-     * ({@code ItemBlockRenderTypes.java:392-395} sends every fluid except water to {@code RenderType.solid()}).
-     */
-    public double outlineY() {
-        // Double throughout: the fluid height is a float, the block y must not round in float arithmetic.
-        return (double) this.y + this.height + HeadlightLavaMath.SURFACE_LIFT;
-    }
 }

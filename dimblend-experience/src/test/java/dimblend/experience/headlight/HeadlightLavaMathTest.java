@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -79,78 +78,6 @@ class HeadlightLavaMathTest {
     }
 
     @Test
-    void aSingleTopFaceDrawsItsFourSides() {
-        LavaSurface surface = new LavaSurface(5, 64, 7, 8 / 9.0F);
-        List<LavaEdge> edges = HeadlightLavaMath.edges(List.of(surface));
-        assertEquals(4, edges.size());
-        for (LavaEdge edge : edges) {
-            assertEquals(surface.outlineY(), edge.y1(), 1e-9);
-            assertEquals(surface.outlineY(), edge.y2(), 1e-9);
-            assertEquals(1.0, length(edge), 1e-9);
-            // Axis aligned and on the block's footprint.
-            assertTrue(edge.x1() == 5 || edge.x1() == 6, "x inside the block: " + edge);
-            assertTrue(edge.z1() == 7 || edge.z1() == 8, "z inside the block: " + edge);
-        }
-        double outline = surface.outlineY();
-        assertTrue(hasEdge(edges, 5, outline, 7, 5, outline, 8), "west side");
-        assertTrue(hasEdge(edges, 6, outline, 7, 6, outline, 8), "east side");
-        assertTrue(hasEdge(edges, 5, outline, 7, 6, outline, 7), "north side");
-        assertTrue(hasEdge(edges, 5, outline, 8, 6, outline, 8), "south side");
-    }
-
-    @Test
-    void equalHeightNeighboursHideTheirSharedSides() {
-        float height = 8 / 9.0F;
-        List<LavaSurface> pair = List.of(new LavaSurface(0, 64, 0, height), new LavaSurface(1, 64, 0, height));
-        List<LavaEdge> pairEdges = HeadlightLavaMath.edges(pair);
-        assertEquals(6, pairEdges.size());
-        assertFalse(hasSharedSide(pairEdges), "two equal-height blocks form one 1x2 region");
-        // The two outer sides are still there.
-        assertTrue(pairEdges.stream().anyMatch(edge -> edge.x1() == 0 && edge.x2() == 0));
-        assertTrue(pairEdges.stream().anyMatch(edge -> edge.x1() == 2 && edge.x2() == 2));
-
-        List<LavaSurface> row = List.of(new LavaSurface(0, 64, 0, height), new LavaSurface(1, 64, 0, height),
-                new LavaSurface(2, 64, 0, height));
-        assertEquals(8, HeadlightLavaMath.edges(row).size());
-
-        List<LavaSurface> square = List.of(new LavaSurface(0, 64, 0, height), new LavaSurface(1, 64, 0, height),
-                new LavaSurface(0, 64, 1, height), new LavaSurface(1, 64, 1, height));
-        assertEquals(8, HeadlightLavaMath.edges(square).size());
-
-        // Diagonals do not share a side.
-        List<LavaSurface> diagonal = List.of(new LavaSurface(0, 64, 0, height), new LavaSurface(1, 64, 1, height));
-        assertEquals(8, HeadlightLavaMath.edges(diagonal).size());
-    }
-
-    @Test
-    void aStepKeepsBothSidesAtTheirOwnHeight() {
-        // Source lava (8/9) next to one level of flowing lava (7/9): different surface heights.
-        LavaSurface source = new LavaSurface(0, 64, 0, 8 / 9.0F);
-        LavaSurface flowing = new LavaSurface(1, 64, 0, 7 / 9.0F);
-        List<LavaEdge> edges = HeadlightLavaMath.edges(List.of(source, flowing));
-        assertEquals(8, edges.size());
-        Set<Double> heights = new HashSet<>();
-        for (LavaEdge edge : edges) {
-            heights.add(Math.round(edge.y1() * 1e6) / 1e6);
-        }
-        assertEquals(2, heights.size(), "each surface draws its sides at its own height");
-        assertTrue(edges.stream().anyMatch(edge -> Math.abs(edge.y1() - source.outlineY()) < 1e-9));
-        assertTrue(edges.stream().anyMatch(edge -> Math.abs(edge.y1() - flowing.outlineY()) < 1e-9));
-
-        // A neighbour one block lower is not a neighbour at this layer at all.
-        assertEquals(8, HeadlightLavaMath.edges(List.of(source, new LavaSurface(1, 63, 0, 8 / 9.0F))).size());
-    }
-
-    @Test
-    void drawsEdgeComparesHeightsWithinTheDocumentedMargin() {
-        assertTrue(HeadlightLavaMath.drawsEdge(false, 0.5F, 0.5F));
-        assertFalse(HeadlightLavaMath.drawsEdge(true, 0.5F, 0.5F));
-        assertFalse(HeadlightLavaMath.drawsEdge(true, 0.5F, 0.5F + 1e-6F));
-        assertTrue(HeadlightLavaMath.drawsEdge(true, 0.5F, 0.5F + 1e-3F));
-        assertTrue(HeadlightLavaMath.drawsEdge(true, 8 / 9.0F, 7 / 9.0F));
-    }
-
-    @Test
     void capKeepsTheNearestBlocksWhateverTheScanOrder() {
         Vec3 camera = new Vec3(0, 0, 0);
         List<LavaSurface> surfaceList = new ArrayList<>();
@@ -210,48 +137,10 @@ class HeadlightLavaMathTest {
         assertTrue(dim > 0.0F && dim < full, "hidden edges stay visible but dimmer: " + dim + " vs " + full);
     }
 
-    @Test
-    void outlineSitsJustAboveTheFluidSurface() {
-        LavaSurface surface = new LavaSurface(-3, 40, 9, 8 / 9.0F);
-        // The fluid height is a float (FluidState.getOwnHeight), so the expected value goes through float too.
-        assertEquals(40 + (double) (8 / 9.0F) + HeadlightLavaMath.SURFACE_LIFT, surface.outlineY(), 1e-12);
-        // The lift is small: the line rides the top face, it is not a floating box above it.
-        assertTrue(HeadlightLavaMath.SURFACE_LIFT > 0 && HeadlightLavaMath.SURFACE_LIFT <= 0.02);
-    }
-
-    private static double length(LavaEdge edge) {
-        double dx = edge.x2() - edge.x1();
-        double dy = edge.y2() - edge.y1();
-        double dz = edge.z2() - edge.z1();
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
-    }
-
     private static double distanceSquared(LavaSurface surface, Vec3 camera) {
         double dx = surface.centerX() - camera.x;
         double dy = surface.centerY() - camera.y;
         double dz = surface.centerZ() - camera.z;
         return dx * dx + dy * dy + dz * dz;
-    }
-
-    /** Whether a lit block pair at x = 0 / x = 1 draws a segment on the plane between them. */
-    private static boolean hasSharedSide(List<LavaEdge> edges) {
-        return edges.stream().anyMatch(edge -> close(edge.x1(), 1) && close(edge.x2(), 1));
-    }
-
-    private static boolean hasEdge(List<LavaEdge> edges, double x1, double y1, double z1,
-                                   double x2, double y2, double z2) {
-        for (LavaEdge edge : edges) {
-            if ((close(edge.x1(), x1) && close(edge.y1(), y1) && close(edge.z1(), z1)
-                    && close(edge.x2(), x2) && close(edge.y2(), y2) && close(edge.z2(), z2))
-                    || (close(edge.x2(), x1) && close(edge.y2(), y1) && close(edge.z2(), z1)
-                    && close(edge.x1(), x2) && close(edge.y1(), y2) && close(edge.z1(), z2))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean close(double first, double second) {
-        return Math.abs(first - second) < 1e-9;
     }
 }

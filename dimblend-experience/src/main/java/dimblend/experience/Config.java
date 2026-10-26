@@ -383,7 +383,7 @@ public final class Config {
             .comment("Block-grid shadows for headlight surface light and haze (walls, pillars, vehicles).")
             .define("sableHeadlightOcclusion", true);
     public static final ModConfigSpec.BooleanValue SABLE_HEADLIGHT_LAVA_HIGHLIGHT = BUILDER
-            .comment("Pulsing orange outline around the top surface of lava a lit headlight beam reaches (client-only drawing, "
+            .comment("Pulsing orange 2x2x2 wireframe box (touching boxes merged) around lava a lit headlight beam reaches (client-only drawing, "
                     + "follows the headlight renderer's Sable/Veil/no-Iris gate and the occlusion option).")
             .define("sableHeadlightLavaHighlight", true);
     public static final ModConfigSpec.IntValue OBSERVER_BLAZE_RADIUS = BUILDER
