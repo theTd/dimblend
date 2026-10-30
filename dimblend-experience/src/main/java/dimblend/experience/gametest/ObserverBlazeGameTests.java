@@ -13,6 +13,7 @@ import dimblend.experience.Config;
 import dimblend.experience.compat.create.observer.ObserverBlazeBlock;
 import dimblend.experience.compat.create.observer.ObserverBlazeBlockEntity;
 import dimblend.experience.compat.create.observer.ObserverBlazeBlocks;
+import dimblend.experience.compat.create.observer.ObserverBlazeLayout;
 import dimblend.experience.compat.dndecor.FrontlightSpotlight;
 import java.lang.reflect.Method;
 import java.util.HashSet;
@@ -229,6 +230,34 @@ public final class ObserverBlazeGameTests {
                 "the spyglass must be dropped, got " + drops);
         ItemStack clone = state.getBlock().getCloneItemStack(level, pos, state);
         helper.assertTrue(clone.is(AllBlocks.BLAZE_BURNER.asItem()), "pick block must give the burner, got " + clone);
+        helper.succeed();
+    }
+
+    /**
+     * The half-block cushion is part of the block's selection box (its collision shape stays Create's heater shape,
+     * which is what a vehicle needs). A cushion the player cannot point at would be a visual-only element nobody can
+     * reason about, so the bottom half must be inside the selection shape.
+     */
+    @GameTest(template = "empty", templateNamespace = "dimblend_headlights", timeoutTicks = 200)
+    public static void cushionIsInsideTheSelectionButNotTheCollision(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos pos = helper.absolutePos(MID);
+        helper.setBlock(MID, ObserverBlazeBlocks.OBSERVER_BLAZE.get().defaultBlockState());
+        BlockState state = level.getBlockState(pos);
+        double cushionHeight = ObserverBlazeLayout.CUSHION_HEIGHT;
+        helper.assertTrue(
+                state.getShape(level, pos).toAabbs().stream()
+                        .anyMatch(box -> box.minY <= 0.0D && box.maxY >= cushionHeight),
+                "the cushion's half block must be inside the selection shape, got " + state.getShape(level, pos));
+        helper.assertTrue(
+                state.getShape(level, pos).toAabbs().stream()
+                        .anyMatch(box -> box.minX == 0.0D && box.maxX == 1.0D && box.maxY >= cushionHeight),
+                "the cushion must fill the whole block footprint, got " + state.getShape(level, pos));
+        helper.assertTrue(
+                state.getCollisionShape(level, pos).toAabbs().stream()
+                        .allMatch(box -> box.maxY <= 0.25D + 1.0E-6D),
+                "the normal collision shape must stay Create's low heater shape, got "
+                        + state.getCollisionShape(level, pos));
         helper.succeed();
     }
 

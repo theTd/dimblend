@@ -23,6 +23,7 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.pathfinder.PathComputationType;
 import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
@@ -32,6 +33,10 @@ import net.minecraft.world.phys.shapes.VoxelShape;
  */
 public final class ObserverBlazeBlock extends Block implements EntityBlock {
     public static final BooleanProperty POWERED = BlockStateProperties.POWERED;
+
+    /** Selection covers Create's heater shape plus the half-block cushion the blaze sits on. */
+    private static final VoxelShape SELECTION_SHAPE =
+            Shapes.or(AllShapes.HEATER_BLOCK_SHAPE, Block.box(0.0D, 0.0D, 0.0D, 16.0D, 8.0D, 16.0D));
 
     public ObserverBlazeBlock(Properties properties) {
         super(properties);
@@ -59,7 +64,7 @@ public final class ObserverBlazeBlock extends Block implements EntityBlock {
 
     @Override
     public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
-        return AllShapes.HEATER_BLOCK_SHAPE;
+        return SELECTION_SHAPE;
     }
 
     @Override
@@ -117,11 +122,12 @@ public final class ObserverBlazeBlock extends Block implements EntityBlock {
         }
     }
 
-    /** A few flames above the blaze, in the style of Create's burner particles. */
+    /** A few flames above the raised blaze (it sits on the half-block cushion), in the style of Create's burner particles. */
     static void emitFlame(Level level, BlockPos pos, RandomSource random, int count) {
         for (int i = 0; i < count; i++) {
             double x = pos.getX() + 0.2 + random.nextDouble() * 0.6;
-            double y = pos.getY() + 0.95 + random.nextDouble() * 0.3;
+            double y = pos.getY() + ObserverBlazeLayout.FLAME_BASE_Y
+                    + random.nextDouble() * ObserverBlazeLayout.FLAME_SPREAD_Y;
             double z = pos.getZ() + 0.2 + random.nextDouble() * 0.6;
             level.addParticle(ParticleTypes.FLAME, x, y, z, 0.0, 0.005, 0.0);
         }
