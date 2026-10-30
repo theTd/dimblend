@@ -71,6 +71,13 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".compat.create.AlternatorLatchSyncMixin")) {
             return isLoaded("createaddition");
         }
+        // 车厢内不湿身：Cold Sweat 的 isRainingAt 用 canSeeSky 看世界方块柱，看不到
+        // Sable 子层级车顶。判据复用 sable 的 SubLevelRainColumn，故除 Cold Sweat 外还要求
+        // sable 在场且该版本带这个类——未打补丁的 sable 上不放行，否则 mixin 类加载即
+        // NoClassDefFoundError（横切约定：单独安装本模组不崩）。
+        if (mixinClassName.endsWith(".compat.coldsweat.RainWetnessShelterMixin")) {
+            return isLoaded("cold_sweat") && classPresent("dev.ryanhcode.sable.util.SubLevelRainColumn");
+        }
         // simurail 硬性依赖 sable（mods.toml required），在场性蕴含 sable 在场
         if (mixinClassName.endsWith(".compat.simurail.PhysicsBogeyBrakeSoundMixin")
                 || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyBrakeSignalCapMixin")
@@ -117,6 +124,16 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
 
     private static boolean isLoaded(String modId) {
         return net.neoforged.fml.loading.FMLLoader.getLoadingModList().getModFileById(modId) != null;
+    }
+
+    /** 目标类是否真的存在；用于在"模组在场但版本不对"时跳过 mixin 而不是启动即崩。 */
+    private static boolean classPresent(String className) {
+        try {
+            Class.forName(className, false, DimBlendMixinPlugin.class.getClassLoader());
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     @Override

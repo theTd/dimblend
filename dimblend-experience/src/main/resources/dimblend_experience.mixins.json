@@ -30,6 +30,7 @@
 		"CompositeEntryBaseAccessor",
 		"LootTableAccessor",
 		"compat.dimblend.WarpGateBlockMixin",
+		"compat.coldsweat.RainWetnessShelterMixin",
 		"compat.cdg.DieselEngineRampMixin",
 		"compat.cdg.HugeDieselEngineMixin",
 		"compat.cdg.CdgEngineTankCapacityMixin",

@@ -1227,12 +1227,12 @@
 
 ## 7. 决策记录
 
-### libs jar 清单（7 个 addon 编译依赖）
+### libs jar 清单（8 个 addon 编译依赖）
 
 > 2026-09-25 单仓更新：开源三件（Copycats+ / CCA / CDG）与 sable-companion 已改走
 > Maven 定点版本（见 `dimblend-experience/build.gradle`、`dimblend-blocks/build.gradle`），
 > 不再需要本地 jar；`libs/` 仅剩无公开 Maven 的 simurail / sable cui-modded / fluid /
-> createfirefightingadd / hardcore_nvg。
+> createfirefightingadd / hardcore_nvg / ColdSweat。
 > 下表保留作运行时版本对账依据。
 
 2026-09-19 从实例 `E:\misc\TrainTripWorld\mods` 原样复制到 `./libs`（字节级一致，SHA-256 已核对）。
@@ -1247,10 +1247,11 @@ CDG 1.3.15 除外：2026-09-20 起 B 板块对齐最新版，jar 由同级源码
 | jar | 模组 | 版本 |
 |---|---|---|
 | `copycats-3.0.4+mc.1.21.1-neoforge.jar` | Create: Copycats+ | 3.0.4 |
+| `ColdSweat-2.4.2.jar` | Cold Sweat | 2.4.2（2026-10-31 从实例 mods 目录原样复制；车厢内不湿身 mixin 的编译基线，目标 `WorldHelper#isRainingAt` 经 javap 核实签名 `(Level,BlockPos)Z`） |
 | `createaddition-1.5.10.jar` | Create: Crafts & Additions | 1.5.10 |
 | `createdieselgenerators-1.21.1-1.3.15.jar` | Create: Diesel Generators | 1.3.15（同级源码构建） |
 | `simurail-1.21.1-0.0.0-a+ecd2dd3.jar` | Create Simurail | 0.0.0-a（本地构建） |
-| `sable-neoforge-1.21.1-2.0.5_cui-modded.jar` | Sable | 2.0.5（cui-modded 定制构建） |
+| `sable-neoforge-1.21.1-2.0.5_cui-modded.jar` | Sable | 2.0.5（cui-modded 定制构建）。2026-10-31 起须为含 `dev.ryanhcode.sable.util.SubLevelRainColumn` 的构建——挡雨渲染与 Cold Sweat 湿身共用这一个判据 |
 | `fluid-2.0.1.jar` | Create: Fluid | 2.0.1（CurseForge 包，无公开 Maven；从运行实例 mods 目录原样复制，与实例一致） |
 | `hardcore_nvg-1.1.2-neoforge-1.21.1.jar` | Hardcore Night Vision Goggles | 1.1.2（MCreator 模组，无公开 Maven；2026-10-23 从正式包 `D:\Downloads\TrainTripWorld_1.21.1-NeoForge_21.1.249\mods` 原样复制——注意 dev 实例 `E:\misc\TrainTripWorld\mods` 历史装的是 basic_nvg（无限夜视版），已对齐换为 hardcore 版） |
 
