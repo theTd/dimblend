@@ -264,5 +264,6 @@
   "message.dimblend_experience.chassis.unsafe": "The surrounding area is obstructed and unsafe",
   "message.dimblend_experience.chassis.choose": "Right-click to choose a chassis type",
 	"message.dimblend_experience.depth_curse.max_health": "Long journey: max health -25%",
-	"effect.dimblend_experience.cursed_poison": "Cursed Poison"
+	"effect.dimblend_experience.cursed_poison": "Cursed Poison",
+	"message.dimblend_experience.item_drain.nether_too_hot": "It is too hot here"
 }

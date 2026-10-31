@@ -264,5 +264,6 @@
   "message.dimblend_experience.chassis.unsafe": "附近不空旷 不安全",
   "message.dimblend_experience.chassis.choose": "右键选择底盘类型",
 	"message.dimblend_experience.depth_curse.max_health": "远行 生命值上限 -25%",
-	"effect.dimblend_experience.cursed_poison": "诅咒中毒"
+	"effect.dimblend_experience.cursed_poison": "诅咒中毒",
+	"message.dimblend_experience.item_drain.nether_too_hot": "这里太热了"
 }

@@ -10,6 +10,8 @@ import com.simibubi.create.content.fluids.drain.ItemDrainBlockEntity;
 
 import dimblend.experience.Config;
 import dimblend.experience.compat.create.ItemDrainGrowthBoost;
+import dimblend.experience.compat.create.ItemDrainNetherEvaporation;
+import dimblend.experience.compat.create.ItemDrainNetherHeat;
 import net.minecraft.server.level.ServerLevel;
 
 /**
@@ -19,6 +21,12 @@ import net.minecraft.server.level.ServerLevel;
  * <p>注入点（{@code tick()V} HEAD + {@code invalidate()V} TAIL）的选择理由与
  * 守卫口径同 {@code ItemDrainIrrigationMixin}：空载分液池 {@code tick()} 开头提前
  * return，TAIL 不可达，故用 HEAD + 内部降拍守卫；父类方法不碰。</p>
+ *
+ * <p><b>「下界太热」②</b>：分液池位于下界群系时整段跳过——不催熟、不扣水，
+ * 倒计时复位（防止护目镜/Jade 的「下次催熟」停在旧值）。注意这里和
+ * {@code ItemDrainNetherEvaporation} 不冲突：蒸发是「下界里水会烧掉」，
+ * 催熟是「池子把周围烤到不长」；下界里两者同时成立时，本规则让 N2 不再
+ * 抵消 ② 的封禁。</p>
  */
 @Mixin(ItemDrainBlockEntity.class)
 public abstract class ItemDrainGrowthBoostMixin implements ItemDrainGrowthBoost.HasState {
@@ -42,6 +50,16 @@ public abstract class ItemDrainGrowthBoostMixin implements ItemDrainGrowthBoost.
             // 热关闭时若曾在计时，补一次 sendData 把客户端 HUD 的下次击发时刻刷成 -1
             // （客户端 ConfigSync 副本热改不同步，否则倒计时到期后会滞留显示"0 秒"）；
             // 仅在 计时→复位 转移时发，常态关闭下逐拍 reset 不发包
+            boolean wasArmed = this.dimblend$growth.countdown > 0;
+            ItemDrainGrowthBoost.reset(this.dimblend$growth);
+            if (wasArmed) {
+                self.sendData();
+            }
+            return;
+        }
+        // 「下界太热」②：下界群系里池子不再骨粉催熟，也不再抽水；复位口径同关开关
+        if (!ItemDrainNetherHeat.growthBoostAllowed(
+                ItemDrainNetherEvaporation.isNetherBiome(serverLevel, self.getBlockPos()))) {
             boolean wasArmed = this.dimblend$growth.countdown > 0;
             ItemDrainGrowthBoost.reset(this.dimblend$growth);
             if (wasArmed) {

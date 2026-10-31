@@ -10,6 +10,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BiomeTags;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.material.Fluids;
 import net.neoforged.neoforge.capabilities.Capabilities;
@@ -138,6 +139,15 @@ public final class ItemDrainNetherEvaporation {
      * {@link SableWorldPosition#projectBlock} 换算；普通方块原样返回（幂等）。
      */
     public static boolean isNetherBiome(ServerLevel level, BlockPos pos) {
+        return isNetherBiome((Level) level, pos);
+    }
+
+    /**
+     * 群系判定（{@code Level} 版）：{@code getBiome} 是 {@code LevelReader} 的默认方法，
+     * 客户端 level 同样可算。供双端都要判群系的调用方使用（「下界太热」②③④ 的
+     * 客户端侧取消），避免再写第二套群系判据。
+     */
+    public static boolean isNetherBiome(Level level, BlockPos pos) {
         BlockPos worldPos = SableWorldPosition.projectBlock(level, pos);
         Holder<Biome> biome = level.getBiome(worldPos);
         return biome.is(BiomeTags.IS_NETHER) || biome.is(Tags.Biomes.IS_NETHER);
