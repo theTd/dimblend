@@ -218,6 +218,23 @@ public final class SableLavaMeltGameTests {
         return state.getBlock() instanceof LiquidBlock && state.getFluidState().is(FluidTags.LAVA);
     }
 
+    /**
+     * 该格上方是否压着岩浆（跳过最多 {@code maxGap} 格空气）：载具在岩浆下亚格沉降会让
+     * 保守覆盖翻面，液面与投影顶之间出现 1-2 格空气，液面本身仍在该柱上方。
+     */
+    private static boolean isLavaWithin(ServerLevel level, BlockPos pos, int maxGap) {
+        BlockPos.MutableBlockPos above = new BlockPos.MutableBlockPos();
+        for (int dy = 1; dy <= maxGap; dy++) {
+            above.set(pos.getX(), pos.getY() + dy, pos.getZ());
+            BlockState state = level.getBlockState(above);
+            if (state.isAir()) {
+                continue;
+            }
+            return isLava(level, above);
+        }
+        return false;
+    }
+
     /** 本用例载具的拟合账目（断言已被 tracker 跟踪）。 */
     private static VoidFitTracker.VehicleFit trackedFit(GameTestHelper helper, ServerLevel level,
             Assembled assembled) {
@@ -886,6 +903,11 @@ public final class SableLavaMeltGameTests {
     /**
      * 空心车厢：从上方浇岩浆。屋顶完整期间舱内/柱顶下方/车底不得有熔岩；屋顶必须先熔，
      * 且屋顶熔掉时地板仍在（熔毁从屋顶开始）。
+     *
+     * <p>口径边界（2026-10-31）：本例舱内只有 1×1×2，两格都落在"地板/侧墙 +1 保守覆盖"
+     * 里，所以熔穿后不会出现"孔口下方整柱没有投影"的深孔——它证明不了宽舱净空的缺口。
+     * 宽舱净空（≥2 格宽、保守覆盖之后仍有真空气格）由
+     * {@link #wideCabinRoofMeltStopsAtRoofLine} 覆盖，两者不要互相替代。</p>
      */
     @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_lava_melt_roof", timeoutTicks = 24000)
     public static void hollowCabinRoofBlocksLavaAndMeltsFirst(GameTestHelper helper) {
@@ -1011,6 +1033,10 @@ public final class SableLavaMeltGameTests {
                     VoidFitTracker.VehicleFit fit = trackedFit(helper, level, assembled);
                     assertNoLavaBelowColumnTops(helper, level, fit, "after deck melt");
                     assertNoLavaUnderHull(helper, level, fit, "after deck melt");
+                    // 2026-10-31 补断言：原先成功路径只查 baseTopRel 与最低目标层，漏了外挑段
+                    // 正下方（甲板覆盖格与它的保守覆盖环）。熔穿瞬间这里必须仍无岩浆——甲板烧穿
+                    // 只允许熔岩下降一层落在下一层投影上，不许越过外挑下沿。
+                    assertNoLavaAt(helper, level, assembled, underside, "after deck melt");
                 } finally {
                     cleanup.run();
                 }
@@ -1029,6 +1055,217 @@ public final class SableLavaMeltGameTests {
             }
             pollDeckMelt(helper, level, assembled, underside, deckRel, baseTopRel, attemptsLeft - 1, cleanup);
         });
+    }
+
+    // ------------------------------------------------------------------
+    // 2026-10-31 用户实机缺陷：垂直岩浆柱整根切进车厢、从上到下同时融毁
+    // ------------------------------------------------------------------
+
+    /** 宽舱净空用例：车顶熔穿后给熔岩下降/拟合收缩留的观察窗口（tick）。 */
+    private static final int WIDE_CABIN_SETTLE_TICKS = 150;
+
+    /** 车顶中心块（其世界柱覆盖舱内净空、且整柱下方只剩地板投影——熔穿孔最深的位置）。 */
+    private static final BlockPos WIDE_ROOF_REL = new BlockPos(3, 5, 3);
+
+    /**
+     * 舱内净空（保守覆盖之后仍为空气的舱内格）+ 熔穿孔本身：熔穿后都不得出现岩浆。
+     *
+     * <p>5×5 车厢：地板 y=2、四周两格高侧墙 y=3/4、1 格厚屋顶 y=5；舱内 3×3×2（y=3/4）。
+     * 侧墙的 +1 保守覆盖只吃到舱内最外一圈，舱内 (3,4) × (3,4) 四柱没有任何方块覆盖（保守
+     * 覆盖在格边界上的竖向偏差只加减一层），熔穿后必然出现"孔口下方整柱没有投影"的深孔，
+     * 正是旧实现"空位拆掉 → 岩浆整柱灌入"的缺口形状（旧用例的 1×1×2 舱内被 +1 全覆盖，
+     * 测不出来）。整层都断言，避免保守覆盖翻面时漏层。</p>
+     */
+    private static final List<BlockPos> WIDE_CABIN_DRY_CELLS = wideCabinDryCells();
+
+    private static List<BlockPos> wideCabinDryCells() {
+        List<BlockPos> cells = new ArrayList<>();
+        for (int y = 3; y <= 4; y++) {
+            for (int x = 2; x <= 4; x++) {
+                for (int z = 2; z <= 4; z++) {
+                    cells.add(new BlockPos(x, y, z));
+                }
+            }
+        }
+        for (int x = 3; x <= 4; x++) {
+            for (int z = 3; z <= 4; z++) {
+                cells.add(new BlockPos(x, 5, z)); // 熔穿孔
+            }
+        }
+        return List.copyOf(cells);
+    }
+
+    /** 舱内净空正下方的地板格（"第二层"）：熔穿后不得被浇熔。 */
+    private static final List<BlockPos> WIDE_CABIN_FLOOR_CELLS = List.of(
+            new BlockPos(3, 2, 3), new BlockPos(3, 2, 4),
+            new BlockPos(4, 2, 3), new BlockPos(4, 2, 4));
+
+    /**
+     * 5×5 宽舱空心车厢：地板 y=2（石头）、四周两格高侧墙 y=3/4（黑曜石）、1 格厚屋顶
+     * y=5（石头）；舱内 3×3×2 空气。侧墙用黑曜石（默认倍率 1250 tick）把"边缘逐层慢熔"
+     * 排除在断言窗口外，让"第二层不得熔"只取决于封口塞是否成立。
+     */
+    private static Map<BlockPos, Block> wideCabinShape() {
+        Map<BlockPos, Block> shape = new LinkedHashMap<>();
+        for (int x = 1; x <= 5; x++) {
+            for (int z = 1; z <= 5; z++) {
+                shape.put(new BlockPos(x, 2, z), Blocks.STONE);
+                shape.put(new BlockPos(x, 5, z), Blocks.STONE);
+                if (x == 1 || x == 5 || z == 1 || z == 5) {
+                    shape.put(new BlockPos(x, 3, z), Blocks.OBSIDIAN);
+                    shape.put(new BlockPos(x, 4, z), Blocks.OBSIDIAN);
+                }
+            }
+        }
+        return shape;
+    }
+
+    /** 宽舱用例：7×5×7 空模板（3×3 模板的 barrier 边界笼会切进 5×5 车厢）。 */
+    private static final String WIDE_TEMPLATE = "density_chamber";
+
+    /**
+     * 宽舱净空：从上方自然浇淋，车顶熔穿后岩浆必须停在屋顶线，不得灌进舱内、不得接着
+     * 熔穿第二层（地板/舱内净空）。
+     *
+     * <p>构造与断言（2026-10-31 用户实报"整根岩浆柱切进车里、从上到下同时融毁"）：</p>
+     * <ul>
+     * <li>5×5 车厢、舱内 3×3×2 净空、1 格厚屋顶；熔岩沿全部已物化柱顶上方 (列顶上一格)
+     *     放下并围封，屋顶中心柱 (3,5,3) 整柱下方只剩地板投影——旧实现里它的熔穿孔
+     *     直通舱内空气。</li>
+     * <li>车顶中心块熔掉后等 {@link #WIDE_CABIN_SETTLE_TICKS}（150 tick）：旧实现此时
+     *     岩浆已按每层 30 tick 下移到舱内（实测红为舱内格出现岩浆），地板也会被 +1 接触
+     *     口径浇到起熔点；新实现岩浆停在封口塞上，舱内无岩浆、地板完好。</li>
+     * <li>封口塞结构断言：熔穿孔所在柱的投影顶不得塌到屋顶块以下（structure_void），且塞子
+     *     上方 1-3 格内压着岩浆——旧实现该柱投影顶直接塌到地板覆盖层（-3 格）。</li>
+     * </ul>
+     */
+    @GameTest(template = WIDE_TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_lava_melt_wide", timeoutTicks = 24000)
+    public static void wideCabinRoofMeltStopsAtRoofLine(GameTestHelper helper) {
+        SavedConfig saved = enableRules();
+        ServerLevel level = helper.getLevel();
+        Assembled assembled = assembleShape(helper, wideCabinShape());
+        Set<BlockPos> sealed = new LinkedHashSet<>();
+        Runnable cleanup = () -> {
+            clearLavaAround(level, projectedCell(assembled), 9);
+            unseal(level, sealed);
+            assembled.subLevel().markRemoved();
+            restore(saved);
+        };
+        awaitFitted(helper, level, assembled, cleanup, () -> {
+            try {
+                VoidFitTracker.VehicleFit fit = trackedFit(helper, level, assembled);
+                BlockPos roofCell = projectRel(helper, assembled, WIDE_ROOF_REL);
+                int topY = columnTopY(fit, roofCell.getX(), roofCell.getZ());
+                // 保守覆盖的竖向偏差取决于载具亚格沉降方向（floor(中心±半 extent) 在格边界
+                // 上翻面）：柱顶可能是屋顶块自身格，也可能再高一格。只要求"柱顶不低于屋顶块"。
+                helper.assertTrue(topY >= roofCell.getY(),
+                        "precondition: roof column must be covered at least at the roof block's cell; roofCell="
+                                + roofCell.toShortString() + " topY=" + topY + "; fit=" + dumpFit(level, assembled));
+                List<BlockPos> poured = placeLavaAboveColumnTops(level, fit, sealed);
+                helper.assertTrue(!poured.isEmpty(), "wide cabin roof must accept lava poured from above");
+                helper.assertTrue(isLava(level, new BlockPos(roofCell.getX(), topY + 1, roofCell.getZ())),
+                        "precondition: lava must rest on the roof column's fitted top");
+                helper.runAfterDelay(15, () -> pollWideCabinRoof(helper, level, assembled, 60, cleanup));
+            } catch (RuntimeException | Error e) {
+                cleanup.run();
+                throw e;
+            }
+        });
+    }
+
+    private static void pollWideCabinRoof(GameTestHelper helper, ServerLevel level, Assembled assembled,
+            int attemptsLeft, Runnable cleanup) {
+        if (attemptsLeft <= 0) {
+            failAfter(helper, cleanup, "wide cabin roof must melt within the polling window but was "
+                    + plotStateAt(helper, level, assembled, WIDE_ROOF_REL) + "; fit=" + dumpFit(level, assembled));
+            return;
+        }
+        helper.runAfterDelay(5, () -> {
+            BlockState roof = plotStateAt(helper, level, assembled, WIDE_ROOF_REL);
+            if (roof.isAir()) {
+                // 熔穿后第 10 tick 拍一张现场：封口塞没形成时，150 tick 观察窗口的失败
+                // 消息里带上熔穿瞬间的账目（target/materialized/柱顶 + 世界格），
+                // 免得只看灌满后的结果猜原因
+                String[] plugSnapshot = {"<未拍到>"};
+                helper.runAfterDelay(10, () ->
+                        plugSnapshot[0] = dumpWideCabinColumns(level, helper, assembled));
+                helper.runAfterDelay(WIDE_CABIN_SETTLE_TICKS, () -> {
+                    try {
+                        VoidFitTracker.VehicleFit fit = trackedFit(helper, level, assembled);
+                        for (BlockPos dryRel : WIDE_CABIN_DRY_CELLS) {
+                            BlockPos world = projectRel(helper, assembled, dryRel);
+                            helper.assertTrue(!isLava(level, world),
+                                    "lava must not appear at " + world.toShortString()
+                                            + " (after roof melt, rel=" + dryRel.toShortString()
+                                            + "); plug@+10=" + plugSnapshot[0]);
+                        }
+                        for (BlockPos floorRel : WIDE_CABIN_FLOOR_CELLS) {
+                            helper.assertTrue(plotStateAt(helper, level, assembled, floorRel).is(Blocks.STONE),
+                                    "cabin floor (second layer) must not melt after the roof layer but was "
+                                            + plotStateAt(helper, level, assembled, floorRel)
+                                            + " at rel " + floorRel.toShortString());
+                        }
+                        BlockPos meltedRoofCell = projectRel(helper, assembled, WIDE_ROOF_REL);
+                        int topY = columnTopY(fit, meltedRoofCell.getX(), meltedRoofCell.getZ());
+                        helper.assertTrue(topY >= meltedRoofCell.getY(),
+                                "melt-through hole must not collapse below the melted roof block: roofCell="
+                                        + meltedRoofCell.toShortString() + " topY=" + topY
+                                        + " expected>=" + meltedRoofCell.getY()
+                                        + "; plug@+10=" + plugSnapshot[0]);
+                        BlockPos plug = new BlockPos(meltedRoofCell.getX(), topY, meltedRoofCell.getZ());
+                        helper.assertTrue(level.getBlockState(plug).is(Blocks.STRUCTURE_VOID),
+                                "melt-through plug must be structure_void but was "
+                                        + level.getBlockState(plug) + " at " + plug.toShortString()
+                                        + "; plug@+10=" + plugSnapshot[0]);
+                        // 液面可以比塞子高 1-2 格（载具亚格沉降翻面），只要不越过塞子下行
+                        helper.assertTrue(isLavaWithin(level, plug, 3),
+                                "lava must rest above the melt-through plug instead of pouring into the cabin; "
+                                        + "above=" + level.getBlockState(plug.above())
+                                        + "; plug@+10=" + plugSnapshot[0]);
+                    } finally {
+                        cleanup.run();
+                    }
+                    helper.succeed();
+                });
+                return;
+            }
+            try {
+                helper.assertTrue(roof.is(Blocks.STONE), "roof must stay stone while melting but was " + roof);
+                assertNoLavaAt(helper, level, assembled, WIDE_CABIN_DRY_CELLS, "roof intact");
+            } catch (RuntimeException | Error e) {
+                cleanup.run();
+                throw e;
+            }
+            pollWideCabinRoof(helper, level, assembled, attemptsLeft - 1, cleanup);
+        });
+    }
+
+    /** 宽舱用例现场转储：熔穿孔/舱内/地板各列的世界格 + tracker 账目。 */
+    private static String dumpWideCabinColumns(ServerLevel level, GameTestHelper helper, Assembled assembled) {
+        VoidFitTracker.VehicleFit fit = VoidFitTracker.of(level.dimension()).vehicles()
+                .get(assembled.subLevel().getUniqueId());
+        if (fit == null) {
+            return "<untracked>";
+        }
+        List<BlockPos> rels = new ArrayList<>(WIDE_CABIN_DRY_CELLS);
+        rels.addAll(WIDE_CABIN_FLOOR_CELLS);
+        StringBuilder sb = new StringBuilder();
+        for (BlockPos rel : rels) {
+            BlockPos world = projectRel(helper, assembled, rel);
+            int top = columnTopY(fit, world.getX(), world.getZ());
+            sb.append("\n    rel=").append(rel.toShortString())
+                    .append(" world=").append(world.toShortString())
+                    .append(" colTop=").append(top == Integer.MIN_VALUE ? "none" : top);
+            for (int dy = -1; dy <= 3; dy++) {
+                BlockPos p = world.above(dy);
+                sb.append(" [y").append(p.getY()).append('=')
+                        .append(level.getBlockState(p).getBlock())
+                        .append(fit.targetCells.contains(p.asLong()) ? "/T" : "")
+                        .append(fit.materializedCells.contains(p.asLong()) ? "/M" : "")
+                        .append(']');
+            }
+        }
+        return sb + "\n    fit=" + dumpFit(level, assembled);
     }
 
     /**

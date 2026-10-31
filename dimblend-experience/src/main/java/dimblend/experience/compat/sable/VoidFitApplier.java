@@ -39,6 +39,13 @@ import net.minecraft.world.level.block.state.BlockState;
  * <p>预算：单次 {@link #refit} 最多写入 {@link #CELL_BUDGET} 格。差分基于
  * materialized（确认已写入）集合而非 target：预算耗尽时 target 已更新、materialized 仍是
  * 旧值，返回 {@code false} 让调度器下周期重试，diff 自动只补缺口，无需额外队列。</p>
+ *
+ * <p>熔穿孔封口塞（2026-10-31 用户实机缺陷）：拆除路径对"上一轮已物化、本轮离开投影"
+ * 的格，若世界侧正上方（可跨过载具沉降造成的少量空气格）是岩浆、孔口比一格深（正下方
+ * 同柱下一格也不在新 target 内）、且该 (x,z) 柱仍有本车目标格，则把该格重新并入
+ * newTarget 保成 structure_void 而不拆（判定见 {@link VoidFitMeltSeal}）——岩浆停在
+ * 孔口，不会灌进车厢内部空腔，只熔与岩浆直接接触的那层。实心堆叠的熔穿格下方仍有目标格
+ * 顶着，不封口，熔岩照旧逐层下降。</p>
  */
 public final class VoidFitApplier {
 
@@ -154,6 +161,12 @@ public final class VoidFitApplier {
             }
             if (adoptedByOthers(tracker, self, cell)) {
                 removals.remove();
+                continue;
+            }
+            // 熔穿孔封口塞（2026-10-31）：保住空位、岩浆停在孔口。不写世界、不占写入
+            // 预算；该格仍在 materialized 账上（世界侧确实还是空位），下一轮 refit 重判
+            if (lavaMelt && isMeltThroughHole(level, newTarget, columnTops, cell)) {
+                newTarget.add(cell);
                 continue;
             }
             if (budget <= 0) {
@@ -362,6 +375,51 @@ public final class VoidFitApplier {
         }
         BlockState state = level.getBlockState(below);
         return state.is(Blocks.STRUCTURE_VOID) || state.blocksMotion();
+    }
+
+    /**
+     * 该格是否是熔穿孔的孔口（世界侧仍是结构空位 + {@link VoidFitMeltSeal} 的三条边界）。
+     * 只读世界、不写；世界侧已不是空位时返回 false，交给既有拆除/销账路径。
+     */
+    private static boolean isMeltThroughHole(ServerLevel level, LongSet newTarget,
+            Long2IntMap columnTops, long cell) {
+        BlockPos pos = BlockPos.of(cell);
+        if (!level.hasChunkAt(pos) || !level.getBlockState(pos).is(Blocks.STRUCTURE_VOID)) {
+            return false;
+        }
+        return VoidFitMeltSeal.shouldSeal(lavaAbovePlug(level, pos, newTarget), columnTops, newTarget, cell);
+    }
+
+    /** 封口塞与液面之间允许跨过的空气格数（载具在岩浆下微沉时保守覆盖整体下移一格）。 */
+    private static final int LAVA_PLUG_GAP_CELLS = 3;
+
+    /**
+     * 该格正上方是否是岩浆：向上跳过空气格，遇到第一个非空气格判定（岩浆 → 是；
+     * 目标空位/真实方块 → 岩浆不可能在它上面，否）。带 {@code hasChunkAt} 守卫，
+     * 未加载按否——安全方向：不为读不到的区块保留空位。
+     *
+     * <p>为什么要跨空气格（2026-10-31）：载具在岩浆下微微沉降时，保守覆盖（{
+     * floor(中心 ± 半 extent)}）会整体下移一格，孔口塞与液面之间出现 1-2 格空气。
+     * 只看正上方一格会把塞子当成"上方没有岩浆"拆掉，岩浆随即灌进空腔——正是本缺陷
+     * 的复现路径。跳过空气格后塞子继续成立，岩浆落下来停在塞子上。</p>
+     */
+    private static boolean lavaAbovePlug(ServerLevel level, BlockPos pos, LongSet newTarget) {
+        BlockPos.MutableBlockPos above = pos.mutable();
+        for (int dy = 1; dy <= LAVA_PLUG_GAP_CELLS; dy++) {
+            above.set(pos.getX(), pos.getY() + dy, pos.getZ());
+            if (!level.hasChunkAt(above)) {
+                return false;
+            }
+            if (newTarget.contains(above.asLong())) {
+                return false; // 目标空位挡在中间：岩浆不可能位于它之上
+            }
+            BlockState state = level.getBlockState(above);
+            if (state.isAir()) {
+                continue;
+            }
+            return state.getBlock() instanceof LiquidBlock && state.getFluidState().is(FluidTags.LAVA);
+        }
+        return false;
     }
 
     private static boolean removeVoid(ServerLevel level, long cell) {

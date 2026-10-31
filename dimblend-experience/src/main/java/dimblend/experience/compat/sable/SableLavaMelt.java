@@ -14,6 +14,7 @@ import dimblend.experience.Config;
 import dimblend.experience.DimBlend;
 import dimblend.experience.exploration.RotatingDimension;
 import it.unimi.dsi.fastutil.longs.Long2FloatOpenHashMap;
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
@@ -47,8 +48,11 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
  * 空位壳挡流体但 0.25 容差让壳边方块照常被浇）都覆盖。柱顶另向上多收一格
  * （2026-10-26，见 {@link #touchesLava}）：拟合格是保守覆盖，熔岩停在柱顶空位上时
  * 可能比方块 AABB 高出近一格，只按 AABB+0.25 会把"浇在车顶上"的熔岩漏判，车顶就
- * 无法从上方开始熔。硬度只决定速度不设阈值：黑曜石级（50）默认倍率下约 62.5 秒
- * 持续浇淋才熔，等效抗岩浆；硬度负（基岩等）免疫。</p>
+ * 无法从上方开始熔。该 +1 格只给世界柱最高方块（2026-10-31 收窄，见
+ * {@link LavaContactScan}）：原先每个方块都多收，岩浆灌进舱内后液面会把地板（隔着
+ * +1 的 structure_void）与任意高度侧壁一并判成"被浇着"、同轮一起熔毁。硬度只决定
+ * 速度不设阈值：黑曜石级（50）默认倍率下约 62.5 秒持续浇淋才熔，等效抗岩浆；硬度负
+ * （基岩等）免疫。</p>
  *
  * <p>免疫清单（2026-10-14 增补）：{@link #LAVA_MELT_IMMUNE} 标签内的方块一律不熔
  * （不进接触、不累计进度、不掉落；中途改标签，存量进度按接触中断自然清零）。标签
@@ -65,8 +69,10 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
  * 接触、不能从完整船壳漏下去；柱内更低的投影格照常驱逐成空位（舱内不积岩浆、不把
  * 流经导向他处）。任一条件不成立即驱逐，靠停在车顶拟合面上的熔岩接触浇熔（柱顶 +1
  * 格接触口径）。熔穿后投影收缩、空位与封口格拆除，熔岩向缺口推进，形成逐层向下的
- * 熔穿；舱内空气不在体素化投影内，若熔穿层下方是空腔，熔岩经熔出的洞进入空腔
- * （原版流体行为），仍被下一层投影挡住，不会从完整船壳穿过。关闭则退回旧行为
+ * 熔穿；实心堆叠的熔穿格下方仍有目标格顶着，所以只下降一层。舱内空气不在体素化投影内，
+ * 若熔穿层下方是空腔，拆除路径的**熔穿孔封口塞**（2026-10-31，{@code VoidFitMeltSeal}）
+ * 会把孔口那一格保成 structure_void：岩浆停在孔口、灌不进舱，只熔与岩浆直接接触的
+ * 那层（否则整根岩浆柱切进车厢、从上到下同时融毁——用户实机报告）。关闭则退回旧行为
  * （熔岩与水同被驱逐，本调度整体停摆）。</p>
  *
  * <p>节律与预算：每 {@value #SCAN_TICKS} tick 扫一轮，单轮最多处理
@@ -206,6 +212,12 @@ public final class SableLavaMelt {
         // 倍率逐次扫描读配置：/dbx 面板或改文件后的新值下一轮即生效；已累进度不清零，
         // 后续按新速率累计（与徒手挖掘中途换工具同型）
         double speedMultiplier = Config.SABLE_LAVA_MELT_SPEED.get();
+        // 先按世界柱收集"该柱最高方块 y"：只有柱顶方块的接触口径多收上方一格
+        // （2026-10-31 修）。两遍枚举（先建索引、再判定）——回调里的 plotPos 是被复用的
+        // MutableBlockPos，不能在第二遍留存
+        Long2IntOpenHashMap columnTops = LavaContactScan.columnTops();
+        VoidFitVoxelizer.forEachProjectedBlock(subLevel, (plotPos, state, wx, wy, wz, hx, hy, hz) ->
+                LavaContactScan.raiseCoveredColumns(columnTops, wx, wy, wz, hx, hz));
         LongOpenHashSet contacted = new LongOpenHashSet();
         List<Contact> contacts = new ArrayList<>();
         VoidFitVoxelizer.forEachProjectedBlock(subLevel, (plotPos, state, wx, wy, wz, hx, hy, hz) -> {
@@ -216,7 +228,8 @@ public final class SableLavaMelt {
             if (state.is(LAVA_MELT_IMMUNE)) {
                 return;
             }
-            if (!touchesLava(level, wx, wy, wz, hx, hy, hz)) {
+            boolean columnTop = LavaContactScan.isCoveredColumnTop(columnTops, wx, wy, wz, hx, hz);
+            if (!touchesLava(level, wx, wy, wz, hx, hy, hz, columnTop)) {
                 return;
             }
             long key = plotPos.asLong();
@@ -272,19 +285,22 @@ public final class SableLavaMelt {
      * <p>柱顶（2026-10-26）额外把保守覆盖最高格的再上一格纳入：体素化按
      * {@code floor(w±h)} 取保守覆盖格，熔岩停在柱顶空位上方时，其格面比方块 AABB
      * 顶面最多高近一格（取决于亚格偏移），只按 AABB+0.25 扫描会漏判"浇在车顶上"的
-     * 熔岩，车顶就永远等不到第一次接触。只向上多收一格：侧向/下方仍是 0.25 口径。
-     * 非柱顶格多收的这格在投影内（空位），按不变式不会有熔岩，多收无效但无害。</p>
+     * 熔岩，车顶就永远等不到第一次接触。只向上多收一格：侧向/下方仍是 0.25 口径。</p>
+     *
+     * <p>柱顶 +1 格只给世界柱最高方块（2026-10-31 收窄，见 {@link LavaContactScan}）：
+     * 非柱顶方块多收的那格隔着上方方块与它的空位，按不变式不会有岩浆；原先人人多收，
+     * 岩浆灌进舱内后液面正好落进那一格，地板（隔着 +1 的 structure_void）与任意高度
+     * 侧壁都被判成"被浇着"，同轮一起熔毁。</p>
      */
     private static boolean touchesLava(ServerLevel level,
-            double wx, double wy, double wz, double hx, double hy, double hz) {
+            double wx, double wy, double wz, double hx, double hy, double hz, boolean columnTop) {
         double expand = LavaMeltMath.CONTACT_TOLERANCE;
         int minY = level.getMinBuildHeight();
         int maxY = level.getMaxBuildHeight() - 1;
         int x0 = (int) Math.floor(wx - hx - expand);
         int x1 = (int) Math.floor(wx + hx + expand);
-        int y0 = Math.max(minY, (int) Math.floor(wy - hy - expand));
-        int topCovered = (int) Math.floor(wy + hy);
-        int y1 = Math.min(maxY, Math.max((int) Math.floor(wy + hy + expand), topCovered + 1));
+        int y0 = LavaContactScan.scanMinY(wy, hy, expand, minY);
+        int y1 = LavaContactScan.scanMaxY(wy, hy, expand, maxY, columnTop);
         int z0 = (int) Math.floor(wz - hz - expand);
         int z1 = (int) Math.floor(wz + hz + expand);
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
