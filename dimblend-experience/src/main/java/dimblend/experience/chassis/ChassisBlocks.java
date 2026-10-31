@@ -41,14 +41,21 @@ public final class ChassisBlocks {
         return block.defaultBlockState();
     }
 
-    public static void configureBogey(ServerLevel level, BlockPos pos, char symbol) {
+    public static void configureBogey(ServerLevel level, BlockPos pos, ChassisBlueprint blueprint,
+            ChassisBlueprint.Cell cell) {
+        char symbol = cell.symbol();
         if (symbol != 'W' && symbol != 'I') return;
         if (!(level.getBlockEntity(pos) instanceof PhysicsBogeyBlockEntity bogey)) {
             throw new IllegalStateException("Missing chassis bogey at " + pos);
         }
+        var tuning = ChassisBlueprint.bogeyTuning(blueprint, cell.x())
+                .orElseThrow(() -> new IllegalStateException("No bogey tuning for " + blueprint + " at " + pos));
         var options = bogey.getOptions();
         options.type = new BogeyRenderedType(symbol == 'W'
                 ? RailwaysBogeys.WIDE_STANDARD_SMALL.type() : RailwaysBogeys.INVISIBLE.type());
+        // Stress is simurail's "驱动强度"; linear type 1 allows both frame offsets, 0 forbids them.
+        options.setStress(tuning.stress());
+        options.setLinearType(tuning.allowOffset() ? 1 : 0);
         bogey.setOptions(options);
         bogey.setChanged();
         bogey.sendData();

@@ -43,5 +43,26 @@ public enum ChassisBlueprint {
 
     public List<Cell> cells() { return cells; }
     public String row(int index) { return rows.get(index); }
+
+    /** Stress in simurail's 0..32 range, and whether the bogey frame may shift on both axes. */
+    public record BogeyTuning(float stress, boolean allowOffset) {}
+
+    /** Tuning for the bogey at {@code x}, or empty when no bogey sits there. */
+    public static java.util.Optional<BogeyTuning> bogeyTuning(ChassisBlueprint blueprint, int x) {
+        boolean bogey = blueprint.cells().stream()
+                .anyMatch(cell -> cell.x() == x && (cell.symbol() == 'W' || cell.symbol() == 'I'));
+        if (!bogey) return java.util.Optional.empty();
+        if (blueprint == CARRIAGE) return java.util.Optional.of(new BogeyTuning(0.0F, false));
+        // Ranked from the X+ end: the two end bogeys pull, the four inner ones only float.
+        int rank = 0;
+        int total = 0;
+        for (var cell : blueprint.cells()) {
+            if (cell.symbol() != 'W' && cell.symbol() != 'I') continue;
+            if (cell.x() > x) rank++;
+            total++;
+        }
+        boolean end = rank == 0 || rank == total - 1;
+        return java.util.Optional.of(end ? new BogeyTuning(32.0F, false) : new BogeyTuning(0.0F, true));
+    }
     public String translationKey() { return "chassis.dimblend_experience." + name().toLowerCase(java.util.Locale.ROOT); }
 }

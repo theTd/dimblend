@@ -42,6 +42,55 @@ class ChassisBlueprintTest {
         }
     }
 
+    @Test void powerBogeyTuningPowersBothEndsAndFloatsTheMiddleFour() {
+        var plan = ChassisBlueprint.POWER;
+        // Ranked from the X+ end: +17, +14, +11, -11, -14, -17.
+        assertEquals(new ChassisBlueprint.BogeyTuning(32.0f, false), tuning(plan, 17));
+        assertEquals(new ChassisBlueprint.BogeyTuning(32.0f, false), tuning(plan, -17));
+        for (int x : new int[] {14, 11, -11, -14}) {
+            assertEquals(new ChassisBlueprint.BogeyTuning(0.0f, true), tuning(plan, x), "power x=" + x);
+        }
+    }
+
+    @Test void carriageBogeyTuningIsIdleAndRigid() {
+        var plan = ChassisBlueprint.CARRIAGE;
+        assertEquals(new ChassisBlueprint.BogeyTuning(0.0f, false), tuning(plan, 17));
+        assertEquals(new ChassisBlueprint.BogeyTuning(0.0f, false), tuning(plan, -17));
+        assertEquals(2, count(plan, 'W'));
+    }
+
+    @Test void everyBogeyCarriesATuningAndNoOtherCoordinateDoes() {
+        for (var plan : ChassisBlueprint.values()) {
+            var bogeyXs = new java.util.HashSet<Integer>();
+            for (var cell : plan.cells()) {
+                if (cell.symbol() == 'W' || cell.symbol() == 'I') bogeyXs.add(cell.x());
+            }
+            for (int x = -ChassisBlueprint.HALF_LENGTH; x <= ChassisBlueprint.HALF_LENGTH; x++) {
+                assertEquals(bogeyXs.contains(x), ChassisBlueprint.bogeyTuning(plan, x).isPresent(),
+                        plan + " x=" + x);
+            }
+            for (int x : new int[] {0, 1, -1, 22, -22}) {
+                assertTrue(ChassisBlueprint.bogeyTuning(plan, x).isEmpty(), plan + " x=" + x);
+            }
+        }
+    }
+
+    @Test void bogeyStressStaysInsideSimurailClampRange() {
+        // simurail PhysicsBogeyOptions.setStress clamps to [0, 32]; keep every tuning inside it.
+        for (var plan : ChassisBlueprint.values()) {
+            for (int x = -ChassisBlueprint.HALF_LENGTH; x <= ChassisBlueprint.HALF_LENGTH; x++) {
+                var tuning = ChassisBlueprint.bogeyTuning(plan, x);
+                if (tuning.isEmpty()) continue;
+                assertTrue(tuning.get().stress() >= 0.0f && tuning.get().stress() <= 32.0f,
+                        plan + " x=" + x + " stress=" + tuning.get().stress());
+            }
+        }
+    }
+
+    private static ChassisBlueprint.BogeyTuning tuning(ChassisBlueprint plan, int x) {
+        return ChassisBlueprint.bogeyTuning(plan, x).orElseThrow(() -> new AssertionError("no tuning at " + x));
+    }
+
     private static long count(ChassisBlueprint plan, char symbol) {
         return plan.cells().stream().filter(cell -> cell.symbol() == symbol).count();
     }

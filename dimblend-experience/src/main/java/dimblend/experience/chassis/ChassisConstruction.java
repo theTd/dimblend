@@ -71,7 +71,7 @@ public final class ChassisConstruction {
                     if (cell.x() + 22 != row) continue;
                     BlockPos pos = build.center.offset(cell.x(), 0, cell.z());
                     level.setBlock(pos, ChassisBlocks.state(cell), Block.UPDATE_ALL);
-                    ChassisBlocks.configureBogey(level, pos, cell.symbol());
+                    ChassisBlocks.configureBogey(level, pos, build.blueprint, cell);
                 }
                 build.rows++;
                 data.setDirty();
