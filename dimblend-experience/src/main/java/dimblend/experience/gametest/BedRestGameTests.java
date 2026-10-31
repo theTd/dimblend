@@ -97,7 +97,7 @@ public final class BedRestGameTests {
     }
 
     @GameTest(template = "empty", templateNamespace = "dimblend_sleep", timeoutTicks = 60)
-    public static void peacefulRestWaitsWarmupThenGrantsRegeneration(GameTestHelper helper) {
+    public static void peacefulRestGrantsMaxRegenerationImmediatelyThenWakesAfterEightSeconds(GameTestHelper helper) {
         var level = helper.getLevel();
         var difficulty = level.getDifficulty();
         var player = player(helper);
@@ -105,21 +105,23 @@ public final class BedRestGameTests {
         try {
             level.getServer().setDifficulty(Difficulty.PEACEFUL, true);
             player.setHealth(10);
-            player.startSleepInBed(pos);
-            tick(player, 99);
+            helper.assertTrue(player.startSleepInBed(pos).right().isPresent(), "rest must start");
             helper.assertTrue(player.getHealth() == 10 && !player.hasEffect(MobEffects.REGENERATION),
-                    "peaceful automatic healing must wait during rest");
+                    "rest grants no regeneration before the first resting tick");
             tick(player, 1);
             var granted = player.getEffect(MobEffects.REGENERATION);
-            helper.assertTrue(granted != null && granted.getAmplifier() == 1,
-                    "rest grants regeneration II after the 100-tick warmup");
-            helper.assertTrue(granted.getDuration() > 550 && granted.getDuration() <= 600,
-                    "rest regeneration lasts thirty seconds, got " + granted.getDuration());
-            tick(player, 1);
-            helper.assertTrue(player.getHealth() == 11,
-                    "the first regeneration pulse lands on the tick right after the grant");
-            tick(player, 25);
-            helper.assertTrue(player.getHealth() == 12, "regeneration II pulses every 25 ticks");
+            helper.assertTrue(granted != null
+                            && granted.getAmplifier() == BedRestRules.REST_REGENERATION_AMPLIFIER,
+                    "rest grants regeneration X on its first tick");
+            helper.assertTrue(granted.getDuration() > BedRestRules.REST_REGENERATION_DURATION_TICKS - 10
+                            && granted.getDuration() <= BedRestRules.REST_REGENERATION_DURATION_TICKS,
+                    "rest regeneration lasts eight seconds, got " + granted.getDuration());
+            tick(player, 10);
+            helper.assertTrue(player.getHealth() == player.getMaxHealth(),
+                    "regeneration X heals the ten missing health points within ten ticks");
+            tick(player, BedRestRules.REST_AUTO_WAKE_TICKS - 11);
+            helper.assertTrue(!player.isSleeping(),
+                    "the server must end an eight-second rest automatically");
             helper.succeed();
         } finally {
             if (player.isSleeping()) player.stopSleepInBed(true, true);
@@ -140,20 +142,17 @@ public final class BedRestGameTests {
         player.addEffect(new MobEffectInstance(MobEffects.HUNGER, 1000, 1));
         try {
             helper.assertTrue(player.startSleepInBed(pos).right().isPresent(), "rest must start");
-            tick(player, 99);
-            helper.assertTrue(player.getHealth() == 10 && !player.hasEffect(MobEffects.REGENERATION),
-                    "rest grants no regeneration before the warmup completes");
             tick(player, 1);
             helper.assertTrue(player.hasEffect(MobEffects.REGENERATION),
-                    "rest grants regeneration II at its 100th tick");
+                    "rest grants regeneration X on its first tick");
             helper.assertTrue(food.getFoodLevel() == 20 && food.getSaturationLevel() == 5
                             && food.getExhaustionLevel() == 6,
                     "sleep freezes hunger, saturation and exhaustion even with the hunger effect");
 
             food.setFoodLevel(0);
             food.setSaturation(0);
-            tick(player, 100);
-            helper.assertTrue(player.getHealth() == 14 && food.getFoodLevel() == 0,
+            tick(player, 10);
+            helper.assertTrue(player.getHealth() == player.getMaxHealth() && food.getFoodLevel() == 0,
                     "rest regeneration works at zero hunger without starvation damage");
 
             player.stopSleepInBed(true, true);
@@ -164,14 +163,11 @@ public final class BedRestGameTests {
                     "normal hunger processing resumes after leaving bed");
             player.setHealth(10);
             helper.assertTrue(player.startSleepInBed(pos).right().isPresent(), "player can rest again");
-            tick(player, 99);
-            var lingering = player.getEffect(MobEffects.REGENERATION);
-            helper.assertTrue(lingering == null || lingering.getDuration() < 500,
-                    "a new rest must wait another full warmup before re-granting regeneration");
             tick(player, 1);
             var refreshed = player.getEffect(MobEffects.REGENERATION);
-            helper.assertTrue(refreshed != null && refreshed.getDuration() > 550,
-                    "the new rest re-grants a full thirty seconds at its own 100th tick");
+            helper.assertTrue(refreshed != null
+                            && refreshed.getDuration() > BedRestRules.REST_REGENERATION_DURATION_TICKS - 10,
+                    "the new rest re-grants a full eight seconds on its own first tick");
             helper.succeed();
         } finally {
             if (player.isSleeping()) player.stopSleepInBed(true, true);
@@ -179,7 +175,7 @@ public final class BedRestGameTests {
     }
 
     @GameTest(template = "empty", templateNamespace = "dimblend_sleep", timeoutTicks = 60)
-    public static void heartsWaitForWarmupAndPulseAtTheBedFoot(GameTestHelper helper) {
+    public static void heartsPulseFromTheFirstTickAtTheBedFoot(GameTestHelper helper) {
         var level = helper.getLevel();
         List<ClientboundLevelParticlesPacket> hearts = new ArrayList<>();
         var player = player(helper, packet -> {
@@ -191,12 +187,10 @@ public final class BedRestGameTests {
         level.players().add(player);
         try {
             helper.assertTrue(player.startSleepInBed(pos).right().isPresent(), "rest must start");
-            tick(player, 99);
-            helper.assertTrue(hearts.isEmpty() && player.getHealth() == 10,
-                    "regeneration and heart feedback must both wait the first five seconds");
+            helper.assertTrue(hearts.isEmpty(), "no hearts before the first resting tick");
             tick(player, 1);
             helper.assertTrue(hearts.size() == 1 && hearts.getFirst().getCount() == 3,
-                    "the warmed-up rest emits three hearts every second");
+                    "the first resting tick emits three hearts");
             var burst = hearts.getFirst();
             // 床 FACING=EAST：脚在西侧一格；散发中心须落在床尾上方，第一人称才看得到
             var footCenter = helper.absolutePos(HEAD).west().getCenter().add(0.0, 0.6, 0.0);
@@ -206,18 +200,16 @@ public final class BedRestGameTests {
             helper.assertTrue(hearts.size() == 1, "heart bursts must be spaced one second apart");
             tick(player, 1);
             helper.assertTrue(hearts.size() == 2 && hearts.getLast().getCount() == 3,
-                    "rest shows periodic hearts between regeneration pulses");
+                    "the second burst lands on the 21st resting tick");
 
             player.setHealth(player.getMaxHealth());
-            tick(player, 79);
-            helper.assertTrue(hearts.size() == 2 + 3, "full health must not reduce particle frequency");
-            tick(player, 1);
-            helper.assertTrue(hearts.size() == 2 + 4 && hearts.getLast().getCount() == 3,
-                    "full health retains three hearts per pulse");
-            tick(player, 100);
-            helper.assertTrue(hearts.size() == 2 + 4 + 5
-                            && player.getHealth() == player.getMaxHealth(),
-                    "full-health heart feedback continues without increasing health past its maximum");
+            tick(player, BedRestRules.REST_AUTO_WAKE_TICKS - 21);
+            helper.assertTrue(hearts.size() == 8,
+                    "an eight-second rest emits eight bursts, got " + hearts.size());
+            helper.assertTrue(!player.isSleeping(),
+                    "the automatic wake-up lands on the same tick as the eight-second mark");
+            tick(player, 20);
+            helper.assertTrue(hearts.size() == 8, "awake players must not emit rest particles");
             helper.succeed();
         } finally {
             if (player.isSleeping()) player.stopSleepInBed(true, true);
@@ -227,7 +219,7 @@ public final class BedRestGameTests {
     }
 
     @GameTest(template = "empty", templateNamespace = "dimblend_sleep", timeoutTicks = 60)
-    public static void wakingAndImmediateReentryResetWarmupAndHearts(GameTestHelper helper) {
+    public static void wakingAndImmediateReentryRestartTheRestTimerAndHearts(GameTestHelper helper) {
         var level = helper.getLevel();
         List<ClientboundLevelParticlesPacket> hearts = new ArrayList<>();
         var player = player(helper, packet -> {
@@ -238,20 +230,23 @@ public final class BedRestGameTests {
         player.setHealth(10);
         level.players().add(player);
         try {
-            player.startSleepInBed(pos);
-            tick(player, 150);
-            helper.assertTrue(hearts.size() == 3 && player.getHealth() == 12,
-                    "fixture must reach warmed-up rest with regeneration running");
+            helper.assertTrue(player.startSleepInBed(pos).right().isPresent(), "rest must start");
+            tick(player, 40);
+            helper.assertTrue(hearts.size() == 2 && player.getHealth() == player.getMaxHealth(),
+                    "fixture must reach two heart bursts with regeneration running");
             player.stopSleepInBed(true, true);
             int previous = hearts.size();
-            // Re-enter without an intervening awake tick: the wake hook must clear both timers.
-            player.startSleepInBed(pos);
-            tick(player, 99);
-            helper.assertTrue(hearts.size() == previous,
-                    "immediate reentry must wait another complete warmup for hearts");
+            // Re-enter without an intervening awake tick: the wake hook must clear the timer.
+            helper.assertTrue(player.startSleepInBed(pos).right().isPresent(), "immediate reentry must restart resting");
             tick(player, 1);
             helper.assertTrue(hearts.size() == previous + 1,
-                    "the new rest restarts heart feedback at its own 100th tick");
+                    "the new rest restarts heart feedback on its own first tick");
+            tick(player, 19);
+            helper.assertTrue(hearts.size() == previous + 1,
+                    "the restarted feedback keeps the one-second spacing");
+            tick(player, 1);
+            helper.assertTrue(hearts.size() == previous + 2,
+                    "the restarted feedback pulses again on its own 21st tick");
             player.stopSleepInBed(true, true);
             previous = hearts.size();
             tick(player, 20);

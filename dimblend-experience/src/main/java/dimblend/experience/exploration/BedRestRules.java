@@ -23,14 +23,31 @@ import net.neoforged.neoforge.event.entity.player.CanPlayerSleepEvent;
  */
 @EventBusSubscriber(modid = DimBlend.MODID)
 public final class BedRestRules {
-    /** 入睡预热：满 100 tick（5 秒）才给生命恢复与爱心粒子。 */
-    public static final int REST_WARMUP_TICKS = 100;
-    /** 预热完成后给一次的生命恢复 II 时长（30 秒），本段睡眠不重复给。 */
-    public static final int REST_REGENERATION_DURATION_TICKS = 600;
-    /** 预热完成后爱心粒子的播放间隔。 */
+    /** 生命恢复 X 的 amplifier（9 即界面显示等级 10）。 */
+    public static final int REST_REGENERATION_AMPLIFIER = 9;
+    /** 生命恢复 X 的时长：160 tick（8 秒），与自动起身对齐，本段睡眠只给一次。 */
+    public static final int REST_REGENERATION_DURATION_TICKS = 160;
+    /** 爱心粒子的播放间隔：躺下第 1 tick 起每 20 tick（1 秒）一次。 */
     public static final int HEART_PARTICLE_INTERVAL_TICKS = 20;
     /** 每次播放的爱心个数。 */
     public static final int HEART_PARTICLE_COUNT = 3;
+    /** 满 160 tick（8 秒）由服务端让玩家自动起身。 */
+    public static final int REST_AUTO_WAKE_TICKS = 160;
+
+    /** 纯规则：本段睡眠第 1 tick 给一次回血，之后不再给。 */
+    public static boolean grantsRegenerationOnTick(int restTicks) {
+        return restTicks == 1;
+    }
+
+    /** 纯规则：躺下第 1 tick 起，每 {@link #HEART_PARTICLE_INTERVAL_TICKS} tick 播一次爱心。 */
+    public static boolean emitsHeartsOnTick(int restTicks) {
+        return restTicks > 0 && (restTicks - 1) % HEART_PARTICLE_INTERVAL_TICKS == 0;
+    }
+
+    /** 纯规则：满 {@link #REST_AUTO_WAKE_TICKS} tick 自动起身。 */
+    public static boolean autoWakesOnTick(int restTicks) {
+        return restTicks >= REST_AUTO_WAKE_TICKS;
+    }
 
     public static boolean applies(Level level) {
         return level.dimension().equals(Level.OVERWORLD)

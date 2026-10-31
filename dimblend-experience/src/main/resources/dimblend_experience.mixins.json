@@ -78,6 +78,7 @@
 		"compat.simurail.AutomaticCouplerPartnerAccessor"
 	],
 	"client": [
+		"client.InBedChatScreenMixin",
 		"client.FrontlightBlockChangeMixin",
 		"client.SableSubLevelSpriteAnimationMixin",
 		"client.VeilWrappedDepthStencilMixin",
