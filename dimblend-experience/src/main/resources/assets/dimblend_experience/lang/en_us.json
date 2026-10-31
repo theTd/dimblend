@@ -263,5 +263,6 @@
   "message.dimblend_experience.chassis.track_required": "Place this on the generated wide-gauge main line",
   "message.dimblend_experience.chassis.unsafe": "The surrounding area is obstructed and unsafe",
   "message.dimblend_experience.chassis.choose": "Right-click to choose a chassis type",
-	"message.dimblend_experience.depth_curse.max_health": "Long journey: max health -25%"
+	"message.dimblend_experience.depth_curse.max_health": "Long journey: max health -25%",
+	"effect.dimblend_experience.cursed_poison": "Cursed Poison"
 }
