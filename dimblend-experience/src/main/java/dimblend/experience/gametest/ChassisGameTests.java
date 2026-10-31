@@ -20,6 +20,8 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.SlabType;
 import net.minecraft.core.Direction;
@@ -64,10 +66,11 @@ public final class ChassisGameTests {
             BlockPos lamp = new BlockPos(-16, 64, 0);
             helper.assertTrue(level.getBlockState(lamp).is(AllBlocks.ROSE_QUARTZ_LAMP.get()), "depot lamp");
             helper.assertTrue(level.getBlockState(lamp).getLightEmission(level, lamp) == 15, "lamp is lit");
-            BlockPos spawnChest = lamp.above();
-            helper.assertTrue(level.getBlockState(spawnChest).isAir(), "spawn chest cell is left empty");
-            helper.assertTrue(level.getBlockEntity(spawnChest) == null, "no chest block entity survives");
-            helper.assertTrue(level.getBlockState(lamp.above(2)).isAir(), "opening above the empty cell stays air");
+            helper.assertTrue(level.getBlockState(lamp.above(2)).isAir(), "chest has opening space");
+            var chest = (ChestBlockEntity) level.getBlockEntity(lamp.above());
+            helper.assertTrue(chest != null && chest.getItem(0).is(AllBlocks.TRAIN_CONTROLS.asItem())
+                    && chest.getItem(0).getCount() == 6, "exactly six controllers");
+            helper.assertTrue(level.getBlockState(lamp.above()).getValue(ChestBlock.FACING) == Direction.EAST, "chest faces X+");
             helper.assertTrue(level.getBlockState(new BlockPos(-17, 64, 0)).isAir(), "near track removed");
             helper.assertTrue(level.getBlockState(new BlockPos(-256, 64, 0)).isAir(), "far track removed");
             helper.assertTrue(CorridorRails.isGeneratedTrack(level, new BlockPos(-257, 64, 0)), "track beyond gap remains");
@@ -75,9 +78,9 @@ public final class ChassisGameTests {
                 if (z == 0 && y <= 66) continue;
                 helper.assertTrue(level.getBlockState(new BlockPos(-16, y, z)).is(Blocks.BEDROCK), "15x7 wall");
             }
+            chest.clearContent();
             helper.runAfterDelay(5, () -> {
-                helper.assertTrue(level.getBlockState(spawnChest).isAir()
-                        && level.getBlockEntity(spawnChest) == null, "depot must not put a chest back");
+                helper.assertTrue(chest.isEmpty(), "depot must not refill");
                 helper.succeed();
             });
         });
