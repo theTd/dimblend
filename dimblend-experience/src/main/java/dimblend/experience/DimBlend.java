@@ -12,6 +12,7 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.ModList;
 import dimblend.experience.compat.cdg.CdgAttachments;
 import dimblend.experience.compat.create.ItemDrainPipeRefill;
+import dimblend.experience.curse.CurseEffects;
 import dimblend.experience.compat.simurail.TrainForceGroups;
 import dimblend.experience.datagen.DataGenerators;
 import dimblend.experience.gametest.CdgKineticOverloadGameTests;
@@ -60,6 +61,9 @@ public class DimBlend {
 
         // 音效事件注册（无条件，播放侧由条件 mixin + Config 门控）
         ModSounds.SOUNDS.register(modEventBus);
+
+        // R19 诅咒中毒效果注册；R19/R20 的事件订阅在 curse 包（@EventBusSubscriber，不需要 mixin）
+        CurseEffects.EFFECTS.register(modEventBus);
 
         // A10 第三层：地图→纸的全局战利品修饰器序列化器（无条件，规则本体由 Config 门控）
         LootMapGlobalModifiers.SERIALIZERS.register(modEventBus);
