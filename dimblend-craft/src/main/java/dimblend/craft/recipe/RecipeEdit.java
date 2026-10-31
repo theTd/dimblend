@@ -28,8 +28,30 @@ public sealed interface RecipeEdit {
     record DeleteByRecipeId(String label, Set<ResourceLocation> recipeIds) implements RecipeEdit {
     }
 
-    /** Remove every recipe consuming this item, including machine and nested assembly inputs. */
-    record DeleteByIngredientId(String label, ResourceLocation ingredientId) implements RecipeEdit {
+    /**
+     * 删除所有消耗该物品的配方（含机器配方与序列组装内部的原料，匹配走真实
+     * {@code Ingredient} 判定，见 {@code RecipeInputMatcher}）。
+     *
+     * @param exemptRecipeIds 不参与本规则删除的配方 ID（按 ID 豁免、其余照旧）。
+     *                        用于「按原料整体删除，但个别配方需要保留」的场景；
+     *                        空集合表示全部删除，与旧行为一致
+     */
+    record DeleteByIngredientId(String label, ResourceLocation ingredientId,
+            Set<ResourceLocation> exemptRecipeIds) implements RecipeEdit {
+
+        public DeleteByIngredientId {
+            exemptRecipeIds = Set.copyOf(exemptRecipeIds);
+        }
+
+        /** 便捷构造：不豁免任何配方，保留原两参数签名。 */
+        public DeleteByIngredientId(String label, ResourceLocation ingredientId) {
+            this(label, ingredientId, Set.of());
+        }
+
+        /** 该配方是否被本规则豁免（跳过删除，保持原样）。 */
+        public boolean isExempt(ResourceLocation recipeId) {
+            return exemptRecipeIds.contains(recipeId);
+        }
     }
 
     /**

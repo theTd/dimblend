@@ -45,15 +45,32 @@ public final class RecipeEditApplicator {
 
         for (RecipeHolder<?> holder : List.copyOf(recipeManager.getRecipes())) {
             Recipe<?> recipe = holder.value();
-            RecipeEdit ingredientDeletion = edits.stream()
-                    .filter(edit -> edit instanceof RecipeEdit.DeleteByIngredientId delete
-                            && RecipeInputMatcher.consumes(recipe, delete.ingredientId(), registries))
-                    .findFirst().orElse(null);
+            // 原料删除：命中原料且配方 ID 不在豁免集合内才删除；豁免配方保持原样继续走后续规则。
+            // 同类规则当前只有一条，豁免日志按「首个命中的豁免规则」记一条。
+            RecipeEdit.DeleteByIngredientId ingredientDeletion = null;
+            RecipeEdit.DeleteByIngredientId exemptDeletion = null;
+            for (RecipeEdit edit : edits) {
+                if (!(edit instanceof RecipeEdit.DeleteByIngredientId delete)
+                        || !RecipeInputMatcher.consumes(recipe, delete.ingredientId(), registries)) {
+                    continue;
+                }
+                if (!delete.isExempt(holder.id())) {
+                    ingredientDeletion = delete;
+                    break;
+                }
+                if (exemptDeletion == null) {
+                    exemptDeletion = delete;
+                }
+            }
             if (ingredientDeletion != null) {
                 statsByIdentity.get(ingredientDeletion).matchedIds.add(holder.id());
                 removedCount++;
                 DimblendCraft.LOGGER.info("[配方] 删除 {}（规则：{}）", holder.id(), ingredientDeletion.label());
                 continue;
+            }
+            if (exemptDeletion != null) {
+                DimblendCraft.LOGGER.info("[配方] 保留 {}（规则：{}，配方 ID 在豁免集合内）",
+                        holder.id(), exemptDeletion.label());
             }
             // 产物解析失败（如某下游配方 getResultItem 抛异常）时保留该配方、仅告警，
             // 避免单条异常配方中断整轮 apply。

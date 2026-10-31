@@ -72,9 +72,23 @@ import com.google.gson.JsonPrimitive;
  *       统一把材料 {@code ingredients.0.item} 改写为黄铜板 {@code create:brass_sheet}。
  *       /reload 后上游动态配方本身即被原版重载清掉且不再注入（上游行为），
  *       晚期规则无需也不应在重载阶段重放。</li>
+ *   <li>列车机壳原料删除（2026-10-31 修订）：删除所有以 {@code create:railway_casing}
+ *       为原料的配方，但按配方 ID 豁免列车门 {@code create:crafting/kinetics/train_door}
+ *       与列车活板门 {@code create:crafting/kinetics/train_trapdoor}。
+ *       经整合包配方文件逐 jar 枚举，当前以机壳为原料的配方共 9 条
+ *       （Create 6.0.10 七条 + Steam 'n' Rails 0.2.0-beta.2 两条），豁免后仍删除 7 条；
+ *       上游以后新增的机壳原料配方不在豁免集合内，会被自动删除，规则未命中时仍告警。</li>
  * </ul>
  */
 public final class RecipeEditRules {
+
+    /**
+     * 「列车机壳参与的配方」规则的豁免集合（2026-10-31 需求 R10）：列车门与列车活板门
+     * 的合成台配方以机壳为原料，需要恢复；其余以机壳为原料的配方照旧删除。
+     */
+    private static final ImmutableSet<ResourceLocation> CASING_EXEMPT_RECIPE_IDS = ImmutableSet.of(
+            ResourceLocation.parse("create:crafting/kinetics/train_door"),
+            ResourceLocation.parse("create:crafting/kinetics/train_trapdoor"));
 
     private RecipeEditRules() {
     }
@@ -266,7 +280,7 @@ public final class RecipeEditRules {
 
     /** 原料删除依赖本轮标签，统一在服务端标签绑定后执行。 */
     public static List<RecipeEdit> ingredientEdits() {
-        return List.of(new RecipeEdit.DeleteByIngredientId("列车机壳参与的配方", ResourceLocation.parse("create:railway_casing")));
+        return List.of(trainCasingRule());
     }
 
     /**
@@ -278,10 +292,20 @@ public final class RecipeEditRules {
         // —— 3.15 哨兵机械臂弹药切削（2026-10-14 修订） ——
         // 切削材料 铜板 -> 黄铜板：上游按 TACZ 弹药表动态注入 sentrymechanicalarm:ammo_cutting/*
         //（create:cutting，铜板 => 待加工弹壳），前缀匹配覆盖全部弹药种类
-        return List.of(new RecipeEdit.DeleteByIngredientId("列车机壳参与的配方", ResourceLocation.parse("create:railway_casing")),
+        return List.of(trainCasingRule(),
                 new RecipeEdit.ModifyRecipeFieldsByIdPrefix("弹药切削铜板改黄铜板",
                 "sentrymechanicalarm:ammo_cutting/",
                 Map.of("ingredients.0.item", new JsonPrimitive("create:brass_sheet"))));
+    }
+
+    /**
+     * 列车机壳原料删除规则（豁免列车门 / 列车活板门）。重载阶段与服务器启动后阶段
+     * 共用同一份规则，避免两处豁免集合漂移：启动后阶段若退化为不豁免，
+     * 会把重载阶段刚保留的两条配方删掉。
+     */
+    private static RecipeEdit trainCasingRule() {
+        return new RecipeEdit.DeleteByIngredientId("列车机壳参与的配方",
+                ResourceLocation.parse("create:railway_casing"), CASING_EXEMPT_RECIPE_IDS);
     }
 
     private static GridRuleBuilder modify(String label, String... resultTargets) {

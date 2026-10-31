@@ -31,6 +31,10 @@ class RecipeEditRulesTest {
     private static final ResourceLocation HEATED_BRASS = ResourceLocation.parse("create:mixing/brass_ingot");
     private static final ResourceLocation SUPERHEATED_BRASS =
             ResourceLocation.parse("dimblend_craft:brass_ingot_from_superheated_mixing");
+    private static final ResourceLocation RAILWAY_CASING = ResourceLocation.parse("create:railway_casing");
+    private static final ResourceLocation TRAIN_DOOR = ResourceLocation.parse("create:crafting/kinetics/train_door");
+    private static final ResourceLocation TRAIN_TRAPDOOR =
+            ResourceLocation.parse("create:crafting/kinetics/train_trapdoor");
 
     /** 需求：黄铜只允许超级加热搅拌产出，Create 自带的加热版必须删除。 */
     @Test
@@ -77,6 +81,63 @@ class RecipeEditRulesTest {
         JsonObject result = json.getAsJsonArray("results").get(0).getAsJsonObject();
         assertEquals("create:brass_ingot", result.get("id").getAsString());
         assertEquals(2, result.get("count").getAsInt(), "超热版维持 x2，删除加热版不改变超热版产量");
+    }
+
+    /**
+     * 需求 R10（2026-10-31）：恢复列车门 / 列车活板门两条配方。
+     *
+     * <p>两条配方都以 {@code create:railway_casing} 为原料，原本被「列车机壳参与的配方」
+     * 整体删除；规则改为按配方 ID 豁免这两条。重载阶段
+     * （{@link RecipeEditRules#ingredientEdits()}）与服务器启动后阶段
+     * （{@link RecipeEditRules#lateEdits()}）各有一条同一规则，两处必须带同一份豁免集合，
+     * 否则启动后阶段会把重载阶段刚保留的配方再删掉。</p>
+     */
+    @Test
+    void trainDoorRecipesAreTheOnlyCasingDeletionExemptions() {
+        for (List<RecipeEdit> edits : List.of(RecipeEditRules.ingredientEdits(), RecipeEditRules.lateEdits())) {
+            RecipeEdit.DeleteByIngredientId rule = casingRule(edits);
+            assertEquals(Set.of(TRAIN_DOOR, TRAIN_TRAPDOOR), rule.exemptRecipeIds(),
+                    "机壳原料删除规则只允许豁免列车门与列车活板门（规则：" + rule.label() + "）");
+        }
+    }
+
+    /**
+     * 豁免之外，其余以机壳为原料的配方仍必须被删除。
+     *
+     * <p>2026-10-31 按整合包 {@code TrainTripWorld/mods} 的配方文件逐 jar 枚举：
+     * 以 {@code create:railway_casing} 为原料的配方共 9 条 —— Create 6.0.10 七条
+     * （controls、track_observer、track_observer_from_other_plates、track_signal、
+     * track_station、train_door、train_trapdoor），Steam 'n' Rails 0.2.0-beta.2 两条
+     * （portable_fuel_interface、track_coupler）。豁免 train_door / train_trapdoor 后，
+     * 下面 7 条必须继续被原料规则命中。规则按真实 {@code Ingredient} 匹配原料，
+     * 本单测在纯 JVM 下无法构造配方注册表，因此只断言「这 7 条不在豁免集合内」；
+     * 实际删除由 {@code RecipeInputMatcher} 保证，需在游戏内 {@code [配方]} 日志确认。</p>
+     */
+    @Test
+    void otherCasingRecipesAreNotExemptFromDeletion() {
+        Set<ResourceLocation> stillDeleted = Set.of(
+                ResourceLocation.parse("create:crafting/kinetics/controls"),
+                ResourceLocation.parse("create:crafting/kinetics/track_observer"),
+                ResourceLocation.parse("create:crafting/kinetics/track_observer_from_other_plates"),
+                ResourceLocation.parse("create:crafting/kinetics/track_signal"),
+                ResourceLocation.parse("create:crafting/kinetics/track_station"),
+                ResourceLocation.parse("railways:crafting/portable_fuel_interface"),
+                ResourceLocation.parse("railways:crafting/track_coupler"));
+        assertEquals(7, stillDeleted.size(), "枚举的未豁免机壳配方应为 7 条");
+        RecipeEdit.DeleteByIngredientId rule = casingRule(RecipeEditRules.ingredientEdits());
+        for (ResourceLocation id : stillDeleted) {
+            assertFalse(rule.isExempt(id), "配方 " + id + " 被误加进豁免集合，机壳原料删除对它失效");
+        }
+    }
+
+    private static RecipeEdit.DeleteByIngredientId casingRule(List<RecipeEdit> edits) {
+        for (RecipeEdit edit : edits) {
+            if (edit instanceof RecipeEdit.DeleteByIngredientId delete
+                    && delete.ingredientId().equals(RAILWAY_CASING)) {
+                return delete;
+            }
+        }
+        throw new AssertionError("规则表中缺少以 " + RAILWAY_CASING + " 为原料的删除规则");
     }
 
     private static Set<ResourceLocation> deliberatelyDeleted(List<RecipeEdit> edits) {
