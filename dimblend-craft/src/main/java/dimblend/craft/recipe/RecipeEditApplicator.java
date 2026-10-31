@@ -18,6 +18,8 @@ import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.item.crafting.ShapedRecipe;
 
+import com.google.gson.JsonElement;
+
 import dimblend.craft.DimblendCraft;
 
 /**
@@ -38,10 +40,20 @@ public final class RecipeEditApplicator {
             List<RecipeEdit> edits) {
         Map<RecipeEdit, Stats> statsByIdentity = new IdentityHashMap<>();
         edits.forEach(edit -> statsByIdentity.put(edit, new Stats()));
+        // 通用内容替换规则（材料 / 产物）与配方 ID 无关，先取出避免内层循环反复做类型判断。
+        List<RecipeEdit.ContentEdit> contentEdits = new ArrayList<>(2);
+        for (RecipeEdit edit : edits) {
+            if (edit instanceof RecipeEdit.ContentEdit contentEdit) {
+                contentEdits.add(contentEdit);
+            }
+        }
 
         List<RecipeHolder<?>> keptRecipes = new ArrayList<>(recipeManager.getRecipes().size());
         int removedCount = 0;
         int modifiedCount = 0;
+        // 通用内容替换需要把配方编码成 JSON 才能看清材料/产物写法；少数序列化器不可编码时
+        // 在这里记账，整轮结束后汇总一条 WARN，避免每条配方刷一条错误日志。
+        List<ResourceLocation> unencodableRecipes = new ArrayList<>(0);
 
         for (RecipeHolder<?> holder : List.copyOf(recipeManager.getRecipes())) {
             Recipe<?> recipe = holder.value();
@@ -116,6 +128,16 @@ public final class RecipeEditApplicator {
                 }
             }
 
+            if (!contentEdits.isEmpty()) {
+                RecipeHolder<?> edited = applyContentEdits(holder, recipe, contentEdits, registries,
+                        statsByIdentity, unencodableRecipes);
+                if (edited != null) {
+                    modifiedCount++;
+                    keptRecipes.add(edited);
+                    continue;
+                }
+            }
+
             keptRecipes.add(holder);
         }
 
@@ -133,6 +155,25 @@ public final class RecipeEditApplicator {
                     removedCount, modifiedCount, movedCount);
         }
         warnUnmatched(edits, statsByIdentity);
+        warnUnencodable(unencodableRecipes);
+    }
+
+    /** 汇总无法编码的配方：只有需要逐条检查材料/产物写法的通用内容替换会受影响。 */
+    private static void warnUnencodable(List<ResourceLocation> unencodableRecipes) {
+        if (unencodableRecipes.isEmpty()) {
+            return;
+        }
+        StringBuilder sample = new StringBuilder();
+        int shown = Math.min(5, unencodableRecipes.size());
+        for (int i = 0; i < shown; i++) {
+            if (i > 0) {
+                sample.append("、");
+            }
+            sample.append(unencodableRecipes.get(i));
+        }
+        DimblendCraft.LOGGER.warn("[配方] 通用内容替换无法检查 {} 条配方（序列化器编码失败；"
+                + "若目标配方在列，对应替换不会生效）：{}{}", unencodableRecipes.size(), sample,
+                unencodableRecipes.size() > shown ? " …" : "");
     }
 
     /**
@@ -259,6 +300,71 @@ public final class RecipeEditApplicator {
         return new RecipeHolder<>(holder.id(), edited.get());
     }
 
+    /**
+     * 应用通用内容替换规则：一条配方可能同时命中多条（例如同一配方既用森罗面粉当材料、
+     * 又产出森罗面粉），按规则表顺序依次变换，最后对整段 JSON 解码一次。
+     *
+     * <p>命中与否用「变换前后 JSON 是否相等」判断；未命中任何规则时不产生新配方对象。
+     * 解码失败保留原配方并告警，命中统计也只在解码成功后记账。</p>
+     */
+    private static RecipeHolder<?> applyContentEdits(RecipeHolder<?> holder, Recipe<?> recipe,
+            List<RecipeEdit.ContentEdit> contentEdits, HolderLookup.Provider registries,
+            Map<RecipeEdit, Stats> statsByIdentity, List<ResourceLocation> unencodableRecipes) {
+        Optional<JsonElement> encoded = RecipeJsonEditor.encode(recipe, registries);
+        if (encoded.isEmpty()) {
+            unencodableRecipes.add(holder.id());
+            return null;
+        }
+        JsonElement current = encoded.get();
+        List<RecipeEdit.ContentEdit> changed = new ArrayList<>(contentEdits.size());
+        for (RecipeEdit.ContentEdit edit : contentEdits) {
+            JsonElement transformed = edit.transform(current);
+            // 未命中时变换原样返回输入实例（不做深拷贝），先比引用再比内容。
+            if (transformed == current || transformed.equals(current)) {
+                continue;
+            }
+            changed.add(edit);
+            current = transformed;
+        }
+        if (changed.isEmpty()) {
+            return null;
+        }
+        Optional<Recipe<?>> decoded = RecipeJsonEditor.decode(recipe, current, registries);
+        if (decoded.isEmpty()) {
+            DimblendCraft.LOGGER.error("[配方] 规则「{}」无法应用于配方 {}（内容替换后 JSON 解码失败），"
+                    + "配方保持原样", describeContentRuleLabels(changed), holder.id());
+            return null;
+        }
+        for (RecipeEdit.ContentEdit edit : changed) {
+            statsByIdentity.get(edit).matchedIds.add(holder.id());
+        }
+        DimblendCraft.LOGGER.info("[配方] 修改 {}：{}（规则：{}）",
+                holder.id(), describeContentEdits(changed), describeContentRuleLabels(changed));
+        return new RecipeHolder<>(holder.id(), decoded.get());
+    }
+
+    private static String describeContentEdits(List<RecipeEdit.ContentEdit> edits) {
+        StringBuilder description = new StringBuilder();
+        for (RecipeEdit.ContentEdit edit : edits) {
+            if (description.length() > 0) {
+                description.append("；");
+            }
+            description.append(edit.describe());
+        }
+        return description.toString();
+    }
+
+    private static String describeContentRuleLabels(List<RecipeEdit.ContentEdit> edits) {
+        StringBuilder labels = new StringBuilder();
+        for (RecipeEdit.ContentEdit edit : edits) {
+            if (labels.length() > 0) {
+                labels.append("、");
+            }
+            labels.append(edit.label());
+        }
+        return labels.toString();
+    }
+
     private static String describeFieldEdits(RecipeEdit.FieldModify modify) {
         StringBuilder description = new StringBuilder();
         modify.fieldEdits().entrySet().stream()
@@ -299,14 +405,21 @@ public final class RecipeEditApplicator {
             if (!statsByIdentity.get(edit).matchedIds.isEmpty()) {
                 continue;
             }
-            if (edit instanceof RecipeEdit.DeleteByResultId delete && delete.defensive()) {
+            if (isDefensive(edit)) {
                 DimblendCraft.LOGGER.info("[配方] 防御性规则「{}」未命中任何配方（属预期；"
-                        + "若上游更新后出现该产物的配方将被自动删除）", edit.label());
+                        + "若上游更新后出现对应配方将被自动处理）", edit.label());
             } else {
                 DimblendCraft.LOGGER.warn("[配方] 规则「{}」未命中任何配方，整合包更新可能导致规则失效，"
                         + "请核对 docs/配方修改需求.md", edit.label());
             }
         }
+    }
+
+    /** 防御性规则：当前无命中属预期（产物当前不存在 / 配方带加载条件未加载 / 上游以后才新增）。 */
+    private static boolean isDefensive(RecipeEdit edit) {
+        return edit instanceof RecipeEdit.DeleteByResultId byResult && byResult.defensive()
+                || edit instanceof RecipeEdit.DeleteByRecipeId byRecipeId && byRecipeId.defensive()
+                || edit instanceof RecipeEdit.ContentEdit content && content.defensive();
     }
 
     /** 单条规则的命中记录（以规则实例为 IdentityHashMap 键，规则实例唯一）。 */

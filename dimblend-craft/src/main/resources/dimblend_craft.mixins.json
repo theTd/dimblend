@@ -8,6 +8,10 @@
     "compat.kaleidoscope.MillstoneNativeRecipeMixin",
     "compat.kaleidoscope.MillstoneSearchRecipeMixin"
   ],
+  "client": [
+    "client.LanguageOverrideMixin",
+    "client.I18nAccessor"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

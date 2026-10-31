@@ -1,0 +1,17 @@
+{
+  "advancement.create.rose_quartz.desc": "拋光一些感電石英",
+  "block.cold_sweat.icebox": "冷凍盒",
+  "block.create.rose_quartz_block": "感電石英方塊",
+  "block.create.rose_quartz_lamp": "感電石英燈",
+  "block.create.rose_quartz_tiles": "感電石英磚瓦",
+  "block.create.small_rose_quartz_tiles": "小感電石英磚瓦",
+  "block.kaleidoscope_cookery.millstone": "靈魂驢拉磨",
+  "config.jade.plugin_kaleidoscope_cookery.millstone": "靈魂驢拉磨",
+  "container.cold_sweat.icebox": "冷凍盒",
+  "create.ponder.rose_quartz_lamp.header": "感電石英燈",
+  "create.ponder.rose_quartz_lamp.text_1": "感電石英燈由紅石訊號開啟",
+  "emi.category.kaleidoscope_cookery.millstone": "靈魂驢拉磨",
+  "item.create.polished_rose_quartz": "拋光感電石英",
+  "item.create.rose_quartz": "感電石英",
+  "item.twilightforest.berry_medley": "暮光漿果拼盤"
+}

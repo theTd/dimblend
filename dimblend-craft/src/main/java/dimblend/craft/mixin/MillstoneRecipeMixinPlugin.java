@@ -8,8 +8,20 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 
 /** 可选森罗配方兼容门控；本模块不依赖 experience。 */
 public final class MillstoneRecipeMixinPlugin implements IMixinConfigPlugin {
+
+    /**
+     * 与森罗无关、任何整合包下都要应用的 mixin：客户端显示名覆盖（2026-10-31 R12）。
+     * 其余 mixin 只在森罗厨房存在时应用（上游类缺失时不加载对应 mixin）。
+     */
+    private static final Set<String> ALWAYS_APPLIED = Set.of(
+            "dimblend.craft.mixin.client.LanguageOverrideMixin",
+            "dimblend.craft.mixin.client.I18nAccessor");
+
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        if (ALWAYS_APPLIED.contains(mixinClassName)) {
+            return true;
+        }
         return net.neoforged.fml.loading.FMLLoader.getLoadingModList()
                 .getModFileById("kaleidoscope_cookery") != null;
     }

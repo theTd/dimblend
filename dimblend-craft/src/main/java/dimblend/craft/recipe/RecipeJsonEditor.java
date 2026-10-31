@@ -38,22 +38,7 @@ public final class RecipeJsonEditor {
      */
     public static Optional<Recipe<?>> edit(Recipe<?> recipe, Map<String, JsonElement> fieldEdits,
             HolderLookup.Provider registries) {
-        DynamicOps<JsonElement> ops = RegistryOps.create(JsonOps.INSTANCE, registries);
-        try {
-            return editTyped(recipe, fieldEdits, ops);
-        } catch (Exception e) {
-            // 部分上游序列化器的编码路径只面向解码实现，可能直接抛异常；
-            // 与调用方约定一致：失败即放弃本条修改，由调用方保留原配方并告警。
-            return Optional.empty();
-        }
-    }
-
-    /** 以通配捕获的方式拿到配方自身序列化器的 Codec 完成往返；配方与其序列化器必然同型。 */
-    @SuppressWarnings("unchecked")
-    private static <T extends Recipe<?>> Optional<Recipe<?>> editTyped(Recipe<?> recipe,
-            Map<String, JsonElement> fieldEdits, DynamicOps<JsonElement> ops) {
-        RecipeSerializer<T> serializer = (RecipeSerializer<T>) recipe.getSerializer();
-        Optional<JsonElement> encoded = serializer.codec().codec().encodeStart(ops, (T) recipe).result();
+        Optional<JsonElement> encoded = encode(recipe, registries);
         if (encoded.isEmpty() || !encoded.get().isJsonObject()) {
             return Optional.empty();
         }
@@ -63,6 +48,46 @@ public final class RecipeJsonEditor {
                 return Optional.empty();
             }
         }
+        return decode(recipe, json, registries);
+    }
+
+    /**
+     * 把配方编码成 JSON（供 {@link RecipeEdit.ContentEdit} 这类「先看内容再决定改不改」的
+     * 规则使用）；编码失败返回 empty，由调用方保留原配方并告警。
+     */
+    public static Optional<JsonElement> encode(Recipe<?> recipe, HolderLookup.Provider registries) {
+        DynamicOps<JsonElement> ops = RegistryOps.create(JsonOps.INSTANCE, registries);
+        try {
+            return encodeTyped(recipe, ops);
+        } catch (Exception e) {
+            // 部分上游序列化器的编码路径只面向解码实现，可能直接抛异常。
+            return Optional.empty();
+        }
+    }
+
+    /** 把编辑后的 JSON 重新解码成配方实例；解码失败返回 empty。 */
+    public static Optional<Recipe<?>> decode(Recipe<?> recipe, JsonElement json,
+            HolderLookup.Provider registries) {
+        DynamicOps<JsonElement> ops = RegistryOps.create(JsonOps.INSTANCE, registries);
+        try {
+            return decodeTyped(recipe, ops, json);
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    /** 以通配捕获的方式拿到配方自身序列化器的 Codec 完成往返；配方与其序列化器必然同型。 */
+    @SuppressWarnings("unchecked")
+    private static <T extends Recipe<?>> Optional<JsonElement> encodeTyped(Recipe<?> recipe,
+            DynamicOps<JsonElement> ops) {
+        RecipeSerializer<T> serializer = (RecipeSerializer<T>) recipe.getSerializer();
+        return serializer.codec().codec().encodeStart(ops, (T) recipe).result();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T extends Recipe<?>> Optional<Recipe<?>> decodeTyped(Recipe<?> recipe,
+            DynamicOps<JsonElement> ops, JsonElement json) {
+        RecipeSerializer<T> serializer = (RecipeSerializer<T>) recipe.getSerializer();
         DataResult<Pair<T, JsonElement>> decoded = serializer.codec().decoder().decode(ops, json);
         return decoded.result().map(pair -> (Recipe<?>) pair.getFirst());
     }

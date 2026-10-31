@@ -1,6 +1,7 @@
 package dimblend.craft.recipe;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import net.minecraft.resources.ResourceLocation;
@@ -24,8 +25,21 @@ public sealed interface RecipeEdit {
      * <p>用于产物 ID 与配方文件不一一对应的场景：TACZ 弹药装配台的配方产物是
      * tacz:workbench_a + custom_data，无法按产物匹配；CDG 植物油的获取途径是
      * Create 压缩配方（决议 3 明确包含机器配方）。</p>
+     *
+     * @param defensive 防御性规则：该配方当前因加载条件（如 {@code neoforge:conditions}）
+     *                  不加载或上游未来才提供时，未命中属预期，告警降级为 INFO
      */
-    record DeleteByRecipeId(String label, Set<ResourceLocation> recipeIds) implements RecipeEdit {
+    record DeleteByRecipeId(String label, Set<ResourceLocation> recipeIds, boolean defensive)
+            implements RecipeEdit {
+
+        public DeleteByRecipeId {
+            recipeIds = Set.copyOf(recipeIds);
+        }
+
+        /** 便捷构造：非防御性规则（当前必须命中），保留原两参数签名。 */
+        public DeleteByRecipeId(String label, Set<ResourceLocation> recipeIds) {
+            this(label, recipeIds, false);
+        }
     }
 
     /**
@@ -160,6 +174,97 @@ public sealed interface RecipeEdit {
             if (recipeId.equals(anchorId)) {
                 throw new IllegalArgumentException("规则[" + label + "]排序目标与锚点相同: " + recipeId);
             }
+        }
+    }
+
+    /**
+     * 配方的通用内容替换（2026-10-31 R12 引入）：与配方类型无关，按配方 JSON 的字段名
+     * 精确命中后改写，再经配方自身 Codec 往返解码。
+     *
+     * <p>与 {@link ModifyRecipeFields} 的区别：后者按固定配方 ID 列表、按点号路径写入指定字段；
+     * 本类规则在<b>全部配方</b>上扫描，命中与否由 JSON 内容决定，用于「所有以某物品/标签为材料
+     * 的配方」「所有产出某物品的配方」这种无法逐条枚举 ID 的范围（上游更新后自动跟进）。
+     * 变换必须幂等：同一规则对已改写的 JSON 再应用一次不得产生差异。</p>
+     */
+    sealed interface ContentEdit extends RecipeEdit {
+
+        /**
+         * 返回改写后的配方 JSON；未命中时原样返回输入实例（不复制），调用方可用引用相等快速判断。
+         * 命中时内部先深拷贝再改写，绝不允许原地修改输入。
+         */
+        JsonElement transform(JsonElement recipeJson);
+
+        /** 防御性规则：当前无命中属预期，未命中告警降级为 INFO。 */
+        boolean defensive();
+
+        /** 命中的一句话描述，用于 {@code [配方]} 日志。 */
+        String describe();
+    }
+
+    /**
+     * 材料目标：物品 {@code {"item": id}} 或标签 {@code {"tag": id}} 的精确写法。
+     *
+     * <p><b>只做精确 id 匹配</b>：一个标签（如 {@code c:nuggets/copper}）即使包含目标物品，
+     * 也不视为命中 —— 把标签换成单个物品会改变该配方对其余同类物品的接受范围。</p>
+     */
+    record IngredientTarget(boolean tag, ResourceLocation id) {
+
+        public IngredientTarget {
+            Objects.requireNonNull(id, "id");
+        }
+
+        public static IngredientTarget item(String id) {
+            return new IngredientTarget(false, ResourceLocation.parse(id));
+        }
+
+        public static IngredientTarget tag(String id) {
+            return new IngredientTarget(true, ResourceLocation.parse(id));
+        }
+
+        public String describe() {
+            return tag ? "#" + id : id.toString();
+        }
+    }
+
+    /**
+     * 材料替换：把全部配方中精确写成 {@code from} 的材料对象改写成 {@code to} 的形式，
+     * 其它材料与产物原样。只改材料（{@code item}/{@code tag} 字段），不碰产物字段。
+     *
+     * @param defensive 当前无命中属预期时置 true（上游以后新增引用会自动生效）
+     */
+    record ReplaceIngredient(String label, IngredientTarget from, IngredientTarget to, boolean defensive)
+            implements ContentEdit {
+
+        @Override
+        public JsonElement transform(JsonElement recipeJson) {
+            return RecipeContentTransform.replaceIngredient(recipeJson, from, to);
+        }
+
+        @Override
+        public String describe() {
+            return "材料 " + from.describe() + " -> " + to.describe();
+        }
+    }
+
+    /**
+     * 产物替换：把全部配方中产物 id 为 {@code from} 的条目改成 {@code to}，数量与其余字段原样。
+     *
+     * <p>只走产物路径（{@code result} / {@code results} / {@code transitional_item}），
+     * 材料侧与 {@code custom_data} 里的同名字段不得被改写。</p>
+     *
+     * @param defensive 当前无命中属预期时置 true
+     */
+    record ReplaceResultId(String label, ResourceLocation from, ResourceLocation to, boolean defensive)
+            implements ContentEdit {
+
+        @Override
+        public JsonElement transform(JsonElement recipeJson) {
+            return RecipeContentTransform.replaceResultId(recipeJson, from, to);
+        }
+
+        @Override
+        public String describe() {
+            return "产物 " + from + " -> " + to;
         }
     }
 }

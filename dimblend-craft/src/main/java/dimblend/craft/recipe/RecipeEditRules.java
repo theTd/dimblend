@@ -82,6 +82,12 @@ import com.google.gson.JsonPrimitive;
  *       经整合包配方文件逐 jar 枚举，当前以机壳为原料的配方共 9 条
  *       （Create 6.0.10 七条 + Steam 'n' Rails 0.2.0-beta.2 两条），豁免后仍删除 7 条；
  *       上游以后新增的机壳原料配方不在豁免集合内，会被自动删除，规则未命中时仍告警。</li>
+ *   <li>重名物品断源与替换（2026-10-31 R12 用户逐条确认）：暮色 3 条铜粒产出配方保留、产物改成
+ *       Create 铜粒（暮色铜粒不再有产出），直接引用暮色铜粒的材料改成 Create 铜粒；次元酒窖 pepsi
+ *       删除唯一产出配方（带加载条件，属防御性）；森罗面粉的
+ *       材料（物品与 c:flour 标签两种写法）改成 c:flours/wheat、唯一产出改成 create:wheat_flour。
+ *       规则实现为「全配方 JSON 内容替换」原语（{@link RecipeEdit.ReplaceIngredient} /
+ *       {@link RecipeEdit.ReplaceResultId}），与配方类型无关。</li>
  * </ul>
  */
 public final class RecipeEditRules {
@@ -296,6 +302,50 @@ public final class RecipeEditRules {
                         ResourceLocation.parse("yet_another_thirst:water_bucket_from_smelting_acceptable_purity_0"),
                         ResourceLocation.parse("yet_another_thirst:water_bucket_from_smelting_purfied_purity_1"),
                         ResourceLocation.parse("yet_another_thirst:water_bucket_from_smelting_purfied_purity_2"))));
+
+        // —— 3.17 重名物品的断源与替换（2026-10-31 用户逐条确认 R12） ——
+        // dup-04 铜粒（2026-10-31 改口径：「断掉一方，但是将原本 tf 铜粒参与的配方换成 create 的」）：
+        // 暮色 3 条产出配方保留，只把产物 id 换成 create:copper_nugget，数量原样
+        // （熔炼/高炉 铜浆果 -> 1 铜粒、无序合成 1 铜锭 -> 9 铜粒）；全包枚举里只有这 3 条产出
+        // twilightforest:copper_nugget，替换后该物品不再有任何产出（注册与贴图保留，成为遗留物）。
+        // 铜浆果 twilightforest:copper_berry 仍有用途（熔炼成 Create 铜粒），不会变成孤儿；
+        // Create 一侧 6 条产出配方原样。
+        edits.add(new RecipeEdit.ReplaceResultId("暮色铜粒产出改 Create 铜粒",
+                ResourceLocation.parse("twilightforest:copper_nugget"),
+                ResourceLocation.parse("create:copper_nugget"), false));
+        // 材料替换方向：按「只改名 = 改非主 mod 一侧」的约定推断为保留 Create（任务书标注为推断）。
+        // 只替换直接写 twilightforest:copper_nugget 的材料对象；c:nuggets/copper 标签虽然内含
+        // 该物品也不替换（换成单个物品会改变配方对其余铜粒的接受范围）。
+        // 全整合包 11734 条配方（188 主 jar + 82 嵌套 jar）枚举结果：当前没有任何配方直接以
+        // 该物品为材料，规则标防御性，上游以后新增直接引用时自动生效。
+        edits.add(new RecipeEdit.ReplaceIngredient("暮色森林铜粒材料改 Create 铜粒",
+                RecipeEdit.IngredientTarget.item("twilightforest:copper_nugget"),
+                RecipeEdit.IngredientTarget.item("create:copper_nugget"), true));
+
+        // dup-06 可乐：kaleidoscope_dim_wine:pepsi 与 kaleidoscope_world_liquor:cola 同名。
+        // 方向（按同一约定推断：保留主 mod「世界名酒」）：只删次元酒窖产出 pepsi 的唯一配方
+        // （kaleidoscope_tavern:barrel，产物 pepsi；带 the_bumblezone 加载条件，本包未装该 mod，
+        // 该配方当前不加载 -> 防御性规则）。物品保留，世界名酒 cola 的配方与材料一条不碰。
+        edits.add(new RecipeEdit.DeleteByRecipeId("次元酒窖可乐产出",
+                Set.of(ResourceLocation.parse("kaleidoscope_dim_wine:barrel/pepsi")), true));
+
+        // dup-11 / dup-11b 面粉（2026-10-31 追加）：森罗 kaleidoscope_cookery:flour 与
+        // Create create:wheat_flour 分属互不相认的 c:flour / c:flours 标签，用户要求不合并标签、
+        // 把森罗那边所有涉及面粉的配方改用 Create 小麦粉。
+        // 全整合包枚举：材料侧 23 条配方共 59 处（物品形式 38 处 + c:flour 标签形式 21 处），
+        // 集中在森罗厨房/国味/末地/暮色/下界五个 jar（含其代其它 mod 命名空间出的配方）；
+        // 产物侧只有 1 条（kaleidoscope_cookery:millstone/flour_from_wheat，小麦 -> 面粉）。
+        // 两条材料规则分别处理「直接写物品」与「写 c:flour 标签」两种写法，产物规则只改产物 id，
+        // 数量原样；三者都幂等。执行后森罗面粉既无产出也无消费者（用户接受，物品注册与贴图保留）。
+        edits.add(new RecipeEdit.ReplaceIngredient("森罗面粉材料改 Create 小麦面粉（物品形式）",
+                RecipeEdit.IngredientTarget.item("kaleidoscope_cookery:flour"),
+                RecipeEdit.IngredientTarget.tag("c:flours/wheat"), false));
+        edits.add(new RecipeEdit.ReplaceIngredient("森罗面粉材料改 Create 小麦面粉（c:flour 标签）",
+                RecipeEdit.IngredientTarget.tag("c:flour"),
+                RecipeEdit.IngredientTarget.tag("c:flours/wheat"), false));
+        edits.add(new RecipeEdit.ReplaceResultId("森罗面粉产物改 Create 小麦面粉",
+                ResourceLocation.parse("kaleidoscope_cookery:flour"),
+                ResourceLocation.parse("create:wheat_flour"), false));
 
         return edits.build();
     }

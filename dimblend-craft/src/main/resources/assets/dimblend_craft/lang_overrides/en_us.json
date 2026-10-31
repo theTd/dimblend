@@ -1,0 +1,17 @@
+{
+  "advancement.create.rose_quartz.desc": "Polish some Charged Quartz",
+  "block.cold_sweat.icebox": "Freezer Box",
+  "block.create.rose_quartz_block": "Block of Charged Quartz",
+  "block.create.rose_quartz_lamp": "Charged Quartz Lamp",
+  "block.create.rose_quartz_tiles": "Charged Quartz Tiles",
+  "block.create.small_rose_quartz_tiles": "Small Charged Quartz Tiles",
+  "block.kaleidoscope_cookery.millstone": "Soul Donkey Mill",
+  "config.jade.plugin_kaleidoscope_cookery.millstone": "Soul Donkey Mill",
+  "container.cold_sweat.icebox": "Freezer Box",
+  "create.ponder.rose_quartz_lamp.header": "Charged Quartz Lamps",
+  "create.ponder.rose_quartz_lamp.text_1": "Charged Quartz Lamps activate on a Redstone signal",
+  "emi.category.kaleidoscope_cookery.millstone": "Soul Donkey Mill",
+  "item.create.polished_rose_quartz": "Polished Charged Quartz",
+  "item.create.rose_quartz": "Charged Quartz",
+  "item.twilightforest.berry_medley": "Twilight Berry Platter"
+}

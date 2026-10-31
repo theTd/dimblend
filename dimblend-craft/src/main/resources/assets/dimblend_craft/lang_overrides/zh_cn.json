@@ -1,0 +1,17 @@
+{
+  "advancement.create.rose_quartz.desc": "使用砂纸将感电石英打磨至透明",
+  "block.cold_sweat.icebox": "冷冻盒",
+  "block.create.rose_quartz_block": "感电石英块",
+  "block.create.rose_quartz_lamp": "感电石英灯",
+  "block.create.rose_quartz_tiles": "感电石英瓦",
+  "block.create.small_rose_quartz_tiles": "感电石英细瓦",
+  "block.kaleidoscope_cookery.millstone": "灵魂驴拉磨",
+  "config.jade.plugin_kaleidoscope_cookery.millstone": "灵魂驴拉磨",
+  "container.cold_sweat.icebox": "冷冻盒",
+  "create.ponder.rose_quartz_lamp.header": "感电石英灯",
+  "create.ponder.rose_quartz_lamp.text_1": "感电石英灯通入红石信号后会处于激活状态",
+  "emi.category.kaleidoscope_cookery.millstone": "灵魂驴拉磨",
+  "item.create.polished_rose_quartz": "磨制感电石英",
+  "item.create.rose_quartz": "感电石英",
+  "item.twilightforest.berry_medley": "暮光浆果拼盘"
+}
