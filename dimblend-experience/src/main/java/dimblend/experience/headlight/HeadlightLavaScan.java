@@ -14,16 +14,18 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.material.FlowingFluid;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Collects the lava top faces the beams light: for each lamp the cone's bounding box, palette-pruned chunk
- * sections nearest the lens first, the exposed-top rule, the same cone/attenuation test as the surface
- * shader ({@link HeadlightLavaMath#lit}) and, with shadows on, a block raycast through the same occluder
- * predicate as the shadow grids ({@link HeadlightOccluders}), so a wall in the way hides the outline exactly
- * where it hides the light.
+ * Collects the lava faces the beams light: for each lamp the cone's bounding box, palette-pruned chunk
+ * sections nearest the lens first, the exposed-top rule ({@link HeadlightLavaColumn} -- a vertical falling
+ * lava column reports one face per cell, a pool reports only its surface), the same cone/attenuation test as
+ * the surface shader ({@link HeadlightLavaMath#lit}) and, with shadows on, a block raycast through the same
+ * occluder predicate as the shadow grids ({@link HeadlightOccluders}), so a wall in the way hides the outline
+ * exactly where it hides the light.
  *
  * <p>Takes a plain {@link Level}, so the client highlight and the server's marked-lava query walk the same code:
  * the client outlines every lit face of the beams it draws, and the observer blaze's tracker scans once per
@@ -39,8 +41,6 @@ public final class HeadlightLavaScan {
      */
     public static final int VOXEL_BUDGET = 65536;
 
-    /** Below this the fluid state's height is not a surface worth drawing. */
-    private static final float MIN_HEIGHT = 1.0E-3F;
     /** The cone's bounding box uses tan(half angle); anything past this would only overshoot the world. */
     private static final double MAX_HALF_ANGLE_DEGREES = 85.0;
 
@@ -128,10 +128,11 @@ public final class HeadlightLavaScan {
                     if (!fluid.is(FluidTags.LAVA)) {
                         continue;
                     }
-                    // Exposed top only: the same fluid above means the surface is higher up, and a full solid
-                    // block above (BlockBehaviour.isSolidRender, BlockBehaviour.java:603-610) caps the pool.
+                    // What this cell contributes: an exposed top face, one cell of a vertical falling column, or
+                    // nothing (HeadlightLavaColumn). A non-falling cell under the same fluid is still skipped, and a
+                    // full solid block above caps a pool; both tests are the top-face rule from before.
                     float height = fluid.getOwnHeight();
-                    if (height < MIN_HEIGHT) {
+                    if (height < HeadlightLavaColumn.MIN_HEIGHT) {
                         continue;
                     }
                     BlockState above = LoadedChunks.state(level, cursor.set(x, y + 1, z));
@@ -139,16 +140,31 @@ public final class HeadlightLavaScan {
                         // Unloaded above the pool: the exposure cannot be established without loading a chunk.
                         continue;
                     }
-                    if (above.getFluidState().getType().isSame(fluid.getType())) {
+                    // Exposed top only: the same fluid above means the surface is higher up -- except in a vertical
+                    // falling column, where every cell has the same fluid above and each one is its own face
+                    // (HeadlightLavaColumn). A non-falling cell keeps the skip; no lava above keeps the top face.
+                    HeadlightLavaColumn.Decision face = HeadlightLavaColumn.decide(
+                            above.getFluidState().getType().isSame(fluid.getType()),
+                            // getOptionalValue, not getValue: a modded fluid without FALLING must not throw here.
+                            fluid.getOptionalValue(FlowingFluid.FALLING).orElse(false),
+                            height);
+                    if (face == HeadlightLavaColumn.Decision.SKIP) {
                         continue;
                     }
-                    if (!above.isAir() && !LoadedChunks.shapeNeighbourhoodLoaded(level, x, y + 1, z)) {
-                        // A fence, wall or pane above would read its neighbours; near the edge of the loaded region
-                        // that could pull a chunk in, so the exposure is treated as unknown.
-                        continue;
-                    }
-                    if (above.isSolidRender(level, cursor)) {
-                        continue;
+                    if (face == HeadlightLavaColumn.Decision.TOP_FACE) {
+                        // Only a top face needs the solid-above test and the neighbourhood guard it depends on: a
+                        // column face has lava above it by definition, and lava's shape is empty
+                        // (LiquidBlock.getShape returns Shapes.empty), so it can never be a solid cap.
+                        if (!above.isAir() && !LoadedChunks.shapeNeighbourhoodLoaded(level, x, y + 1, z)) {
+                            // A fence, wall or pane above would read its neighbours; near the edge of the loaded
+                            // region that could pull a chunk in, so the exposure is treated as unknown.
+                            continue;
+                        }
+                        if (above.isSolidRender(level, cursor)) {
+                            // A full solid block above (BlockBehaviour.isSolidRender, BlockBehaviour.java:603-610)
+                            // caps the pool.
+                            continue;
+                        }
                     }
                     double surfaceX = x + 0.5;
                     double surfaceY = y + height;
