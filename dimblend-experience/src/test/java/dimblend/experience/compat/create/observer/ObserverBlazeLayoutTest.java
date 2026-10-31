@@ -13,26 +13,38 @@ import org.junit.jupiter.api.Test;
  * and the resource model are three separate places; these assertions are what keeps them from drifting apart.
  */
 class ObserverBlazeLayoutTest {
-    /** The block's own bottom face is the datum: the blaze stands half a block up, the spyglass one block higher. */
+    /** The block's own bottom face is the datum: the blaze stands on the cushion, the spyglass above its head. */
     private static final float EPSILON = 1.0E-4F;
 
     @Test
     void blazeStandsOnAHalfBlockCushion() {
         assertEquals(0.5F, ObserverBlazeLayout.CUSHION_HEIGHT, EPSILON);
-        assertEquals(ObserverBlazeLayout.CUSHION_HEIGHT, ObserverBlazeLayout.BLAZE_RAISE, EPSILON);
+        assertEquals(6.0F / 16.0F, ObserverBlazeLayout.BLAZE_MODEL_BOTTOM, EPSILON);
+    }
+
+    /**
+     * The regression this pins: lifting the blaze by the cushion height alone left 6/16 of air between its flames and
+     * the cushion, so the blaze visibly floated. The lift has to cancel the model's own bottom offset, not repeat it.
+     */
+    @Test
+    void theBlazesUndersideMeetsTheCushionTop() {
+        assertEquals(ObserverBlazeLayout.CUSHION_HEIGHT,
+                ObserverBlazeLayout.BLAZE_RAISE + ObserverBlazeLayout.BLAZE_MODEL_BOTTOM, EPSILON,
+                "the flames must start exactly at the cushion top, not above it");
+        assertEquals(0.125F, ObserverBlazeLayout.BLAZE_RAISE, EPSILON);
     }
 
     @Test
     void spyglassFloatsHalfABlockAboveTheRaisedHead() {
-        // Create raises the blaze's head by one block from the block's top face; half a block above that is 2.0.
-        assertEquals(2.0F, ObserverBlazeLayout.SPYGLASS_Y, EPSILON);
-        assertEquals(ObserverBlazeLayout.BLAZE_RAISE + 1.5F, ObserverBlazeLayout.SPYGLASS_Y, EPSILON);
+        // Create's blaze model tops out at 14/16; half a block above that, plus the raise.
+        assertEquals(ObserverBlazeLayout.BLAZE_RAISE + 0.875F + 0.5F, ObserverBlazeLayout.SPYGLASS_Y, EPSILON);
+        assertEquals(1.5F, ObserverBlazeLayout.SPYGLASS_Y, EPSILON);
     }
 
     @Test
     void flameParticlesRiseWithTheBlaze() {
-        // Create's own puff sat at 0.95 above the block; the raised blaze moves it up by exactly the cushion.
-        assertEquals(1.45F, ObserverBlazeLayout.FLAME_BASE_Y, EPSILON);
+        // Create's own puff sat at 0.95 above the block; the raised blaze moves it up by exactly the raise.
+        assertEquals(ObserverBlazeLayout.BLAZE_RAISE + 0.95F, ObserverBlazeLayout.FLAME_BASE_Y, EPSILON);
         assertEquals(0.3F, ObserverBlazeLayout.FLAME_SPREAD_Y, EPSILON);
         assertTrue(ObserverBlazeLayout.FLAME_BASE_Y > ObserverBlazeLayout.CUSHION_HEIGHT,
                 "flames must start above the cushion, got " + ObserverBlazeLayout.FLAME_BASE_Y);
