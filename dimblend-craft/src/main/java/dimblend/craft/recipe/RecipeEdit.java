@@ -122,8 +122,12 @@ public sealed interface RecipeEdit {
      * 材料数并列时保持 RecipeManager 遍历序（同材料集合的配方在 RecipeTrie 同一节点，
      * 其 values 按 RecipeFinder 遍历序插入）；热度较低（heated）的配方在超热火下同样通过热度校验，
      * 因此并列顺序即命中顺序。执行器 {@code replaceRecipes} 的列表顺序就是最终的
-     * {@code byName}/{@code byType} 顺序，把超热配方移到加热配方之前，可保证超热火下
-     * 稳定命中超热版本（2026-10-05 修订，黄铜锭超热/加热共存）。</p>
+     * {@code byName}/{@code byType} 顺序，把目标配方移到锚点之前，可保证超热火下
+     * 稳定命中目标版本。</p>
+     *
+     * <p><b>它做不到的事（2026-10-31 记录）：</b>排序只能决定「两条都通过热度校验时命中哪条」。
+     * 要让低一档火完全不产出，必须删除低热度配方本身 —— 黄铜即如此处理
+     * （见 {@code RecipeEditRules} 3.9 与 {@code docs/配方修改需求.md} 2026-10-31 修订）。</p>
      */
     record MoveRecipeBefore(String label, ResourceLocation recipeId, ResourceLocation anchorId)
             implements RecipeEdit {

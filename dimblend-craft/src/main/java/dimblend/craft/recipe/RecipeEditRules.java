@@ -45,10 +45,14 @@ import com.google.gson.JsonPrimitive;
  *   <li>下界合金（2026-10-05 修订）：原版合成配方 ID 为 {@code minecraft:netherite_ingot}；
  *       合金炉（Eternal Starlight {@code eternal_starlight:alloy}）配方输入列表
  *       经其 Serializer 校验上限为 9 个，4 金锭 + 4 碎片共 8 个输入可行。</li>
- *   <li>黄铜超热/加热共存（2026-10-05 修订）：Create 热度校验中 heated 配方在超热火下
- *       同样可匹配；工作盆候选按材料数降序稳定排序、并列保持 RecipeManager 遍历序
- *       （Create 源码 BasinOperatingBlockEntity/RecipeTrie 核实），故经
- *       {@link RecipeEdit.MoveRecipeBefore} 把超热版排在加热版之前，保证超热火稳定产 x2。</li>
+ *   <li>黄铜仅超级加热（2026-10-31 修订，取代 2026-10-05 的超热/加热共存方案）：Create 热度校验
+ *       {@code HeatCondition#testBlazeBurner} 中 HEATED 接受 SEETHING，故 heated 配方在超热火下
+ *       同样可匹配；两条同材料配方并存时靠 {@link RecipeEdit.MoveRecipeBefore} 排序只能保证
+ *       「超热火命中超热版」，无法阻止「加热火命中加热版」。要求「仅超级加热可加工黄铜」，
+ *       只能删除 {@code create:mixing/brass_ingot}，使加热火下无任何黄铜搅拌配方可命中。
+ *       随包配方 {@code dimblend_craft:brass_ingot_from_superheated_mixing}（超级加热 x2）独立生效，
+ *       不再依赖排序。{@link RecipeEdit.MoveRecipeBefore} 能力保留，供今后确实需要
+ *       「超热火优先、加热火保留」的配方使用。</li>
  *   <li>细雪熔水与火药（2026-10-10 修订）：细雪熔水配方实为 Create Fluid 的
  *       {@code fluid:mixing/powder_snow_melt}（细雪流体 {@code fluid:powder_snow}
  *       1000mB 加热 =&gt; 水 1000mB，整合包配方文件核实，Create 本体无此配方）；
@@ -145,16 +149,14 @@ public final class RecipeEditRules {
         edits.add(new RecipeEdit.DeleteByRecipeId("弹药装配台",
                 Set.of(ResourceLocation.parse("tacz:ammo_workbench"))));
 
-        // —— 3.9 Create 机器配方（2026-10-05 修订） ——
-        // 黄铜锭搅拌产物 2 -> 1（超热版本由随包配方 dimblend_craft:brass_ingot_from_superheated_mixing 提供）
-        edits.add(modifyFields("黄铜锭混合搅拌产量", "create:mixing/brass_ingot")
-                .set("results.0.count", 1)
-                .build());
-        // 超热/加热黄铜同材料共存：Create 热度校验下 heated 配方在超热火同样可匹配，
-        // 并列时按 RecipeManager 遍历序命中，故将超热版移到加热版之前保证超热火稳定产 x2
-        edits.add(new RecipeEdit.MoveRecipeBefore("超热黄铜搅拌优先",
-                ResourceLocation.parse("dimblend_craft:brass_ingot_from_superheated_mixing"),
-                ResourceLocation.parse("create:mixing/brass_ingot")));
+        // —— 3.9 Create 机器配方（2026-10-31 修订） ——
+        // 黄铜改为「仅超级加热可产出」：删除 Create 自带的加热搅拌 create:mixing/brass_ingot，
+        // 只保留随包配方 dimblend_craft:brass_ingot_from_superheated_mixing（超级加热，x2）。
+        // Create 的热度校验中 HEATED 允许 SEETHING（HeatCondition#testBlazeBurner），
+        // 两条同材料配方在超热火下都通过校验，只能靠 RecipeManager 遍历序决定命中，
+        // 加热火下则只命中加热版 —— 故「加热也能出黄铜」只能靠删除消除，无法靠排序。
+        edits.add(new RecipeEdit.DeleteByRecipeId("黄铜锭加热搅拌",
+                Set.of(ResourceLocation.parse("create:mixing/brass_ingot"))));
         // 安山合金搅拌 无需加热 -> 加热（铁粒版与锌粒版）
         edits.add(modifyFields("安山合金混合搅拌需加热",
                 "create:mixing/andesite_alloy", "create:mixing/andesite_alloy_from_zinc")

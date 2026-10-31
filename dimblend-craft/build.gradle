@@ -107,7 +107,20 @@ dependencies {
     // 数据包编辑规则仍按ID匹配；仅森罗动态兜底配方过滤需编译期可见上游API。
     // 可选兼容不打进产物，缺少森罗时由本模块的mixin plugin跳过。
     compileOnly "maven.modrinth:kaleidoscope-cookery:TqaHu4Ma" // 1.4.1-neoforge+mc1.21.1
+
+    // 规则表自检单测（ResourceLocation / Gson 来自 main 的编译类路径）。
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'com.google.code.gson:gson:2.10.1'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+}
+
+// 规则表引用 Minecraft 的 ResourceLocation，MDG 只把它加到 main 的类路径上。
+sourceSets.test.compileClasspath += sourceSets.main.compileClasspath
+sourceSets.test.runtimeClasspath += sourceSets.main.compileClasspath
 
 // 本 mod 的 neoforge.mods.toml 直接放在 src/main/resources（无 templates 目录沿用单仓前布局），
 // 只对该 toml 做变量展开，其余资源原样处理。

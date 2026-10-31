@@ -82,6 +82,20 @@ docs/配方修改需求.md              # 需求冻结文档（规则表的唯�
   经整合包配方文件核实，该前缀产物的配方仅有这两种类型。
 - **c:shulker_boxes**：整合包内无任何 mod 定义该标签，由本 mod 提供
   （合并式标签，覆盖全部原版潜影盒，`required: false`）。
+- **黄铜仅超级加热**：Create 的 `HeatCondition#testBlazeBurner` 中 `HEATED` 接受 SEETHING，
+  所以「加热版」配方在超热火下同样可匹配；只靠排序无法阻止加热火产出。本 mod 直接**删除**
+  `create:mixing/brass_ingot`，只保留随包超级加热配方（×2）。详见 `docs/配方修改需求.md` 2026-10-31 修订。
+
+## 单元测试
+
+```powershell
+# 规则表自检（不加载游戏，秒级完成）
+.\gradlew.bat :dimblend-craft:test
+```
+
+`src/test/java/dimblend/craft/recipe/RecipeEditRulesTest.java` 钉死规则表的不变量：黄铜加热版必须
+被删除；任何被删除的配方不得再被其它规则改写或当作排序锚点 —— 这类矛盾在运行期只留一条 WARN
+日志，游戏里完全看不出异常，只能靠单测兜住。
 
 ## 许可
 
