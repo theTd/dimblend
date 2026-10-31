@@ -58,6 +58,7 @@
 		"compat.fluid.CopperSinkTankMixin",
 		"compat.fluid.CopperSinkDisplayMixin",
 		"compat.fluid.CopperTapLeakMixin",
+		"compat.fluid.PowderSnowBucketDrainMixin",
 		"compat.yat.WaterBottleDrainPurityMixin",
 		"compat.yat.CopperSinkBottlePurityMixin",
 		"compat.connected.KineticBatteryLifecycleMixin",

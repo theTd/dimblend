@@ -116,7 +116,10 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".compat.fluid.SmartGutterOutletBiomeProjectionMixin")
                 || mixinClassName.endsWith(".compat.fluid.CopperSinkTankMixin")
                 || mixinClassName.endsWith(".compat.fluid.CopperSinkDisplayMixin")
-                || mixinClassName.endsWith(".compat.fluid.CopperTapLeakMixin")) {
+                || mixinClassName.endsWith(".compat.fluid.CopperTapLeakMixin")
+                // R13 细雪桶排空不消耗内容：目标是 fluid 的嵌套类
+                // PowderSnowBucketHandler$PowderSnowBucketFluidHandler，按模组在场性过滤
+                || mixinClassName.endsWith(".compat.fluid.PowderSnowBucketDrainMixin")) {
             return isLoaded("fluid");
         }
         return true;
