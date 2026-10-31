@@ -3,6 +3,7 @@ package dimblend.experience.exploration;
 import dimblend.experience.Config;
 import dimblend.experience.DimBlend;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
@@ -17,7 +18,8 @@ import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
 /**
  * A3/A4 远行诅咒：|z| 每跨过 256 的整数倍边界，生命上限 ×0.75 乘算叠加
- * （下限 1 点），跨界瞬间对该玩家播放 angry_villager；回到 |z|≤128 完全恢复并播放
+ * （下限 1 点），跨界瞬间对该玩家播放 angry_villager 并在快捷栏提示一次
+ * （{@code message.dimblend_experience.depth_curse.max_health}，一次跨多级也只提示 1 条）；回到 |z|≤128 完全恢复并播放
  * happy_villager；128~256 为僵持区——不恢复也不加重；回退跨过 256 边界
  * 同样不降档（严格口径：层级只增不减，仅 |z|≤128 清零）。
  *
@@ -43,6 +45,8 @@ public final class DepthCurse {
     /** 上限乘数下限，使 BASE_MAX_HEALTH × factor ≥ MIN_MAX_HEALTH（=0.05）。0.75^11 < 0.05，即 tier≥11 起钳定。 */
     private static final double MIN_FACTOR = MIN_MAX_HEALTH / BASE_MAX_HEALTH;
     private static final int TICK_INTERVAL = 10;
+    /** 扣上限瞬间的快捷栏提示（lang 键由 PM 统一加）。 */
+    private static final String LOSS_MESSAGE_KEY = "message.dimblend_experience.depth_curse.max_health";
 
     @SubscribeEvent
     public static void onPlayerTick(PlayerTickEvent.Post event) {
@@ -72,6 +76,9 @@ public final class DepthCurse {
             player.setData(ExplorationAttachments.FAR_CURSE_TIER.get(), held);
             FarCurseTierPayload.sendTo(player, held);
             if (curseOn && held > current) {
+                // 只在真正扣上限这一支提示：开关关闭、恢复上限（held==0）都不发；
+                // 一次跨多级（传送）本分支也只进一次，所以只发 1 条。
+                player.displayClientMessage(Component.translatable(LOSS_MESSAGE_KEY), true);
                 player.serverLevel().sendParticles(player, ParticleTypes.ANGRY_VILLAGER, false,
                         player.getX(), player.getY() + player.getEyeHeight(), player.getZ(), 8, 0.5D, 0.5D, 0.5D, 0.02D);
             }

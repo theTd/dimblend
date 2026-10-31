@@ -262,5 +262,6 @@
   "screen.dimblend_experience.chassis.confirm": "再次点击 确认打印",
   "message.dimblend_experience.chassis.track_required": "需要放置在宽轨上",
   "message.dimblend_experience.chassis.unsafe": "附近不空旷 不安全",
-  "message.dimblend_experience.chassis.choose": "右键选择底盘类型"
+  "message.dimblend_experience.chassis.choose": "右键选择底盘类型",
+	"message.dimblend_experience.depth_curse.max_health": "远行 生命值上限 -25%"
 }
