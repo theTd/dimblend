@@ -12,7 +12,8 @@ import net.minecraft.data.CachedOutput;
 import net.minecraft.data.DataProvider;
 import net.minecraft.data.PackOutput;
 /**
- * 为 factory_blocks 的 42 种纯装饰方块生成切石机配方：铁块 x1 -&gt; 装饰块 x4。
+ * 为 factory_blocks 的 48 种装饰方块生成切石机配方：铁块 x1 -&gt; 装饰块 x4
+ * （42 项 {@code Type.base} + 6 种风扇，{@code medium_fan} 除外）。
  *
  * <p>刻意写原始 JSON 而不走 {@code SingleItemRecipeBuilder}：factory_blocks 是 optional 依赖，
  * datagen 运行时该 mod 可能不在场，无法拿到其 {@code Item} Holder；字符串 ID + 手写 JSON 不依赖其上 classpath。
