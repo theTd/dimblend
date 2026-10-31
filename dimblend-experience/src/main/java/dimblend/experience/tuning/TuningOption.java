@@ -11,7 +11,7 @@ public enum TuningOption {
     DEADMAN_RADIUS("deadman_radius", 32.0D, 8.0D, 128.0D, 0, "simurail", Section.MAIN),
     BOGIE_ROLL_TORQUE("bogie_roll_torque", 5000.0D, 0.0D, 10000000.0D, 0, "simurail", Section.MAIN),
     SOILING_MULTIPLIER("soiling_multiplier", 0.5D, 1.0D, 2, "dimblend_carwash"),
-    COUPLER_REDSTONE("coupler_redstone", 0.0D, "simurail"),
+    COUPLER_REDSTONE("coupler_redstone", 1.0D, "simurail"),
     COUPLER_SURVIVAL("coupler_survival", 0.0D, "simurail"),
     LIMITED_WATER("limited_water", 1.0D, ""),
     SABLE_VOID_FIT("sable_void_fit", 1.0D, "sable"),

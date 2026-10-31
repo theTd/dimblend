@@ -104,6 +104,25 @@ class TuningOptionTest {
     }
 
     @Test
+    void couplerRedstoneDefaultsToAllowedAndMirrorsTheConfigPolarity() {
+        var option = TuningOption.COUPLER_REDSTONE;
+        assertTrue(option.isCheckbox());
+        assertEquals("coupler_redstone", option.id());
+        assertEquals("simurail", option.modId());
+        // 用户 2026-10-31 口径：dbx tune 里列车车钩的红石信号控制默认"允许"。
+        // 面板 1 = 允许红石断开车钩；同时 Config 默认必须是 false（取反后才等于 1）。
+        assertEquals(1.0D, option.defaultValue(), "panel default is 1 = allowed");
+        assertFalse(Config.COUPLER_REDSTONE.getDefault(), "config default false -> panel 1");
+        assertEquals(Config.COUPLER_REDSTONE.getDefault() ? 0.0D : 1.0D, option.defaultValue(),
+                "panel and config must stay mirror images");
+        for (double valid : new double[] {0.0D, 1.0D}) {
+            assertTrue(option.isValid(valid));
+        }
+        assertFalse(option.isValid(0.5D));
+        assertEquals("1", option.format(option.defaultValue()));
+    }
+
+    @Test
     void radioNoiseVolumeAcceptsHundredthsAroundTheFormerOnLevel() {
         var option = TuningOption.RADIO_STATIC;
         assertFalse(option.isCheckbox());

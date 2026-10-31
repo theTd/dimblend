@@ -600,6 +600,9 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
         // After the corridor: the wall/gate overwrites boundary columns (track, roadbed).
         RegionBoundaryWall.place(level, chunk);
         if (starterDepot) StarterDepot.place(chunk);
+        // Surface/surface boundaries get the R6 station depot. It never touches a
+        // walled boundary column, so the wall/gate written above stays intact.
+        StationDepot.place(level, chunk);
     }
 
     @Override

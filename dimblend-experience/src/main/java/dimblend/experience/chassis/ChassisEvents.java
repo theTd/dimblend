@@ -61,7 +61,12 @@ public final class ChassisEvents {
         for (Placement placement : placements) ChassisSelection.validatePlacement(placement.level(), placement.pos());
         ChassisSelection.tick(event.getServer());
         for (ServerLevel level : event.getServer().getAllLevels()) {
-            if (inDimension(level)) ChassisConstruction.tick(level);
+            if (inDimension(level)) {
+                ChassisConstruction.tick(level);
+                // R6 depot chassis: blocks were written by worldgen, Sable assembly
+                // happens here, the first time a player comes near each site.
+                StationDepotAssembly.tick(level);
+            }
         }
     }
 
