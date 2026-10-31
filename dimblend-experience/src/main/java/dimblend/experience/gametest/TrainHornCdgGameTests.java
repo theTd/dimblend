@@ -60,6 +60,33 @@ public final class TrainHornCdgGameTests {
         });
     }
 
+    /**
+     * 柴油路径的「沿开始、电平结束」（2026-10-31，取代 2026-10-26 规则 B）：红石下降沿
+     * 清锁（= 下发给客户端的停止包），复电后新的上升沿立即重新起播，不必等素材播完。
+     */
+    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", timeoutTicks = 60)
+    public static void dieselPowerLossStopsAndRestartsOnNextEdge(GameTestHelper helper) {
+        TrainHornGameTests.placeWhistleRig(helper);
+        helper.setBlock(ENGINE, CDGBlocks.DIESEL_ENGINE.get().defaultBlockState());
+        long t0 = helper.getLevel().getGameTime();
+        helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
+        helper.assertTrue(TrainHornGameTests.hornUntil(helper) == t0 + TrainHorn.HornKind.DIESEL.durationTicks(),
+                "precondition: the rising edge must start the diesel horn");
+        helper.setBlock(SIGNAL, Blocks.AIR);
+        helper.assertTrue(TrainHornGameTests.hornUntil(helper) == 0L,
+                "diesel power loss must clear the lock at once, until=" + TrainHornGameTests.hornUntil(helper));
+        long rise = helper.getLevel().getGameTime();
+        helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
+        helper.runAfterDelay(1, () -> {
+            helper.assertTrue(TrainHornGameTests.hornKind(helper) == TrainHorn.HornKind.DIESEL,
+                    "the restart must stay DIESEL, got " + TrainHornGameTests.hornKind(helper));
+            helper.assertTrue(TrainHornGameTests.hornUntil(helper) == rise + TrainHorn.HornKind.DIESEL.durationTicks(),
+                    "the rising edge after power loss must restart the diesel horn, until="
+                            + TrainHornGameTests.hornUntil(helper));
+            helper.succeed();
+        });
+    }
+
     /** 背面优先于左侧：柴油@背面 + 蒸汽@左侧 → 识别为柴油。 */
     @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", timeoutTicks = 40)
     public static void directionPriorityPrefersBackOverLeft(GameTestHelper helper) {

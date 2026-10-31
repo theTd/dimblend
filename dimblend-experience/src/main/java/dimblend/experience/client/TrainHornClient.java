@@ -2,6 +2,7 @@ package dimblend.experience.client;
 
 import com.simibubi.create.content.decoration.steamWhistle.WhistleBlock;
 import com.simibubi.create.content.decoration.steamWhistle.WhistleBlockEntity;
+import dimblend.experience.compat.create.HornPlaybackMath;
 import dimblend.experience.compat.create.TrainHorn;
 import dimblend.experience.compat.create.TrainHornPayload;
 import dimblend.experience.compat.sable.SableWorldPosition;
@@ -23,9 +24,12 @@ import java.util.Map;
  *
  * <p>「张嘴动画 + 音符粒子」窗口与声音实例共用同一份到达时刻（客户端 gameTime +
  * 素材时长），按汽笛 plot 坐标登记；{@code WhistleHornClientMixin} 在汽笛 BE 的客户端
- * tick 里查询本类驱动动画/粒子并抑制特殊模式的原生音频。窗口一旦登记就跑到截止 tick：
- * <b>红石断电不缩短鸣笛</b>（2026-10-26 规则 B，用户拍板），声音、张嘴与
- * 粒子照常走完；只有显式停止包、汽笛方块失效、重新起播与登出才会提前收尾。</p>
+ * tick 里查询本类驱动动画/粒子并抑制特殊模式的原生音频。</p>
+ *
+ * <p><b>2026-10-31「沿开始、电平结束」（取代 2026-10-26 规则 B）</b>：收到开始包就起播；
+ * 收到停止包<b>立即</b>收尾——窗口当场清除（张嘴动画立刻回合），声音走 4 tick 淡出
+ * （见 {@link TrainHornSoundInstance#fadeOut}）。服务端在红石下降沿就发这个包，所以
+ * 信号一断声音就断。素材自然播完时窗口到期自行清除，不依赖任何包。</p>
  */
 public final class TrainHornClient {
 
@@ -36,15 +40,21 @@ public final class TrainHornClient {
     private static final Map<BlockPos, HornWindow> WINDOWS = new HashMap<>();
     private static final Map<BlockPos, TrainHornSoundInstance> SOUNDS = new HashMap<>();
 
-    /** S2C 处理器落点（客户端线程）。 */
+    /** S2C 处理器落点（客户端线程）。判定走 {@link HornPlaybackMath#decideForPacket}。 */
     public static void apply(TrainHornPayload payload) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) {
             return;
         }
         BlockPos pos = payload.pos().immutable();
-        if (!payload.start()) {
+        // 窗口不存在 = 客户端已无在响的片段（clipEnded）；同一张判定表，与服务端同源
+        boolean clipEnded = !WINDOWS.containsKey(pos);
+        if (HornPlaybackMath.decideForPacket(payload.start(), clipEnded) == HornPlaybackMath.Action.STOP) {
             stopHorn(pos);
+            return;
+        }
+        if (!payload.start()) {
+            // 没有在响的片段：停止包无事可做
             return;
         }
         int ordinal = payload.hornKind() & 0xFF;
@@ -74,8 +84,8 @@ public final class TrainHornClient {
 
     /**
      * 特殊模式期间彻底接管 Create 原生音频（判定只看邻接引擎、<b>与红石供电无关</b>，
-     * 未通电的特殊模式汽笛也不会漏出原生声）。这里不做任何停电对账：规则 B 下断电不影响
-     * 已在播的片段，窗口到期由 {@link #isHornActive} 惰性清除。
+     * 未通电的特殊模式汽笛也不会漏出原生声）。停止只由服务端的停止包驱动：本方法不做
+     * 任何「本地推断断电」的对账——服务端权威，避免双端各判一次而互相打架。
      */
     public static boolean tickSpecialMode(WhistleBlockEntity be) {
         BlockPos pos = be.getBlockPos();

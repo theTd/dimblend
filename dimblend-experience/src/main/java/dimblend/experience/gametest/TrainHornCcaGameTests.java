@@ -50,6 +50,33 @@ public final class TrainHornCcaGameTests {
         });
     }
 
+    /**
+     * 电动路径的「沿开始、电平结束」（2026-10-31，取代 2026-10-26 规则 B）：红石下降沿
+     * 清锁（= 下发给客户端的停止包），复电后新的上升沿立即重新起播。
+     */
+    @GameTest(template = "item_drain_refill", templateNamespace = "dimblend_experience", timeoutTicks = 60)
+    public static void elecPowerLossStopsAndRestartsOnNextEdge(GameTestHelper helper) {
+        TrainHornGameTests.placeWhistleRig(helper);
+        helper.setBlock(ENGINE, CABlocks.ELECTRIC_MOTOR.get().defaultBlockState());
+        long t0 = helper.getLevel().getGameTime();
+        helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
+        helper.assertTrue(TrainHornGameTests.hornUntil(helper) == t0 + TrainHorn.HornKind.ELEC.durationTicks(),
+                "precondition: the rising edge must start the electric horn");
+        helper.setBlock(SIGNAL, Blocks.AIR);
+        helper.assertTrue(TrainHornGameTests.hornUntil(helper) == 0L,
+                "electric power loss must clear the lock at once, until=" + TrainHornGameTests.hornUntil(helper));
+        long rise = helper.getLevel().getGameTime();
+        helper.setBlock(SIGNAL, Blocks.REDSTONE_BLOCK);
+        helper.runAfterDelay(1, () -> {
+            helper.assertTrue(TrainHornGameTests.hornKind(helper) == TrainHorn.HornKind.ELEC,
+                    "the restart must stay ELEC, got " + TrainHornGameTests.hornKind(helper));
+            helper.assertTrue(TrainHornGameTests.hornUntil(helper) == rise + TrainHorn.HornKind.ELEC.durationTicks(),
+                    "the rising edge after power loss must restart the electric horn, until="
+                            + TrainHornGameTests.hornUntil(helper));
+            helper.succeed();
+        });
+    }
+
     private static void assertElecTrigger(GameTestHelper helper,
             net.minecraft.world.level.block.state.BlockState engine) {
         TrainHornGameTests.placeWhistleRig(helper);

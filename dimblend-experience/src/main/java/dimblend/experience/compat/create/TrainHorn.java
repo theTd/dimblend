@@ -37,8 +37,8 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * 列车汽笛（需求追加 2026-10-21、同日两轮拍板、2026-10-24 修订、2026-10-26 音高改版、
- * 2026-10-26 起播即完整播放）。
- * 蒸汽笛六面邻接特定引擎方块时进入「特殊模式」，红石上升沿触发一次性对应音效，
+ * 2026-10-26 起播即完整播放、2026-10-31 改为「沿开始、电平结束」）。
+ * 蒸汽笛六面邻接特定引擎方块时进入「特殊模式」，红石上升沿触发对应音效、下降沿立即停，
  * <b>不要求所附储罐有热源</b>（Create 原生汽笛只在锅炉激活时响，本功能补的是无热源
  * 场景的机车鸣笛）。
  *
@@ -48,11 +48,14 @@ import org.jetbrains.annotations.Nullable;
  * 标志与音高都存 BE 且落盘。引擎新邻接、汽笛放置或读档后首次 tick 发现邻接而标志
  * 为假时算「进入」：音高重置 v=1.0、Create 尺寸重置 MEDIUM。离开只清标志，
  * 再进入再次重置。</li>
- * <li>触发（2026-10-26 规则 B，用户拍板）：{@code WhistleBlock.neighborChanged}
- * TAIL 处只认 POWERED false→true 上升沿（{@code WhistleHornBlockMixin}）。起播后锁定到
- * 素材时长结束：<b>断电不改锁、不下发停止包</b>，片段一定播满全长（短 ON 段不会把汽笛
- * 切成听不见的气声）；锁定期间的上升沿（快速时钟、连续扳动拉杆）一律无视；锁定过期后
- * 还需要新的上升沿——持续高电平不重播，断电再上电才再次触发。特殊模式期间 Create
+ * <li>触发（<b>2026-10-31 起改为「沿开始、电平结束」，取代 2026-10-26 规则 B</b>，
+ * 用户拍板）：{@code WhistleBlock.neighborChanged} TAIL 处对比翻转前后的
+ * {@code POWERED} 即得严格边沿（{@code WhistleHornBlockMixin}）。false→true 经
+ * {@link #onPoweredEdge} 起播一次，true→false 经 {@link #onPoweredFall} 立即停播
+ * 并清锁——<b>信号中断声音就中断</b>。锁只做 {@link HornPlaybackMath#DEBOUNCE_TICKS}
+ * tick 的重复起播去抖，不再锁满整段素材时长；素材自然播完回 IDLE，持续高电平没有新沿
+ * 故不重播，等断开后再来一个上升沿才重新起播。判定只在
+ * {@link HornPlaybackMath#decide} 一处（纯函数，单测钉死）。特殊模式期间 Create
  * 原生汽笛声与蒸汽粒子完全禁用。</li>
  * <li>六面扫描按方向优先级取第一个命中：以汽笛朝向为基准
  * 正面 → 背面 → 左侧 → 右侧 → 上方 → 下方（附着储罐一面永不命中引擎）。</li>
@@ -66,8 +69,10 @@ import org.jetbrains.annotations.Nullable;
  * 1.4–2.0 大（{@link #sizeForTenths}）。播放音高 = 2^(v−1)（{@link #heardPitch}）：
  * 1.0 为原声，0.0 低一个八度（0.5），2.0 高一个八度（2.0）——恰好落在引擎
  * {@code SoundEngine.calculatePitch} 的 [0.5, 2.0] 钳制区间内。</li>
- * <li>锁定：时长 = 素材实测时长（ffprobe：steam 2.60s / diesel 3.04s / elec 2.78s
- * （2026-10-26 换新素材），换素材须同步改 {@link HornKind#durationTicks}），存服务端 BE
+ * <li>素材时长（ffprobe：steam 2.60s / diesel 3.04s / elec 2.78s（2026-10-26 换新素材），
+ * 换素材须同步改 {@link HornKind#durationTicks}）。2026-10-31 起它<b>只</b>用于客户端鸣笛
+ * 窗口与声音实例的兜底自停（素材长度），<b>不再</b>作服务端锁定时长：服务端锁只剩
+ * {@link HornPlaybackMath#DEBOUNCE_TICKS} tick 去抖，存服务端 BE
  * （{@link TrainHornStateAccess}，纯内存不落盘，区块卸载/重进清零——同 SteamEngineOverload
  * 口径）。音高刻度与特殊模式标志则相反：落盘并随 BE 更新包同步客户端。</li>
  * <li>声音下发：自定义 payload 广播到投影后世界坐标 528 格内玩家；客户端
@@ -154,7 +159,12 @@ public final class TrainHorn {
 
     /**
      * 红石上升沿入口（调用方保证：服务端、POWERED 刚翻转为 true、方块仍是蒸汽笛）。
-     * 锁定窗口内直接无视；无引擎邻接时不动（保持 Create 原生行为）。
+     * 去抖锁内的重复上升沿直接无视；无引擎邻接时不动（保持 Create 原生行为）。
+     *
+     * <p>2026-10-31「沿开始、电平结束」：起播仍写「素材结束 tick」，但它只用来
+     * <b>标记这段声音还在响</b>（下降沿据此决定要不要发停止包），<b>不再</b>作「锁住不许
+     * 起播」的时长——重复起播只由 {@link HornPlaybackMath#DEBOUNCE_TICKS} tick 去抖挡住，
+     * 所以打断后紧接的上升沿能立刻重新起播。</p>
      */
     public static void onPoweredEdge(ServerLevel level, BlockPos pos, BlockState state) {
         BlockEntity be = level.getBlockEntity(pos);
@@ -162,7 +172,9 @@ public final class TrainHorn {
             return;
         }
         long now = level.getGameTime();
-        if (access.dimblend$hornUntilTick() > now) {
+        // 上升沿一律视为「素材尚未在响」：上一次如果是被下降沿掐断的，这里必须能重新起播
+        boolean debounced = startedWithinDebounce(access, now);
+        if (HornPlaybackMath.decide(false, true, debounced, true) != HornPlaybackMath.Action.START) {
             return;
         }
         HornKind kind = detectEngine(level, pos, state);
@@ -177,6 +189,54 @@ public final class TrainHorn {
         // 实机排障（2026-10-23 报"音高仍反"）：留下服务端权威的 音高刻度→播放音高 证据
         DimBlend.LOGGER.debug("train horn at {}: kind={}, tenths={}, pitch={}", pos, kind, tenths, pitch);
         broadcast(level, pos, new TrainHornPayload(pos, (byte) kind.ordinal(), pitch, true));
+    }
+
+    /**
+     * 红石下降沿入口（<b>2026-10-31 新增</b>，「电平结束」语义；调用方保证：服务端、
+     * POWERED 刚翻转为 false、方块仍是蒸汽笛）。
+     *
+     * <p>素材还在响就立刻停：清锁（写 0）并广播停止包，客户端接到即淡出（约 4 tick）。
+     * 这推翻了 2026-10-26 规则 B 的「断电不清锁、不下发停止包」。素材已经自然播完
+     * 则什么都不做——此时没有声音可停。</p>
+     */
+    public static void onPoweredFall(ServerLevel level, BlockPos pos, BlockState state) {
+        BlockEntity be = level.getBlockEntity(pos);
+        if (!(be instanceof TrainHornStateAccess access)) {
+            return;
+        }
+        long now = level.getGameTime();
+        boolean clipEnded = access.dimblend$hornUntilTick() <= now;
+        // 去抖锁不参与停止判定：断电必须停，锁只防重复起播
+        if (HornPlaybackMath.decide(true, false, false, clipEnded) != HornPlaybackMath.Action.STOP) {
+            return;
+        }
+        int kind = access.dimblend$hornKind();
+        float pitch = access.dimblend$hornPitch();
+        // 清锁（0 = 未锁定），下一条上升沿立刻可起播
+        access.dimblend$setHornLock(0L, kind);
+        DimBlend.LOGGER.debug("train horn at {}: power lost, stop broadcast (kind={})", pos, kind);
+        broadcast(level, pos, new TrainHornPayload(pos, (byte) kind, pitch, false));
+    }
+
+    /**
+     * 上一次起播是否落在 {@link HornPlaybackMath#DEBOUNCE_TICKS} tick 之内（同一 tick 或
+     * 相邻 tick 的重复上升沿据此被无视）。
+     *
+     * <p>BE 只存一个 long（{@link TrainHornStateAccess#dimblend$hornUntilTick()}，语义是
+     * 「素材结束 tick」= 起播 tick + 素材时长，下降沿清成 0），起播 tick 由它减去已存档的
+     * {@link TrainHornStateAccess#dimblend$hornKind()} 时长反推——不额外加 BE 字段。
+     * 未触发（kind &lt; 0）或已被下降沿清零时一律视为「不在去抖窗口内」。</p>
+     */
+    private static boolean startedWithinDebounce(TrainHornStateAccess access, long now) {
+        long until = access.dimblend$hornUntilTick();
+        int ordinal = access.dimblend$hornKind();
+        HornKind[] kinds = HornKind.values();
+        if (until <= 0L || ordinal < 0 || ordinal >= kinds.length) {
+            return false;
+        }
+        long startedAt = until - kinds[ordinal].durationTicks();
+        long since = now - startedAt;
+        return since >= 0L && since <= HornPlaybackMath.DEBOUNCE_TICKS;
     }
 
     private static void broadcast(ServerLevel level, BlockPos pos, TrainHornPayload payload) {
