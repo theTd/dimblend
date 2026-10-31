@@ -178,7 +178,10 @@ Iris) and the same on/off and intensity switches, and it needs no extra mixin.
 - **Lit test**: a lava block (source or flowing, `FluidTags.LAVA`) counts when its
   top face is exposed (no same fluid above, no full solid block above,
   `BlockBehaviour.isSolidRender`) and the beam strength at the top-face centre is
-  above **0.04** of full intensity. Strength is the shader's own
+  above **0.04** of full intensity. A falling column is the exception (2026-10-31):
+  when the cell's own fluid is `FALLING` and the same fluid sits above, the cell is
+  still reported, so a lavafall is lit along its whole height instead of not at all
+  (`HeadlightLavaColumn`). Strength is the shader's own
   `cone × attenuation(distance)` (`HeadlightMath`), so the outline covers exactly
   the pool the surface light reaches: at the defaults (range 24, angle 50,
   intensity 1) the axial reach is 22.1 blocks (92% of the range), and the soft
@@ -187,16 +190,18 @@ Iris) and the same on/off and intensity switches, and it needs no extra mixin.
   that uses the same occluder predicate as the shadow grids, so a wall or a car
   body keeps the lava out of the lit set wherever it keeps the light out. The
   outline itself is no longer hidden by occluders once a face is lit; see Stage.
-- **Outline**: only perimeter edges are drawn — for each lit top face, a side gets a
-  segment unless the horizontal neighbour is lit lava with the same surface height,
-  so a connected pool is one outline and a step is two. The segment sits at the
-  fluid surface (block y + `FluidState` own height, `8/9` for source lava) plus
-  0.01 against z-fighting, in orange `0xFFB040` with a gentle 1 Hz alpha pulse
-  between 0.35 and 0.75. Every segment is drawn twice: a see-through under-pass at
-  **40%** of the pulse alpha (`HIDDEN_ALPHA_FACTOR = 0.4`) with the depth test and
-  depth write off, then the depth-tested pass at the full pulse alpha. Visible
-  parts therefore read at the full pulse; parts behind the cab, terrain or a wall
-  keep a dim 40% outline instead of disappearing.
+- **Outline**: each lit block is wrapped in a **2×2×2 box** (the block grown by half a
+  block on every side); boxes of touching or overlapping blocks merge into one
+  volume and only that volume's outline is drawn — a lone block is a 12-edge box, a
+  pool one shell around the whole pool, a lavafall the fused stepped shape. Every
+  box face lies on a half-integer plane, so nothing z-fights with the terrain.
+  Colour is orange `0xFFB040` with a gentle 1 Hz alpha pulse between 0.35 and 0.75.
+  Every segment is drawn twice: a see-through under-pass at **40%** of the pulse
+  alpha (`HIDDEN_ALPHA_FACTOR = 0.4`) with the depth test and depth write off, then
+  the depth-tested pass at the full pulse alpha. Visible parts read at the full
+  pulse; parts behind the cab, terrain or a wall keep a dim 40% outline instead of
+  disappearing. (The older "perimeter edges of the top face + 0.01 lift" scheme was
+  removed in `8ae568d`; this paragraph describes the current code.)
 - **Recompute**: client tick, at most every 2 ticks (10 Hz) and only when a beam
   pose actually changed (lens quantized to 0.5 blocks, axis to 1/64); stationary
   lamps refresh once per 20 ticks to pick up placed/removed lava, world edits and

@@ -772,7 +772,7 @@
 - 职业方块丢失后不掉职业：凭成交/转职记录恢复职业（或拦截掉职业转职），
   无工作站点的 fresh 大师同样保留；傻子（nitwit）无职业、跳过
 
-### G2 只有 sable 结构上的床可交互
+### G2 只有 sable 结构上的床可交互（配套睡眠回血 2026-10-31 改版见 §17）
 - rotating 内：床方块自身位于 sable 子层级内（放在列车/舰船结构上）→ 右键正常
   （睡/设重生点）；否则右键无反应（不睡、不设重生点、不爆炸）
 - 只拦使用不拦破坏（拆床、搬床随意）；创造模式豁免；村民 AI 睡觉不管
@@ -837,7 +837,7 @@
   `VoidFitVoxelizerTest` 锁远 Z 覆盖与 Y 钳制）
 - 开关 `sableStructureVoidFit`（默认开）+ `sableVoidFitRefitTicks`（默认 5）
 
-### G6 岩浆熔毁 sable 结构方块（2026-10-11 拍板口径，仅 rotating）
+### G6 岩浆熔毁 sable 结构方块（2026-10-11 拍板口径，仅 rotating；2026-10-31 车顶截断修订见 §17）
 - 岩浆与岩浆流按 **sableLavaMeltSpeed 倍徒手速度**（默认 4 倍；2026-10-14 起经
   /dbx 调参面板与配置可调，0.5-64.0 步进 0.1，逐次扫描读值即时生效、已累进度
   不清零）熔毁位于 sable 结构上的方块并使其掉落：
@@ -989,7 +989,7 @@
 - 诊断：CLIENT 配置 `linkedTransmitterDiagnostics`（默认 false），`/dbx linkeddiag`（权限 2 级）可切换；无权限玩家由管理员或配置文件开启。日志前缀 `[linked-diag]`，记录双端命中、频率判定、物品/Shift/实际蹲姿/三种姿态适配/AABB，以及 Sable 的 `lastPose`/`logicalPose`/客户端 `renderPose`。dedicated server 的客户端与服务端需分别开启，不能用客户端开关代替服务端日志。
 - 自动验证：`LinkedTransmitterInteractionTest` 量化单测；`LinkedTransmitterGameTests` 覆盖两个频率槽、底座提前交互、蜜脾/斧/蜡锁、潜行 `CONSUME`、FakePlayer 对照。重跑：`JAVA_HOME='C:\Program Files\Java\jdk-21' ./gradlew :dimblend-experience:test` 与 `./gradlew :dimblend-experience:runGameTestServer -PwithLinkedTransmitter`。
 
-### G10 车灯照亮岩浆高亮（2026-10-26，纯客户端）
+### G10 车灯照亮岩浆高亮（2026-10-26，纯客户端；2026-10-31 竖直岩浆柱修订见 §17）
 
 - 需求：被前照灯光锥实际照到的岩浆高亮；用户选定样式为「发光橙色描边、1 Hz 脉动；未被相机看到的边（墙体/地形/列车车体遮挡）以约 40% 脉动 alpha 透墙显示，可见边保持全脉动 alpha」。
 - 实现：`client.headlight` 的 `HeadlightLavaHighlight`（10 Hz 重算调度 + 描边绘制）、`HeadlightLavaScan`（世界扫描 + 遮挡射线）、`HeadlightLavaMath`（纯函数：照亮判定、上限、脉动、遮挡暗化）、`LavaBoxOutline`（2×2×2 包围盒并集的线框）、`LavaOutlineRenderTypes`（透墙线条 RenderType）、`LavaSurface`/`LavaEdge`。无新增 mixin。
@@ -1344,7 +1344,7 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
   生存潜行拆壳、守卫负向分支、创造旋转×3、创造潜行拆卸、encased 齿轮创造端面翻转、
   生存 encased 无效）常驻防回归。
 
-## 13. 板块 L：列车汽笛（2026-10-21 新增，2026-10-24 / 2026-10-26 修订）
+## 13. 板块 L：列车汽笛（2026-10-21 新增，2026-10-24 / 2026-10-26 修订；2026-10-31 改「沿开始、电平结束」，见 §17）
 
 > 来源：2026-10-21 用户追加需求 + 两轮拍板澄清（电池组答②按 CCA 1.5.10 实际注册
 > 更正为电动马达+模块化电池；多引擎方向优先级「都可以」→ 定 前→后→左→右→上→下；
@@ -1444,7 +1444,7 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
   `TrainHornCcaGameTests`（-PwithCca：电动马达、模块化电池各自触发、电动进入特殊模式
   重置音高）。
 
-## 14. 板块 M：夜视仪低电量渐褪（2026-10-23 新增，同日修订为渐褪）
+## 14. 板块 M：夜视仪低电量渐褪（2026-10-23 新增，同日修订为渐褪；2026-10-31 改用户分段曲线，见 §17）
 
 > 来源：2026-10-23 用户追加需求——夜视仪电量低于 50% 时给低电量视觉反馈（原始
 > 提案为白噪点，密度随 50%→0% 增多，10% 时严重干扰视线）；同日用户实测噪点版
@@ -1578,3 +1578,88 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
   喷嘴/水桶控制器）一并补齐——同一缺漏同源同修法，留着是已知坑。
 - 运行验证：数据包加载即生效（无需代码路径）；实机待验——生存挖掘 5 方块各掉
   自身、扳手潜行拆卸返还物品（见「游戏内运行验证清单」）。
+
+## 17. 2026-10-31 批次修订（板块 L / M / G2 / G6 / G10 与新增诅咒、切石机）
+
+> 用户当日决策页确认后实施。下面每条都取代对应小节里的旧口径；旧文保留作时间线。
+> 实现位置与验证方式逐条写明；「待实测」= 单测/GameTest 已过，实机观感未验收。
+
+### 17.1 板块 L 列车汽笛：沿开始、电平结束（取代规则 B）
+
+- 状态机（`compat/create/HornPlaybackMath`，纯函数 + 9 条单测）：IDLE / 上升沿 START；PLAYING / 下降沿 STOP；
+  PLAYING / 素材播完 IDLE（等信号断开才有下一次上升沿）；同电平不动作。锁从「整段素材时长」收窄为
+  **1 tick 去抖**（`DEBOUNCE_TICKS`），BE 仍只有一个 long，语义改为「素材预计响到何时」。
+- 服务端：`WhistleHornBlockMixin` 新增下降沿分支 → `TrainHorn.onPoweredFall`（素材仍在响则清锁 + 广播
+  `start=false`）。客户端收到停止包当场清窗口，声音走既有 0.25/tick 淡出（约 4 tick）。
+- 音源分类 `SoundSource.BLOCKS → RECORDS`，与 Create 原生汽笛一致（否则玩家压低「方块」音量时我们的笛静音）。
+- GameTest 改名并改语义（无删用例）：`powerLossStopsHornAndRetriggersImmediately`、
+  `fastClockStartsAndStopsEveryEdge`、`clockShorterThanClipStartsAndStopsEachEdge`、CDG/CCA 各新增
+  `...PowerLossStopsAndRestartsOnNextEdge`。验证：`:dimblend-experience:test` 277 项、`-PwithCdg` 111 项、
+  `-PwithCca` 100 项全过；反向对照（把下降沿改回规则 B）会红 2 条纯函数用例 + 5 条 CCA GameTest。
+- 待实测：1 tick 断复电会切出一小段气声（新语义的直接后果）；Sable 结构上停止包的声源坐标；「记录」音量条验证。
+
+### 17.2 板块 M 夜视仪：用户分段曲线（取代 50% 线性/85% 上限）
+
+- `NvgBatteryFadeLayer`：电量 → 遮罩不透明度（%）锚点 60→25、50→35、40→45、30→55、20→75、10→85、0→95，
+  锚点间线性插值；30→20 段斜率 2（其余 1）；电量 >60 不遮罩，<0 按 0。alpha = `round(255 × opacity / 100)`
+  （95% → 242，85% → 217）。旧「≥50% 不遮罩、10% = 上限 80%」作废。
+- 验证：`NvgBatteryFadeLayerTest` 8 条（7 锚点 + 中点 + 单调性），实机观感待用户。
+
+### 17.3 G2 配套睡眠回血改版
+
+- 躺下第 1 tick 给 `REGENERATION` amplifier 9（界面 X）160 tick（8 秒），本段只给一次；爱心从第 1 tick 起
+  每 20 tick 3 颗；第 160 tick 服务端 `stopSleepInBed(false,true)` 自动起身；`stopSleepInBed` HEAD 只复位计数。
+- 恢复原版闭眼变黑遮罩（删掉 `DimBlendClient` 对 `SLEEP_OVERLAY` 的整层跳过）。
+- 新增客户端 mixin `mixin/client/InBedChatScreenMixin`：只把「起床」按钮 `visible=false`，ESC/`onClose`
+  起床路径不动（用户口径「只删按钮，ESC 保留」）。
+- 纯函数 `BedRestRules.grantsRegenerationOnTick / emitsHeartsOnTick / autoWakesOnTick`，单测 8 条；
+  `BedRestGameTests` 7 个用例按新口径改写（未删）。待实测：按钮隐藏、闭眼观感、8 秒自动起身。
+- 注意：rotating 夜里原版约第 101 tick 就会按睡眠人数叫起，所以自动起身主要作用于主世界与 rotating 白天。
+
+### 17.4 G6 岩浆融毁：车顶截断（修「整根岩浆柱灌穿整舱」）
+
+- 根因：覆盖集合只含「方块 + 每轴 +1」，车厢内部核心体积从不在 target；车顶熔穿后该格不再被任何方块
+  的 +1 覆盖，封口格被拆回空气，整舱一次让开。另 `touchesLava` 对每个方块都多收上方一格，灌满后整面内壁
+  同轮到点、同时融。
+- 修法 A（`VoidFitMeltSeal` + `VoidFitApplier`）：熔穿孔在拆除前若「世界侧仍是 structure_void、正上方 ≤3 格内
+  是岩浆、孔比一格深、本车该柱仍有 target」四条同时成立，则重新并入 target 当封口塞（不写世界、不占预算）。
+  第三条保证实心堆叠仍只下降一层。
+- 修法 C（`LavaContactScan` + `SableLavaMelt`）：先算每根世界柱最高方块 y，只有柱顶享受「+1 格接触」，其余
+  回到 AABB+0.25。世界写入零变化。
+- 新 GameTest：5×5 车厢、舱内 3×3×2、熔穿后等 150 tick，断言舱内 18 格无岩浆、地板未熔、投影顶未塌到屋顶以下。
+  同一用例在 HEAD 上红（`widecabinroofmeltstopsatroofline`），在修复上绿；sable 族 97/97 全过。
+- 已知局限：只堵熔穿孔；车门、开顶、撞击开口进来的岩浆仍会灌满（既有已接受口径）。
+
+### 17.5 G10 探照灯：竖直下落岩浆柱高亮
+
+- `HeadlightLavaScan` 原先只看「上方非同种流体」的顶面，而 `LavaFluid.isSame` 把流动与源岩浆互认，竖直柱
+  每格上方都是流体 → 整根柱一格都不上报。新增纯函数 `HeadlightLavaColumn`：`FALLING=true` 且上方同种流体
+  → 逐格上报；普通池面与阶梯斜流不变。
+- `LavaBoxOutline` 相邻 2×2×2 盒合并成竖管轮廓（4 格柱 = 12 段），描边代码零改动；预算/上限不变。
+- 连带：服务端 `MarkedLavaTracker` 复用同一 scan，观察者烈焰人触发范围随之扩大到岩浆柱（接受）。
+- 验证：`HeadlightLavaColumnTest` 7 条；实机渲染与遮挡待看。
+
+### 17.6 新增：绑定诅咒「诅咒中毒」与消失诅咒（R19/R20）
+
+- 新效果 `dimblend_experience:cursed_poison`（`curse/CurseEffects`）：HARMFUL，颜色同中毒，图标为原版
+  poison.png 的逐字节拷贝；60 分钟、等级 I，照抄 `PoisonMobEffect`（血量 >1 时每 2.5 秒 1 点 magic）。
+  `fillEffectCures` 覆写为空集 → 牛奶与不死图腾都解不掉（死亡重生照常清空），不需要 mixin。
+- 触发：`LivingEquipmentChangeEvent`，盔甲槽「从有到无」且原装备带 `PREVENT_ARMOR_CHANGE`；重复触发刷新到
+  60 分钟不叠加；装备损坏、被消失诅咒吃掉、命令移除都会触发；创造模式不豁免（需求未提）。
+- 消失诅咒：`LivingDamageEvent.Post` 且 `getNewDamage()>0`（火/摔落/中毒也算），每件已装备物品
+  （四盔甲+双手，`PREVENT_EQUIPMENT_DROP`）各自独立掷 0.2%；命中清空该槽不掉落、播 `entity.item.break`
+  + 5 粒子；创造不触发；概率常量 0.002。
+- 验证：`CurseRules` 纯函数 +10 条单测；实机看图标、60:00 倒计时、牛奶无效、0.2% 手感。
+
+### 17.7 新增：factory_blocks 风扇系列切石机配方（R11）
+
+- `FactoryStonecuttingBlocks` 42 → 48：加入 fan / fan_on / fan_four / fan_four_on / fan_malfunction /
+  fan_malfunction_on；`medium_fan` 因碰撞箱问题排除，且全整合包无其它产出途径（仅创造物品栏可见）。
+- 6 条配方为「铁块×1 → 方块×4」，`neoforge:mod_loaded: factory_blocks`；`runData` 在本机 dev 运行起不来
+  （blocks 静态引用 Copycats+），JSON 按现有模板手写并逐字节核对。
+
+### 17.8 同批已并入其它小节（不在此重复）
+
+- R5 底盘转向架参数（`standard-train-chassis.md`）、R7 出生点箱子（已随 R6 暂缓撤回）、R10 列车门/活板门豁免
+  （`dimblend-craft/docs/配方修改需求.md`）、R13 细雪桶空桶（§15 N 板块外的 fluid 兼容）、R15 黄铜二改
+  （craft 文档）、R16 远行提示与 R18 刷怪笼（§12 A12 与小节行内已改）。
