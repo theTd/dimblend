@@ -148,8 +148,10 @@ public sealed interface RecipeEdit {
      * 稳定命中目标版本。</p>
      *
      * <p><b>它做不到的事（2026-10-31 记录）：</b>排序只能决定「两条都通过热度校验时命中哪条」。
-     * 要让低一档火完全不产出，必须删除低热度配方本身 —— 黄铜即如此处理
-     * （见 {@code RecipeEditRules} 3.9 与 {@code docs/配方修改需求.md} 2026-10-31 修订）。</p>
+     * 要让低一档火完全不产出，必须删除低热度配方本身。黄铜早期曾按此思路删除加热版，
+     * 但同一天用户改口为「保留两者、不改优先度」，黄铜现已改走<b>材料</b>区分两版
+     * （加热版 8 铜粒 + 8 锌粒 =&gt; 1，超热版 铜锭 + 锌锭 =&gt; 2），不再需要也不允许排序
+     * ——见 {@code RecipeEditRules} 3.9。</p>
      */
     record MoveRecipeBefore(String label, ResourceLocation recipeId, ResourceLocation anchorId)
             implements RecipeEdit {

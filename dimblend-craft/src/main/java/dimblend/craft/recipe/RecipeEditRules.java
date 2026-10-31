@@ -45,14 +45,18 @@ import com.google.gson.JsonPrimitive;
  *   <li>下界合金（2026-10-05 修订）：原版合成配方 ID 为 {@code minecraft:netherite_ingot}；
  *       合金炉（Eternal Starlight {@code eternal_starlight:alloy}）配方输入列表
  *       经其 Serializer 校验上限为 9 个，4 金锭 + 4 碎片共 8 个输入可行。</li>
- *   <li>黄铜仅超级加热（2026-10-31 修订，取代 2026-10-05 的超热/加热共存方案）：Create 热度校验
- *       {@code HeatCondition#testBlazeBurner} 中 HEATED 接受 SEETHING，故 heated 配方在超热火下
- *       同样可匹配；两条同材料配方并存时靠 {@link RecipeEdit.MoveRecipeBefore} 排序只能保证
- *       「超热火命中超热版」，无法阻止「加热火命中加热版」。要求「仅超级加热可加工黄铜」，
- *       只能删除 {@code create:mixing/brass_ingot}，使加热火下无任何黄铜搅拌配方可命中。
- *       随包配方 {@code dimblend_craft:brass_ingot_from_superheated_mixing}（超级加热 x2）独立生效，
- *       不再依赖排序。{@link RecipeEdit.MoveRecipeBefore} 能力保留，供今后确实需要
- *       「超热火优先、加热火保留」的配方使用。</li>
+ *   <li>黄铜两版并存（2026-10-31 用户新口径，取代同一天早些时候的「仅超级加热」方案）：
+ *       口径原话「保留两者 不更改优先度 普通加热配方改为 8铜粒+8锌粒=1黄铜锭」。
+ *       加热版 {@code create:mixing/brass_ingot} 保留，材料整段改写为 8 个铜粒 + 8 个锌粒标签、
+ *       产物数量改为 1；超热版 {@code dimblend_craft:brass_ingot_from_superheated_mixing}
+ *       （铜锭 + 锌锭 =&gt; x2）原样不动；两版之间不加任何排序规则。
+ *       两版靠<b>材料</b>自然区分，不靠顺序：{@code BasinOperatingBlockEntity#getMatchingRecipes}
+ *       按材料数降序稳定排序（16 条 vs 2 条），且 8+8 铜/锌粒的配方在只有 2 个锭时根本
+ *       不满足材料条件，2 个锭的配方在只有粒时同样不满足 —— 任一条都不会被另一条遮住。
+ *       注意 Create 的 {@code ProcessingRecipeParams} 用 {@code Codec.either(SIZED_FLUID_INGREDIENT,
+ *       Ingredient.CODEC).listOf()} 表示 material 列表，物品 {@code Ingredient} 本身不带数量，
+ *       所以「8 个」只能靠标签条目重复 8 次表达（Create 自带 {@code mixing/cardboard_pulp}
+ *       就是同一标签写 4 次 = 消耗 4 个）。</li>
  *   <li>细雪熔水与火药（2026-10-10 修订）：细雪熔水配方实为 Create Fluid 的
  *       {@code fluid:mixing/powder_snow_melt}（细雪流体 {@code fluid:powder_snow}
  *       1000mB 加热 =&gt; 水 1000mB，整合包配方文件核实，Create 本体无此配方）；
@@ -163,14 +167,32 @@ public final class RecipeEditRules {
         edits.add(new RecipeEdit.DeleteByRecipeId("弹药装配台",
                 Set.of(ResourceLocation.parse("tacz:ammo_workbench"))));
 
-        // —— 3.9 Create 机器配方（2026-10-31 修订） ——
-        // 黄铜改为「仅超级加热可产出」：删除 Create 自带的加热搅拌 create:mixing/brass_ingot，
-        // 只保留随包配方 dimblend_craft:brass_ingot_from_superheated_mixing（超级加热，x2）。
-        // Create 的热度校验中 HEATED 允许 SEETHING（HeatCondition#testBlazeBurner），
-        // 两条同材料配方在超热火下都通过校验，只能靠 RecipeManager 遍历序决定命中，
-        // 加热火下则只命中加热版 —— 故「加热也能出黄铜」只能靠删除消除，无法靠排序。
-        edits.add(new RecipeEdit.DeleteByRecipeId("黄铜锭加热搅拌",
-                Set.of(ResourceLocation.parse("create:mixing/brass_ingot"))));
+        // —— 3.9 Create 机器配方（2026-10-31 用户新口径） ——
+        // 「保留两者 不更改优先度 普通加热配方改为 8铜粒+8锌粒=1黄铜锭」：
+        // 加热版 create:mixing/brass_ingot 保留，材料与产物数量按新口径改写；
+        // 超热版 dimblend_craft:brass_ingot_from_superheated_mixing（铜锭 + 锌锭 => x2）原样不动；
+        // 两版之间不加排序规则。两版靠材料自然区分，顺序对命中没有影响：
+        // 16 条材料的加热版在只有 2 个锭时不满足条件，2 条材料的超热版在只有粒时也不满足。
+        //
+        // 材料用标签而不是写死物品 ID：c:nuggets/copper 与 c:nuggets/zinc 由 Create 6.0.10
+        // 随包定义（data/c/tags/item/nuggets/copper.json、nuggets/zinc.json），
+        // 暮色森林的 twilightforest:copper_nugget 与 Steam 'n' Rails 的 create:zinc_nugget
+        // 各自追加进这两个标签；写死 create:copper_nugget 会把暮色森林的铜粒排除在外。
+        //
+        // 为什么是 16 条而不是 2 条带 count 的条目：Create 的 ProcessingRecipeParams
+        // 用 Codec.either(SIZED_FLUID_INGREDIENT, Ingredient.CODEC).listOf() 表示材料列表
+        //（Create 6.0.10 ProcessingRecipeParams.java:57），带 count 的只有流体那一侧，
+        // 物品 Ingredient 不携带数量；NeoForge 也没有带数量的物品 ingredient 类型
+        //（Ingredient 只认 item / tag / compound / difference / intersection / block_tag /
+        // data_component）。Create 自带的 mixing/cardboard_pulp.json 同样是把
+        // create:pulpifiable 写 4 次表示消耗 4 个，与此一致。
+        edits.add(modifyFields("黄铜锭加热搅拌（8 铜粒 + 8 锌粒 => 1）", "create:mixing/brass_ingot")
+                .setJson("ingredients", "["
+                        + repeatedTagEntries("c:nuggets/copper", 8) + ","
+                        + repeatedTagEntries("c:nuggets/zinc", 8)
+                        + "]")
+                .set("results.0.count", 1)
+                .build());
         // 安山合金搅拌 无需加热 -> 加热（铁粒版与锌粒版）
         edits.add(modifyFields("安山合金混合搅拌需加热",
                 "create:mixing/andesite_alloy", "create:mixing/andesite_alloy_from_zinc")
@@ -314,6 +336,23 @@ public final class RecipeEditRules {
 
     private static FieldRuleBuilder modifyFields(String label, String... recipeIds) {
         return new FieldRuleBuilder(label, recipeIds);
+    }
+
+    /**
+     * 生成 {@code count} 个相同标签材料条目并拼成 JSON 数组片段（不含方括号）。
+     *
+     * <p>Create 的物品材料 {@code Ingredient} 不携带数量（见 3.9 段注释），
+     * 表达「消耗 N 个」的唯一约定写法就是把同一标签写 N 次。</p>
+     */
+    private static String repeatedTagEntries(String tag, int count) {
+        StringBuilder json = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            if (i > 0) {
+                json.append(',');
+            }
+            json.append("{\"tag\": \"").append(tag).append("\"}");
+        }
+        return json.toString();
     }
 
     /** 机器配方字段修改规则的可读构造器。 */
