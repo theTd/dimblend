@@ -14,8 +14,6 @@ class MonsterSpawnDensityTest {
 
     private static final Set<MobSpawnType> COVERED = EnumSet.of(
             MobSpawnType.NATURAL,
-            MobSpawnType.SPAWNER,
-            MobSpawnType.TRIAL_SPAWNER,
             MobSpawnType.STRUCTURE,
             MobSpawnType.CHUNK_GENERATION,
             MobSpawnType.PATROL,
@@ -75,9 +73,28 @@ class MonsterSpawnDensityTest {
 
         // The smallest tunable step is 1%; the boundary must not be rounded away.
         assertFalse(MonsterSpawnDensity.shouldCancel(
-                MobCategory.MONSTER, MobSpawnType.SPAWNER, false, true, 0.01D, 0.009999D));
+                MobCategory.MONSTER, MobSpawnType.STRUCTURE, false, true, 0.01D, 0.009999D));
         assertTrue(MonsterSpawnDensity.shouldCancel(
-                MobCategory.MONSTER, MobSpawnType.SPAWNER, false, true, 0.01D, 0.01D));
+                MobCategory.MONSTER, MobSpawnType.STRUCTURE, false, true, 0.01D, 0.01D));
+    }
+
+    /**
+     * R18: both spawner flavours keep their vanilla rate at every density — the vanilla
+     * spawner farm and the trial chamber spawner are deliberately outside the density
+     * switch.
+     */
+    @Test
+    void spawnerBlocksKeepVanillaRateAtEveryDensity() {
+        for (MobSpawnType spawner : new MobSpawnType[] {MobSpawnType.SPAWNER, MobSpawnType.TRIAL_SPAWNER}) {
+            assertFalse(MonsterSpawnDensity.isCovered(spawner), spawner.name());
+            for (double density : new double[] {0.0D, 0.01D, 0.5D, 0.99D}) {
+                for (double roll : new double[] {0.0D, 0.5D, 0.999999D}) {
+                    assertFalse(MonsterSpawnDensity.shouldCancel(
+                                    MobCategory.MONSTER, spawner, false, true, density, roll),
+                            spawner + " density=" + density + " roll=" + roll);
+                }
+            }
+        }
     }
 
     @Test
@@ -107,7 +124,7 @@ class MonsterSpawnDensityTest {
     void densityAboveOneAlsoChangesNothing() {
         for (double density : new double[] {1.0D, 1.5D, 2.0D}) {
             assertFalse(MonsterSpawnDensity.shouldCancel(
-                    MobCategory.MONSTER, MobSpawnType.SPAWNER, false, true, density, 0.999999D));
+                    MobCategory.MONSTER, MobSpawnType.NATURAL, false, true, density, 0.999999D));
         }
     }
 

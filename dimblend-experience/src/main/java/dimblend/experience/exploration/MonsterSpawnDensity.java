@@ -22,7 +22,8 @@ import net.minecraft.world.entity.MobSpawnType;
  *
  * <p>Never suppressed: non-MONSTER categories, bosses (checked by the caller), spawn
  * types outside {@link #isCovered(MobSpawnType)} (player-caused and mob-conversion
- * spawns), and any level that is not the rotating dimension.
+ * spawns, and both spawner block flavours), and any level that is not the rotating
+ * dimension.
  */
 public final class MonsterSpawnDensity {
 
@@ -30,13 +31,14 @@ public final class MonsterSpawnDensity {
      * Spawn sources covered by the density percentage. NATURAL includes the structure
      * overrides applied inside the natural spawner. Player-caused types (SPAWN_EGG,
      * COMMAND, BUCKET, DISPENSER, BREEDING, MOB_SUMMONED, CONVERSION, TRIGGERED, EVENT)
-     * are intentionally absent. JOCKEY is listed for completeness; in vanilla it only
-     * finalizes a chicken rider (a CREATURE), so it never suppresses a MONSTER.
+     * are intentionally absent. {@link MobSpawnType#SPAWNER} (the vanilla spawner block)
+     * and {@link MobSpawnType#TRIAL_SPAWNER} (the trial chamber spawner) are intentionally
+     * absent too: R18 restores both to their vanilla spawn rates. JOCKEY is listed for
+     * completeness; in vanilla it only finalizes a chicken rider (a CREATURE), so it
+     * never suppresses a MONSTER.
      */
     private static final Set<MobSpawnType> COVERED_SPAWN_TYPES = Set.of(
             MobSpawnType.NATURAL,
-            MobSpawnType.SPAWNER,
-            MobSpawnType.TRIAL_SPAWNER,
             MobSpawnType.STRUCTURE,
             MobSpawnType.CHUNK_GENERATION,
             MobSpawnType.PATROL,

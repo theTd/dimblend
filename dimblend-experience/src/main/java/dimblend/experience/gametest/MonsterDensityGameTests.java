@@ -53,10 +53,14 @@ public final class MonsterDensityGameTests {
     private static final BlockPos SPAWNER = new BlockPos(3, 2, 3);
     private static final BlockPos PLAYER = new BlockPos(3, 2, 9);
 
+    /**
+     * R18: neither spawner flavour is a covered source any more, so even density 0 keeps
+     * their vanilla spawn rate. The trial spawner flavour is exercised in the unit test.
+     */
     @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, timeoutTicks = 240,
             batch = "monster_density_zero")
-    public static void zeroDensityStopsSpawnerBlockSpawns(GameTestHelper helper) {
-        verifySpawnerBlock(helper, 0.0D, false);
+    public static void zeroDensityKeepsSpawnerBlockSpawns(GameTestHelper helper) {
+        verifySpawnerBlock(helper, 0.0D, true);
     }
 
     @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, timeoutTicks = 240,
