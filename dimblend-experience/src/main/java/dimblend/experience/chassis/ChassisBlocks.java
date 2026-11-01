@@ -43,12 +43,17 @@ public final class ChassisBlocks {
 
     public static void configureBogey(ServerLevel level, BlockPos pos, ChassisBlueprint blueprint,
             ChassisBlueprint.Cell cell) {
+        configureBogey(level, pos, blueprint, cell, false);
+    }
+
+    public static void configureBogey(ServerLevel level, BlockPos pos, ChassisBlueprint blueprint,
+            ChassisBlueprint.Cell cell, boolean driveEnds) {
         char symbol = cell.symbol();
         if (symbol != 'W' && symbol != 'I') return;
         if (!(level.getBlockEntity(pos) instanceof PhysicsBogeyBlockEntity bogey)) {
             throw new IllegalStateException("Missing chassis bogey at " + pos);
         }
-        var tuning = ChassisBlueprint.bogeyTuning(blueprint, cell.x())
+        var tuning = ChassisBlueprint.bogeyTuning(blueprint, cell.x(), driveEnds)
                 .orElseThrow(() -> new IllegalStateException("No bogey tuning for " + blueprint + " at " + pos));
         var options = bogey.getOptions();
         options.type = new BogeyRenderedType(symbol == 'W'

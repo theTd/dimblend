@@ -210,7 +210,9 @@ public final class StationDepotAssembly {
             BlockPos pos = site.center.offset(cell.x(), 0, cell.z());
             BlockState state = ChassisBlocks.state(cell);
             level.setBlock(pos, state, Block.UPDATE_ALL);
-            ChassisBlocks.configureBogey(level, pos, site.blueprint, cell);
+            // The shell is a carriage, but the player gets a car that drives itself.
+            ChassisBlocks.configureBogey(level, pos, site.blueprint, cell,
+                    StationDepotAssemblyData.drivesEndBogeys());
             placed.put(pos, state);
         }
         site.built = true;

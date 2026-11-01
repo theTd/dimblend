@@ -203,20 +203,29 @@ public final class StationDepotAssemblyData extends SavedData {
     /**
      * Blueprint of the car parked on a boundary's positive siding.
      *
-     * <p><b>Why POWER and not CARRIAGE.</b> A user reported on 2026-11-01 that the spawn
-     * chassis drove as soon as a motor was fitted while the siding one never moved. The
-     * difference was the blueprint: {@link ChassisBlueprint#CARRIAGE} tunes every bogey to
-     * stress 0, and SimuRail multiplies the drive force by that stress, so a carriage can
-     * never propel itself no matter what is bolted to it. Asking for both cars to be the
-     * same car — with the spawn one as the reference — makes the siding car drivable.
+     * <p><b>Why CARRIAGE.</b> The depot car originally used {@link ChassisBlueprint#CARRIAGE}
+     * and was switched to {@code POWER} on 2026-11-02 because a carriage tunes every bogey to
+     * stress 0 and so could never move. A user then asked for the carriage shell back at both
+     * sites, so the choice moved out of the blueprint: the shell is CARRIAGE, and
+     * {@link ChassisBlocks#configureBogey} is told to drive the end bogeys anyway
+     * ({@code driveEnds}). The printed carriage keeps stress 0 — only these two world-built
+     * cars pull.
      */
     static ChassisBlueprint sidingBlueprint() {
-        return ChassisBlueprint.POWER;
+        return ChassisBlueprint.CARRIAGE;
     }
 
     /** Blueprint of the one power chassis every new world gets. */
     static ChassisBlueprint powerBlueprint() {
-        return ChassisBlueprint.POWER;
+        return ChassisBlueprint.CARRIAGE;
+    }
+
+    /**
+     * Whether the cars this class builds drive their own end bogeys. They do: the player
+     * gets both cars as something to drive away, not as a shell to be towed.
+     */
+    static boolean drivesEndBogeys() {
+        return true;
     }
 
     /** Centre of the car on the positive siding of this boundary. */

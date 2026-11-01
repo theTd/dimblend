@@ -47,13 +47,27 @@ public enum ChassisBlueprint {
     /** Stress in simurail's 0..32 range, and whether the bogey frame may shift on both axes. */
     public record BogeyTuning(float stress, boolean allowOffset) {}
 
-    /** Tuning for the bogey at {@code x}, or empty when no bogey sits there. */
+    /** Tuning for the bogey at {@code x} on a car printed from the driver's cab. */
     public static java.util.Optional<BogeyTuning> bogeyTuning(ChassisBlueprint blueprint, int x) {
+        return bogeyTuning(blueprint, x, false);
+    }
+
+    /**
+     * Tuning for the bogey at {@code x}, or empty when no bogey sits there.
+     *
+     * @param driveEnds whether the two end bogeys pull even on {@link #CARRIAGE}. A printed
+     *                  carriage stays a dead-hauled shell ({@code false}); the two cars the
+     *                  world hands the player have a carriage shell but must move under their
+     *                  own motor, so they ask for {@code true}. Either way the two ends carry
+     *                  the whole 32.0, the same drive force a printed power chassis gets.
+     */
+    public static java.util.Optional<BogeyTuning> bogeyTuning(ChassisBlueprint blueprint, int x,
+            boolean driveEnds) {
         boolean bogey = blueprint.cells().stream()
                 .anyMatch(cell -> cell.x() == x && (cell.symbol() == 'W' || cell.symbol() == 'I'));
         if (!bogey) return java.util.Optional.empty();
-        if (blueprint == CARRIAGE) return java.util.Optional.of(new BogeyTuning(0.0F, false));
-        // Ranked from the X+ end: the two end bogeys pull, the four inner ones only float.
+        if (blueprint == CARRIAGE && !driveEnds) return java.util.Optional.of(new BogeyTuning(0.0F, false));
+        // Ranked from the X+ end: the two end bogeys pull, any inner ones only float.
         int rank = 0;
         int total = 0;
         for (var cell : blueprint.cells()) {

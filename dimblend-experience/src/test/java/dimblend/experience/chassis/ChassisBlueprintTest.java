@@ -59,6 +59,21 @@ class ChassisBlueprintTest {
         assertEquals(2, count(plan, 'W'));
     }
 
+    @Test void drivingTheEndBogeysWakesOnlyTheCarriage() {
+        for (int x = -ChassisBlueprint.HALF_LENGTH; x <= ChassisBlueprint.HALF_LENGTH; x++) {
+            assertEquals(ChassisBlueprint.bogeyTuning(ChassisBlueprint.POWER, x),
+                    ChassisBlueprint.bogeyTuning(ChassisBlueprint.POWER, x, true), "power x=" + x);
+        }
+        assertEquals(new ChassisBlueprint.BogeyTuning(32.0f, false),
+                ChassisBlueprint.bogeyTuning(ChassisBlueprint.CARRIAGE, 17, true).orElseThrow());
+        assertEquals(new ChassisBlueprint.BogeyTuning(32.0f, false),
+                ChassisBlueprint.bogeyTuning(ChassisBlueprint.CARRIAGE, -17, true).orElseThrow());
+        for (int x : new int[] {0, 1, -1, 11, -11, 22, -22}) {
+            assertTrue(ChassisBlueprint.bogeyTuning(ChassisBlueprint.CARRIAGE, x, true).isEmpty(),
+                    "no bogey sits at x=" + x);
+        }
+    }
+
     @Test void everyBogeyCarriesATuningAndNoOtherCoordinateDoes() {
         for (var plan : ChassisBlueprint.values()) {
             var bogeyXs = new java.util.HashSet<Integer>();

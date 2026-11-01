@@ -74,19 +74,24 @@ class StationDepotSitesTest {
     }
 
     /**
-     * The siding car must be the SAME car the spawn point hands out. A user hit this on
-     * 2026-11-01: the spawn chassis drove as soon as a motor was fitted, the siding one
-     * never moved. The cause was the blueprint, not the block: CARRIAGE tunes every bogey
-     * to stress 0, and stress multiplies the drive force, so no motor could ever move it.
+     * Both cars the world hands out must be the same car, and that car must drive itself.
+     * A user hit the reverse on 2026-11-01: the siding car never moved, because CARRIAGE
+     * tunes every bogey to stress 0 and stress multiplies the drive force. On 2026-11-02 the
+     * user asked for the carriage shell back at both sites, so the shell is CARRIAGE and the
+     * drive comes from the assembly telling the bogeys to pull — not from the blueprint.
      */
     @Test
-    void bothSitesUseThePowerBlueprintThatActuallyDrives() {
-        assertEquals(ChassisBlueprint.POWER, StationDepotAssemblyData.sidingBlueprint(),
-                "the siding car must be the drivable one");
-        assertEquals(ChassisBlueprint.POWER, StationDepotAssemblyData.powerBlueprint(),
-                "the spawn car must be the drivable one");
-        assertTrue(ChassisBlueprint.bogeyTuning(ChassisBlueprint.POWER, 17).orElseThrow().stress() > 0,
-                "at least one bogey of the shared blueprint must produce drive force");
+    void bothSitesUseTheCarriageShellWithDrivenEndBogeys() {
+        assertEquals(ChassisBlueprint.CARRIAGE, StationDepotAssemblyData.sidingBlueprint(),
+                "the siding car is the carriage shell");
+        assertEquals(ChassisBlueprint.CARRIAGE, StationDepotAssemblyData.powerBlueprint(),
+                "the spawn car is the same shell");
+        float stress = ChassisBlueprint
+                .bogeyTuning(ChassisBlueprint.CARRIAGE, 17, StationDepotAssemblyData.drivesEndBogeys())
+                .orElseThrow().stress();
+        assertTrue(stress > 0.0F, "the car this world builds must produce drive force");
+        assertEquals(0.0F, ChassisBlueprint.bogeyTuning(ChassisBlueprint.CARRIAGE, 17).orElseThrow().stress(),
+                0.0F, "a printed carriage stays dead-hauled");
     }
 
     @Test
