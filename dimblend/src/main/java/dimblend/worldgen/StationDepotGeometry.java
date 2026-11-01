@@ -181,6 +181,76 @@ public final class StationDepotGeometry {
         return boundaryX + CAVERN_MAX_DX + 1;
     }
 
+    /** Block span the pass may write in Z, shell ring included. */
+    public static int writeMinBlockZ() {
+        return -PLATFORM_HALF_WIDTH - 1;
+    }
+
+    public static int writeMaxBlockZ() {
+        return PLATFORM_HALF_WIDTH + 1;
+    }
+
+    /**
+     * True when the block at {@code (blockX, blockZ)} really lands inside the chunk's own
+     * block span. {@code ChunkAccess#setBlockState} does not throw on a coordinate outside
+     * the chunk: it wraps it with {@code & 15} and writes into an unrelated column of the
+     * same chunk, so every write has to be filtered through this first.
+     */
+    public static boolean chunkContainsBlock(
+            int blockX,
+            int blockZ,
+            int chunkMinBlockX,
+            int chunkMaxBlockX,
+            int chunkMinBlockZ,
+            int chunkMaxBlockZ
+    ) {
+        return blockX >= chunkMinBlockX && blockX <= chunkMaxBlockX
+                && blockZ >= chunkMinBlockZ && blockZ <= chunkMaxBlockZ;
+    }
+
+    /** True when the depot at {@code boundaryX} writes at least one block inside this chunk's X span. */
+    public static boolean boundaryIntersectsChunkX(int boundaryX, int chunkMinBlockX, int chunkMaxBlockX) {
+        return writeMaxBlockX(boundaryX) >= chunkMinBlockX && writeMinBlockX(boundaryX) <= chunkMaxBlockX;
+    }
+
+    /** True when any block of a depot can land inside this chunk's Z span. */
+    public static boolean depotIntersectsChunkZ(int chunkMinBlockZ, int chunkMaxBlockZ) {
+        return writeMaxBlockZ() >= chunkMinBlockZ && writeMinBlockZ() <= chunkMaxBlockZ;
+    }
+
+    /**
+     * Every boundary column whose depot writes into this chunk's X span, ascending. A
+     * depot is 82 blocks wide and a chunk is 16, so the caller must not assume one hit;
+     * with {@link BandIndex#DEFAULT_BAND_SIZE} it is at most one, with a small band two.
+     *
+     * <p>Enumerating the boundaries whose <b>write span overlaps</b> the chunk is the
+     * whole point: a boundary on the chunk's west edge is west of every boundary column
+     * the chunk contains, so "the first boundary at or after the chunk's west edge" misses
+     * it, and the west half of the hall is never built.
+     */
+    public static List<Integer> boundariesTouchingChunkX(int bandSize, int chunkMinBlockX, int chunkMaxBlockX) {
+        List<Integer> boundaries = new ArrayList<>();
+        if (bandSize <= 0 || chunkMaxBlockX < chunkMinBlockX) {
+            return boundaries;
+        }
+        // A boundary b writes into [b + writeMinBlockX(0), b + writeMaxBlockX(0)], so it
+        // can touch this chunk only when b >= chunkMinBlockX - writeMaxBlockX(0) and
+        // b <= chunkMaxBlockX - writeMinBlockX(0). kFrom may name one boundary too far
+        // west; the intersection test below drops it.
+        int kFrom = (int) Math.floorDiv((long) chunkMinBlockX - writeMaxBlockX(0), bandSize);
+        int kTo = (int) Math.floorDiv((long) chunkMaxBlockX - writeMinBlockX(0), bandSize);
+        for (int k = kFrom; k <= kTo; k++) {
+            long boundaryColumn = (long) k * (long) bandSize;
+            if (boundaryColumn < Integer.MIN_VALUE || boundaryColumn > Integer.MAX_VALUE) {
+                continue;
+            }
+            if (boundaryIntersectsChunkX((int) boundaryColumn, chunkMinBlockX, chunkMaxBlockX)) {
+                boundaries.add((int) boundaryColumn);
+            }
+        }
+        return boundaries;
+    }
+
     /** Rail-mounted Create controls are separate blocks one above the rail. */
     public static int controlY() {
         return OakTrackCorridor.TRACK_Y + 1;

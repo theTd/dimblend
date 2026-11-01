@@ -26,6 +26,15 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
  * itself. That keeps the pass clear of the sync chunk loads and the 15–35 s
  * server-thread stalls this corridor has hit before.
  *
+ * <p><b>Everything is clipped to this chunk first.</b> {@code setBlockState} does not
+ * reject a coordinate outside the chunk: it wraps it with {@code & 15} and writes into
+ * an unrelated column of the same chunk. A depot is 82 blocks wide and 33 deep, so
+ * chunks far from the boundary column still reach this pass; without the clip they
+ * stamp a wrapped copy of the deck onto every Z chunk, and a chunk on the depot's west
+ * edge (which contains no boundary column at all) is skipped entirely. Every write
+ * therefore goes through {@link StationDepotGeometry#chunkContainsBlock} or is clipped
+ * to {@code minX..maxX} / {@code minZ..maxZ}.
+ *
  * <p><b>Ownership.</b> Boundary columns belong to {@link RegionBoundaryWall}, and the
  * depot only ever covers surface/surface boundaries — the ones that class never
  * walls. The chamber also stops 11 blocks short of the next boundary column, so
@@ -58,24 +67,18 @@ public final class StationDepot {
         ChunkPos pos = chunk.getPos();
         int minX = pos.getMinBlockX();
         int maxX = pos.getMaxBlockX();
-        // Boundary columns strictly inside this chunk. A boundary on the chunk's
-        // west edge belongs to this chunk; one on its east edge belongs to the east
-        // neighbour, so no two chunks ever write the same depot.
-        int firstBoundary = Math.floorDiv(minX + bandSize - 1, bandSize) * bandSize;
-        for (int boundary = firstBoundary; boundary <= maxX; boundary += bandSize) {
+        int minZ = pos.getMinBlockZ();
+        int maxZ = pos.getMaxBlockZ();
+        // The depot never leaves z = -16..16, so every other chunk row has nothing to do.
+        if (!StationDepotGeometry.depotIntersectsChunkZ(minZ, maxZ)) {
+            return;
+        }
+        for (int boundary : StationDepotGeometry.boundariesTouchingChunkX(bandSize, minX, maxX)) {
             if (!StationDepotGeometry.buildsDepot(boundary, bandSize, region -> layout.laneName(layout.delegate(region)))) {
                 continue;
             }
-            if (!carvesAnyColumnOfThisChunk(boundary, minX, maxX)) {
-                continue;
-            }
-            writeChunkShare(level, chunk, boundary, minX, maxX);
+            writeChunkShare(level, chunk, boundary, minX, maxX, minZ, maxZ);
         }
-    }
-
-    private static boolean carvesAnyColumnOfThisChunk(int boundaryX, int minX, int maxX) {
-        return StationDepotGeometry.writeMaxBlockX(boundaryX) >= minX
-                && StationDepotGeometry.writeMinBlockX(boundaryX) <= maxX;
     }
 
     private static void writeChunkShare(
@@ -83,7 +86,9 @@ public final class StationDepot {
             ChunkAccess chunk,
             int boundaryX,
             int minX,
-            int maxX
+            int maxX,
+            int minZ,
+            int maxZ
     ) {
         BlockState cobble = Blocks.COBBLESTONE.defaultBlockState();
         BlockState brick = Blocks.STONE_BRICKS.defaultBlockState();
@@ -91,17 +96,19 @@ public final class StationDepot {
         Block lantern = block(level, ResourceLocation.withDefaultNamespace("lantern"));
         Block track = block(level, CorridorTrackProfile.SURFACE.trackId());
 
-        for (int x = Math.max(minX, StationDepotGeometry.minBlockX(boundaryX));
-                x <= Math.min(maxX, StationDepotGeometry.maxBlockX(boundaryX)); x++) {
-            for (int z = -StationDepotGeometry.PLATFORM_HALF_WIDTH;
-                    z <= StationDepotGeometry.PLATFORM_HALF_WIDTH; z++) {
+        int carveFromX = Math.max(minX, StationDepotGeometry.minBlockX(boundaryX));
+        int carveToX = Math.min(maxX, StationDepotGeometry.maxBlockX(boundaryX));
+        int carveFromZ = Math.max(minZ, -StationDepotGeometry.PLATFORM_HALF_WIDTH);
+        int carveToZ = Math.min(maxZ, StationDepotGeometry.PLATFORM_HALF_WIDTH);
+        for (int x = carveFromX; x <= carveToX; x++) {
+            for (int z = carveFromZ; z <= carveToZ; z++) {
                 clearColumn(chunk, x, z);
             }
         }
-        sealShell(chunk, boundaryX, minX, maxX);
+        sealShell(chunk, boundaryX, minX, maxX, minZ, maxZ);
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
         for (StationDepotGeometry.Cell cell : StationDepotGeometry.placedCells(boundaryX)) {
-            if (cell.x() < minX || cell.x() > maxX) {
+            if (!StationDepotGeometry.chunkContainsBlock(cell.x(), cell.z(), minX, maxX, minZ, maxZ)) {
                 continue;
             }
             int y = OakTrackCorridor.TRACK_Y + cell.dy();
@@ -146,14 +153,15 @@ public final class StationDepot {
      * through the new side faces. Existing terrain is kept where it is already solid,
      * so the hall reads as a hall carved out of the ground rather than a stone box.
      */
-    private static void sealShell(ChunkAccess chunk, int boundaryX, int minX, int maxX) {
+    private static void sealShell(ChunkAccess chunk, int boundaryX, int minX, int maxX, int minZ, int maxZ) {
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
         BlockState stone = Blocks.STONE.defaultBlockState();
         int from = Math.max(minX, StationDepotGeometry.writeMinBlockX(boundaryX));
         int to = Math.min(maxX, StationDepotGeometry.writeMaxBlockX(boundaryX));
+        int fromZ = Math.max(minZ, StationDepotGeometry.writeMinBlockZ());
+        int toZ = Math.min(maxZ, StationDepotGeometry.writeMaxBlockZ());
         for (int x = from; x <= to; x++) {
-            for (int z = -StationDepotGeometry.PLATFORM_HALF_WIDTH - 1;
-                    z <= StationDepotGeometry.PLATFORM_HALF_WIDTH + 1; z++) {
+            for (int z = fromZ; z <= toZ; z++) {
                 for (int dy = StationDepotGeometry.DECK_DY - 1;
                         dy <= StationDepotGeometry.CAVERN_APEX_DY + 1; dy++) {
                     if (!StationDepotGeometry.isShell(boundaryX, x, dy, z)) {
