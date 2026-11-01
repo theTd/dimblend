@@ -28,7 +28,7 @@ public final class StationDepotCurves {
      * Column where the positive-siding curve lands on the main line. The switch stands
      * on the main line here.
      */
-    public static final int POSITIVE_MERGE_DX = 32;
+    public static final int POSITIVE_MERGE_DX = 43;
     /**
      * Column where the negative-siding curve lands. Staggered east so the two curves
      * never share an endpoint block: a shared endpoint would need a cross-shape

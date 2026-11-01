@@ -252,7 +252,8 @@ class StationDepotGeometryTest {
     @Test
     void theSwitchSitsOnTheMainLineWhereBothCurvesMeet() {
         int junction = StationDepotGeometry.junctionX(B);
-        assertEquals(B + 32, junction, "the 32-block merge section ends at the junction");
+        assertEquals(B + StationDepotGeometry.JUNCTION_DX, junction,
+                "the switch stands at the positive-siding merge column");
         assertEquals(OakTrackCorridor.CORRIDOR_Z, 0, "the switch targets the main line");
         assertEquals(OakTrackCorridor.TRACK_Y + 1, StationDepotGeometry.controlY(),
                 "rail-mounted controls sit one above the rail");
