@@ -1,9 +1,9 @@
 package dimblend.experience.chassis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dimblend.api.StationDepotCurves;
 import dimblend.api.StationDepotSites;
 import net.minecraft.core.BlockPos;
 import org.junit.jupiter.api.Test;
@@ -16,20 +16,51 @@ class StationDepotSitesTest {
     private static final int B = 2048;
 
     /**
-     * The depot carries no track switch at all.
+     * The switch machine stands beside the junction, never in a vehicle's way.
      *
-     * <p>A user reported on 2026-11-01 that a switch block stood in the middle of the
-     * junction and stopped the car. Railways' andesite switch is a solid block: its
-     * collision shape fills the entire 16x16 footprint at 0..5px, and it registers
-     * without {@code noCollission()} (CRShapes:29, CRBlocks:179). Anything standing in the
-     * rail's own column therefore blocks the train, and the depot's two merge columns sit
-     * one block apart, so one switch could never have covered both forks anyway. The
-     * decision was to remove it and leave the main line clear.
+     * <p>The switch first stood one block above the junction column and a user reported on
+     * 2026-11-01 that it stopped the car — correct, because Railways' andesite switch is a
+     * solid block (CRShapes:29 fills the whole footprint at 0..5px plus a post to 15px, and
+     * TrackSwitchBlock#getCollisionShape returns it because CRBlocks:179 never calls
+     * noCollission()). On 2026-11-02 the user said the switch is still wanted, only its
+     * lever must not block the cars. So the block stays, the column it stands in moves out:
+     * one block beyond the chassis's own lateral clearance ({@code SAFE_Z}), which is the
+     * first column no car launched by this depot can reach.
      */
     @Test
-    void theDepotPlacesNoSwitchInTheRunningLine() {
-        assertFalse(StationDepotAssemblyData.fitsSwitch(),
-                "the depot must not place a switch over the rails");
+    void theSwitchMachineStandsOutsideEveryVehicleFootprint() {
+        assertTrue(StationDepotAssemblyData.fitsSwitch(), "the depot places its switch");
+        BlockPos machine = StationDepotSwitch.machine(B);
+        BlockPos target = StationDepotSwitch.target(B);
+        assertEquals(StationDepotSites.CHASSIS_Y - 1, machine.getY(),
+                "the machine stands on the depot floor, not one block above the rails");
+        assertEquals(StationDepotSites.POWER_CHASSIS_Z, target.getZ(), "it works the main-line rail");
+        assertTrue(Math.abs(machine.getZ()) > ChassisBlueprint.SAFE_Z,
+                "the machine's column must lie outside the widest car's lateral clearance");
+        assertEquals(ChassisBlueprint.SAFE_Z + 1, Math.abs(machine.getZ()),
+                "and no further out than the first free column, so it still reads as trackside");
+        assertEquals(target.getX(), machine.getX(),
+                "the machine stands in the same column as the rail it points its rod at");
+    }
+
+    /**
+     * The switch works the carriage siding's merge — the junction the pre-built car uses.
+     *
+     * <p>A Railways switch disables every exit but the selected one
+     * ({@code TrackSwitch#updateEdges}: {@code setEnabled(forceActive || getSwitchTarget() == to)})
+     * and starts on the straight exit, so this machine closes the car's branch until somebody
+     * throws it. That is the user's choice of 2026-11-02, taken after seeing the machine work
+     * the empty siding: the switch belongs on the junction the depot's car actually uses.
+     */
+    @Test
+    void theSwitchWorksTheCarriageSidingsMerge() {
+        assertTrue(StationDepotCurves.POSITIVE_MERGE_DX != StationDepotCurves.NEGATIVE_MERGE_DX,
+                "the two merges are staggered, so one switch can only ever serve one of them");
+        assertEquals(B + StationDepotCurves.POSITIVE_MERGE_DX, StationDepotSwitch.target(B).getX());
+        assertEquals(B + StationDepotCurves.POSITIVE_MERGE_DX, StationDepotSwitch.machine(B).getX());
+        assertTrue(StationDepotSites.CARRIAGE_DZ > 0, "the car parks on the positive side");
+        assertTrue(StationDepotSwitch.machine(B).getZ() > 0,
+                "and the machine stands on that same side, not across the running line from its work");
     }
 
     @Test

@@ -53,6 +53,10 @@ public final class StationDepotAssemblyData extends SavedData {
      * write a log line every tick. Persisted: a restart must not re-warn the same site.
      */
     private final java.util.Set<Long> curvesWarned = new java.util.HashSet<>();
+    /** Switch machines already placed and bound to the track graph. */
+    private final java.util.Set<Long> switchesFitted = new java.util.HashSet<>();
+    /** Switch machines already reported once, so a slow track graph does not log per tick. */
+    private final java.util.Set<Long> switchesReported = new java.util.HashSet<>();
 
     public static StationDepotAssemblyData get(ServerLevel level) {
         return level.getDataStorage().computeIfAbsent(FACTORY, "dimblend_station_depot_assembly");
@@ -77,6 +81,51 @@ public final class StationDepotAssemblyData extends SavedData {
     void warnOnceForCurve(BlockPos curveStart, org.slf4j.Logger logger, String format, Object... args) {
         if (curvesWarned.add(curveStart.asLong())) {
             logger.warn(format, args);
+            setDirty();
+        }
+    }
+
+    boolean switchFitted(BlockPos machine) {
+        return switchesFitted.contains(machine.asLong());
+    }
+
+    void markSwitchFitted(BlockPos machine) {
+        if (switchesFitted.add(machine.asLong())) {
+            setDirty();
+        }
+    }
+
+    /** True the first time this switch machine is reported; false on every later visit. */
+    boolean firstSwitchReport(BlockPos machine) {
+        if (switchesReported.add(machine.asLong())) {
+            setDirty();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Every switch machine this depot has ever placed, in either state. The list survives a
+     * layout change on purpose: a world that already carries a machine somewhere the depot
+     * no longer wants it needs to find that block again to take it away, and the position
+     * alone cannot tell an abandoned machine from a player's own.
+     */
+    java.util.Set<BlockPos> switchMachines() {
+        var machines = new java.util.HashSet<BlockPos>();
+        for (long packed : switchesFitted) {
+            machines.add(BlockPos.of(packed));
+        }
+        for (long packed : switchesReported) {
+            machines.add(BlockPos.of(packed));
+        }
+        return machines;
+    }
+
+    /** Forgets a machine the depot no longer wants, so it is never reported again. */
+    void forgetSwitch(BlockPos machine) {
+        boolean removed = switchesFitted.remove(machine.asLong());
+        removed |= switchesReported.remove(machine.asLong());
+        if (removed) {
             setDirty();
         }
     }
@@ -111,14 +160,21 @@ public final class StationDepotAssemblyData extends SavedData {
             site.attempts = entry.getInt("attempts");
             data.sites.add(site);
         }
-        // A save written before the switch was removed still carries a "switches" key.
-        // Nothing reads it any more and nothing writes it back, so it simply disappears
-        // on the next save; ignoring it here keeps old worlds loadable.
+        // Saves written while the depot placed no switch still carry a "switches" key, and
+        // the switch machines of an older layout sat elsewhere. Nothing reads it: the
+        // current machines are keyed by their own positions, so old entries simply
+        // disappear on the next save and old worlds stay loadable.
         for (long curve : tag.getLongArray("curves")) {
             data.curvesAttached.add(curve);
         }
         for (long warned : tag.getLongArray("curvesWarned")) {
             data.curvesWarned.add(warned);
+        }
+        for (long machine : tag.getLongArray("switchMachines")) {
+            data.switchesFitted.add(machine);
+        }
+        for (long reported : tag.getLongArray("switchMachinesReported")) {
+            data.switchesReported.add(reported);
         }
         return data;
     }
@@ -138,6 +194,9 @@ public final class StationDepotAssemblyData extends SavedData {
         tag.put("sites", list);
         tag.putLongArray("curves", curvesAttached.stream().mapToLong(Long::longValue).toArray());
         tag.putLongArray("curvesWarned", curvesWarned.stream().mapToLong(Long::longValue).toArray());
+        tag.putLongArray("switchMachines", switchesFitted.stream().mapToLong(Long::longValue).toArray());
+        tag.putLongArray("switchMachinesReported",
+                switchesReported.stream().mapToLong(Long::longValue).toArray());
         return tag;
     }
 
@@ -173,22 +232,18 @@ public final class StationDepotAssemblyData extends SavedData {
     }
 
     /**
-     * Whether the depot places its own track switch. It does not, and this is a
-     * decision, not a gap.
+     * Whether the depot places its own andesite track switch. It does, and where the
+     * machine stands is the decision.
      *
-     * <p><b>Why there is no switch.</b> A user reported on 2026-11-01 that "a
-     * direction-changing thing stood at the junction of the three tracks and blocked the
-     * car". Railways' andesite switch is a solid block: {@code CRShapes.ANDESITE_SWITCH}
-     * fills the whole 16x16 footprint at 0..5px and adds a post up to 15px, and
-     * {@code TrackSwitchBlock#getCollisionShape} returns that shape whenever
-     * {@code hasCollision} is set — which it is, because the block registers with
-     * {@code noOcclusion()} but never {@code noCollission()}. The depot's two merge
-     * columns are one block apart ({@code POSITIVE_MERGE_DX} 43, {@code NEGATIVE_MERGE_DX}
-     * 44), so one switch could never have covered both forks either. The main line stays
-     * plain track and clear.
+     * <p><b>The history.</b> The switch first stood one block above the junction column; a
+     * user reported on 2026-11-01 that it stopped the car, and it was removed. The user
+     * then said on 2026-11-02 that removing it was the wrong reading — the switch is
+     * wanted, only its lever must stay out of the vehicles' way. {@link StationDepotSwitch}
+     * holds the rest: the machine stands {@code SAFE_Z+1} blocks to the side of the main
+     * line and works the carriage siding's merge, the junction the user asked for.
      */
     static boolean fitsSwitch() {
-        return false;
+        return true;
     }
 
     /** True when this site is the one that builds the depot's junction-adjacent car. */

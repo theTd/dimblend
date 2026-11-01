@@ -97,8 +97,12 @@ public final class StationDepotCurveBuilder {
      * that already carries one is left alone. {@code setBlock} with {@code UPDATE_ALL}
      * runs {@code TrackBlock#onPlace}, which schedules the Create tick that registers the
      * rail in the track graph, so the promoted block is usable the same tick.
+     *
+     * <p>Shared with {@link StationDepotSwitch}, which needs a graph node on the far side
+     * of the edge its machine sits on: a switch binds only to an edge whose far end the
+     * graph knows, and a straight generator rail on its own carries no block entity.
      */
-    private static void ensureTrackBlockEntity(ServerLevel level, BlockPos pos) {
+    static void ensureTrackBlockEntity(ServerLevel level, BlockPos pos) {
         if (level.getBlockEntity(pos) instanceof TrackBlockEntity) {
             return;
         }

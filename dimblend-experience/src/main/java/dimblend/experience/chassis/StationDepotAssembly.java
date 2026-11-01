@@ -11,10 +11,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Unit;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
@@ -80,23 +82,74 @@ public final class StationDepotAssembly {
     }
 
     /**
-     * Fits this boundary's junction furniture: the two merge curves, and nothing else.
+     * Fits this boundary's junction furniture: the two merge curves first, then the switch
+     * machine that works the carriage siding's merge.
      *
-     * <p><b>No track switch.</b> The depot used to stand a Railways andesite switch one
-     * block above the junction, and the user reported on 2026-11-01 that it blocked the
-     * car. The block is solid (see {@link StationDepotAssemblyData#fitsSwitch()}), and the
-     * two merge columns are one block apart, so a single switch could not have covered
-     * both forks regardless. The main line therefore stays plain, clear track; a player
-     * who wants a switch places one beside the rails, where Railways intends it.
+     * <p>The curves come first because the switch's exits are their ends: a machine placed
+     * before the curves exist would bind to nothing. The switch is then placed once and
+     * verified on later visits — Create binds its edge point on the block entity's next
+     * tick, so "placed" and "usable" are two different moments and only the second one is
+     * reported as done. See {@link StationDepotSwitch} for why the machine stands beside
+     * the rails rather than above them, and why it works this junction.
      */
     private static void fitJunctionSwitch(ServerLevel level, StationDepotAssemblyData data,
             StationDepotAssemblyData.Site site) {
         if (!StationDepotAssemblyData.carriesJunction(site.center)) {
             return;
         }
+        int boundaryX = site.center.getX();
         if (!StationDepotAssemblyData.fitsSwitch()) {
-            fitCurves(level, data, site.center.getX());
+            fitCurves(level, data, boundaryX);
             return;
+        }
+        if (!fitCurves(level, data, boundaryX)) {
+            return;
+        }
+        BlockPos machine = StationDepotSwitch.machine(boundaryX);
+        retireStaleMachines(level, data, machine);
+        if (data.switchFitted(machine)) {
+            return;
+        }
+        var result = StationDepotSwitch.fit(level, boundaryX);
+        if (result.fitted()) {
+            data.markSwitchFitted(machine);
+            DimBlend.LOGGER.info("Station depot switch: {}", result.detail());
+        } else if (result.done()) {
+            if (data.firstSwitchReport(machine)) {
+                DimBlend.LOGGER.warn("Station depot switch not fitted: {}", result.detail());
+            }
+        } else if (data.firstSwitchReport(machine)) {
+            // Placed but not bound yet, or waiting for the rail: reported once so a dead
+            // switch is visible in the log instead of only in the world.
+            DimBlend.LOGGER.info("Station depot switch pending: {}", result.detail());
+        }
+    }
+
+    /**
+     * Takes away switch machines this depot placed at a junction it no longer works.
+     *
+     * <p><b>Why this exists.</b> The machine moved from the empty siding's merge to the
+     * carriage siding's merge on 2026-11-02. A world generated before that move still
+     * carries the old block, which would leave two machines standing at the junction — one
+     * of them connected to nothing. Only positions this depot recorded are touched, so a
+     * switch a player placed by hand is never removed.
+     */
+    private static void retireStaleMachines(ServerLevel level, StationDepotAssemblyData data,
+            BlockPos current) {
+        var switchBlock = BuiltInRegistries.BLOCK.getOptional(StationDepotSwitch.SWITCH_ID).orElse(null);
+        if (switchBlock == null) {
+            return;
+        }
+        for (BlockPos stale : data.switchMachines()) {
+            if (stale.equals(current)) {
+                continue;
+            }
+            if (level.getBlockState(stale).is(switchBlock)) {
+                level.setBlock(stale, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
+                DimBlend.LOGGER.info("Station depot switch: retired the machine at {} (it now works {})",
+                        stale, current);
+            }
+            data.forgetSwitch(stale);
         }
     }
 
