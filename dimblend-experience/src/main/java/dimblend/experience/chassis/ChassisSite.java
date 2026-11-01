@@ -11,11 +11,58 @@ import net.minecraft.world.phys.AABB;
 import java.util.Map;
 
 public final class ChassisSite {
+    /**
+     * Create's marker for where a bezier connection runs. It is written by
+     * {@code TrackBlockEntity#manageFakeTracksAlong} when a curve is attached, carries no
+     * collision, and the depot cannot avoid it: the siding's east end has a curve leaving
+     * it, so a fake track lands just past the last rail.
+     */
+    private static final String FAKE_TRACK_ID = "create:fake_track";
+
     private ChassisSite() {}
 
     public static AABB bounds(BlockPos center) {
         return new AABB(center.getX() - 24, center.getY() - 1, center.getZ() - 3,
                 center.getX() + 25, center.getY() + 2, center.getZ() + 4);
+    }
+
+    /**
+     * Whether a block found inside a chassis footprint is something other than an
+     * obstruction.
+     *
+     * <p>The pure form exists so the decision can be tested without a level. A user hit
+     * this on 2026-11-01: a fresh depot built no car at all, logging
+     * {@code built=0 assembled=0 attempts=8}, because one {@code create:fake_track} sat at
+     * the east end of the siding and the old check only excused {@code TrackBlock}.
+     *
+     * @param blockId     registry id of the block at this position
+     * @param isRealTrack true when the block is a Create/Railways track block
+     * @param isOurBlock  true when this position is one of this build's own cells
+     */
+    static boolean isIgnorable(String blockId, boolean isRealTrack, boolean isOurBlock) {
+        if (isOurBlock || isRealTrack) {
+            return true;
+        }
+        if (FAKE_TRACK_ID.equals(blockId)) {
+            return true;
+        }
+        return "minecraft:air".equals(blockId) || "minecraft:cave_air".equals(blockId)
+                || "minecraft:void_air".equals(blockId);
+    }
+
+    /** Level-backed form: air by state, plus the two exceptions. */
+    private static boolean isIgnorable(BlockState state, boolean isOurBlock) {
+        if (isOurBlock) {
+            return true;
+        }
+        if (state.isAir()) {
+            return true;
+        }
+        if (state.getBlock() instanceof TrackBlock) {
+            return true;
+        }
+        return FAKE_TRACK_ID.equals(String.valueOf(
+                net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock())));
     }
 
     public static boolean loaded(ServerLevel level, BlockPos center) {
@@ -37,9 +84,9 @@ public final class ChassisSite {
             BlockState expected = built.get(pos);
             if (expected != null) {
                 if (!state.equals(expected)) return false;
-            } else if (!state.isAir() && !(state.getBlock() instanceof TrackBlock)) {
-                return false;
+                continue;
             }
+            if (!isIgnorable(state, false)) return false;
         }
         AABB box = bounds(center);
         var container = SubLevelContainer.getContainer(level);

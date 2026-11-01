@@ -80,35 +80,23 @@ public final class StationDepotAssembly {
     }
 
     /**
-     * Places the depot's one andesite switch at the junction on the main line. The
-     * junction belongs to the carriage site's boundary, so it is fitted on that site's
-     * visit and remembered with a persisted flag.
+     * Fits this boundary's junction furniture: the two merge curves, and nothing else.
+     *
+     * <p><b>No track switch.</b> The depot used to stand a Railways andesite switch one
+     * block above the junction, and the user reported on 2026-11-01 that it blocked the
+     * car. The block is solid (see {@link StationDepotAssemblyData#fitsSwitch()}), and the
+     * two merge columns are one block apart, so a single switch could not have covered
+     * both forks regardless. The main line therefore stays plain, clear track; a player
+     * who wants a switch places one beside the rails, where Railways intends it.
      */
     private static void fitJunctionSwitch(ServerLevel level, StationDepotAssemblyData data,
             StationDepotAssemblyData.Site site) {
-        if (site.blueprint != ChassisBlueprint.CARRIAGE) {
+        if (!StationDepotAssemblyData.carriesJunction(site.center)) {
             return;
         }
-        int boundaryX = site.center.getX();
-        BlockPos junction = StationDepotSwitch.at(boundaryX);
-        if (!ChassisSite.loaded(level, junction)) {
+        if (!StationDepotAssemblyData.fitsSwitch()) {
+            fitCurves(level, data, site.center.getX());
             return;
-        }
-        // Curves first, and independently of the switch flag: a curve that could not
-        // attach on an earlier visit (no block entity yet, chunk not loaded, …) must be
-        // retried even after the switch itself is already in place.
-        boolean curvesDone = fitCurves(level, data, boundaryX);
-        if (data.switchFitted(junction)) {
-            return;
-        }
-        try {
-            var result = StationDepotSwitch.fit(level, boundaryX, curvesDone);
-            if (result.done()) {
-                data.markSwitchFitted(junction);
-                data.setDirty();
-            }
-        } catch (RuntimeException failure) {
-            DimBlend.LOGGER.warn("Station depot switch at {} failed: {}", junction, failure.toString());
         }
     }
 
@@ -256,10 +244,11 @@ public final class StationDepotAssembly {
                     continue;
                 }
                 addIfNear(data, sites, position, radiusSq,
-                        StationDepotAssemblyData.carriageCenter(boundaryX), ChassisBlueprint.CARRIAGE);
+                        StationDepotAssemblyData.sidingCenter(boundaryX),
+                        StationDepotAssemblyData.sidingBlueprint());
             }
             addIfNear(data, sites, position, radiusSq,
-                    StationDepotAssemblyData.powerCenter(), ChassisBlueprint.POWER);
+                    StationDepotAssemblyData.powerCenter(), StationDepotAssemblyData.powerBlueprint());
         }
     }
 

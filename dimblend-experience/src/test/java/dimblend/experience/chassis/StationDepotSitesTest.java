@@ -1,45 +1,61 @@
 package dimblend.experience.chassis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dimblend.api.StationDepotSites;
 import net.minecraft.core.BlockPos;
 import org.junit.jupiter.api.Test;
 
-/** The depot switch and the two chassis sites have to agree with worldgen to the block. */
+/**
+ * The depot junction furniture and the two chassis sites have to agree with worldgen to
+ * the block.
+ */
 class StationDepotSitesTest {
     private static final int B = 2048;
 
+    /**
+     * The depot carries no track switch at all.
+     *
+     * <p>A user reported on 2026-11-01 that a switch block stood in the middle of the
+     * junction and stopped the car. Railways' andesite switch is a solid block: its
+     * collision shape fills the entire 16x16 footprint at 0..5px, and it registers
+     * without {@code noCollission()} (CRShapes:29, CRBlocks:179). Anything standing in the
+     * rail's own column therefore blocks the train, and the depot's two merge columns sit
+     * one block apart, so one switch could never have covered both forks anyway. The
+     * decision was to remove it and leave the main line clear.
+     */
     @Test
-    void theSwitchStandsOneBlockAboveTheJunctionOnTheMainLine() {
-        BlockPos pos = StationDepotSwitch.at(B);
-        assertEquals(B + dimblend.api.StationDepotCurves.POSITIVE_MERGE_DX, pos.getX(),
-                "the switch stands where the positive siding's curve lands");
-        assertEquals(StationDepotSites.controlY(), pos.getY(), "one block above the rail");
-        assertEquals(StationDepotSites.POWER_CHASSIS_Z, pos.getZ(), "on the main line");
-        assertEquals(pos.below().getX(), StationDepotSites.junctionX(B));
+    void theDepotPlacesNoSwitchInTheRunningLine() {
+        assertFalse(StationDepotAssemblyData.fitsSwitch(),
+                "the depot must not place a switch over the rails");
     }
 
     @Test
-    void theSwitchTargetIsARelativeOffsetToTheRailBelowIt() {
-        // TrackTargetingBehaviour.getGlobalPosition() adds TargetTrack to the switch
-        // position, so an absolute position here would double the world coordinate.
-        BlockPos pos = StationDepotSwitch.at(B);
-        BlockPos relative = pos.below().subtract(pos);
-        assertEquals(new BlockPos(0, -1, 0), relative);
-        assertNotEquals(pos.below(), relative, "must never be the absolute rail position");
-    }
-
-    @Test
-    void theCarriageSiteIsThePositiveSidingAndTheNegativeOneIsEmpty() {
-        BlockPos carriage = StationDepotAssemblyData.carriageCenter(B);
-        assertEquals(B, carriage.getX(), "centred on the boundary column");
-        assertEquals(StationDepotSites.CHASSIS_Y, carriage.getY(), "one block above the rail");
-        assertEquals(StationDepotSites.SIDING_DZ, carriage.getZ(), "positive Z side");
-        assertTrue(carriage.getZ() > 0);
+    void theSidingSiteIsThePositiveSidingAndTheNegativeOneIsEmpty() {
+        BlockPos siding = StationDepotAssemblyData.sidingCenter(B);
+        assertEquals(B, siding.getX(), "centred on the boundary column");
+        assertEquals(StationDepotSites.CHASSIS_Y, siding.getY(), "one block above the rail");
+        assertEquals(StationDepotSites.SIDING_DZ, siding.getZ(), "positive Z side");
+        assertTrue(siding.getZ() > 0);
         assertTrue(StationDepotSites.SIDING_DZ > 0);
+    }
+
+    /**
+     * The siding car must be the SAME car the spawn point hands out. A user hit this on
+     * 2026-11-01: the spawn chassis drove as soon as a motor was fitted, the siding one
+     * never moved. The cause was the blueprint, not the block: CARRIAGE tunes every bogey
+     * to stress 0, and stress multiplies the drive force, so no motor could ever move it.
+     */
+    @Test
+    void bothSitesUseThePowerBlueprintThatActuallyDrives() {
+        assertEquals(ChassisBlueprint.POWER, StationDepotAssemblyData.sidingBlueprint(),
+                "the siding car must be the drivable one");
+        assertEquals(ChassisBlueprint.POWER, StationDepotAssemblyData.powerBlueprint(),
+                "the spawn car must be the drivable one");
+        assertTrue(ChassisBlueprint.bogeyTuning(ChassisBlueprint.POWER, 17).orElseThrow().stress() > 0,
+                "at least one bogey of the shared blueprint must produce drive force");
     }
 
     @Test

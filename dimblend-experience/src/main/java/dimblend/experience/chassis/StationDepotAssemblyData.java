@@ -46,8 +46,6 @@ public final class StationDepotAssemblyData extends SavedData {
     }
 
     final List<Site> sites = new ArrayList<>();
-    /** Junction positions whose andesite switch has already been fitted. */
-    private final java.util.Set<Long> switchFitted = new java.util.HashSet<>();
     /** Curve start positions whose BezierConnection has already been attached. */
     private final java.util.Set<Long> curvesAttached = new java.util.HashSet<>();
     /**
@@ -58,16 +56,6 @@ public final class StationDepotAssemblyData extends SavedData {
 
     public static StationDepotAssemblyData get(ServerLevel level) {
         return level.getDataStorage().computeIfAbsent(FACTORY, "dimblend_station_depot_assembly");
-    }
-
-    boolean switchFitted(BlockPos junction) {
-        return switchFitted.contains(junction.asLong());
-    }
-
-    void markSwitchFitted(BlockPos junction) {
-        if (switchFitted.add(junction.asLong())) {
-            setDirty();
-        }
     }
 
     boolean curveAttached(BlockPos curveStart) {
@@ -123,10 +111,9 @@ public final class StationDepotAssemblyData extends SavedData {
             site.attempts = entry.getInt("attempts");
             data.sites.add(site);
         }
-        var switches = tag.getLongArray("switches");
-        for (long junction : switches) {
-            data.switchFitted.add(junction);
-        }
+        // A save written before the switch was removed still carries a "switches" key.
+        // Nothing reads it any more and nothing writes it back, so it simply disappears
+        // on the next save; ignoring it here keeps old worlds loadable.
         for (long curve : tag.getLongArray("curves")) {
             data.curvesAttached.add(curve);
         }
@@ -149,14 +136,32 @@ public final class StationDepotAssemblyData extends SavedData {
             list.add(entry);
         }
         tag.put("sites", list);
-        tag.putLongArray("switches", switchFitted.stream().mapToLong(Long::longValue).toArray());
         tag.putLongArray("curves", curvesAttached.stream().mapToLong(Long::longValue).toArray());
         tag.putLongArray("curvesWarned", curvesWarned.stream().mapToLong(Long::longValue).toArray());
         return tag;
     }
 
-    /** Centre of the carriage chassis on the positive siding of this boundary. */
-    public static BlockPos carriageCenter(int boundaryX) {
+    /**
+     * Blueprint of the car parked on a boundary's positive siding.
+     *
+     * <p><b>Why POWER and not CARRIAGE.</b> A user reported on 2026-11-01 that the spawn
+     * chassis drove as soon as a motor was fitted while the siding one never moved. The
+     * difference was the blueprint: {@link ChassisBlueprint#CARRIAGE} tunes every bogey to
+     * stress 0, and SimuRail multiplies the drive force by that stress, so a carriage can
+     * never propel itself no matter what is bolted to it. Asking for both cars to be the
+     * same car — with the spawn one as the reference — makes the siding car drivable.
+     */
+    static ChassisBlueprint sidingBlueprint() {
+        return ChassisBlueprint.POWER;
+    }
+
+    /** Blueprint of the one power chassis every new world gets. */
+    static ChassisBlueprint powerBlueprint() {
+        return ChassisBlueprint.POWER;
+    }
+
+    /** Centre of the car on the positive siding of this boundary. */
+    public static BlockPos sidingCenter(int boundaryX) {
         return new BlockPos(StationDepotSites.carriageChassisX(boundaryX),
                 StationDepotSites.CHASSIS_Y, StationDepotSites.carriageChassisZ());
     }
@@ -165,5 +170,29 @@ public final class StationDepotAssemblyData extends SavedData {
     public static BlockPos powerCenter() {
         return new BlockPos(StationDepotSites.POWER_CHASSIS_X, StationDepotSites.CHASSIS_Y,
                 StationDepotSites.POWER_CHASSIS_Z);
+    }
+
+    /**
+     * Whether the depot places its own track switch. It does not, and this is a
+     * decision, not a gap.
+     *
+     * <p><b>Why there is no switch.</b> A user reported on 2026-11-01 that "a
+     * direction-changing thing stood at the junction of the three tracks and blocked the
+     * car". Railways' andesite switch is a solid block: {@code CRShapes.ANDESITE_SWITCH}
+     * fills the whole 16x16 footprint at 0..5px and adds a post up to 15px, and
+     * {@code TrackSwitchBlock#getCollisionShape} returns that shape whenever
+     * {@code hasCollision} is set — which it is, because the block registers with
+     * {@code noOcclusion()} but never {@code noCollission()}. The depot's two merge
+     * columns are one block apart ({@code POSITIVE_MERGE_DX} 43, {@code NEGATIVE_MERGE_DX}
+     * 44), so one switch could never have covered both forks either. The main line stays
+     * plain track and clear.
+     */
+    static boolean fitsSwitch() {
+        return false;
+    }
+
+    /** True when this site is the one that builds the depot's junction-adjacent car. */
+    static boolean carriesJunction(BlockPos center) {
+        return center.getZ() == StationDepotSites.carriageChassisZ();
     }
 }
