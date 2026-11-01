@@ -31,6 +31,8 @@ class StructureLabelLangTest {
     private static final String EN_US = "/assets/dimblend_spyglass/lang/en_us.json";
     private static final String ZH_CN = "/assets/dimblend_spyglass/lang/zh_cn.json";
     private static final String CONFIG_PREFIX = "dimblend_spyglass.configuration.";
+    /** Label chrome that is not a structure name, e.g. the "(not generated)" suffix. */
+    private static final String LABEL_PREFIX = "dimblend_spyglass.label.";
 
     @Test
     void everyPlainVanillaEntryHasANameInEnglishAndChinese() throws IOException {
@@ -48,15 +50,29 @@ class StructureLabelLangTest {
     }
 
     @Test
-    void bothLanguagesShipTheSameKeysAndOnlyStructureOrConfigKeys() throws IOException {
+    void bothLanguagesShipTheSameKeysAndOnlyStructureConfigOrLabelKeys() throws IOException {
         Map<String, String> english = lang(EN_US);
         Map<String, String> chinese = lang(ZH_CN);
 
         assertEquals(english.keySet(), chinese.keySet());
         for (String key : english.keySet()) {
             assertTrue(key.startsWith(StructureLabelNames.KEY_PREFIX)
-                    || key.startsWith(CONFIG_PREFIX), key);
+                    || key.startsWith(CONFIG_PREFIX)
+                    || key.startsWith(LABEL_PREFIX), key);
         }
+    }
+
+    @Test
+    void predictedLabelSuffixExistsInBothLanguages() throws IOException {
+        // The suffix says an outline was replayed from the seed and has no blocks in the world yet;
+        // without it a predicted marker would read as a real building.
+        Map<String, String> english = lang(EN_US);
+        Map<String, String> chinese = lang(ZH_CN);
+        assertFalse(english.getOrDefault(StructureLabelNames.PREDICTED_KEY, "").isBlank());
+        assertFalse(chinese.getOrDefault(StructureLabelNames.PREDICTED_KEY, "").isBlank());
+        assertNotEquals(
+                english.get(StructureLabelNames.PREDICTED_KEY),
+                chinese.get(StructureLabelNames.PREDICTED_KEY));
     }
 
     @Test

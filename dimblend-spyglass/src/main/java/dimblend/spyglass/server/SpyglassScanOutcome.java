@@ -3,14 +3,16 @@ package dimblend.spyglass.server;
 /**
  * Everything one scan produced, computed on the scan executor and handed to the tick thread.
  *
- * @param limited   nearest-first structures after the snapshot caps
+ * @param limited    nearest-first structures after the snapshot caps, read and predicted together
  * @param extraction encoded shapes for the structures that have real blocks on disk
  * @param readErrors shared read-failure counts of the start scan and the shape extraction
  * @param rawOutlines number of outlines found before the limiter, for the DEBUG summary
+ * @param prediction how much seed-based prediction this scan did, for the DEBUG summary
  */
 record SpyglassScanOutcome(
         SpyglassSnapshotLimiter.LimitResult limited,
         StructureShapeExtractor.Extraction extraction,
         RegionScanResult.Counts readErrors,
-        int rawOutlines) {
+        int rawOutlines,
+        StructurePredictor.Prediction prediction) {
 }

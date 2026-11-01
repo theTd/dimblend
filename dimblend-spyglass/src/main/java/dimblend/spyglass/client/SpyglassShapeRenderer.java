@@ -2,7 +2,14 @@ package dimblend.spyglass.client;
 
 import com.mojang.blaze3d.shaders.Uniform;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.BufferUploader;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.MeshData;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexBuffer;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import dimblend.spyglass.DimBlendSpyglass;
 import dimblend.spyglass.structure.OutlineBox;
@@ -13,6 +20,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.renderer.texture.AbstractTexture;
@@ -111,6 +119,18 @@ public final class SpyglassShapeRenderer {
     /** Meshes drawn in the AFTER_PARTICLES overlay pass, nearest first. */
     private static final List<UploadedShapeMesh> OVERLAY = new ArrayList<>();
     private static double[] overlayDistances = new double[16];
+    /**
+     * Predicted (not yet generated) structures to mark this frame. Rebuilt by the {@code AFTER_SKY}
+     * selection pass and consumed by the far draw of the same frame.
+     */
+    private static final List<StructureOutline> MARKED = new ArrayList<>();
+    /**
+     * Marker colours, RGBA. The union box is dimmer than the pieces so a large structure still reads
+     * as one shape at a distance; both are a pale cyan that no vanilla structure fog or terrain colour
+     * resembles, which is what keeps a marker from being mistaken for a building.
+     */
+    private static final float[] MARKED_BOUNDS_COLOR = {0.35F, 0.85F, 0.95F, 0.35F};
+    private static final float[] MARKED_PIECE_COLOR = {0.45F, 0.95F, 1.0F, 0.85F};
     /** Frame the overlay list belongs to; {@code Long.MIN_VALUE} means "no valid list". */
     private static long overlayFrame = Long.MIN_VALUE;
 
@@ -137,6 +157,7 @@ public final class SpyglassShapeRenderer {
         overlayFrame = Long.MIN_VALUE;
         OVERLAY.clear();
         FAR.clear();
+        MARKED.clear();
         if (!SpyglassScopeGate.isScoping(minecraft)) {
             return;
         }
@@ -156,8 +177,17 @@ public final class SpyglassShapeRenderer {
         double farthest = 0.0;
         StructureShape request = null;
         double requestDistance = Double.POSITIVE_INFINITY;
+        // Predicted structures: no mesh exists or ever will (their chunks were never generated), so
+        // they are marked with line boxes instead of block geometry.
         for (int i = 0; i < structures.size(); i++) {
-            Optional<StructureShape> found = SpyglassShapeCache.shapeFor(structures.get(i));
+            StructureOutline outline = structures.get(i);
+            if (outline.predicted()) {
+                if (CULLING.isVisible(outline.bounds())) {
+                    MARKED.add(outline);
+                }
+                continue;
+            }
+            Optional<StructureShape> found = SpyglassShapeCache.shapeFor(outline);
             if (found.isEmpty()) {
                 continue;
             }
@@ -198,10 +228,17 @@ public final class SpyglassShapeRenderer {
         if (request != null && minecraft.level != null) {
             ShapeMeshStore.request(request, minecraft.level, eye, minecraft.getBlockRenderer());
         }
+        // Marked (predicted) structures need their own depth range: they sit in ungenerated terrain, so
+        // by definition there is no loaded terrain to compare them against, and they may be far.
+        for (int i = 0; i < MARKED.size(); i++) {
+            OutlineBox bounds = MARKED.get(i).bounds();
+            nearest = Math.min(nearest, ShapeDepthRange.nearestDistance(bounds, eye.x, eye.y, eye.z));
+            farthest = Math.max(farthest, ShapeDepthRange.farthestDistance(bounds, eye.x, eye.y, eye.z));
+        }
         // Labels are published by the AFTER_PARTICLES pass from the mesh stamps, but only when the
         // selection pass of the same frame actually ran.
         overlayFrame = frame;
-        if (FAR.isEmpty()) {
+        if (FAR.isEmpty() && MARKED.isEmpty()) {
             return;
         }
 
@@ -249,13 +286,19 @@ public final class SpyglassShapeRenderer {
         }
     }
 
-    /** Structures whose real mesh was actually drawn this frame, in either pass. */
+    /**
+     * Structures that were actually put on screen this frame: a drawn mesh in either pass, or a
+     * marker for a structure the world has not generated.
+     */
     private static List<StructureOutline> drawnStructures(long frame) {
         List<StructureOutline> structures = SpyglassClientState.currentStructures();
         List<StructureOutline> shown = null;
         for (int i = 0; i < structures.size(); i++) {
             StructureOutline structure = structures.get(i);
-            if (ShapeMeshStore.meshUse(structure.key()) != ShapeMeshStore.MeshUse.DRAWN) {
+            boolean drawn = structure.predicted()
+                    ? marked(structure)
+                    : ShapeMeshStore.meshUse(structure.key()) == ShapeMeshStore.MeshUse.DRAWN;
+            if (!drawn) {
                 continue;
             }
             if (shown == null) {
@@ -264,6 +307,15 @@ public final class SpyglassShapeRenderer {
             shown.add(structure);
         }
         return shown == null ? List.of() : shown;
+    }
+
+    private static boolean marked(StructureOutline structure) {
+        for (int i = 0; i < MARKED.size(); i++) {
+            if (MARKED.get(i).key().equals(structure.key())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -277,6 +329,7 @@ public final class SpyglassShapeRenderer {
         FOG.begin((float) SpyglassRevealState.revealDistanceBlocks(), fogEnd, SpyglassRevealState.fogShape());
         try {
             drawLayers(minecraft, FAR, modelView, projection, eye, false, fogEnd, nearStrength, farStrength);
+            drawMarked(minecraft, modelView, projection, eye);
         } finally {
             FOG.end();
         }
@@ -286,6 +339,84 @@ public final class SpyglassShapeRenderer {
         RenderSystem.depthMask(true);
         RenderSystem.clearDepth(1.0);
         RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
+    }
+
+    /**
+     * Draws the marker for structures the world has not generated yet.
+     *
+     * <p>These have no block mesh and never will until someone walks there, so they are drawn as line
+     * boxes over their predicted piece boxes. They are deliberately<b> not</b> block geometry: the
+     * texture, the pockets of air and the terrain around them would all be invented, and a rendered
+     * shell in an empty sky reads as a real building that turns out to be wrong the moment the player
+     * arrives. A line frame reads as "something is here", which is exactly what is known.
+     *
+     * <p>Drawn in the far pass with the far depth range: an ungenerated structure sits outside the
+     * loaded terrain by definition, so there is no terrain depth for it to hide behind.
+     */
+    private static void drawMarked(Minecraft minecraft, Matrix4f modelView, Matrix4f projection, Vec3 eye) {
+        if (MARKED.isEmpty()) {
+            return;
+        }
+        RenderType type = RenderType.lines();
+        type.setupRenderState();
+        try {
+            if (Minecraft.useShaderTransparency()) {
+                // RenderType.lines() uses ITEM_ENTITY_TARGET (RenderType.java:609), which under Fabulous
+                // binds the item-entity target; the marker belongs in the main target like the meshes.
+                minecraft.getMainRenderTarget().bindWrite(false);
+            }
+            ShaderInstance shader = RenderSystem.getShader();
+            if (shader == null) {
+                return;
+            }
+            shader.setDefaultUniforms(VertexFormat.Mode.LINES, modelView, projection, minecraft.getWindow());
+            shader.apply();
+            Tesselator tesselator = Tesselator.getInstance();
+            BufferBuilder buffer = tesselator.begin(
+                    VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL);
+            PoseStack pose = new PoseStack();
+            for (int i = 0; i < MARKED.size(); i++) {
+                StructureOutline outline = MARKED.get(i);
+                // The union box first, dimmer: at a distance the pieces of a large structure overlap
+                // into a solid block of lines, and the union box is what shows the extent.
+                addBoxLines(pose, buffer, outline.bounds(), eye, true);
+                for (int j = 0; j < outline.pieces().size(); j++) {
+                    addBoxLines(pose, buffer, outline.pieces().get(j), eye, false);
+                }
+            }
+            MeshData mesh = buffer.build();
+            if (mesh != null) {
+                BufferUploader.draw(mesh);
+            }
+            shader.clear();
+        } finally {
+            type.clearRenderState();
+        }
+    }
+
+    /**
+     * Emits the 12 edges of one box. Coordinates are camera-relative, like the mesh pass, so vertex
+     * positions stay small enough for the depth buffer at 1000 blocks.
+     */
+    private static void addBoxLines(
+            PoseStack pose, VertexConsumer buffer, OutlineBox box, Vec3 eye, boolean whole) {
+        float red = whole ? MARKED_BOUNDS_COLOR[0] : MARKED_PIECE_COLOR[0];
+        float green = whole ? MARKED_BOUNDS_COLOR[1] : MARKED_PIECE_COLOR[1];
+        float blue = whole ? MARKED_BOUNDS_COLOR[2] : MARKED_PIECE_COLOR[2];
+        float alpha = whole ? MARKED_BOUNDS_COLOR[3] : MARKED_PIECE_COLOR[3];
+        LevelRenderer.renderLineBox(
+                pose,
+                buffer,
+                box.minX() - eye.x,
+                box.minY() - eye.y,
+                box.minZ() - eye.z,
+                box.maxX() + 1.0 - eye.x,
+                box.maxY() + 1.0 - eye.y,
+                box.maxZ() + 1.0 - eye.z,
+                red,
+                green,
+                blue,
+                alpha);
     }
 
     /**

@@ -5,6 +5,7 @@ import dimblend.spyglass.net.SpyglassSnapshotPayload;
 import dimblend.spyglass.structure.SpyglassDistance;
 import dimblend.spyglass.structure.SpyglassStructureTags;
 import dimblend.spyglass.structure.StructureOutline;
+import dimblend.worldgen.RotatingChunkGenerator;
 import dimblend.worldgen.StructureStateBand;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -32,7 +33,10 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.storage.LevelResource;
@@ -126,6 +130,8 @@ public final class SpyglassServerService {
         private final ThreadPoolExecutor executor;
         private final SpyglassServerShapeCache shapeCache = new SpyglassServerShapeCache();
         private final SpyglassShapeStreamer shapeStreamer = new SpyglassShapeStreamer();
+        /** Seed-only replay for chunks with no saved start; carries its own bounded cache. */
+        private final StructurePredictor predictor = new StructurePredictor();
         private volatile boolean closed;
 
         private Session(MinecraftServer server) {
@@ -260,14 +266,16 @@ public final class SpyglassServerService {
                     level.getMinBuildHeight(),
                     level.getHeight());
             Registry<Biome> biomes = level.registryAccess().registryOrThrow(Registries.BIOME);
+            PredictionContext prediction = predictionContext(level);
             DimBlendSpyglass.LOGGER.debug(
-                    "Spyglass scan prepared player={} dimension={} whitelisted={} bands={} radius={} reveal={}",
+                    "Spyglass scan prepared player={} dimension={} whitelisted={} bands={} radius={} reveal={} prediction={}",
                     player.getUUID(),
                     dimension.location(),
                     targets.size(),
                     bands.size(),
                     StructureCandidates.SCAN_RADIUS_CHUNKS,
-                    revealBlocks);
+                    revealBlocks,
+                    prediction != null);
             return new StructureScanRequest(
                     player.getUUID(),
                     sequence,
@@ -277,7 +285,46 @@ public final class SpyglassServerService {
                     region,
                     biomes,
                     targets,
-                    bands);
+                    bands,
+                    prediction);
+        }
+
+        /**
+         * Server thread: resolves everything a seed-only generation replay needs. Returns {@code null}
+         * when prediction cannot be honest for this level — no structure generation, or a generator
+         * whose structure state is not available — so the scan simply shows nothing for ungenerated
+         * chunks instead of inventing them.
+         */
+        @Nullable
+        private PredictionContext predictionContext(ServerLevel level) {
+            if (!level.getServer().getWorldData().worldGenOptions().generateStructures()) {
+                return null;
+            }
+            ChunkGenerator generator = level.getChunkSource().getGenerator();
+            // A plain generator's structure state lives off the generator's own random state, which
+            // the level keeps; a banded generator resolves it per band and does not need it here.
+            ChunkGeneratorStructureState state = generator instanceof RotatingChunkGenerator
+                    ? null
+                    : level.getChunkSource().getGeneratorState();
+            try {
+                return new PredictionContext(
+                        level.dimension(),
+                        level.registryAccess(),
+                        generator,
+                        state,
+                        level.structureManager(),
+                        this.server.getStructureManager(),
+                        LevelHeightAccessor.create(level.getMinBuildHeight(), level.getHeight()),
+                        true);
+            } catch (RuntimeException exception) {
+                // A generator whose runtime is not ready (dimblend before its seed is set) must not
+                // fail the whole scan; prediction is optional.
+                DimBlendSpyglass.LOGGER.debug(
+                        "Spyglass structure prediction unavailable in {}: {}",
+                        level.dimension().location(),
+                        exception.toString());
+                return null;
+            }
         }
 
         private void submit(PlayerState state, StructureScanRequest request) {
@@ -387,26 +434,52 @@ public final class SpyglassServerService {
                     candidates.size(),
                     enumerationNanos / 1_000_000L);
             RegionReadErrors errors = new RegionReadErrors();
-            List<StructureOutline> outlines =
-                    ReadOnlyRegionScanner.scanInto(request.region(), candidates, errors);
+            List<StructureCandidate> absent = new ArrayList<>();
+            // scanInto returns an immutable list; predicted outlines are appended, so take a copy.
+            List<StructureOutline> outlines = new ArrayList<>(
+                    ReadOnlyRegionScanner.scanInto(request.region(), candidates, absent, errors));
+            long predictStarted = System.nanoTime();
+            StructurePredictor.Prediction prediction = request.prediction() == null
+                    ? StructurePredictor.Prediction.empty()
+                    : this.predictor.predict(
+                            request.prediction(), absent, request.playerX(), request.playerZ());
+            long predictNanos = System.nanoTime() - predictStarted;
+            if (!prediction.outlines().isEmpty()) {
+                // Predicted outlines join the real ones here so the limiter, the distance ring and the
+                // renderer treat one kind of object; the flag travels with each outline.
+                outlines.addAll(prediction.outlines());
+            }
             long limitStarted = System.nanoTime();
             SpyglassSnapshotLimiter.LimitResult limited = SpyglassSnapshotLimiter.limit(
                     request.playerX(), request.playerZ(), request.revealBlocks(), outlines);
             long limitNanos = System.nanoTime() - limitStarted;
             long shapeStarted = System.nanoTime();
+            // Shape extraction only ever runs for outlines that have blocks on disk. A predicted
+            // outline has no chunk to read, so it is filtered out before the extraction rather than
+            // counted as a read failure.
             StructureShapeExtractor.Extraction extraction = StructureShapeExtractor.extract(
                     request.region(),
                     request.biomes(),
-                    limited.selected(),
+                    limited.selected().stream()
+                            .filter(structure -> !structure.outline().predicted())
+                            .toList(),
                     this.shapeCache,
                     errors);
             long shapeNanos = System.nanoTime() - shapeStarted;
             DimBlendSpyglass.LOGGER.debug(
-                    "Spyglass scan timings player={} limit={}ms shapes={}ms",
+                    "Spyglass scan timings player={} limit={}ms predict={}ms(predicted={} generated={} "
+                            + "cached={} skipped={} failed={}) shapes={}ms",
                     request.playerId(),
                     limitNanos / 1_000_000L,
+                    predictNanos / 1_000_000L,
+                    prediction.outlines().size(),
+                    prediction.generatedChunks(),
+                    prediction.cacheHits(),
+                    prediction.skippedChunks(),
+                    prediction.failedChunks(),
                     shapeNanos / 1_000_000L);
-            return new SpyglassScanOutcome(limited, extraction, errors.snapshot(), outlines.size());
+            return new SpyglassScanOutcome(
+                    limited, extraction, errors.snapshot(), outlines.size(), prediction);
         }
 
         private void complete(
@@ -526,6 +599,7 @@ public final class SpyglassServerService {
             this.reveals.clear();
             this.shapeStreamer.clear();
             this.shapeCache.clear();
+            this.predictor.clear();
             this.executor.shutdownNow();
         }
     }

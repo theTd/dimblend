@@ -1,7 +1,9 @@
 package dimblend.spyglass.net;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dimblend.spyglass.structure.OutlineBox;
 import dimblend.spyglass.structure.StructureKey;
@@ -130,8 +132,51 @@ class SpyglassSnapshotPayloadTest {
             writeBox(buffer, 0, 0, 0, 1, 1, 1);
             buffer.writeVarInt(1);
             writeBox(buffer, 0, 0, 0, 10, 1, 1);
+            writeFlags(buffer, false);
 
             assertThrows(DecoderException.class, () -> SpyglassSnapshotPayload.STREAM_CODEC.decode(buffer));
+        } finally {
+            buffer.release();
+        }
+    }
+
+    @Test
+    void rejectsUnknownFlagsInsteadOfIgnoringThem() {
+        // An unknown bit means the sender speaks a newer protocol. Ignoring it would silently draw a
+        // predicted outline as a real building, so the decode must fail.
+        FriendlyByteBuf buffer = header(1);
+        try {
+            writeKey(buffer);
+            writeBox(buffer, 0, 0, 0, 1, 1, 1);
+            buffer.writeVarInt(1);
+            writeBox(buffer, 0, 0, 0, 1, 1, 1);
+            buffer.writeByte(0x02);
+
+            assertThrows(DecoderException.class, () -> SpyglassSnapshotPayload.STREAM_CODEC.decode(buffer));
+        } finally {
+            buffer.release();
+        }
+    }
+
+    @Test
+    void keepsThePredictedFlagThroughAJsonFreeRoundTrip() {
+        StructureOutline real = StructureOutline.of(KEY, List.of(new OutlineBox(0, 0, 0, 1, 1, 1)));
+        StructureOutline predicted = StructureOutline.predicted(
+                new StructureKey(ID, KEY.startChunkX() + 1, KEY.startChunkZ()),
+                List.of(new OutlineBox(4, 0, 4, 9, 8, 9)));
+        SpyglassSnapshotPayload payload =
+                new SpyglassSnapshotPayload(DIMENSION, 7, List.of(real, predicted));
+
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            SpyglassSnapshotPayload.STREAM_CODEC.encode(buffer, payload);
+            SpyglassSnapshotPayload decoded = SpyglassSnapshotPayload.STREAM_CODEC.decode(buffer);
+
+            assertEquals(2, decoded.structures().size());
+            assertFalse(decoded.structures().get(0).predicted());
+            assertTrue(decoded.structures().get(1).predicted());
+            assertEquals(real, decoded.structures().get(0));
+            assertEquals(predicted, decoded.structures().get(1));
         } finally {
             buffer.release();
         }
@@ -191,6 +236,13 @@ class SpyglassSnapshotPayloadTest {
         buffer.writeInt(KEY.startChunkX());
         buffer.writeInt(KEY.startChunkZ());
     }
+
+    /** The trailing per-structure flags byte; a hand-built structure must always end with one. */
+    private static void writeFlags(FriendlyByteBuf buffer, boolean predicted) {
+        buffer.writeByte(predicted ? FLAG_PREDICTED : 0);
+    }
+
+    private static final int FLAG_PREDICTED = 0x01;
 
     private static void writeBox(
             FriendlyByteBuf buffer, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {

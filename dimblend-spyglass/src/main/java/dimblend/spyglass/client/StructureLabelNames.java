@@ -11,6 +11,12 @@ import net.minecraft.resources.ResourceLocation;
  */
 final class StructureLabelNames {
     static final String KEY_PREFIX = DimBlendSpyglass.MODID + ".structure.";
+    /**
+     * Translation key appended to the name of a predicted structure, whose chunks the world has not
+     * generated yet. Kept short in every language because it shares the label's first line with the
+     * structure's own name.
+     */
+    static final String PREDICTED_KEY = DimBlendSpyglass.MODID + ".label.not_generated";
 
     /**
      * {@code dimblend_spyglass.structure.<namespace>.<path>} with {@code /} in the path turned into
