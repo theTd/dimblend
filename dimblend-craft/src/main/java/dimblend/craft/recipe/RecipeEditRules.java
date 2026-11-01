@@ -98,7 +98,11 @@ public final class RecipeEditRules {
      */
     private static final ImmutableSet<ResourceLocation> CASING_EXEMPT_RECIPE_IDS = ImmutableSet.of(
             ResourceLocation.parse("create:crafting/kinetics/train_door"),
-            ResourceLocation.parse("create:crafting/kinetics/train_trapdoor"));
+            ResourceLocation.parse("create:crafting/kinetics/train_trapdoor"),
+            // 2026-11-01 (R6 实机): 底盘系统交付的车不含驾驶台（驾驶台只用于生成底盘），
+            // 而 Create 要求每列车的车上有列车驾驶台才能开动。这条配方被机壳规则删掉后，
+            // 预置底盘就永远无法驾驶，所以一并豁免。
+            ResourceLocation.parse("create:crafting/kinetics/controls"));
 
     private RecipeEditRules() {
     }

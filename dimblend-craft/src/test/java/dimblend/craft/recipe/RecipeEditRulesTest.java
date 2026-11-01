@@ -38,6 +38,8 @@ class RecipeEditRulesTest {
     private static final ResourceLocation TRAIN_DOOR = ResourceLocation.parse("create:crafting/kinetics/train_door");
     private static final ResourceLocation TRAIN_TRAPDOOR =
             ResourceLocation.parse("create:crafting/kinetics/train_trapdoor");
+    private static final ResourceLocation TRAIN_CONTROLS =
+            ResourceLocation.parse("create:crafting/kinetics/controls");
 
     /** 需求（2026-10-31 用户口径）：保留 Create 自带的加热搅拌，不得再删除它。 */
     @Test
@@ -148,8 +150,8 @@ class RecipeEditRulesTest {
     void trainDoorRecipesAreTheOnlyCasingDeletionExemptions() {
         for (List<RecipeEdit> edits : List.of(RecipeEditRules.ingredientEdits(), RecipeEditRules.lateEdits())) {
             RecipeEdit.DeleteByIngredientId rule = casingRule(edits);
-            assertEquals(Set.of(TRAIN_DOOR, TRAIN_TRAPDOOR), rule.exemptRecipeIds(),
-                    "机壳原料删除规则只允许豁免列车门与列车活板门（规则：" + rule.label() + "）");
+            assertEquals(Set.of(TRAIN_DOOR, TRAIN_TRAPDOOR, TRAIN_CONTROLS), rule.exemptRecipeIds(),
+                    "机壳原料删除规则只豁免列车门、列车活板门与列车驾驶台（规则：" + rule.label() + "）");
         }
     }
 
@@ -168,14 +170,13 @@ class RecipeEditRulesTest {
     @Test
     void otherCasingRecipesAreNotExemptFromDeletion() {
         Set<ResourceLocation> stillDeleted = Set.of(
-                ResourceLocation.parse("create:crafting/kinetics/controls"),
                 ResourceLocation.parse("create:crafting/kinetics/track_observer"),
                 ResourceLocation.parse("create:crafting/kinetics/track_observer_from_other_plates"),
                 ResourceLocation.parse("create:crafting/kinetics/track_signal"),
                 ResourceLocation.parse("create:crafting/kinetics/track_station"),
                 ResourceLocation.parse("railways:crafting/portable_fuel_interface"),
                 ResourceLocation.parse("railways:crafting/track_coupler"));
-        assertEquals(7, stillDeleted.size(), "枚举的未豁免机壳配方应为 7 条");
+        assertEquals(6, stillDeleted.size(), "枚举的未豁免机壳配方应为 6 条");
         RecipeEdit.DeleteByIngredientId rule = casingRule(RecipeEditRules.ingredientEdits());
         for (ResourceLocation id : stillDeleted) {
             assertFalse(rule.isExempt(id), "配方 " + id + " 被误加进豁免集合，机壳原料删除对它失效");
