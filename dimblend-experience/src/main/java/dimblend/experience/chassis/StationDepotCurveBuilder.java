@@ -1,11 +1,13 @@
 package dimblend.experience.chassis;
 
+import com.simibubi.create.content.trains.track.TrackBlock;
 import com.simibubi.create.content.trains.track.TrackBlockEntity;
 import com.simibubi.create.content.trains.track.TrackMaterial;
 import dimblend.api.StationDepotSites;
 import dimblend.experience.DimBlend;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
@@ -45,6 +47,13 @@ public final class StationDepotCurveBuilder {
     public static Result build(ServerLevel level, int boundaryX, dimblend.api.StationDepotCurves.Curve curve) {
         BlockPos from = new BlockPos(curve.fromX(), StationDepotSites.CHASSIS_Y - 1, curve.fromZ());
         BlockPos to = new BlockPos(curve.toX(), StationDepotSites.CHASSIS_Y - 1, curve.toZ());
+        // Worldgen writes every track with HAS_BE=false, and Create's TrackBlock#newBlockEntity
+        // returns null in that state (TrackBlock.java: `if (!state.getValue(HAS_BE)) return null`).
+        // A straight rail still joins the track graph through its shape, which is why the
+        // corridor works without block entities — but a BezierConnection lives *in* the block
+        // entity, so both ends have to be promoted before anything can be attached.
+        ensureTrackBlockEntity(level, from);
+        ensureTrackBlockEntity(level, to);
         if (!(level.getBlockEntity(from) instanceof TrackBlockEntity fromEntity)) {
             return Result.missingEnd(from);
         }
@@ -83,9 +92,25 @@ public final class StationDepotCurveBuilder {
         return Result.ok(length);
     }
 
+    /**
+     * Promotes a generator-written rail to a real track block entity. Idempotent: a rail
+     * that already carries one is left alone. {@code setBlock} with {@code UPDATE_ALL}
+     * runs {@code TrackBlock#onPlace}, which schedules the Create tick that registers the
+     * rail in the track graph, so the promoted block is usable the same tick.
+     */
+    private static void ensureTrackBlockEntity(ServerLevel level, BlockPos pos) {
+        if (level.getBlockEntity(pos) instanceof TrackBlockEntity) {
+            return;
+        }
+        BlockState state = level.getBlockState(pos);
+        if (!state.hasProperty(TrackBlock.HAS_BE) || state.getValue(TrackBlock.HAS_BE)) {
+            return;
+        }
+        level.setBlock(pos, state.setValue(TrackBlock.HAS_BE, true), Block.UPDATE_ALL);
+    }
+
     /** Curve start for a block: centre, half a block along the tangent, rail floor. */
-    static Vec3 curveStart(BlockPos block, double[] tangent) {
-        return new Vec3(block.getX() + 0.5D + tangent[0] * 0.5D,
+    static Vec3 curveStart(BlockPos block, double[] tangent) {        return new Vec3(block.getX() + 0.5D + tangent[0] * 0.5D,
                 block.getY(),
                 block.getZ() + 0.5D + tangent[2] * 0.5D);
     }

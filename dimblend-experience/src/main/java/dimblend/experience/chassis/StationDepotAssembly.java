@@ -91,12 +91,16 @@ public final class StationDepotAssembly {
         }
         int boundaryX = site.center.getX();
         BlockPos junction = StationDepotSwitch.at(boundaryX);
-        if (data.switchFitted(junction) || !ChassisSite.loaded(level, junction)) {
+        if (!ChassisSite.loaded(level, junction)) {
             return;
         }
-        // Curves first: the switch's exits are the curve ends, so it cannot bind to
-        // them before they exist.
+        // Curves first, and independently of the switch flag: a curve that could not
+        // attach on an earlier visit (no block entity yet, chunk not loaded, …) must be
+        // retried even after the switch itself is already in place.
         boolean curvesDone = fitCurves(level, data, boundaryX);
+        if (data.switchFitted(junction)) {
+            return;
+        }
         try {
             var result = StationDepotSwitch.fit(level, boundaryX, curvesDone);
             if (result.done()) {
