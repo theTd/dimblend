@@ -34,13 +34,26 @@ final class ReadOnlyRegionScanner {
 
     static RegionScanResult scan(RegionReadContext context, List<StructureCandidate> candidates) {
         RegionReadErrors errors = new RegionReadErrors();
-        List<StructureOutline> outlines = scanInto(context, candidates, errors);
-        return new RegionScanResult(outlines, errors.snapshot());
+        List<StructureCandidate> absent = new ArrayList<>();
+        List<StructureOutline> outlines = scanInto(context, candidates, absent, errors);
+        return new RegionScanResult(outlines, absent, errors.snapshot());
     }
 
-    /** Scan variant that accumulates read failures into a caller-owned counter. */
+    /**
+     * Scan variant that accumulates read failures into a caller-owned counter and collects the
+     * candidates that have no saved start into {@code absent}.
+     *
+     * <p>A candidate is reported absent only when nothing contradicts a prediction: its chunk data
+     * was missing from disk, or the chunk was read and holds no start for that structure. A chunk
+     * that exists but could not be read or interpreted (corrupt payload, older data version,
+     * identity mismatch) is <b>not</b> reported absent — there the file disagrees with us and a
+     * prediction could contradict real world data, so it stays unshown.
+     */
     static List<StructureOutline> scanInto(
-            RegionReadContext context, List<StructureCandidate> candidates, RegionReadErrors errors) {
+            RegionReadContext context,
+            List<StructureCandidate> candidates,
+            List<StructureCandidate> absent,
+            RegionReadErrors errors) {
         Map<Long, List<StructureCandidate>> byRegion = new LinkedHashMap<>();
         for (StructureCandidate candidate : candidates) {
             byRegion.computeIfAbsent(candidate.regionKey(), key -> new ArrayList<>()).add(candidate);
@@ -59,6 +72,8 @@ final class ReadOnlyRegionScanner {
                 continue;
             }
             if (region == null) {
+                // No region file for this window at all: every candidate in it is ungenerated ground.
+                absent.addAll(regionEntry.getValue());
                 continue;
             }
             try (ReadOnlyRegionFile open = region) {
@@ -74,6 +89,7 @@ final class ReadOnlyRegionScanner {
                             ChunkPos.getZ(chunkEntry.getKey()),
                             chunkEntry.getValue(),
                             outlines,
+                            absent,
                             errors);
                 }
             } catch (IOException | RuntimeException exception) {
@@ -90,6 +106,7 @@ final class ReadOnlyRegionScanner {
             int chunkZ,
             List<StructureCandidate> chunkCandidates,
             List<StructureOutline> outlines,
+            List<StructureCandidate> absent,
             RegionReadErrors errors) {
         Set<ResourceLocation> requestedIds = new HashSet<>();
         for (StructureCandidate candidate : chunkCandidates) {
@@ -104,6 +121,9 @@ final class ReadOnlyRegionScanner {
             return;
         }
         if (stream == null) {
+            // No chunk data on disk at all: nothing has been generated here yet (or the chunk was
+            // generated but never saved). Not an error, and exactly what a prediction is for.
+            absent.addAll(chunkCandidates);
             return;
         }
         try (InputStream open = stream) {
@@ -130,9 +150,19 @@ final class ReadOnlyRegionScanner {
                 case NONE -> {
                 }
             }
+            Set<ResourceLocation> found = new HashSet<>();
             for (StructureOutline outline : read.outlines()) {
                 if (requestedIds.contains(outline.id())) {
                     outlines.add(outline);
+                    found.add(outline.id());
+                }
+            }
+            // The chunk is on disk but holds no start for these structures. That is how a legal
+            // "generated and did not produce this structure" outcome is saved, so it is reported as
+            // absent rather than as a failure.
+            for (StructureCandidate candidate : chunkCandidates) {
+                if (!found.contains(candidate.id())) {
+                    absent.add(candidate);
                 }
             }
         } catch (IOException exception) {

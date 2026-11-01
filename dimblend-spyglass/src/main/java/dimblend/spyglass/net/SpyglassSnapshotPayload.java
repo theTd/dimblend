@@ -17,14 +17,17 @@ import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 /**
- * Server → client structure snapshot. Wire format (protocol version 4): dimension, sequence,
+ * Server → client structure snapshot. Wire format (protocol version 5): dimension, sequence,
  * structure count, then per structure: the structure key (id, start chunk coordinates), union bounds
- * (6 ints), piece count, and the pieces (6 ints each).
+ * (6 ints), piece count, the pieces (6 ints each), and a flags byte whose bit 0 marks a
+ * <b>predicted</b> outline — one replayed from the seed for a chunk the world has not generated, whose
+ * geometry is real but whose blocks do not exist yet.
  *
  * <p>The key was added in protocol 3 so a streamed {@link SpyglassShapePayload} can be linked to the
  * outline it belongs to; the client cache is keyed by it. Protocol 4 added the client's reveal
  * distance ({@link SpyglassRevealPayload}), which only changes which structures the server keeps in
- * this snapshot, not the wire format itself.
+ * this snapshot. Protocol 5 added the predicted flag, which the client needs to draw a marker instead
+ * of a block mesh.
  */
 public record SpyglassSnapshotPayload(
         ResourceLocation dimension,
@@ -34,6 +37,10 @@ public record SpyglassSnapshotPayload(
     public static final int MAX_STRUCTURES = 256;
     public static final int MAX_PIECES_PER_STRUCTURE = 4096;
     public static final int MAX_TOTAL_PIECES = 16384;
+
+    /** Bit 0 of the per-structure flags byte: the outline was predicted, not read from the world. */
+    private static final int FLAG_PREDICTED = 0x01;
+    private static final int KNOWN_FLAGS = FLAG_PREDICTED;
 
     public static final Type<SpyglassSnapshotPayload> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(DimBlendSpyglass.MODID, "structure_snapshot"));
@@ -65,7 +72,8 @@ public record SpyglassSnapshotPayload(
                 for (int j = 0; j < pieceCount; j++) {
                     pieces.add(readBox(friendly));
                 }
-                structures.add(createOutline(key, bounds, pieces));
+                boolean predicted = readFlags(friendly);
+                structures.add(createOutline(key, bounds, pieces, predicted));
             }
             return new SpyglassSnapshotPayload(dimension, sequence, structures);
         }
@@ -85,6 +93,7 @@ public record SpyglassSnapshotPayload(
                 for (OutlineBox piece : structure.pieces()) {
                     writeBox(friendly, piece);
                 }
+                friendly.writeByte(structure.predicted() ? FLAG_PREDICTED : 0);
             }
         }
     };
@@ -139,12 +148,25 @@ public record SpyglassSnapshotPayload(
     }
 
     private static StructureOutline createOutline(
-            StructureKey key, OutlineBox bounds, List<OutlineBox> pieces) {
+            StructureKey key, OutlineBox bounds, List<OutlineBox> pieces, boolean predicted) {
         try {
-            return new StructureOutline(key, bounds, pieces);
+            return new StructureOutline(key, bounds, pieces, predicted);
         } catch (IllegalArgumentException exception) {
             throw new DecoderException("Invalid structure outline: " + exception.getMessage(), exception);
         }
+    }
+
+    /**
+     * Reads the trailing flags byte. Unknown bits are rejected instead of ignored: a value this
+     * version does not understand means the sender speaks a newer protocol, and silently dropping the
+     * meaning would draw a predicted outline as solid blocks.
+     */
+    private static boolean readFlags(FriendlyByteBuf buf) {
+        int flags = buf.readUnsignedByte();
+        if ((flags & ~KNOWN_FLAGS) != 0) {
+            throw new DecoderException("Unknown structure outline flags: " + flags);
+        }
+        return (flags & FLAG_PREDICTED) != 0;
     }
 
     private static int addPieces(int totalPieces, int pieceCount) {

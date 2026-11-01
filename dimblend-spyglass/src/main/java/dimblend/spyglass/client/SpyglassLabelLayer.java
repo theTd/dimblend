@@ -108,10 +108,15 @@ public final class SpyglassLabelLayer {
             float bottom = (Float.isNaN(silhouetteTop) ? anchor.y : Math.min(anchor.y, silhouetteTop))
                     - LABEL_GAP;
             double distance = SpyglassDistance.horizontal(playerX, playerZ, structure);
-            StructureLabel label = StructureLabel.of(
-                    font,
-                    StructureLabelNames.resolve(structure.id(), language::has, language::getOrDefault),
-                    SpyglassDistance.format(distance));
+            // A predicted structure's label says so: its outline is where the structure will be, not
+            // where blocks exist, and the player must be able to tell the two apart at a glance.
+            String name = StructureLabelNames.resolve(
+                    structure.id(), language::has, language::getOrDefault);
+            if (structure.predicted()) {
+                String suffix = language.getOrDefault(StructureLabelNames.PREDICTED_KEY);
+                name = name + " " + suffix;
+            }
+            StructureLabel label = StructureLabel.of(font, name, SpyglassDistance.format(distance));
             candidates.add(LabelPlacement.Candidate.above(
                     label, distance, anchor.x, bottom, label.textWidth() + PADDING_X * 2, height));
         }

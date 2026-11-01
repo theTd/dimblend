@@ -6,6 +6,7 @@
   "dimblend_spyglass.configuration.section.dimblend.spyglass.client.toml": "客户端设置",
   "dimblend_spyglass.configuration.section.dimblend.spyglass.client.toml.title": "客户端设置",
   "dimblend_spyglass.configuration.title": "DimBlend 望远镜",
+  "dimblend_spyglass.label.not_generated": "（未生成）",
   "dimblend_spyglass.structure.minecraft.ancient_city": "远古城市",
   "dimblend_spyglass.structure.minecraft.bastion_remnant": "堡垒遗迹",
   "dimblend_spyglass.structure.minecraft.desert_pyramid": "沙漠神殿",

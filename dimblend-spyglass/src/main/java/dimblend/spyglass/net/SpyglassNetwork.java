@@ -13,10 +13,14 @@ public final class SpyglassNetwork {
     /**
      * Bumped to 4 when the display ring's inner edge became the client's terrain fog start: the
      * server now takes a per-player reveal distance from {@link SpyglassRevealPayload}, and a
-     * protocol-3 client would never send it (the server would fall back to its own default). NeoForge
-     * refuses connections between differing versions of a modded payload, which is what we want here.
+     * protocol-3 client would never send it (the server would fall back to its own default).
+     *
+     * <p>Bumped to 5 when the snapshot gained the per-structure predicted flag: a protocol-4 client
+     * would decode the trailing byte as the next structure's id, so the two versions must not talk to
+     * each other. NeoForge refuses connections between differing versions of a modded payload, which
+     * is what we want here.
      */
-    private static final String PROTOCOL_VERSION = "4";
+    private static final String PROTOCOL_VERSION = "5";
 
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
