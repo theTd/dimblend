@@ -21,7 +21,7 @@ Missing optional mods leave their controls disabled.
 | Deadman brake radius | 32 | 8-128 blocks, step 1; rotating only: a moving consist with nobody within this radius of its nearest bogie force-brakes that consist; any raw redstone level change on any bogie releases its entire connected consist | experience |
 | Bogie roll torque cap | 5000 | 0-10000000, step 1; 0 = no roll spring (cars rest on the 15° roll stop) | simurail |
 | Dirtiness probability multiplier | 0.5 | 0.00-1.00, step 0.01; 0 = no soiling draws | carwash |
-| Allow coupler redstone activation | false | Checkbox | experience |
+| Allow coupler redstone activation | true | Checkbox; the panel shows the positive "allow" meaning, so the config key `couplerRedstone` is inverted (default false) | experience |
 | Allow Survival right-click on couplers | false | Checkbox | experience |
 | Limited-water checks | true | Checkbox | experience |
 | Structure-void fitting on vehicles | true | Checkbox | experience |
@@ -40,6 +40,7 @@ Missing optional mods leave their controls disabled.
 | Experience clear ratio on respawn | 1.00 | 0.00-1.00, step 0.01; rotating dimension only, ignores keepInventory, no experience orb drops | experience |
 | Rotating monster density (% of vanilla) | 50 | 0-100, step 1; 100 = vanilla density, 0 = no covered monster spawns; natural spawns scale the global cap and keep each spawn with probability p, spawner/trial spawner/structure/chunk generation/patrol/reinforcement cancel with 1-p; bosses and player-caused spawns are never suppressed; other dimensions unaffected | experience |
 | Item drain growth boost water cost | 20 mB | 0-1500, step 1; drained per successful boost, 0 = free | experience |
+| Connectable carriages a surface station may generate | 6 | 3-11, step 1; R6 gate. Counts force-loaded Sable structures containing chassis-frame blocks (`dimblend_blocks:creative_copycat_panel` / `creative_copycat_slab` / `creative_clean_copycat_slab`), across every level of the save, this mod's own pre-placed cars included. At or above the limit the surface station skips its free carriage chassis; the new-world power chassis at X=32 is not limited | experience |
 
 ## Vehicle headlights (surface and volumetric haze)
 
@@ -337,7 +338,7 @@ Radio follows the same pattern through `dimblend.radio.api.RadioTuning` and its
 own `serverconfig/dimblend_radio-server.toml`. Its settings are heard on each
 client, so remote clients also apply the broadcast radio values in memory
 (NeoForge already sends the config at login). The snapshot carries one value
-per option, so each added or removed option bumps the protocol version (now `27`; see the
+per option, so each added or removed option bumps the protocol version (now `29`; see the
 performance checklist below).
 
 The existing `couplerRedstone` config uses the inverse meaning: true blocks

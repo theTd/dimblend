@@ -56,7 +56,9 @@ public enum TuningOption {
     SABLE_HEADLIGHT_OCCLUSION("sable_headlight_occlusion", 1.0D, "sable", Section.SABLE),
     SABLE_HEADLIGHT_LAVA_HIGHLIGHT("sable_headlight_lava_highlight", 1.0D, "sable", Section.SABLE),
     // 默认值镜像 Config.OBSERVER_BLAZE_RADIUS（32），由 ObserverBlazeRadiusTest 钉死
-    OBSERVER_BLAZE_RADIUS("observer_blaze_radius", 32.0D, 16.0D, 64.0D, 0, "sable", Section.SABLE);
+    OBSERVER_BLAZE_RADIUS("observer_blaze_radius", 32.0D, 16.0D, 64.0D, 0, "sable", Section.SABLE),
+    // 默认值镜像 Config.STATION_CARRIAGE_LIMIT（6），由 TuningOptionTest 钉死；宽度 3-11、精度 1
+    STATION_CARRIAGE_LIMIT("station_carriage_limit", 6.0D, 3.0D, 11.0D, 0, "");
 
     /** Display pages of the tuning screen; the snapshot still carries every option. */
     public enum Section { MAIN, SABLE }

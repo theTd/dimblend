@@ -57,6 +57,11 @@ public final class StationDepotAssemblyData extends SavedData {
     private final java.util.Set<Long> switchesFitted = new java.util.HashSet<>();
     /** Switch machines already reported once, so a slow track graph does not log per tick. */
     private final java.util.Set<Long> switchesReported = new java.util.HashSet<>();
+    /**
+     * Sites already told that the save's carriage budget is full. Without it the gate runs
+     * every tick a player stands nearby and would write the same line twenty times a second.
+     */
+    private final java.util.Set<Long> budgetReported = new java.util.HashSet<>();
 
     public static StationDepotAssemblyData get(ServerLevel level) {
         return level.getDataStorage().computeIfAbsent(FACTORY, "dimblend_station_depot_assembly");
@@ -98,6 +103,15 @@ public final class StationDepotAssemblyData extends SavedData {
     /** True the first time this switch machine is reported; false on every later visit. */
     boolean firstSwitchReport(BlockPos machine) {
         if (switchesReported.add(machine.asLong())) {
+            setDirty();
+            return true;
+        }
+        return false;
+    }
+
+    /** True the first time this site is reported as over the carriage budget. */
+    boolean firstBudgetReport(BlockPos center) {
+        if (budgetReported.add(center.asLong())) {
             setDirty();
             return true;
         }
@@ -176,6 +190,9 @@ public final class StationDepotAssemblyData extends SavedData {
         for (long reported : tag.getLongArray("switchMachinesReported")) {
             data.switchesReported.add(reported);
         }
+        for (long reported : tag.getLongArray("budgetReported")) {
+            data.budgetReported.add(reported);
+        }
         return data;
     }
 
@@ -197,6 +214,7 @@ public final class StationDepotAssemblyData extends SavedData {
         tag.putLongArray("switchMachines", switchesFitted.stream().mapToLong(Long::longValue).toArray());
         tag.putLongArray("switchMachinesReported",
                 switchesReported.stream().mapToLong(Long::longValue).toArray());
+        tag.putLongArray("budgetReported", budgetReported.stream().mapToLong(Long::longValue).toArray());
         return tag;
     }
 

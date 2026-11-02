@@ -392,6 +392,16 @@ public final class Config {
                     + "position. Both sableHeadlight and sableHeadlightLavaHighlight must be on; no client is involved.")
             .defineInRange("observerBlazeRadius", 32, 16, 64);
 
+    /**
+     * R6 gate: how many force-loaded Sable structures carrying chassis-frame blocks the
+     * save may hold before a depot stops handing out its free car.
+     */
+    public static final ModConfigSpec.IntValue STATION_CARRIAGE_LIMIT = BUILDER
+            .comment("R6 起始站场：存档内已有多少台「含车架方块的 forceload Sable 结构」之后不再生成站场车厢，"
+                    + "范围 3-11，默认 6，精度 1。按整存档计（不限维度），本 mod 预置的底盘同样计数。"
+                    + "仅在到达阈值时跳过站场那台；动力底盘（X=32）不受此限制。")
+            .defineInRange("stationCarriageLimit", 6, 3, 11);
+
     static final ModConfigSpec SPEC = BUILDER.build();
 
     /**

@@ -5,6 +5,7 @@ import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.ticket.SubLevelLoadingTicketType;
 import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dimblend.api.StationDepotSites;
+import dimblend.experience.Config;
 import dimblend.experience.DimBlend;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -208,6 +209,45 @@ public final class StationDepotAssembly {
 
     private static boolean advance(ServerLevel level, StationDepotAssemblyData data,
             StationDepotAssemblyData.Site site) {
+        if (site.built || site.assembled) {
+            // Nothing left to decide about a site that already started: the budget gates the
+            // FIRST block only, so a half-built site always finishes.
+            return advanceNow(level, site);
+        }
+        if (StationDepotAssemblyData.carriesJunction(site.center) && !carriageBudgetAllows(level, data, site)) {
+            return false;
+        }
+        return advanceNow(level, site);
+    }
+
+    /**
+     * The R6 gate: a depot car is only handed out while the save holds fewer than
+     * {@code stationCarriageLimit} force-loaded frame-carrying Sable structures. Checked once,
+     * before the first block, so a site never stalls half-built when the budget closes on it.
+     *
+     * <p>The requirement counts the save, not the dimension, and counts this mod's own
+     * pre-placed cars too — so the x=32 power car and the car of an earlier depot are part of
+     * the number a new depot sees.
+     */
+    private static boolean carriageBudgetAllows(ServerLevel level, StationDepotAssemblyData data,
+            StationDepotAssemblyData.Site site) {
+        if (!Config.isLoaded()) {
+            return true;
+        }
+        int limit = Config.STATION_CARRIAGE_LIMIT.get();
+        int existing = StationDepotCarriageBudget.countCarsEverywhere(level);
+        if (StationDepotCarriageBudget.admits(existing, limit)) {
+            return true;
+        }
+        if (data.firstBudgetReport(site.center)) {
+            DimBlend.LOGGER.info(
+                    "Station depot chassis at {} skipped: the save already holds {} force-loaded cars (limit {})",
+                    site.center, existing, limit);
+        }
+        return false;
+    }
+
+    private static boolean advanceNow(ServerLevel level, StationDepotAssemblyData.Site site) {
         boolean loaded = ChassisSite.loaded(level, site.center);
         double distanceSq = nearestPlayerDistanceSq(level, site.center);
         boolean present = site.built && anyBlueprintBlockPresent(level, site);
@@ -330,9 +370,25 @@ public final class StationDepotAssembly {
                         StationDepotAssemblyData.sidingCenter(boundaryX),
                         StationDepotAssemblyData.sidingBlueprint());
             }
-            addIfNear(data, sites, position, radiusSq,
-                    StationDepotAssemblyData.powerCenter(), StationDepotAssemblyData.powerBlueprint());
+            if (handOutPowerChassis(level)) {
+                addIfNear(data, sites, position, radiusSq,
+                        StationDepotAssemblyData.powerCenter(), StationDepotAssemblyData.powerBlueprint());
+            }
         }
+    }
+
+    /**
+     * Whether this world may receive the free power chassis at X=32.
+     *
+     * <p>R6 asks for it in a <b>newly created world</b>. The marker for that already exists:
+     * {@code StarterDepot} sets it once, when the overworld's spawn position is created, and
+     * copies it to the rotating generator. Without this check any older save would grow a car
+     * the moment somebody walked past X=32 — a structure the player never asked for, in a
+     * world whose layout they already live in.
+     */
+    private static boolean handOutPowerChassis(ServerLevel level) {
+        return level.getChunkSource().getGenerator()
+                instanceof dimblend.worldgen.RotatingChunkGenerator rotating && rotating.hasStarterDepot();
     }
 
     private static void addIfNear(StationDepotAssemblyData data, List<StationDepotAssemblyData.Site> sites,

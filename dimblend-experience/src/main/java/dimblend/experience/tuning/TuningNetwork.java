@@ -17,10 +17,10 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 public final class TuningNetwork {
     /**
      * Snapshot protocol version. The snapshot carries one value per option, so adding or removing an option
-     * changes the wire length: v27 dropped the nine train horn pitch presets, v28 adds the observer blaze
-     * detection radius.
+     * changes the wire length: v27 dropped the nine train horn pitch presets, v28 added the observer blaze
+     * detection radius, v29 adds the station carriage limit.
      */
-    public static final String PROTOCOL_VERSION = "28";
+    public static final String PROTOCOL_VERSION = "29";
 
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
