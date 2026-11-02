@@ -246,6 +246,10 @@ dependencies {
                     'Voidscape-*.jar', 'owo-lib-*.jar', 'create-aeronautics-bundled-*.jar', 'TerraBlender-*.jar'])
         }
     }
+    // 奖励车厢要把「创造模式洁净伪装半砖」贴成工业铁块材质：材质存在 Copycats+ 的多状态
+    // 方块实体里，只能通过它的接口写入。与 dimblend-blocks 同一坐标、同一理由的 compileOnly：
+    // 编译可见、运行由整合包提供，且不在 compileOnly 之上再加下载。
+    compileOnly "maven.modrinth:copycats:3.0.4+mc.1.21.1-neoforge"
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
     testImplementation 'com.google.code.gson:gson:2.10.1'
     testRuntimeOnly 'com.mojang:datafixerupper:8.0.16'

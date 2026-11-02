@@ -50,6 +50,12 @@ public final class Config {
                     + "运行时关闭后已下发到客户端的昵称表保留至重连（接受瞬态）")
             .define("nickname", true);
 
+    public static final ModConfigSpec.BooleanValue REWARD_WAGON = BUILDER
+            .comment("奖励车厢（R7）：旋转维度区域两端的轨道上生成可搜刮的 Sable 小车，"
+                    + "内容取空或被推进折跃门后自行消失；车厢结构不可破坏、不可放置、不可交互。"
+                    + "关闭后不再发现、构建或检测任何奖励车厢，已生成的车厢留在原地")
+            .define("rewardWagon", true);
+
     public static final ModConfigSpec.IntValue NICKNAME_PERMISSION = BUILDER
             .comment("使用物品昵称（按键对话框与 /dbx nickname）所需的权限等级（0=所有人，2=管理员）")
             .defineInRange("nicknamePermission", 0, 0, 4);
