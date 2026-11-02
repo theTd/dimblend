@@ -25,11 +25,19 @@ import net.minecraft.world.phys.Vec3;
  * lies within the tuned detection radius of this block's projected world centre, then write POWERED with a
  * neighbour-notifying update. Client tick: nothing here; the head chase and the particles' continuous stream live
  * in {@code ObserverBlazeRenderer} and the block's {@code animateTick}.</p>
+ *
+ * <p>关断防抖（2026-11-02 用户口径）：开启仍是当拍写 {@code POWERED=true}；关断要连续
+ * {@link ObserverBlazeSignal#OFF_DELAY_TICKS} 拍扫不到标记岩浆才写 {@code false}，用来滤掉
+ * {@link MarkedLavaTracker#RECOMPUTE_TICKS} 整表重算窗口造成的 5 Hz 闪烁。判定全在纯类
+ * {@link ObserverBlazeSignal} 里，这里只持有一个实例并转发。</p>
  */
 public final class ObserverBlazeBlockEntity extends BlockEntity {
     /**
      * Every tick: the answer is a distance test against the tracker's shared list, so polling is cheap, and querying
      * on a slower phase of its own would stack on the tracker's {@link MarkedLavaTracker#RECOMPUTE_TICKS} window.
+     *
+     * <p>一拍 = 一次查询：{@link ObserverBlazeSignal} 的关断宽限按查询次数计，调大这个常量会把 0.5 s
+     * 一并放大；改这里之前先看那里的换算。</p>
      */
     private static final int QUERY_TICKS = 1;
     private static final String STORED_STATE = "OriginalState";
@@ -37,6 +45,12 @@ public final class ObserverBlazeBlockEntity extends BlockEntity {
     private static final float DEFAULT_HEAD_ANGLE = 90.0F;
     /** Ticks until the next query; the first one runs on the tick after placement, then every query interval. */
     private int ticksUntilQuery = 1;
+
+    /**
+     * 关断防抖状态机。内存态：区块卸载/重载从 0 开始，已存的 {@code POWERED} 最坏多保持一个宽限
+     * （0.5 s）再掉电，所以不写 NBT。
+     */
+    private final ObserverBlazeSignal signal = new ObserverBlazeSignal();
 
     @Nullable
     private BlockState originalState;
@@ -100,9 +114,12 @@ public final class ObserverBlazeBlockEntity extends BlockEntity {
         Vec3 center = MarkedLavaTracker.worldCenter(server, pos);
         double radius = TuningSettings.get(TuningOption.OBSERVER_BLAZE_RADIUS);
         boolean marked = MarkedLavaTracker.of(server).markedNear(server, pos, center, radius);
-        if (state.getValue(ObserverBlazeBlock.POWERED) != marked) {
+        // 当拍开、连续 10 拍扫不到才关：signal 返回本拍该写的电平，与现状相同就不必碰方块。
+        boolean powered = state.getValue(ObserverBlazeBlock.POWERED);
+        boolean next = signal.step(marked, powered);
+        if (powered != next) {
             // Flag 3 notifies neighbours and clients: a redstone consumer reads the new level this tick.
-            server.setBlock(pos, state.setValue(ObserverBlazeBlock.POWERED, marked), Block.UPDATE_ALL);
+            server.setBlock(pos, state.setValue(ObserverBlazeBlock.POWERED, next), Block.UPDATE_ALL);
         }
     }
 
