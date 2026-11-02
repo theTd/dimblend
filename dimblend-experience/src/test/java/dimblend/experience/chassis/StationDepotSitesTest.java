@@ -105,10 +105,10 @@ class StationDepotSitesTest {
 
     /**
      * 2026-11-02. Two depots in one world deleted each other's switch machine for ever: 1192
-     * block changes inside one second, then Create's {@code create:sync_rail_graph} payload
-     * threw {@code ConcurrentModificationException} while the Netty thread encoded it, and
-     * the player was dropped out of the world. Retirement is now scoped to the hall one
-     * boundary owns.
+     * block changes spread over 39 seconds, then Create's {@code create:sync_rail_graph}
+     * payload threw {@code ConcurrentModificationException} while the Netty thread encoded
+     * it, and the player was dropped out of the world. Retirement is now scoped to the hall
+     * one boundary owns.
      */
     @Test
     void aDepotOnlyRetiresItsOwnSwitchMachine() {

@@ -138,7 +138,8 @@ public final class StationDepotAssembly {
      * (2048, 8192, …), and every depot records its own machine in one shared list. The first
      * version of this method treated every recorded machine as its own stale one, so two
      * depots deleted each other's machine for ever: each fit re-placed its own, the other
-     * deleted it again, and 1192 blocks were removed and re-placed in one second. That churn
+     * deleted it again — 1192 blocks removed and re-placed over 39 seconds, most of it in
+     * bursts of a hundred or more per second. That churn
      * mutated Create's rail graph while the Netty thread was encoding
      * {@code create:sync_rail_graph}, which threw {@code ConcurrentModificationException}
      * and dropped the player out of the world.
