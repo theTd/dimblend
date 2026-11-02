@@ -14,10 +14,9 @@ import java.util.List;
  *
  * <ul>
  *   <li>Distance is filtered against the padded snapshot ring, not the exact display ring: the
- *       client re-filters against its live position and live reveal distance every frame, and a
- *       snapshot is reused while the player stays within the movement threshold and the reveal
- *       distance stays within its own threshold ({@link SpyglassRefreshPolicy}). Both the outer center
- *       distance and the inner farthest-corner distance are padded.</li>
+ *       client re-filters against its live position every frame, and a snapshot is reused while the
+ *       player stays within the movement threshold ({@link SpyglassRefreshPolicy}). Both ends of the
+ *       center-distance range are padded.</li>
  *   <li>A structure with more than {@link SpyglassSnapshotPayload#MAX_PIECES_PER_STRUCTURE} pieces
  *       keeps its largest-volume pieces instead of being dropped. The exact union bounds stay with
  *       the outline, so center and distance do not drift.</li>
@@ -31,16 +30,12 @@ final class SpyglassSnapshotLimiter {
     private SpyglassSnapshotLimiter() {
     }
 
-    static LimitResult limit(
-            double playerX, double playerZ, double revealBlocks, List<StructureOutline> outlines) {
+    static LimitResult limit(double playerX, double playerZ, List<StructureOutline> outlines) {
         List<MeasuredOutline> inRange = new ArrayList<>();
         for (StructureOutline outline : outlines) {
             double centerDistance = SpyglassDistance.horizontal(playerX, playerZ, outline);
             if (!SpyglassDistance.inSnapshotRange(
-                    centerDistance,
-                    SpyglassDistance.farthestHorizontal(playerX, playerZ, outline),
-                    revealBlocks,
-                    SpyglassRefreshPolicy.SNAPSHOT_PAD_BLOCKS)) {
+                    centerDistance, SpyglassRefreshPolicy.SNAPSHOT_PAD_BLOCKS)) {
                 continue;
             }
             inRange.add(new MeasuredOutline(outline, centerDistance));

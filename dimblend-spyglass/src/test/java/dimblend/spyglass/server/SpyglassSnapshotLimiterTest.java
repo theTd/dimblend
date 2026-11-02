@@ -17,48 +17,37 @@ class SpyglassSnapshotLimiterTest {
     private static final ResourceLocation DIMENSION = ResourceLocation.fromNamespaceAndPath("test", "world");
     private static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath("test", "house");
     private static final StructureKey KEY = new StructureKey(ID, 0, 0);
-    /** Inner edge used by tests that only exercise the outer cap. */
-    private static final double NO_INNER_EDGE = 0.0;
 
     @Test
     void filtersByThePaddedRingAndSortsByDistance() {
-        double reveal = 300.0;
         StructureOutline near = outlineAt(300, 0, 1);
         StructureOutline farther = outlineAt(700, 0, 1);
-        StructureOutline justInsideThePaddedInnerEdge = outlineAt(251, 0, 1);
-        StructureOutline justBelowThePaddedInnerEdge = outlineAt(250, 0, 1);
+        // The snapshot keeps the padded ring: inner 128 - 48 = 80, outer 1024 + 48 = 1072.
+        StructureOutline atPaddedInner = outlineAt(80, 0, 1);
+        StructureOutline belowPaddedInner = outlineAt(79, 0, 1);
         StructureOutline beyondPadding = outlineAt(1080, 0, 1);
 
         SpyglassSnapshotLimiter.LimitResult result = SpyglassSnapshotLimiter.limit(
                 0,
                 0,
-                reveal,
-                List.of(
-                        farther,
-                        beyondPadding,
-                        near,
-                        justBelowThePaddedInnerEdge,
-                        justInsideThePaddedInnerEdge));
+                List.of(farther, beyondPadding, near, belowPaddedInner, atPaddedInner));
 
-        assertEquals(
-                List.of(justInsideThePaddedInnerEdge, near, farther), result.structures());
+        assertEquals(List.of(atPaddedInner, near, farther), result.structures());
     }
 
     @Test
-    void keepsALongStructureWhoseCenterIsInsideTheRevealDistance() {
-        // A 400-block-long building: its center is only 200 blocks away, but its far footprint
-        // reaches 400 blocks, i.e. past a reveal distance of 300.
+    void keepsALongStructureWhoseCenterIsInRange() {
+        // A 400-block-long building: its center is 200 blocks away, inside [128, 1024].
         StructureOutline longHouse = StructureOutline.of(
                 KEY, List.of(new OutlineBox(0, 0, 0, 399, 10, 10)));
 
-        assertEquals(
-                1,
-                SpyglassSnapshotLimiter.limit(0, 0, 300.0, List.of(longHouse)).selected().size());
-        // ... and it is dropped when even its far end is inside the fog, beyond the snapshot's inner
-        // padding (reveal - SNAPSHOT_PAD_BLOCKS).
-        assertEquals(
-                0,
-                SpyglassSnapshotLimiter.limit(0, 0, 449.0, List.of(longHouse)).selected().size());
+        assertEquals(1, SpyglassSnapshotLimiter.limit(0, 0, List.of(longHouse)).selected().size());
+
+        // The center is what counts now: a building that surrounds the player has center distance 0
+        // and is dropped even though its far corner leaves the ring.
+        StructureOutline surroundsPlayer = StructureOutline.of(
+                KEY, List.of(new OutlineBox(-300, 0, -300, 300, 10, 300)));
+        assertEquals(0, SpyglassSnapshotLimiter.limit(0, 0, List.of(surroundsPlayer)).selected().size());
     }
 
     @Test
@@ -78,7 +67,7 @@ class SpyglassSnapshotLimiterTest {
         StructureOutline outline = StructureOutline.of(KEY, pieces);
 
         SpyglassSnapshotLimiter.LimitResult result =
-                SpyglassSnapshotLimiter.limit(0, 0, NO_INNER_EDGE, List.of(outline));
+                SpyglassSnapshotLimiter.limit(0, 0, List.of(outline));
 
         assertEquals(1, result.truncatedStructures());
         assertEquals(0, result.omittedStructures());
@@ -98,7 +87,7 @@ class SpyglassSnapshotLimiterTest {
         }
 
         SpyglassSnapshotLimiter.LimitResult result =
-                SpyglassSnapshotLimiter.limit(0, 0, NO_INNER_EDGE, outlines);
+                SpyglassSnapshotLimiter.limit(0, 0, outlines);
 
         assertEquals(1, result.omittedStructures());
         assertEquals(0, result.truncatedStructures());
@@ -121,7 +110,7 @@ class SpyglassSnapshotLimiterTest {
         outlines.add(outlineAt(500, 0, 300));
 
         SpyglassSnapshotLimiter.LimitResult result =
-                SpyglassSnapshotLimiter.limit(0, 0, NO_INNER_EDGE, outlines);
+                SpyglassSnapshotLimiter.limit(0, 0, outlines);
 
         assertEquals(4, result.structures().size());
         assertEquals(16000, result.totalPieces());
@@ -136,7 +125,7 @@ class SpyglassSnapshotLimiterTest {
         }
 
         SpyglassSnapshotLimiter.LimitResult result =
-                SpyglassSnapshotLimiter.limit(0, 0, NO_INNER_EDGE, outlines);
+                SpyglassSnapshotLimiter.limit(0, 0, outlines);
 
         assertEquals(SpyglassSnapshotPayload.MAX_STRUCTURES, result.structures().size());
         assertEquals(1, result.omittedStructures());

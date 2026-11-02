@@ -51,51 +51,23 @@ class SpyglassDistanceTest {
     }
 
     @Test
-    void farthestHorizontalUsesTheFarCornersAndInclusiveMaxFace() {
-        // Far faces sit at max + 1: the box [10, 20] x [0, 5] reaches (21, 6) from the origin.
-        StructureOutline outline = StructureOutline.of(KEY, List.of(
-                new OutlineBox(10, 0, 0, 20, 1, 5)));
-
-        assertEquals(Math.hypot(21.0, 6.0), SpyglassDistance.farthestHorizontal(0, 0, outline));
-        // From inside the footprint, the farthest corner of the nearest quadrant is still a corner.
-        assertEquals(Math.hypot(11.0, 6.0), SpyglassDistance.farthestHorizontal(10.0, 0.0, outline));
-        // From outside, the farthest corner is the near one: (10, 6) for a viewer at (30, 0).
-        assertEquals(Math.hypot(20.0, 6.0), SpyglassDistance.farthestHorizontal(30.0, 0.0, outline));
-    }
-
-    @Test
-    void farthestHorizontalFollowsTheUnionBoundsOfATruncatedPieceList() {
-        StructureOutline truncated = new StructureOutline(
-                KEY,
-                new OutlineBox(-100, 0, -100, 99, 10, 99),
-                List.of(new OutlineBox(-1, 0, -1, 0, 10, 0)));
-
-        assertEquals(Math.hypot(100.0, 100.0), SpyglassDistance.farthestHorizontal(0, 0, truncated));
-    }
-
-    @Test
-    void rangeUsesTheRevealDistanceAndInclusiveBoundaries() {
-        // Center at the outer edge stays; the inner edge is about the farthest corner, not the center.
-        assertTrue(SpyglassDistance.inRange(1024, 1024, 173));
-        assertFalse(SpyglassDistance.inRange(1024.01, 1024.01, 173));
-        assertTrue(SpyglassDistance.inRange(200, 173, 173));
-        assertFalse(SpyglassDistance.inRange(200, 172.99, 173));
-        // A long building whose center is inside the reveal distance is still shown when its far
-        // footprint reaches past the fog.
-        assertTrue(SpyglassDistance.inRange(100, 400, 173));
+    void rangeIsFixedAtOneHundredTwentyEightToTenTwentyFourBlocks() {
+        assertFalse(SpyglassDistance.inRange(127.9));
+        assertTrue(SpyglassDistance.inRange(128.0));
+        assertTrue(SpyglassDistance.inRange(1024.0));
+        assertFalse(SpyglassDistance.inRange(1024.1));
     }
 
     @Test
     void snapshotRangeIsPaddedOnBothEnds() {
         double pad = 48.0;
-        double reveal = 173.0;
 
-        assertTrue(SpyglassDistance.inSnapshotRange(1024.0 + pad, 1024.0, reveal, pad));
-        assertFalse(SpyglassDistance.inSnapshotRange(1024.0 + pad + 0.01, 1024.0, reveal, pad));
-        assertTrue(SpyglassDistance.inSnapshotRange(300.0, reveal - pad, reveal, pad));
-        assertFalse(SpyglassDistance.inSnapshotRange(300.0, reveal - pad - 0.01, reveal, pad));
+        assertTrue(SpyglassDistance.inSnapshotRange(128.0 - pad, pad));
+        assertFalse(SpyglassDistance.inSnapshotRange(128.0 - pad - 0.01, pad));
+        assertTrue(SpyglassDistance.inSnapshotRange(1024.0 + pad, pad));
+        assertFalse(SpyglassDistance.inSnapshotRange(1024.0 + pad + 0.01, pad));
         assertThrows(IllegalArgumentException.class,
-                () -> SpyglassDistance.inSnapshotRange(500.0, 500.0, reveal, -1.0));
+                () -> SpyglassDistance.inSnapshotRange(500.0, -1.0));
     }
 
     @Test

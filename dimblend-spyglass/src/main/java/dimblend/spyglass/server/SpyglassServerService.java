@@ -94,23 +94,8 @@ public final class SpyglassServerService {
             if (state != null) {
                 state.stopScoping();
             }
-            current.reveals.remove(player.getUUID());
             current.shapeStreamer.remove(player.getUUID());
         }
-    }
-
-    /**
-     * Server thread (payload handler): stores the client's reveal distance for the next snapshot.
-     * Values are clamped to the display range, so a malformed or malicious packet cannot make the
-     * server scan for structures outside the ring.
-     */
-    public static void acceptReveal(ServerPlayer player, int blocks) {
-        Session session = current;
-        if (session == null || session.server != player.server) {
-            return;
-        }
-        session.reveals.put(
-                player.getUUID(), Mth.clamp(blocks, 0, (int) SpyglassDistance.MAX_BLOCKS));
     }
 
     /**
@@ -136,8 +121,6 @@ public final class SpyglassServerService {
     private static final class Session {
         private final MinecraftServer server;
         private final Map<UUID, PlayerState> states = new HashMap<>();
-        /** Reveal distance each player's client reported; absent means the client has not sent one. */
-        private final Map<UUID, Integer> reveals = new HashMap<>();
         private final Map<String, Long> warningTimes = new HashMap<>();
         private final ThreadPoolExecutor executor;
         private final SpyglassServerShapeCache shapeCache = new SpyglassServerShapeCache();
@@ -192,24 +175,20 @@ public final class SpyglassServerService {
                 state.scoping = true;
                 ResourceKey<Level> dimension = player.level().dimension();
                 Vec3 position = player.position();
-                double revealBlocks = revealBlocks(player);
                 if (SpyglassRefreshPolicy.isRefreshDue(
                         state.requestPosition,
                         state.requestDimension,
-                        state.requestReveal,
                         state.requestNanos,
                         state.failedNanos,
                         dimension,
                         position,
-                        revealBlocks,
                         now)) {
                     try {
                         long sequence = ++state.newestSequence;
                         StructureScanRequest request =
-                                createRequest(player, sequence, dimension, position, revealBlocks);
+                                createRequest(player, sequence, dimension, position);
                         state.requestPosition = position;
                         state.requestDimension = dimension;
-                        state.requestReveal = revealBlocks;
                         state.requestNanos = now;
                         submit(state, request);
                     } catch (RuntimeException exception) {
@@ -235,27 +214,12 @@ public final class SpyglassServerService {
             }
         }
 
-        /**
-         * The client's reported reveal distance, or vanilla's fog start for the player's effective
-         * view distance until the client has sent one. Receiving the value is independent of scoping,
-         * so it is kept in the session rather than in the (scoping-only) {@link PlayerState}.
-         */
-        private double revealBlocks(ServerPlayer player) {
-            Integer received = this.reveals.get(player.getUUID());
-            if (received != null) {
-                return received;
-            }
-            return SpyglassRevealDefaults.defaultRevealBlocks(
-                    player.requestedViewDistance(), this.server.getPlayerList().getViewDistance());
-        }
-
         /** Server tick thread: cheap preparation only. */
         private StructureScanRequest createRequest(
                 ServerPlayer player,
                 long sequence,
                 ResourceKey<Level> dimension,
-                Vec3 position,
-                double revealBlocks) {
+                Vec3 position) {
             ServerLevel level = player.serverLevel();
             Registry<Structure> registry = level.registryAccess().registryOrThrow(Registries.STRUCTURE);
             Set<String> disabled = SpyglassServerSettings.disabledSources();
@@ -281,20 +245,18 @@ public final class SpyglassServerService {
             Registry<Biome> biomes = level.registryAccess().registryOrThrow(Registries.BIOME);
             PredictionContext prediction = predictionContext(level);
             DimBlendSpyglass.LOGGER.debug(
-                    "Spyglass scan prepared player={} dimension={} whitelisted={} bands={} radius={} reveal={} prediction={}",
+                    "Spyglass scan prepared player={} dimension={} whitelisted={} bands={} radius={} prediction={}",
                     player.getUUID(),
                     dimension.location(),
                     targets.size(),
                     bands.size(),
                     StructureCandidates.SCAN_RADIUS_CHUNKS,
-                    revealBlocks,
                     prediction != null);
             return new StructureScanRequest(
                     player.getUUID(),
                     sequence,
                     position.x,
                     position.z,
-                    revealBlocks,
                     region,
                     biomes,
                     targets,
@@ -464,7 +426,7 @@ public final class SpyglassServerService {
             }
             long limitStarted = System.nanoTime();
             SpyglassSnapshotLimiter.LimitResult limited = SpyglassSnapshotLimiter.limit(
-                    request.playerX(), request.playerZ(), request.revealBlocks(), outlines);
+                    request.playerX(), request.playerZ(), outlines);
             long limitNanos = System.nanoTime() - limitStarted;
             long shapeStarted = System.nanoTime();
             // Shape extraction only ever runs for outlines that have blocks on disk. A predicted
@@ -615,7 +577,6 @@ public final class SpyglassServerService {
                 state.stopScoping();
             }
             this.states.clear();
-            this.reveals.clear();
             this.shapeStreamer.clear();
             this.shapeCache.clear();
             this.predictor.clear();
@@ -633,8 +594,6 @@ public final class SpyglassServerService {
         private long newestSequence;
         private Vec3 requestPosition;
         private ResourceKey<Level> requestDimension;
-        /** Reveal distance the current snapshot was built for; compared by the refresh policy. */
-        private double requestReveal;
         private long requestNanos;
         /** Written by the scan executor, read by the tick thread: {@code 0} means no failure. */
         private volatile long failedNanos;
