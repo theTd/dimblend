@@ -36,5 +36,6 @@
   "dimblend_spyglass.structure.minecraft.village_plains": "Plains Village",
   "dimblend_spyglass.structure.minecraft.village_savanna": "Savanna Village",
   "dimblend_spyglass.structure.minecraft.village_snowy": "Snowy Village",
-  "dimblend_spyglass.structure.minecraft.village_taiga": "Taiga Village"
+  "dimblend_spyglass.structure.minecraft.village_taiga": "Taiga Village",
+  "dimblend_spyglass.tooltip.spyglass_hint": "Shows where never-loaded structures are."
 }

@@ -36,5 +36,6 @@
   "dimblend_spyglass.structure.minecraft.village_plains": "平原村庄",
   "dimblend_spyglass.structure.minecraft.village_savanna": "热带草原村庄",
   "dimblend_spyglass.structure.minecraft.village_snowy": "雪原村庄",
-  "dimblend_spyglass.structure.minecraft.village_taiga": "针叶林村庄"
+  "dimblend_spyglass.structure.minecraft.village_taiga": "针叶林村庄",
+  "dimblend_spyglass.tooltip.spyglass_hint": "可以看到从未被加载过的建筑的位置"
 }
