@@ -88,7 +88,11 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyWideGaugeParticleMixin")
                 || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyDeadmanParticleMixin")
                 || mixinClassName.endsWith(".compat.simurail.AutomaticCouplerRedstoneMixin")
-                || mixinClassName.endsWith(".compat.simurail.AutomaticCouplerPartnerAccessor")) {
+                || mixinClassName.endsWith(".compat.simurail.AutomaticCouplerPartnerAccessor")
+                || mixinClassName.endsWith(".compat.simurail.AutomaticCouplerChargeMixin")
+                || mixinClassName.endsWith(".compat.simurail.AutomaticCouplerChargeParticleMixin")
+                || mixinClassName.endsWith(".compat.simurail.AutomaticCouplerWrenchMixin")
+                || mixinClassName.endsWith(".compat.simurail.AutomaticCouplerTypeAccessor")) {
             return isLoaded("simurail");
         }
         if (mixinClassName.endsWith(".compat.dimblend.WarpGateBlockMixin")) {

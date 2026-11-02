@@ -151,6 +151,11 @@ public final class Config {
             .comment("Allow Survival players to right-click automatic couplers; default false. Other block protections remain active.")
             .define("allowSurvivalCouplerInteraction", false);
 
+    public static final ModConfigSpec.BooleanValue COUPLER_CHARGE_PARTICLES = BUILDER
+            .comment("E 板块 E10：被扳手充能的自动车钩散发红石粒子（纯客户端视觉）。"
+                    + "只有扳手充能发粒子，红石信号解锁不发。需要 Simurail 在场")
+            .define("couplerChargeParticles", true);
+
     public static final ModConfigSpec.BooleanValue ASSEMBLER_GUARD = BUILDER
             .comment("F 板块 F1：simulated 物理组装器禁止摆放（生存模式禁、创造模式放行；"
                     + "放行放置后本 tick 末破坏自身返还：真人回背包、机器放置掉落；需要 simulated 在场）")

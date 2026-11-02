@@ -68,6 +68,10 @@
 > 制图台移出 #minecraft:acquirable_job_site（旧存档潜在工作站点由原版 ValidateNearbyPoi
 > 擦除）；村庄生成、合成配方与已有制图师的职业不变。
 > 本文件是开发依据；原始清单仅作需求索引，两者冲突时以本文件为准。
+> 2026-11-02（E10/E11，用户两条口径）：①所有自动车钩类型强制詹式，扳手右键改为
+> 充能/取消充能（不再换类型），只有扳手充能发红石粒子（新开关 `couplerChargeParticles`，
+> 默认开）；②扳手充能的车钩在断钩且附近 2 格内没有其他 sable 车钩时自动取消充能。
+> 实现复用 Simurail 的 `isPowered()` 解锁语义，不另砌断钩物理；红石解锁（E5）保持不变。
 
 ## 0. 环境基线
 
@@ -665,6 +669,37 @@
   反控模式二阶后果（接受项）：刹车恒 ≥(15−上限)/15 不归零，E3/E4 施闸/松闸沿不再触发。
   上限 `trainBrakeSignalCap`（1-15 级，默认 1 即 v1.14「视为 1 级」口径；经 /dbx 面板可调，
   旧布尔开关 `trainFixedBrakeSignal` 被上限蕴含、旧键已被自动清除）
+- E10 自动车钩：类型锁定詹式 + 扳手充能（2026-11-02 用户口径，两条一起给）：
+  「对于所有的列车车勾 类型均强制为 詹式车钩 扳手右键改为使车勾 充能/取消充能
+  此种类型的充能会使车钩散发红石粒子效果」。
+  (a) 类型一律 `KNUCKLE`：`cycleType()` HEAD 整个取消（扳手不再换类型），`read()` TAIL
+  把 `type` 强制为 `SimurailCouplers.KNUCKLE`——两处都堵，因为只在 `cycleType` 拦时
+  旧存档里已存成 `SHIBATA` 的车钩读档后仍是 `SHIBATA`；字段初值本来就是 `KNUCKLE`，
+  新放置的车钩天然满足。
+  (b) 扳手右键 = 充能 ⇄ 取消充能：`AutomaticCouplerBlock.onWrenched` HEAD 接管，
+  切 `@Unique` 布尔、`setChanged()+sendData()`、播原生转轴音、返回 `SUCCESS` 挡掉原生动作。
+  空手右键（`useItemOn` → `cycleLength` 改长短）不在本条口径内，保持 Simurail 原样。
+  (c) **充能复用 Simurail 的「已通电」语义，不另砌物理**：`isPowered()` RETURN 或上充能态。
+  该方法已经是解锁的唯一开关（`sable$physicsTick` 里解除伙伴、跳过 `findPartner`、
+  `setPartner` 拒绝连挂），断钩与拒连自动一致；红石解锁（E5）与本充能并存互不干扰。
+  (d) 粒子：只有扳手充能发 `DustParticleOptions.REDSTONE`（用户口径「此种类型的充能」，
+  即排除红石解锁）；纯客户端视觉，按 BE `tick()` RETURN 约 34%/tick（≈7 个/秒），
+  子层级位姿投影到世界坐标，未组装时用方块中心；新开关 `couplerChargeParticles`（默认开）。
+  充能态经 BE 更新包同步（`write`/`read` 的 `clientPacket` 两侧都写），客户端读同步值。
+- E11 扳手充能的自动取消（2026-11-02 用户口径）：
+  「扳手充能的车勾在断钩 且 附近2格内没有其他sable的车钩后 会自动取消充能」。
+  语义是**一次性解脱**：充能立刻断钩，两车分开到 2 格外即自动取消充能，车钩恢复可连挂，
+  玩家不必记得再扳一次。判定
+  `wrenchCharged && !hasPartner && !otherCouplerNear`（`CouplerChargeMath.shouldDecharge`）。
+  (a) 半径 2 格与 `findPartner` 的搜索半径一致，同一把尺子；锚点取车钩方块中心。
+  (b) 扫描 `CouplerChargeScan` 照抄 `findPartner` 的结构（相交子层级 + 逆位姿回局部系扫盒 +
+  `distanceSquaredWithSubLevels` 量真实世界距离），但**刻意不按子层级过滤候选**——全速拉开
+  时两只车钩已分属不同载具，按「同一子层级」过滤会永不命中、充能永不取消。
+  (c) 不过滤对方类型/是否通电/是否已有伙伴：「附近2格内没有其他 sable 的车钩」任何一只都算。
+  (d) 未加载区块一律跳过，绝不触发同步加载；伙伴区块未加载时整轮跳过（「未加载」≠「已断开」，
+  不能凭无法核验的状态撤充能）。
+  (e) 服务端 `lazyTick` RETURN 对账（每 10 tick）；单独散放的车钩扳一下就充能、半秒内自动取消，
+  「留着只会妨碍下次连挂」属预期，不是缺陷。
 - A9 虚空共存（用户拍板）：rotating 内 voidscape band 里 Voidscape `Insanity`
   的生命上限修饰符保留；我方 A3 只读写自有 id
   `dimblend_experience:far_curse_max_health`（代码已确认天然共存），叠加效果留实机验证；
@@ -1048,6 +1083,7 @@
 | alternatorOverstressLatch | D8（交流发电机过载解列锁存） | true |
 | simurailProtect | E1 | true |
 | couplerRedstone | E5（true=红石信号不再断开车钩） | true |
+| couplerChargeParticles | E10（扳手充能车钩的红石粒子，纯客户端视觉） | true |
 | assemblerGuard | F1 | true |
 | portableEngineExclusivity | F2（便携引擎整网唯一，零转速也算同网） | true |
 | trainSounds | E2/E3/E4 | true |
@@ -1133,6 +1169,10 @@
 | compat.simurail.PhysicsBogeyDeadmanStressMixin | Simurail 物理转向架 BE（`calculateStressApplied` RETURN 锁存强制过载 impact，读 `TrainDeadmanBrake` 表） | E7' | simurail 在场 |
 | compat.simurail.PhysicsBogeyDeadmanParticleMixin | Simurail 物理转向架 BE（锁存期间 portal 粒子，E6 同参数） | E7' | simurail 在场（client 数组） |
 | compat.simurail.AutomaticCouplerRedstoneMixin | Simurail 自动车钩方块 | E5 | simurail 在场 |
+| compat.simurail.AutomaticCouplerChargeMixin | Simurail 自动车钩 BE（充能 `@Unique` 字段 + `isPowered` RETURN 或充能态 + `cycleType` HEAD 取消 + `read` TAIL 锁詹式 + `lazyTick` RETURN 对账） | E10/E11 | simurail 在场 |
+| compat.simurail.AutomaticCouplerWrenchMixin | Simurail 自动车钩方块（`onWrenched` HEAD 接管为充能切换） | E10 | simurail 在场 |
+| compat.simurail.AutomaticCouplerTypeAccessor | Simurail 自动车钩 BE（写 `type` 字段，供锁詹式） | E10 | simurail 在场 |
+| compat.simurail.AutomaticCouplerChargeParticleMixin | Simurail 自动车钩 BE（`tick` RETURN 发红石粒子） | E10 | simurail 在场（client 数组） |
 | compat.copycats.CopycatsObsidianHardnessMixin | Copycats+ 两根基类 | C0 | copycats 在场 |
 | compat.create.CreateCopycatObsidianHardnessMixin | Create CopycatBlock 根 | C0 | create 在场 |
 | BlockPropertiesAccessor | 原版 Properties（硬度豁免判据） | C0 | 无条件（原版目标） |

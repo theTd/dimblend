@@ -75,7 +75,10 @@
 		"compat.simurail.PhysicsBogeyDeadmanStressMixin",
 		"compat.simurail.PhysicsBogeyLateralForceMixin",
 		"compat.simurail.AutomaticCouplerRedstoneMixin",
-		"compat.simurail.AutomaticCouplerPartnerAccessor"
+		"compat.simurail.AutomaticCouplerPartnerAccessor",
+		"compat.simurail.AutomaticCouplerChargeMixin",
+		"compat.simurail.AutomaticCouplerWrenchMixin",
+		"compat.simurail.AutomaticCouplerTypeAccessor"
 	],
 	"client": [
 		"client.InBedChatScreenMixin",
@@ -94,7 +97,8 @@
 		"compat.create.ElectricMotorGeneratorStatsMixin",
 		"compat.simurail.PhysicsBogeyTrackSoundMixin",
 		"compat.simurail.PhysicsBogeyWideGaugeParticleMixin",
-		"compat.simurail.PhysicsBogeyDeadmanParticleMixin"
+		"compat.simurail.PhysicsBogeyDeadmanParticleMixin",
+		"compat.simurail.AutomaticCouplerChargeParticleMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
