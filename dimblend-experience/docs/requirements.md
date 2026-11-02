@@ -164,5 +164,5 @@
 - [ ] 待实测｜探照灯照亮「向下流动」的岩浆：`FALLING=true` 的竖直柱即使上方是同种流体也逐格上报，`LavaBoxOutline` 相邻盒合并成竖管轮廓；观察者烈焰人触发范围随之扩大到岩浆柱（`HeadlightLavaColumn`，见 spec G10）。
 - [ ] 待实测｜岩浆融毁在车顶截断：熔穿孔保留封口塞（四条守卫：世界侧仍是 structure_void、正上方 ≤3 格内是岩浆、孔比一格深、本车该柱仍有 target），接触判定「往上多收一格」只对每根世界柱最高方块生效；整舱不再被垂直岩浆柱一次灌穿（`VoidFitMeltSeal`/`LavaContactScan`，见 spec G6）。
 - [ ] 待实测｜factory_blocks 风扇系列加入切石机：fan / fan_on / fan_four / fan_four_on / fan_malfunction / fan_malfunction_on 各一条「铁块×1 → 方块×4」，`medium_fan` 因碰撞箱问题保持不可制作（生存无产出途径，仅创造物品栏可见）；`runData` 在本机 dev 运行起不来，6 条 JSON 为按模板手写（见 `FactoryStonecuttingBlocks`）。
-- [ ] 待实测｜绑定诅咒装备脱下 → 60 分钟「诅咒中毒」：新效果 `dimblend_experience:cursed_poison`，图标同中毒，照抄中毒扣血（血量 >1 时每 2.5 秒 1 点，等级 I），牛奶与不死图腾均解不掉（未填 cure）、死亡重生照常清空；重复脱下刷新到 60 分钟不叠加；创造模式脱下也触发（需求未提豁免）。
-- [ ] 待实测｜消失诅咒装备受击 0.2% 消失：`LivingDamageEvent.Post` 且 `getNewDamage()>0`（火/摔落/中毒也算），每件已装备物品（四盔甲+双手）各自独立掷骰，命中清空该槽不掉落、播 `entity.item.break` + 5 粒子；创造模式不触发；概率 0.002 为常量（不进 /dbx 面板）。
+- [ ] 待实测｜绑定诅咒装备脱下 → 60 分钟「绑定诅咒」：新效果 `dimblend_experience:binding_curse`，图标为凋零图标拷贝、粒子色取凋零颜色，生命上限强制压到 2（`MAX_HEALTH` 瞬态 -18），牛奶与不死图腾解不掉，`/effect clear` 不额外拦截、死亡照常清空；重新穿上任意绑定诅咒装备即解除，切创造即解除；重复脱下刷新到 60 分钟不叠加。
+- [ ] 待实测｜消失诅咒装备点击触发：每一次鼠标左/右物理按键（含 GUI 点击与空挥）上报服务端，四盔甲+双手每件带 `PREVENT_EQUIPMENT_DROP` 的装备各自独立掷 0.05%，命中清空该槽不掉落、同播 `entity.item.break` 与 `entity.evoker.prepare_wololo` + 5 粒子；创造模式不触发；概率 0.0005 为常量（不进 /dbx 面板）。

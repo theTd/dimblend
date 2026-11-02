@@ -1679,17 +1679,26 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
 - 连带：服务端 `MarkedLavaTracker` 复用同一 scan，观察者烈焰人触发范围随之扩大到岩浆柱（接受）。
 - 验证：`HeadlightLavaColumnTest` 7 条；实机渲染与遮挡待看。
 
-### 17.6 新增：绑定诅咒「诅咒中毒」与消失诅咒（R19/R20）
+### 17.6 绑定诅咒与消失诅咒（R19/R20，2026-11-02 按用户新口径重做）
 
-- 新效果 `dimblend_experience:cursed_poison`（`curse/CurseEffects`）：HARMFUL，颜色同中毒，图标为原版
-  poison.png 的逐字节拷贝；60 分钟、等级 I，照抄 `PoisonMobEffect`（血量 >1 时每 2.5 秒 1 点 magic）。
-  `fillEffectCures` 覆写为空集 → 牛奶与不死图腾都解不掉（死亡重生照常清空），不需要 mixin。
-- 触发：`LivingEquipmentChangeEvent`，盔甲槽「从有到无」且原装备带 `PREVENT_ARMOR_CHANGE`；重复触发刷新到
-  60 分钟不叠加；装备损坏、被消失诅咒吃掉、命令移除都会触发；创造模式不豁免（需求未提）。
-- 消失诅咒：`LivingDamageEvent.Post` 且 `getNewDamage()>0`（火/摔落/中毒也算），每件已装备物品
-  （四盔甲+双手，`PREVENT_EQUIPMENT_DROP`）各自独立掷 0.2%；命中清空该槽不掉落、播 `entity.item.break`
-  + 5 粒子；创造不触发；概率常量 0.002。
-- 验证：`CurseRules` 纯函数 +10 条单测；实机看图标、60:00 倒计时、牛奶无效、0.2% 手感。
+- 新效果 `dimblend_experience:binding_curse`（`curse/BindingCurseMobEffect`）：HARMFUL，颜色取原版
+  `MobEffects.WITHER`（7561558），图标为原版 `wither.png` 的逐字节拷贝（`textures/mob_effect/binding_curse.png`）。
+- 生命上限：`addAttributeModifiers` 挂固定 id `dimblend_experience:binding_curse_max_health` 的瞬态
+  `MAX_HEALTH` -18（ADD_VALUE，基础 20 → 2）；`removeAttributeModifiers` 摘除；当前血量由原版
+  `LivingEntity#refreshDirtyAttributes → onAttributeUpdated` 夹到新上限（不是 `addEffect` 内同步完成）。
+- `fillEffectCures` 覆写为空集 → 牛奶与不死图腾都解不掉；`/effect clear` 走 `removeAllEffects`，不额外拦截；
+  死亡后新 `ServerPlayer` 不复制效果，照常清空。
+- 触发：`LivingEquipmentChangeEvent`，离开槽位的装备带 `PREVENT_ARMOR_CHANGE`、该槽变空、且其余装备槽都没有
+  绑定诅咒 → 加 72000 tick；重复触发刷新不叠加。
+- 解除：`to` 非空且带绑定诅咒（重新穿上）→ `removeEffect`；`PlayerEvent.PlayerChangeGameModeEvent` 新游戏模式
+  为 CREATIVE → `removeEffect`。
+- 消失诅咒：客户端 `MouseHandler#onPress` 每次物理按下（button 0/1，含 GUI 与空挥）发 `CurseClickPayload`；
+  服务端非创造时对四盔甲+双手每件带 `PREVENT_EQUIPMENT_DROP` 的装备独立掷 0.0005；命中清空该槽不掉落、
+  同播 `entity.item.break` 与 `entity.evoker.prepare_wololo` + 5 粒子。
+- 已知代价（如实）：客户端可伪造点击频率——「每次点击都算」的直接后果，未限速；一件装备同时带两种诅咒时，
+  消失清空槽位会被下一 tick 的装备变化事件看成「脱掉最后一件绑定诅咒装备」，从而挂上绑定诅咒（旧实现相同）。
+- 验证：`CurseRulesTest` + `BindingCurseMobEffectTest` 共 17 条单测；实机看图标与粒子色、血量上限 2、牛奶/图腾
+  无效、穿回与切创造解除、两条音效、0.05% 手感。
 
 ### 17.7 新增：factory_blocks 风扇系列切石机配方（R11）
 
