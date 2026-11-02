@@ -57,12 +57,14 @@ class ObserverBlazeLayoutTest {
      * pre-cushion model was empty) -- this test reads the real resource, not a copy.
      */
     @Test
-    void cushionModelIsAHalfBlockTallCubeWearingTheRedSeatTextures() throws IOException {
+    void cushionModelIsAHalfBlockTallCubeWearingTheOrangeSeatTextures() throws IOException {
         String json = readResource("/assets/dimblend_experience/models/block/observer_blaze.json");
         assertTrue(json.contains("\"from\": [0, 0, 0]"), "the cushion must start at the block's bottom face: " + json);
         assertTrue(json.contains("\"to\": [16, 8, 16]"), "the cushion must be a half block tall: " + json);
-        assertTrue(json.contains("create:block/seat/top_red"), "the cushion top must be the red seat texture: " + json);
-        assertTrue(json.contains("create:block/seat/side_red"), "the cushion sides must be the red seat texture: " + json);
+        assertTrue(json.contains("create:block/seat/top_orange"),
+                "the cushion top must be the orange seat texture: " + json);
+        assertTrue(json.contains("create:block/seat/side_orange"),
+                "the cushion sides must be the orange seat texture: " + json);
         assertTrue(json.contains("create:block/seat/bottom"), "the cushion underside must use Create's seat bottom: " + json);
     }
 
