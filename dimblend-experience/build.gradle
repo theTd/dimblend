@@ -109,6 +109,8 @@ dependencies {
     compileOnly project(":dimblend-carwash")
     // Same for radio: only its api package (reception noise, End voice frequency, acoustic intensity).
     compileOnly project(":dimblend-radio")
+    // Optional source panel: experience only imports spyglass's api package.
+    compileOnly project(":dimblend-spyglass")
     // Optional local diagnostic panel integration uses the core mod's public API only.
     compileOnly project(":dimblend")
     // A11 贝壳 X 标记：编译期零依赖（TreasureShellMarker 按注册名运行时查

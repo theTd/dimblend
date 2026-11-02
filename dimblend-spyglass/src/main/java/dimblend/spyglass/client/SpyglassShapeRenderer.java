@@ -177,17 +177,24 @@ public final class SpyglassShapeRenderer {
         double farthest = 0.0;
         StructureShape request = null;
         double requestDistance = Double.POSITIVE_INFINITY;
-        // Predicted structures: no mesh exists or ever will (their chunks were never generated), so
-        // they are marked with line boxes instead of block geometry.
+        // Predicted structures: a template preview gives them real block geometry; without one (or
+        // while its mesh is still being built) they keep the line-box fallback.
         for (int i = 0; i < structures.size(); i++) {
             StructureOutline outline = structures.get(i);
+            Optional<StructureShape> found = SpyglassShapeCache.shapeFor(outline);
             if (outline.predicted()) {
-                if (CULLING.isVisible(outline.bounds())) {
+                UploadedShapeMesh previewMesh = found.isEmpty()
+                        ? null
+                        : ShapeMeshStore.peek(found.get().key());
+                boolean previewReady = previewMesh != null
+                        && !previewMesh.isEmpty()
+                        && CULLING.isVisible(previewMesh.bounds());
+                if (PreviewSelection.forPredicted(found.isPresent(), previewReady)
+                                == PreviewSelection.Choice.WIREFRAME
+                        && CULLING.isVisible(outline.bounds())) {
                     MARKED.add(outline);
                 }
-                continue;
             }
-            Optional<StructureShape> found = SpyglassShapeCache.shapeFor(outline);
             if (found.isEmpty()) {
                 continue;
             }
@@ -250,10 +257,10 @@ public final class SpyglassShapeRenderer {
         drawFar(minecraft, event.getModelViewMatrix(), PASS_PROJECTION, eye);
     }
 
-    /** The overlay pass: draws the list selected earlier in this frame, then publishes labels. */
+    /** The overlay pass: draws the list selected earlier in this frame, then publishes the marks. */
     private static void drawOverlayAndPublishLabels(RenderLevelStageEvent event) {
-        // Every level pass replaces the previous frame's label hand-off, also when nothing is drawn.
-        ShownOutlineFrame.publish(null);
+        // Every level pass replaces the previous frame's mark hand-off, also when nothing is drawn.
+        MarkFrame.publish(null);
         Minecraft minecraft = Minecraft.getInstance();
         long frame = ShapeMeshStore.frame();
         if (overlayFrame != frame) {
@@ -271,51 +278,21 @@ public final class SpyglassShapeRenderer {
             if (!OVERLAY.isEmpty()) {
                 drawOverlay(minecraft, event.getModelViewMatrix(), event.getProjectionMatrix(), eye);
             }
-            List<StructureOutline> shown = drawnStructures(frame);
-            if (!shown.isEmpty()) {
-                // The event's model-view is the camera rotation and its projection carries the
-                // scoped FOV and view bobbing (the far plane does not move screen x/y).
-                Matrix4f worldToClip = new Matrix4f(event.getProjectionMatrix())
-                        .mul(event.getModelViewMatrix());
-                ShownOutlineFrame.publish(
-                        new ShownOutlineFrame(shown, worldToClip, eye.x, eye.y, eye.z));
-            }
+            // Every structure in range, not only the drawn meshes: a mark must appear even when the
+            // shape never arrived (PRD P6). The GUI layer projects the anchors itself.
+            Matrix4f worldToClip = new Matrix4f(event.getProjectionMatrix())
+                    .mul(event.getModelViewMatrix());
+            MarkFrame.publish(MarkFrame.of(
+                    SpyglassClientState.currentStructures(),
+                    worldToClip,
+                    new Matrix4f(event.getModelViewMatrix()),
+                    eye.x,
+                    eye.y,
+                    eye.z));
         } finally {
             OVERLAY.clear();
             FAR.clear();
         }
-    }
-
-    /**
-     * Structures that were actually put on screen this frame: a drawn mesh in either pass, or a
-     * marker for a structure the world has not generated.
-     */
-    private static List<StructureOutline> drawnStructures(long frame) {
-        List<StructureOutline> structures = SpyglassClientState.currentStructures();
-        List<StructureOutline> shown = null;
-        for (int i = 0; i < structures.size(); i++) {
-            StructureOutline structure = structures.get(i);
-            boolean drawn = structure.predicted()
-                    ? marked(structure)
-                    : ShapeMeshStore.meshUse(structure.key()) == ShapeMeshStore.MeshUse.DRAWN;
-            if (!drawn) {
-                continue;
-            }
-            if (shown == null) {
-                shown = new ArrayList<>(structures.size() - i);
-            }
-            shown.add(structure);
-        }
-        return shown == null ? List.of() : shown;
-    }
-
-    private static boolean marked(StructureOutline structure) {
-        for (int i = 0; i < MARKED.size(); i++) {
-            if (MARKED.get(i).key().equals(structure.key())) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**

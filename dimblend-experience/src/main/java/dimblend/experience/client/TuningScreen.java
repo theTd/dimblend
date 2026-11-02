@@ -114,11 +114,21 @@ public final class TuningScreen extends Screen {
         rows.add(navigation);
         int navigationY = listTop + contentHeight - scroll;
         if (section == TuningOption.Section.MAIN) {
-            int half = (panelWidth - 20) / 2;
+            boolean spyglass = SpyglassTuningBridge.isLoaded();
+            int buttons = spyglass ? 3 : 2;
+            int gap = 4;
+            int buttonWidth = (panelWidth - 16 - gap * (buttons - 1)) / buttons;
+            int x = left + 8;
             add(navigation, Button.builder(Component.translatable(KEY + "section_sable"), button -> switchSection())
-                    .bounds(left + 8, navigationY, half, 20).build(), true);
+                    .bounds(x, navigationY, buttonWidth, 20).build(), true);
+            x += buttonWidth + gap;
+            if (spyglass) {
+                add(navigation, Button.builder(Component.translatable(KEY + "section_spyglass"),
+                        button -> openSpyglassSources()).bounds(x, navigationY, buttonWidth, 20).build(), true);
+                x += buttonWidth + gap;
+            }
             add(navigation, Button.builder(Component.translatable(KEY + "section_perf"), button -> openPerfChecklist())
-                    .bounds(left + 12 + half, navigationY, half, 20).build(), true);
+                    .bounds(x, navigationY, buttonWidth, 20).build(), true);
         } else {
             add(navigation, Button.builder(Component.translatable(KEY + "section_main"), button -> switchSection())
                     .bounds(left + 8, navigationY, panelWidth - 16, 20).build(), true);
@@ -206,6 +216,12 @@ public final class TuningScreen extends Screen {
         // tick() only runs while this screen is current: send validated edits before leaving it.
         flushPending();
         minecraft.setScreen(new PerfChecklistScreen(this));
+    }
+
+    private void openSpyglassSources() {
+        // Same as the checklist: nothing pending may be lost when this screen stops ticking.
+        flushPending();
+        minecraft.setScreen(new SpyglassSourceScreen(this));
     }
 
     private void flushPending() {

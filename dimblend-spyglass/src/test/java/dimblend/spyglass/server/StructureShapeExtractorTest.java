@@ -236,7 +236,7 @@ class StructureShapeExtractorTest {
                 List.of(new StructureCandidate(HOUSE, 18, 0)));
         assertEquals(1, scan.outlines().size(), "scan errors: " + scan.errors());
         SpyglassSnapshotLimiter.LimitResult limited =
-                SpyglassSnapshotLimiter.limit(0, 0, 0.0, scan.outlines());
+                SpyglassSnapshotLimiter.limit(0, 0, scan.outlines());
         assertEquals(1, limited.selected().size());
         StructureShapeExtractor.Extraction extraction = StructureShapeExtractor.extract(
                 context(regions.regionDirectory()),

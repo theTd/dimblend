@@ -20,12 +20,11 @@ import net.neoforged.neoforge.event.level.LevelEvent;
  * <p>Fed from {@link dimblend.spyglass.net.SpyglassSnapshotHandlers} — common code never references
  * this class; {@link SpyglassClientSetup} installs {@link #apply} on the client. The server sends a
  * padded ring (see {@link dimblend.spyglass.structure.SpyglassDistance#inSnapshotRange}); this class
- * filters it down to the exact display range around the player's <b>live</b> position and the
- * <b>live</b> reveal distance on every frame.
+ * filters it down to the exact display range around the player's <b>live</b> position on every frame.
  *
- * <p>The reveal distance is the client's current terrain fog start ({@link SpyglassRevealState}). While
- * it is unknown (before the first terrain fog pass after joining a level) or disabled (underwater, in
- * lava, blind...), the ring is empty: nothing is drawn and no labels are shown.
+ * <p>The display ring is fixed at 128–1024 blocks. {@link SpyglassRevealState} still gates drawing:
+ * while no terrain fog pass has run yet, or the camera is underwater/in lava/blind, the ring is
+ * empty and nothing is drawn.
  */
 @EventBusSubscriber(modid = DimBlendSpyglass.MODID, value = Dist.CLIENT)
 public final class SpyglassClientState {
@@ -37,7 +36,6 @@ public final class SpyglassClientState {
     private static List<StructureOutline> memoSnapshot = List.of();
     private static double memoPlayerX;
     private static double memoPlayerZ;
-    private static double memoReveal;
     private static boolean memoRevealEnabled;
     private static List<StructureOutline> memoStructures = List.of();
 
@@ -97,13 +95,11 @@ public final class SpyglassClientState {
         boolean revealEnabled = SpyglassRevealState.isEnabled();
         double playerX = minecraft.player.getX();
         double playerZ = minecraft.player.getZ();
-        double reveal = revealEnabled ? SpyglassRevealState.revealDistanceBlocks() : 0.0;
         long frame = minecraft.getFrameTimeNs();
         if (frame == memoFrame
                 && structures == memoSnapshot
                 && playerX == memoPlayerX
                 && playerZ == memoPlayerZ
-                && reveal == memoReveal
                 && revealEnabled == memoRevealEnabled) {
             return memoStructures;
         }
@@ -114,16 +110,13 @@ public final class SpyglassClientState {
         } else {
             visible = structures.stream()
                     .filter(structure -> SpyglassDistance.inRange(
-                            SpyglassDistance.horizontal(playerX, playerZ, structure),
-                            SpyglassDistance.farthestHorizontal(playerX, playerZ, structure),
-                            reveal))
+                            SpyglassDistance.horizontal(playerX, playerZ, structure)))
                     .toList();
         }
         memoFrame = frame;
         memoSnapshot = structures;
         memoPlayerX = playerX;
         memoPlayerZ = playerZ;
-        memoReveal = reveal;
         memoRevealEnabled = revealEnabled;
         memoStructures = visible;
         return visible;
@@ -149,10 +142,9 @@ public final class SpyglassClientState {
         memoFrame = Long.MIN_VALUE;
         memoSnapshot = List.of();
         memoStructures = List.of();
-        memoReveal = 0.0;
         memoRevealEnabled = false;
-        // The reveal distance is per level: forget the observed value, so nothing is drawn until the
-        // first terrain fog pass of the new level (the sender notices the new level by itself).
+        // The fog state is per level: forget the observed values, so nothing is drawn until the first
+        // terrain fog pass of the new level.
         SpyglassRevealState.reset();
         // Shapes are cached per dimension and keyed by structure; they must not survive a level,
         // dimension or connection change either. This is the single clear point used by the renderer,

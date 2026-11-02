@@ -12,13 +12,11 @@ class SpyglassRefreshPolicyTest {
     private static final long NOW = 1_000_000_000_000L;
     /** No scan has failed since the request was submitted. */
     private static final long NO_FAILURE = 0L;
-    /** The reveal distance of every snapshot in these tests; they are about the other triggers. */
-    private static final double REVEAL = 173.0;
 
     @Test
     void firstScopingTickIsAlwaysDue() {
         assertTrue(SpyglassRefreshPolicy.isRefreshDue(
-                null, null, 0.0, 0L, NO_FAILURE, Level.OVERWORLD, Vec3.ZERO, REVEAL, NOW));
+                null, null, 0L, NO_FAILURE, Level.OVERWORLD, Vec3.ZERO, NOW));
     }
 
     @Test
@@ -27,8 +25,7 @@ class SpyglassRefreshPolicyTest {
         Vec3 moved = request.add(31.9, 0.0, 0.0);
 
         assertFalse(SpyglassRefreshPolicy.isRefreshDue(
-                request, Level.OVERWORLD, REVEAL, NOW - 1_000L, NO_FAILURE, Level.OVERWORLD, moved,
-                REVEAL, NOW));
+                request, Level.OVERWORLD, NOW - 1_000L, NO_FAILURE, Level.OVERWORLD, moved, NOW));
     }
 
     @Test
@@ -37,8 +34,7 @@ class SpyglassRefreshPolicyTest {
         Vec3 moved = request.add(SpyglassRefreshPolicy.MOVE_THRESHOLD_BLOCKS, 0.0, 0.0);
 
         assertTrue(SpyglassRefreshPolicy.isRefreshDue(
-                request, Level.OVERWORLD, REVEAL, NOW - 1_000L, NO_FAILURE, Level.OVERWORLD, moved,
-                REVEAL, NOW));
+                request, Level.OVERWORLD, NOW - 1_000L, NO_FAILURE, Level.OVERWORLD, moved, NOW));
     }
 
     @Test
@@ -46,35 +42,7 @@ class SpyglassRefreshPolicyTest {
         ResourceKey<Level> nether = Level.NETHER;
 
         assertTrue(SpyglassRefreshPolicy.isRefreshDue(
-                Vec3.ZERO, Level.OVERWORLD, REVEAL, NOW - 1_000L, NO_FAILURE, nether, Vec3.ZERO,
-                REVEAL, NOW));
-    }
-
-    @Test
-    void revealDistanceChangeAtTheThresholdIsDue() {
-        Vec3 position = new Vec3(5.0, 64.0, 5.0);
-
-        assertFalse(SpyglassRefreshPolicy.isRefreshDue(
-                position,
-                Level.OVERWORLD,
-                REVEAL,
-                NOW - 1_000L,
-                NO_FAILURE,
-                Level.OVERWORLD,
-                position,
-                REVEAL + SpyglassRefreshPolicy.REVEAL_THRESHOLD_BLOCKS - 0.01,
-                NOW));
-        // A smaller reveal distance (the fog closing in) also changes which structures are eligible.
-        assertTrue(SpyglassRefreshPolicy.isRefreshDue(
-                position,
-                Level.OVERWORLD,
-                REVEAL,
-                NOW - 1_000L,
-                NO_FAILURE,
-                Level.OVERWORLD,
-                position,
-                REVEAL - SpyglassRefreshPolicy.REVEAL_THRESHOLD_BLOCKS,
-                NOW));
+                Vec3.ZERO, Level.OVERWORLD, NOW - 1_000L, NO_FAILURE, nether, Vec3.ZERO, NOW));
     }
 
     @Test
@@ -84,22 +52,18 @@ class SpyglassRefreshPolicyTest {
         assertFalse(SpyglassRefreshPolicy.isRefreshDue(
                 position,
                 Level.OVERWORLD,
-                REVEAL,
                 NOW - SpyglassRefreshPolicy.REFRESH_INTERVAL_NANOS + 1L,
                 NO_FAILURE,
                 Level.OVERWORLD,
                 position,
-                REVEAL,
                 NOW));
         assertTrue(SpyglassRefreshPolicy.isRefreshDue(
                 position,
                 Level.OVERWORLD,
-                REVEAL,
                 NOW - SpyglassRefreshPolicy.REFRESH_INTERVAL_NANOS,
                 NO_FAILURE,
                 Level.OVERWORLD,
                 position,
-                REVEAL,
                 NOW));
     }
 
@@ -113,15 +77,12 @@ class SpyglassRefreshPolicyTest {
 
         long backoffDue = failure + SpyglassRefreshPolicy.FAILURE_BACKOFF_NANOS;
         assertTrue(SpyglassRefreshPolicy.isRefreshDue(
-                position, Level.OVERWORLD, REVEAL, request, failure, Level.OVERWORLD, position,
-                REVEAL, backoffDue));
+                position, Level.OVERWORLD, request, failure, Level.OVERWORLD, position, backoffDue));
         assertFalse(SpyglassRefreshPolicy.isRefreshDue(
-                position, Level.OVERWORLD, REVEAL, request, failure, Level.OVERWORLD, position,
-                REVEAL, backoffDue - 1L));
+                position, Level.OVERWORLD, request, failure, Level.OVERWORLD, position, backoffDue - 1L));
         // One second after the failure the player should not be re-scanned yet.
         assertFalse(SpyglassRefreshPolicy.isRefreshDue(
-                position, Level.OVERWORLD, REVEAL, request, failure, Level.OVERWORLD, position,
-                REVEAL, NOW));
+                position, Level.OVERWORLD, request, failure, Level.OVERWORLD, position, NOW));
     }
 
     @Test
@@ -132,24 +93,19 @@ class SpyglassRefreshPolicyTest {
         long request = NOW - 1_000_000_000L;
 
         assertFalse(SpyglassRefreshPolicy.isRefreshDue(
-                position, Level.OVERWORLD, REVEAL, request, failure, Level.OVERWORLD, position,
-                REVEAL, NOW));
+                position, Level.OVERWORLD, request, failure, Level.OVERWORLD, position, NOW));
         assertTrue(SpyglassRefreshPolicy.isRefreshDue(
                 position,
                 Level.OVERWORLD,
-                REVEAL,
                 request,
                 failure,
                 Level.OVERWORLD,
                 position,
-                REVEAL,
                 request + SpyglassRefreshPolicy.REFRESH_INTERVAL_NANOS));
     }
 
     @Test
-    void theRevealPaddingCoversTheRefreshThreshold() {
-        assertTrue(SpyglassRefreshPolicy.SNAPSHOT_PAD_BLOCKS
-                >= SpyglassRefreshPolicy.REVEAL_THRESHOLD_BLOCKS);
+    void theSnapshotPaddingCoversTheMovementThreshold() {
         assertTrue(SpyglassRefreshPolicy.SNAPSHOT_PAD_BLOCKS
                 >= SpyglassRefreshPolicy.MOVE_THRESHOLD_BLOCKS);
     }

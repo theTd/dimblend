@@ -94,23 +94,20 @@ public final class SpyglassServerService {
             if (state != null) {
                 state.stopScoping();
             }
-            current.reveals.remove(player.getUUID());
             current.shapeStreamer.remove(player.getUUID());
         }
     }
 
     /**
-     * Server thread (payload handler): stores the client's reveal distance for the next snapshot.
-     * Values are clamped to the display range, so a malformed or malicious packet cannot make the
-     * server scan for structures outside the ring.
+     * Forces every scoping player's next poll to rebuild the snapshot. Called by the source panel
+     * and by a config reload; it never interrupts a scan that is already running — that result is
+     * dropped by the sequence check when the new request finishes.
      */
-    public static void acceptReveal(ServerPlayer player, int blocks) {
+    public static void invalidateAll() {
         Session session = current;
-        if (session == null || session.server != player.server) {
-            return;
+        if (session != null) {
+            session.invalidateAll();
         }
-        session.reveals.put(
-                player.getUUID(), Mth.clamp(blocks, 0, (int) SpyglassDistance.MAX_BLOCKS));
     }
 
     @SubscribeEvent
@@ -124,8 +121,6 @@ public final class SpyglassServerService {
     private static final class Session {
         private final MinecraftServer server;
         private final Map<UUID, PlayerState> states = new HashMap<>();
-        /** Reveal distance each player's client reported; absent means the client has not sent one. */
-        private final Map<UUID, Integer> reveals = new HashMap<>();
         private final Map<String, Long> warningTimes = new HashMap<>();
         private final ThreadPoolExecutor executor;
         private final SpyglassServerShapeCache shapeCache = new SpyglassServerShapeCache();
@@ -180,24 +175,20 @@ public final class SpyglassServerService {
                 state.scoping = true;
                 ResourceKey<Level> dimension = player.level().dimension();
                 Vec3 position = player.position();
-                double revealBlocks = revealBlocks(player);
                 if (SpyglassRefreshPolicy.isRefreshDue(
                         state.requestPosition,
                         state.requestDimension,
-                        state.requestReveal,
                         state.requestNanos,
                         state.failedNanos,
                         dimension,
                         position,
-                        revealBlocks,
                         now)) {
                     try {
                         long sequence = ++state.newestSequence;
                         StructureScanRequest request =
-                                createRequest(player, sequence, dimension, position, revealBlocks);
+                                createRequest(player, sequence, dimension, position);
                         state.requestPosition = position;
                         state.requestDimension = dimension;
-                        state.requestReveal = revealBlocks;
                         state.requestNanos = now;
                         submit(state, request);
                     } catch (RuntimeException exception) {
@@ -223,33 +214,19 @@ public final class SpyglassServerService {
             }
         }
 
-        /**
-         * The client's reported reveal distance, or vanilla's fog start for the player's effective
-         * view distance until the client has sent one. Receiving the value is independent of scoping,
-         * so it is kept in the session rather than in the (scoping-only) {@link PlayerState}.
-         */
-        private double revealBlocks(ServerPlayer player) {
-            Integer received = this.reveals.get(player.getUUID());
-            if (received != null) {
-                return received;
-            }
-            return SpyglassRevealDefaults.defaultRevealBlocks(
-                    player.requestedViewDistance(), this.server.getPlayerList().getViewDistance());
-        }
-
         /** Server tick thread: cheap preparation only. */
         private StructureScanRequest createRequest(
                 ServerPlayer player,
                 long sequence,
                 ResourceKey<Level> dimension,
-                Vec3 position,
-                double revealBlocks) {
+                Vec3 position) {
             ServerLevel level = player.serverLevel();
             Registry<Structure> registry = level.registryAccess().registryOrThrow(Registries.STRUCTURE);
+            Set<String> disabled = SpyglassServerSettings.disabledSources();
             List<StructureTarget> targets = new ArrayList<>();
             for (Holder<Structure> holder : registry.getTagOrEmpty(SpyglassStructureTags.VISIBLE)) {
                 ResourceLocation id = registry.getKey(holder.value());
-                if (id != null) {
+                if (id != null && SpyglassSourceFilter.keep(id, disabled::contains)) {
                     targets.add(new StructureTarget(id, holder));
                 }
             }
@@ -268,20 +245,18 @@ public final class SpyglassServerService {
             Registry<Biome> biomes = level.registryAccess().registryOrThrow(Registries.BIOME);
             PredictionContext prediction = predictionContext(level);
             DimBlendSpyglass.LOGGER.debug(
-                    "Spyglass scan prepared player={} dimension={} whitelisted={} bands={} radius={} reveal={} prediction={}",
+                    "Spyglass scan prepared player={} dimension={} whitelisted={} bands={} radius={} prediction={}",
                     player.getUUID(),
                     dimension.location(),
                     targets.size(),
                     bands.size(),
                     StructureCandidates.SCAN_RADIUS_CHUNKS,
-                    revealBlocks,
                     prediction != null);
             return new StructureScanRequest(
                     player.getUUID(),
                     sequence,
                     position.x,
                     position.z,
-                    revealBlocks,
                     region,
                     biomes,
                     targets,
@@ -451,7 +426,7 @@ public final class SpyglassServerService {
             }
             long limitStarted = System.nanoTime();
             SpyglassSnapshotLimiter.LimitResult limited = SpyglassSnapshotLimiter.limit(
-                    request.playerX(), request.playerZ(), request.revealBlocks(), outlines);
+                    request.playerX(), request.playerZ(), outlines);
             long limitNanos = System.nanoTime() - limitStarted;
             long shapeStarted = System.nanoTime();
             // Shape extraction only ever runs for outlines that have blocks on disk. A predicted
@@ -465,10 +440,16 @@ public final class SpyglassServerService {
                             .toList(),
                     this.shapeCache,
                     errors);
+            // M2: the nearest predicted structures get a template preview. The extractor returns
+            // nothing for structures without a full template, and those keep the client wireframe.
+            List<StructureOutline> previewCandidates = PreviewBudget.nearest(
+                    limited.structures(), request.playerX(), request.playerZ(), PreviewBudget.MAX_PREVIEWS);
+            List<EncodedStructureShape> previewShapes =
+                    TemplatePreviewExtractor.extract(request.prediction(), previewCandidates);
             long shapeNanos = System.nanoTime() - shapeStarted;
             DimBlendSpyglass.LOGGER.debug(
                     "Spyglass scan timings player={} limit={}ms predict={}ms(predicted={} generated={} "
-                            + "cached={} skipped={} failed={}) shapes={}ms",
+                            + "cached={} skipped={} failed={}) shapes={}ms previews={}",
                     request.playerId(),
                     limitNanos / 1_000_000L,
                     predictNanos / 1_000_000L,
@@ -477,9 +458,10 @@ public final class SpyglassServerService {
                     prediction.cacheHits(),
                     prediction.skippedChunks(),
                     prediction.failedChunks(),
-                    shapeNanos / 1_000_000L);
+                    shapeNanos / 1_000_000L,
+                    previewShapes.size());
             return new SpyglassScanOutcome(
-                    limited, extraction, errors.snapshot(), outlines.size(), prediction);
+                    limited, extraction, previewShapes, errors.snapshot(), outlines.size(), prediction);
         }
 
         private void complete(
@@ -513,7 +495,7 @@ public final class SpyglassServerService {
                 StructureShapeExtractor.ShapeStats shapeStats = outcome.extraction().stats();
                 DimBlendSpyglass.LOGGER.debug(
                         "Spyglass scan complete player={} rawOutlines={} visibleOutlines={} pieces={} "
-                                + "shapes={} noShape(notGenerated={} readFailed={} tooManyBlocks={} "
+                                + "shapes={} previews={} noShape(notGenerated={} readFailed={} tooManyBlocks={} "
                                 + "empty={} unencodable={} visibilityVolumeTooLarge={}) cacheHits={} "
                                 + "readFailures={}",
                         request.playerId(),
@@ -521,6 +503,7 @@ public final class SpyglassServerService {
                         limited.selected().size(),
                         limited.totalPieces(),
                         shapeStats.extracted(),
+                        outcome.previewShapes().size(),
                         shapeStats.notGenerated(),
                         shapeStats.readFailed(),
                         shapeStats.tooManyBlocks(),
@@ -531,8 +514,9 @@ public final class SpyglassServerService {
                         outcome.readErrors().total());
                 reportReadErrors(request, outcome.readErrors());
                 SpyglassSnapshotPayload.sendTo(player, request.sequence(), limited.structures());
-                this.shapeStreamer.onSnapshot(
-                        request.playerId(), request.dimension(), outcome.extraction().shapes());
+                List<EncodedStructureShape> shapes = new ArrayList<>(outcome.extraction().shapes());
+                shapes.addAll(outcome.previewShapes());
+                this.shapeStreamer.onSnapshot(request.playerId(), request.dimension(), shapes);
             } catch (RuntimeException exception) {
                 warnLimited(
                         "send",
@@ -590,13 +574,18 @@ public final class SpyglassServerService {
             DimBlendSpyglass.LOGGER.warn(message, withFailure);
         }
 
+        private void invalidateAll() {
+            for (PlayerState state : this.states.values()) {
+                state.invalidate();
+            }
+        }
+
         private void close() {
             this.closed = true;
             for (PlayerState state : this.states.values()) {
                 state.stopScoping();
             }
             this.states.clear();
-            this.reveals.clear();
             this.shapeStreamer.clear();
             this.shapeCache.clear();
             this.predictor.clear();
@@ -614,14 +603,20 @@ public final class SpyglassServerService {
         private long newestSequence;
         private Vec3 requestPosition;
         private ResourceKey<Level> requestDimension;
-        /** Reveal distance the current snapshot was built for; compared by the refresh policy. */
-        private double requestReveal;
         private long requestNanos;
         /** Written by the scan executor, read by the tick thread: {@code 0} means no failure. */
         private volatile long failedNanos;
 
         private PlayerState(UUID playerId) {
             this.playerId = playerId;
+        }
+
+        /** Makes the next poll rebuild the snapshot; a scan that is already running is not touched. */
+        private void invalidate() {
+            this.requestPosition = null;
+            this.requestDimension = null;
+            this.requestNanos = 0L;
+            this.failedNanos = 0L;
         }
 
         /** Forces the next scoping tick to build a fresh snapshot. */

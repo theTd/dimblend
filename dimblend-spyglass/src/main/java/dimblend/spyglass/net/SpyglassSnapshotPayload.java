@@ -17,17 +17,16 @@ import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 /**
- * Server → client structure snapshot. Wire format (protocol version 5): dimension, sequence,
+ * Server → client structure snapshot. Wire format (protocol version 6): dimension, sequence,
  * structure count, then per structure: the structure key (id, start chunk coordinates), union bounds
  * (6 ints), piece count, the pieces (6 ints each), and a flags byte whose bit 0 marks a
  * <b>predicted</b> outline — one replayed from the seed for a chunk the world has not generated, whose
  * geometry is real but whose blocks do not exist yet.
  *
  * <p>The key was added in protocol 3 so a streamed {@link SpyglassShapePayload} can be linked to the
- * outline it belongs to; the client cache is keyed by it. Protocol 4 added the client's reveal
- * distance ({@link SpyglassRevealPayload}), which only changes which structures the server keeps in
- * this snapshot. Protocol 5 added the predicted flag, which the client needs to draw a marker instead
- * of a block mesh.
+ * outline it belongs to; the client cache is keyed by it. Protocol 5 added the predicted flag, which
+ * the client needs to draw a marker instead of a block mesh. Protocol 6 fixed the display ring's
+ * inner edge at 128 blocks; the wire format is unchanged.
  */
 public record SpyglassSnapshotPayload(
         ResourceLocation dimension,
