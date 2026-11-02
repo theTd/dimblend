@@ -92,7 +92,7 @@
 
 ### 下界（Nether）
 
-- [x] 生成轨道：**黑石宽轨**，无路基（`CorridorTrackProfile.NETHER`）
+- [x] 生成轨道：**黑石宽轨**，3 格宽黑石路基（`CorridorTrackProfile.NETHER` = `minecraft:blackstone` + 半宽 1，写在 Y=63、z −1..+1；2026-11-02 用户口径，此前为「无路基」）
 - [x] 时间锁定 18000
 - [x] 天空套用下界 Effects（`ClientBandLane.netherSky()` → `NetherEffects`：`SkyType.NONE` / 浓雾 / constantAmbientLight；与地下相同）
 - [x] 天气锁定晴
