@@ -90,6 +90,7 @@
 		"compat.camerapture.CameraViewfinderMixin",
 		"compat.camerapture.CameraPreGuiCaptureMixin",
 		"client.ItemStackNicknameMixin",
+		"client.MouseClickMixin",
 		"compat.cca.ElectricMotorSoundClientMixin",
 		"compat.cca.ElectricMotorGoggleMixin",
 		"compat.create.ItemDrainGoggleMixin",
