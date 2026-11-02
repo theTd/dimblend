@@ -8,6 +8,7 @@ Minecraft 1.21.1 / NeoForge 的望远镜远景建筑提示模块，依赖 `dimbl
 
 - **显示范围固定为总包围盒中心水平距离 128–1024 格（含边界）**。内沿 128 格不再随渲染距离或雾变化；128 格以内不标，避免挡住眼前的东西。
 - 每个在范围内、且通过来源开关的结构，在包围盒顶面中心上方显示一个标记：存档里读到它的 start 时是 `!`，只有种子重放算出来时是 `?`（见「结构标记」）。
+- 模板可解析的 `?` 结构会显示结构本体的真实方块（模板预览）；模板不可用（Feature-only、矿井/要塞等程序化结构）时仍只画线框。
 - 已存盘的结构画成**带贴图的真实方块**（见「真实方块渲染」）；未生成区块里的结构只画**线框**（见「未生成结构的标注」），不画方块虚影。没有形状的结构仍然有 `!` 标记，只是没有方块。
 - 准星对准某个标记时，屏幕顶部显示 `~Nm`（四舍五入到 10 格）；移开即消失。
 - 最近的 `?` 不在镜片内时，屏幕边缘会出现一个指向它的箭头；`!` 不参与箭头选择。
@@ -20,7 +21,7 @@ Minecraft 1.21.1 / NeoForge 的望远镜远景建筑提示模块，依赖 `dimbl
 
 - **锚点**：总包围盒（`bounds()`，不是部件列表）顶面中心的正上方：X/Z 取 `(min + max + 1) / 2`（`OutlineBox#centerX/Z`），Y 取 `maxY + 1`。每帧用**本帧**的相机位置、投影矩阵（含望远镜 FOV 缩放与视角摇晃）和 model-view 投影到屏幕；相机后方或屏幕外时不画。`RenderLevelStageEvent` AFTER_PARTICLES 记录，同一帧的 GUI 层消费（`MarkFrame` → `StructureMarkLayer`）。
 - **字形**：`?`（预测，未生成）或 `!`（存档读到），ASCII、白色带阴影、无底板；字形选择是纯函数 `MarkerGlyph.of(boolean)`。
-- **哪些结构有标记**：`SpyglassScopeGate#isScoping` 为真、雾可用（`SpyglassRevealState#isEnabled`）、且结构在 `SpyglassClientState#currentStructures()` 的 128–1024 环内。**不要求本帧画出了网格**：形状还没流式到达、超预算或为空的结构也有 `!`。
+- **哪些结构有标记**：`SpyglassScopeGate#isScoping` 为真、雾可用（`SpyglassRevealState#isEnabled`）、且结构在 `SpyglassClientState#currentStructures()` 的 128–1024 环内。**不要求本帧画出了网格**：形状还没流式到达、超预算或为空的结构也有 `!`；`?` 在模板可用时有预览网格，没有模板时只有线框。
 - **望远镜遮罩**：标记图层注册在 `VanillaGuiLayers.CAMERA_OVERLAYS` **之下**，原版镜片贴图与四块黑边在它之后绘制，自然裁掉镜片外的标记；不复制任何遮罩几何。
 - **重叠**：按中心距离由近到远贪心放置，16×16 GUI 像素框与已放置标记（含 2 像素间隔）重叠的跳过本帧；按距离而不是离准星远近排序，转动视角时优先级稳定。
 - **顶部距离**：本帧被画出的标记里，准星落在 16×16 框 + 4 像素容差内时，屏幕顶部居中显示 `~Nm`（`CrosshairPicking` 取离屏幕中心最近的命中）。`?` 与 `!` 都参与。
@@ -47,16 +48,19 @@ region 表头在打开文件时快照、扇区稍后才读，服务端并发写�
 
 ## 未生成结构的标注（种子重放）
 
-玩家从未去过的地方，磁盘上没有区块数据，原版也就没有 start 可读。这类位置本模组会按种子**重放世界生成**，把结构的位置与尺寸算出来，只画**线框标记**，不画方块。
+玩家从未去过的地方，磁盘上没有区块数据，原版也就没有 start 可读。这类位置本模组会按种子**重放世界生成**，把结构的位置与尺寸算出来，默认画**线框标记**；M2 起，模板可解析的拼图结构还会画**本体方块预览**（见下）。
 
-- **能算出来的是位置，不是建筑**。结构放置是种子与数据包的纯函数：`Structure.generate` 由结构的高度提供器选起点、拼装拼图模板，返回部件 BB（`Structure.java:91-100`），完全不需要读世界——`/locate` 走的就是这条路（`StructureCheck.java:97-110`）。但**方块**只有在 `StructureStart.placeInChunk` 把方块写进 `WorldGenLevel` 之后才存在（`StructureStart.java:80-96`），生物群系装饰还要读周围区块的真实生物群系。所以这里给的是"这座建筑在哪、多大"。
-- **为什么不画虚影**：没有方块就无法得知贴图、内部空腔和周围地形高度，画出来的壳子在空地上看着像真建筑，玩家走到跟前才发现是假的。线框只声明"这里有东西"，正好等于已知的信息。标记用 `RenderType.lines` 画每个部件盒的 12 条棱，另用更暗的颜色画总包围盒；两者都是淡青色，和任何雾色/地形色都不同，不会被误认成建筑。
+- **能算出来的是位置，不是建筑**。结构放置是种子与数据包的纯函数：`Structure.generate` 由结构的高度提供器选起点、拼装拼图模板，返回部件 BB（`Structure.java:91-100`），完全不需要读世界——`/locate` 走的就是这条路（`StructureCheck.java:97-110`）。但**方块**只有在 `StructureStart.placeInChunk` 把方块写进 `WorldGenLevel` 之后才存在（`StructureStart.java:80-96`），生物群系装饰还要读周围区块的真实生物群系。所以这里能确定的是“这座建筑在哪、多大”。
+- **模板预览（M2，CRD 0001）**：拼图结构的所有部件都是 `PoolElementStructurePiece`、且每个部件引用的 `SinglePoolElement` 有数据包模板 id 时，服务端从 `StructureTemplate` 取**第一套调色板**的方块，按部件位置与旋转把它们变换到世界坐标，过滤掉结构方块/拼图方块/结构空位/空气，然后编码成普通形状包下发。客户端把它当真实方块画；`?` 标记保留，用来声明“这是预测，不是存档里的建筑”。
+- **为什么不做完整虚影**：结构模板只给出建筑本体；处理器（重力、随机替换）、水logged、战利品、方块实体、第二套调色板都不还原，周围地形也还不存在，所以预览会浮空，和真实生成后的样子可能有差异。Feature-only、矿井/要塞等程序化结构没有模板，继续画线框。把它画成“完整建筑”反而会让玩家误判。
+- **预览预算**：每次快照最多给最近的 **8** 个 `?` 做预览（`PreviewBudget`），其余仍是线框；模板提取在扫描线程上只做模板 NBT 的读取与变换，不读区块、不生成地形。
 - **不会伪造数据**。重放只对"扫描确认没有已存盘 start"的候选区块执行：调用维度自己的 `ChunkGenerator.createStructures`，在一个**一次性的 `ProtoChunk`** 上跑一遍（`PredictionContext`）。因此分带路由、结构集加权选择、轨道走廊与区域边界两个禁建区都由原代码负责，不在这里复刻一遍。不调用 `getChunk`，不加载区块，不写世界，不在实时世界触发结构生成。
+
 - **绝不与真实存档冲突**。只有三种情况算"未生成"：区域文件不存在、区块槽位为空、区块已存盘但没有该结构的 start。区块存在却**读不出来**（解析失败、`DataVersion` 不符、坐标身份校验失败）一律不算——那种情况是文件和我们的理解不一致，重算可能和真实数据矛盾，宁可这次不显示。
 - **预算与缓存**。拼图拼装比读 region 表头贵一到两个数量级，一次扫描窗口约 200×200 区块，全部重放会卡住扫描线程。所以每次扫描只在**最近的**未缓存区块上花固定预算（`StructurePredictor.MAX_CHUNKS_PER_SCAN`，24 个区块），结果按区块缓存（上限 2048 个），新世界随每次刷新逐步补全，去过的地方不再花代价。缓存不需要失效逻辑：区块一旦有了已存盘 start 就不再算"未生成"，也就不会再被查。
 - **只重放有意义的距离**：起点区块离玩家超过"可见环外沿 + 补边 + 128 格"的不生成——它的部件盒再怎么延伸也到不了可见范围。
-- **标记**：这类结构显示 `?`（存档里没有 start、种子重放算出来），并且**永不**带方块网格；它和其他结构一样受 `[128, 1024]` 环与标记防重叠规则约束。线框仍会画出来表示范围。
-- **协议版本 6**：快照里每个结构多一个标志字节（bit 0 = 预测），未识别的位一律拒绝解码；协议 6 同时把内沿固定为 128 并删掉了 reveal 距离包。
+- **标记**：这类结构显示 `?`（存档里没有 start、种子重放算出来）；模板可解析时同时有本体方块预览，没有模板/预览未就绪时只有线框。它和其他结构一样受 `[128, 1024]` 环与标记防重叠规则约束。
+- **协议版本 7**：快照里每个结构带一个标志字节（bit 0 = 预测），未识别的位一律拒绝解码；协议 6 把内沿固定为 128 并删掉了 reveal 距离包；协议 7 让服务端开始为 `?` 下发模板预览形状（复用 `SpyglassShapePayload`，没有新包类型）。
 
 已知边界：重放的结论依赖"当前数据包的 placement 参数"。若数据包改动过 `spacing`/`salt` 或结构集成员，已存盘结构可能对不上（同「已知局限」里那条），未生成区域也会按**当前**数据包计算。
 
@@ -85,7 +89,7 @@ region 表头在打开文件时快照、扇区稍后才读，服务端并发写�
 
 ## 协议
 
-协议版本为 `6`（`SpyglassNetwork`）。版本 5 给快照里每个结构加一个**标志字节**（bit 0 = 该结构是种子重放的预测结果，不是从存档读到的），未识别的位直接拒绝解码。版本 6 把显示环内沿固定为 128 格，删除了版本 4 引入的客户端 → 服务端 `SpyglassRevealPayload`（揭示距离）——内沿不再由雾决定，服务端也就不再需要这个值。快照 `SpyglassSnapshotPayload` 每个结构除总包围盒与部件 BB 外还带**结构键**（结构 id + start 所在区块）；形状用 S2C `SpyglassShapePayload` 传输，分包字段为维度、结构键、修订号、`partIndex`/`partCount` 与一段形状体。形状体包含 origin（最小角）、size、生物群系键、方块状态 id 调色板和按位置排序、delta 编码的方块列表。预测结构**没有**形状包，客户端也不会为它请求网格。
+协议版本为 `7`（`SpyglassNetwork`）。版本 7 让服务端开始为 `?` 下发模板预览形状（复用 `SpyglassShapePayload`，没有新包类型）；6 的客户端会存下但不会画，所以协议必须一起升。版本 5 给快照里每个结构加一个**标志字节**（bit 0 = 该结构是种子重放的预测结果，不是从存档读到的），未识别的位直接拒绝解码。版本 6 把显示环内沿固定为 128 格，删除了版本 4 引入的客户端 → 服务端 `SpyglassRevealPayload`（揭示距离）——内沿不再由雾决定，服务端也就不再需要这个值。快照 `SpyglassSnapshotPayload` 每个结构除总包围盒与部件 BB 外还带**结构键**（结构 id + start 所在区块）；形状用 S2C `SpyglassShapePayload` 传输，分包字段为维度、结构键、修订号、`partIndex`/`partCount` 与一段形状体。形状体包含 origin（最小角）、size、生物群系键、方块状态 id 调色板和按位置排序、delta 编码的方块列表。预测结构在模板预览可用时**有**形状包（M2）；没有模板的预测结构没有形状包，客户端也不会为它请求网格。
 
 - 分包大小与每玩家每 tick 的 64 KiB 流式预算对齐：一包（含包头）正好是一 tick 的预算，因此一个包一 tick，形状按到玩家的水平距离由近到远发送；服务端记录每个玩家已有的 (结构键, 修订号)，只补发缺失或过期的形状。每次新快照都会**丢弃不在该快照内的已发送记录**（待发队列与在途分包同时重建），所以结构离开补边环后再进入会重新发送——客户端可能已经为守住方块预算把它从 LRU 淘汰了，只靠"已发送"记录会让它永远停在老修订号上。维度切换、退出登录、服务端停止时重置。重生会替换客户端的等级（缓存随之清空）但维度 id 不变，因此检测到玩家的 `ServerPlayer` 实例变化时也会忘记已发送记录。
 - 解码有界：调色板大小、方块数（≤ 262,144）、分包数、位置是否落在 size 内、是否有重复/越界位置全部校验，违反即抛 `DecoderException`；客户端对不完整或过期的分包只做有界重组（最多 64 个在途形状体、8 MiB 缓冲）。
@@ -166,6 +170,7 @@ region 表头在打开文件时快照、扇区稍后才读，服务端并发写�
 - **依赖 `ModelData` 的模型**（连接纹理等）按 `ModelData.EMPTY` 画成默认外观。
 - **相机在超大结构包围盒内或紧挨着时**，FAR 组的 near 退回 0.05，同帧较远的网格可能出现 z-fighting。
 - **形状只代表磁盘版本**（见上文）：渲染距离以内若真实建筑已被改动，被拆掉的位置会露出旧方块（那里没有地形覆盖）。
+- **模板预览会浮空**：`?` 的模板预览只有结构本体，没有地形；处理器、水logged、战利品、方块实体、第二套调色板不还原，和真实生成后的样子可能有差异。模板不可用（Feature-only、矿井/要塞等程序化结构）时仍是线框。
 
 ## 线程模型
 
@@ -246,6 +251,7 @@ JAR 输出到 `dimblend-spyglass/build/libs/`。
 - `SpyglassDistance#horizontal(x, z, outline)`、`#MIN_BLOCKS` / `#MAX_BLOCKS`、`#inRange(center)`、`#inSnapshotRange(center, pad)`、`#roundToTen(distance)`、`#format(distance)`。`farthestHorizontal` 已随 reveal 一起删除。
 - 复用 `dimblend.spyglass.client` 包内的 `SpyglassScopeGate#isScoping(Minecraft)`（包可见；已包含第一人称、`screen == null`、`hideGui` 判定），不要在别处重写门控。
 - `SpyglassShapeRenderer` 的 `AFTER_SKY` pass 负责本帧唯一一次选择、剔除、网格构建请求、FAR 绘制与 OVERLAY 列表；`AFTER_PARTICLES` pass 画 OVERLAY，然后发布 `MarkFrame`（本帧 128–1024 环内**全部**结构 + 本帧 `projection × modelView`、`modelView` 与相机位置）→ `StructureMarkLayer`（GUI 标记，发布 `MarkScreenFrame`）。纯逻辑拆在 `WorldToGuiProjection`（投影到 GUI 坐标）、`MarkerGlyph`（`?`/`!`）、`LabelPlacement`（重叠规则）、`CrosshairPicking`、`DistanceText`、`EdgeArrowGeometry`，均有单测。三个 GUI 图层：`StructureMarkLayer`（`CAMERA_OVERLAYS` 之下）、`CrosshairDistanceLayer` 与 `EdgeArrowLayer`（之上）。
+- 模板预览：`TemplatePreviewExtractor`（服务端：`StructureStart` 的 `PoolElementStructurePiece` → `SinglePoolElement` 模板 id → `StructureTemplate.save` 的第一套调色板 → 旋转变换 → `StructureShapeCodec.encode`）、`PreviewBudget`（最近 8 个 `?`）、`PreviewSelection`（客户端：有形状且网格就绪画网格，否则线框）。`SpyglassShapeRenderer` 的预测分支按它决定是否加入 `MARKED`。
 - `ShapePassSelector#isOverlay(...)`：最近水平距离 < 已加载半径 + 16 且最远角距离 < 0.95 × `getDepthFar()` 的网格走 OVERLAY，其余走 FAR。
 - `SpyglassShapeCache#shapeFor(StructureOutline)`：返回该轮廓对应形状的 `Optional<StructureShape>`（`SpyglassShapeRenderer` 用它取网格）。`StructureShape` 不可变、线程安全，提供 `originX/Y/Z`、`sizeX/Y/Z`、`biome()`、`blockCount()`、`getBlockState(x, y, z)`（未保留位置返回空气）与 `forEachBlock(consumer)`（按索引序遍历保留方块）。
 - 形状分包由 `ShapePartAssembler` 在客户端主线程重组，`SpyglassShapeCache` 解码并做按方块数的 LRU；清除点与 `SpyglassClientState#clear` 相同。
