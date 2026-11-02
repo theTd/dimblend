@@ -2,11 +2,12 @@
   "required": true,
   "package": "dimblend.craft.mixin",
   "compatibilityLevel": "JAVA_21",
-  "plugin": "dimblend.craft.mixin.MillstoneRecipeMixinPlugin",
+  "plugin": "dimblend.craft.mixin.DimBlendCraftMixinPlugin",
   "mixins": [
     "compat.kaleidoscope.MillstoneMatchRecipeMixin",
     "compat.kaleidoscope.MillstoneNativeRecipeMixin",
-    "compat.kaleidoscope.MillstoneSearchRecipeMixin"
+    "compat.kaleidoscope.MillstoneSearchRecipeMixin",
+    "compat.twilightforest.UncraftingMenuMixin"
   ],
   "client": [
     "client.LanguageOverrideMixin",
