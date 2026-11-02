@@ -38,6 +38,8 @@
 - `repositories` 只活在根 `build.gradle`（全集）；子工程不再各自声明。
 - experience 的 `neo_version_range`（toml 下限）保留在其子工程 properties。
 - 开源 mod 依赖走 Modrinth/Curse Maven 定点版本，不 vendor blob（Eternal Starlight、
-  Copycats+、CCA、CDG、sable-companion 均已 Maven 化）；`libs/` 仅剩无公开 Maven 的
-  特殊构建（simurail / sable cui-modded，tracked；experience 的同名两罐不入库，
-  出处见 experience `docs/requirements-spec.md`）。
+  Copycats+、CCA、CDG、sable-companion、Cold Sweat、Create: Fluid、Create: Fire Fighting Add、
+  hardcore_nvg 均已 Maven 化）；`libs/` 仅剩两个没有公开坐标的 jar —— simurail 与自建的
+  sable cui-modded 分支 —— **全仓只有一份，位于 `dimblend/libs/` 并入库**，各子工程用
+  `rootProject.file("dimblend/libs/…")` 指向它。子工程不再各自持有 `libs/` 目录。
+  因此干净检出即可 `./gradlew build` 全部 8 个模块，CI 也构建全部 8 个模块。

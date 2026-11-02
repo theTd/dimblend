@@ -21,8 +21,12 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # 干净检出可构建的子集：experience/blocks 的 compileOnly 本地罐不入库
-      #（见根 README 与 experience docs/requirements-spec.md），CI 不覆盖它们；
-      # 本地全量构建仍用 ./gradlew build。
+      # 全仓构建。干净检出即可构建全部 8 个子工程，理由：
+      # 1. 绝大多数 compat 依赖走公共 Maven（Modrinth / CurseForge / create 官方仓）；
+      # 2. 只剩两个没有公开坐标的 jar —— simurail 与自建的 sable cui-modded 分支
+      #    （比上游 2.0.5 多 SubLevelRainColumn / SablePhysicsTuning / biome_projection）——
+      #    统一放在 dimblend/libs/ 并入库，全仓只有这一份，各子工程用 rootProject.file(...) 指向它。
+      # 不要再退回“CI 只构建子集”：那会让 dimblend-experience 的编译错误只在实机才暴露。
+      # 也不要再往子工程里加 .gitignore 掉的 libs/：本地能编、CI 编不过的静默失败就是这么来的。
       - name: Build with Gradle
-        run: ./gradlew :dimblend:build :dimblend-craft:build :dimblend-radio:build :dimblend-carwash:build
+        run: ./gradlew build

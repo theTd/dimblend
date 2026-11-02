@@ -39,8 +39,11 @@ run/
 repo/
 !**/src/**/repo/
 
-### Local compat compile jars (provenance & restore steps: docs/requirements-spec.md "libs jar 清单") ###
-libs/
+### Local compat jars: 本模块不再有 libs/ 目录。
+### 依赖改走公共 Maven（cold-sweat / create-firefighting-additions / curse.maven），
+### 无公开坐标的 simurail 与 sable cui-modded 统一放在 dimblend/libs/ 并入库。
+### 这里刻意不再忽略 libs/：万一有人又把本地 jar 丢进来，git status 会立刻看见，
+### 而不是重现「本地能编、CI 编不过」的静默失败。
 
 ### Temporarily unpacked NeoForge sources (reading reference, safe to delete) ###
 .tmp-sources/

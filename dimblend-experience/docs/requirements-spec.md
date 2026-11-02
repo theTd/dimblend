@@ -1267,13 +1267,39 @@
 
 ## 7. 决策记录
 
-### libs jar 清单（8 个 addon 编译依赖）
+### libs jar 清单（第三方 addon 编译依赖）
 
+> **2026-11-03 再次收敛，这是当前状态**：`dimblend-experience/libs/` 目录已删除。除两个没有
+> 公开坐标的 jar 外全部改走公共 Maven，那两个 jar 全仓只保留一份（`dimblend/libs/`，入库）。
+> 因此**干净检出即可 `./gradlew build` 全部 8 个模块**，CI 也已从“只构建 4 个模块”改为构建全部。
+>
+> | 依赖 | 现在的形态 |
+> |---|---|
+> | Create Simurail | `files(rootProject.file("dimblend/libs/simurail-1.21.1-0.0.0-a+ecd2dd3.jar"))`，入库 |
+> | Sable cui-modded | `files(rootProject.file("dimblend/libs/sable-neoforge-1.21.1-2.0.5_cui-modded.jar"))`，入库 |
+> | Cold Sweat 2.4.2 | `maven.modrinth:cold-sweat:a4MuLEBd` |
+> | Create: Fluid | `curse.maven:project-1346709:8400173`（= **2.1.4**，不是 2.0.1，见下） |
+> | Create: Fire Fighting Add 0.2.1-beta | `maven.modrinth:create-firefighting-additions:s0eGgxnc` |
+> | hardcore_nvg 1.1.2 | `curse.maven:project-1074175:6333351` |
+>
+> **Create: Fluid 的版本偏差（必读）**：CurseForge 上该项目 1.21.1 线是 `1.2.4` 之后直接跳到
+> `2.1.4`，**没有 2.0.1**；运行实例里那份 2.0.1 是私有构建，公开源拿不到。2.1.4 里本模块用到的
+> 7 个类（含嵌套类 `CopperSinkBlockEntity$CopperSinkTank`）全部存在，编译可通过；但
+> **编译基线是 2.1.4、运行基线仍是 2.0.1**，这是真实偏差，不是零漂移。若实机出现
+> `NoSuchMethodError` 一类签名问题，把 2.0.1 放回 `dimblend/libs/` 并把依赖改回 `files(...)`
+> 即可回退；备份在 `E:\misc\dimblend-libs-archive\2026-11-03-pre-ci-maven\`。
+>
+> **Sable 只剩一份且必须是 833 类那一版**：git 里原先追踪的那份是 831 类，缺
+> `dev.ryanhcode.sable.util.SubLevelRainColumn`（挡雨渲染与 Cold Sweat 湿身共用这一个判据），
+> 与运行实例不一致；2026-11-03 已换成与 `TrainTripWorld/mods/` 逐字节一致的 833 类版本
+> （6,217,687 字节）。上游 maven.ryanhcode.dev 的官方 2.0.5 只有 826 类、没有
+> `SubLevelRainColumn` / `SablePhysicsTuning` / `biome_projection`，**不能**替代。
+>
 > 2026-09-25 单仓更新：开源三件（Copycats+ / CCA / CDG）与 sable-companion 已改走
 > Maven 定点版本（见 `dimblend-experience/build.gradle`、`dimblend-blocks/build.gradle`），
-> 不再需要本地 jar；`libs/` 仅剩无公开 Maven 的 simurail / sable cui-modded / fluid /
-> createfirefightingadd / hardcore_nvg / ColdSweat。
-> 下表保留作运行时版本对账依据。
+> 不再需要本地 jar。
+
+#### 历史清单（2026-09-19 从实例复制，保留作运行时版本对账）
 
 2026-09-19 从实例 `E:\misc\TrainTripWorld\mods` 原样复制到 `./libs`（字节级一致，SHA-256 已核对）。
 CDG 1.3.15 除外：2026-09-20 起 B 板块对齐最新版，jar 由同级源码
@@ -1282,7 +1308,8 @@ CDG 1.3.15 除外：2026-09-20 起 B 板块对齐最新版，jar 由同级源码
 运行实例同步确认（2026-09-20 核实）：`E:\misc\TrainTripWorld\mods` 内已为
 `createdieselgenerators-1.21.1-1.3.15.jar`（与 `libs/` 同构建产物，`IEngine#getFuelThrottle`
 经 javap 确认存在）——B 板块编译基线与运行实例一致，无版本错配。
-`libs/` 整体不入库；新环境编译前按同名从实例 mods 目录复制回来（CDG 1.3.15 按上述来源）：
+`libs/` 当时整体不入库（**2026-11-03 已废弃该做法**，改为全仓唯一 `dimblend/libs/` 并入
+版本控制）；新环境编译前按同名从实例 mods 目录复制回来（CDG 1.3.15 按上述来源）：
 
 | jar | 模组 | 版本 |
 |---|---|---|
@@ -1295,8 +1322,9 @@ CDG 1.3.15 除外：2026-09-20 起 B 板块对齐最新版，jar 由同级源码
 | `fluid-2.0.1.jar` | Create: Fluid | 2.0.1（CurseForge 包，无公开 Maven；从运行实例 mods 目录原样复制，与实例一致） |
 | `hardcore_nvg-1.1.2-neoforge-1.21.1.jar` | Hardcore Night Vision Goggles | 1.1.2（MCreator 模组，无公开 Maven；2026-10-23 从正式包 `D:\Downloads\TrainTripWorld_1.21.1-NeoForge_21.1.249\mods` 原样复制——注意 dev 实例 `E:\misc\TrainTripWorld\mods` 历史装的是 basic_nvg（无限夜视版），已对齐换为 hardcore 版） |
 
-依赖形态：`compileOnly files(...)`（编译可见、不进 runtimeClasspath、不进 POM）；
-需要运行测试时按需把相关 jar 临时提升为 `localRuntime`。CDG 已固化为开关：
+依赖形态：`compileOnly files(...)`（编译可见、不进 runtimeClasspath、不进 POM）或
+`compileOnly "maven.modrinth:…"/"curse.maven:…"`；需要运行测试时按需把相关依赖临时提升为
+`localRuntime`。CDG 已固化为开关：
 `./gradlew :dimblend-experience:runGameTestServer -PwithCdg`（build.gradle 按 `withCdg` 属性加
 localRuntime，默认不加，dev 运行仍与实例对齐）。
 

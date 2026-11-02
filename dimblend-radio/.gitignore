@@ -39,5 +39,4 @@ run/
 repo/
 !**/src/**/repo/
 
-### Local compat runtime/compile jars (sable cui-modded：与 dimblend-experience/libs 同一份，不入库) ###
-libs/
+### Local compat jars: 本模块不再有 libs/ 目录（sable 统一放在 dimblend/libs/ 并入库） ###

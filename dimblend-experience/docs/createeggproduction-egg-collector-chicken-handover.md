@@ -197,8 +197,10 @@
 - 命令（必须显式 JDK 21，本机默认 JDK 11）：
   `JAVA_HOME="C:/Program Files/Java/jdk-21" ./gradlew :dimblend-experience:build`
 - 现状：编译 + 单测全绿（`:test` 26 个结果文件全过）。
-- worktree 缺 `libs/`（gitignore）时需从主工作区复制 3 个 jar：
-  `dimblend-experience/libs/{sable-neoforge-1.21.1-2.0.5_cui-modded,simurail-1.21.1-0.0.0-a+ecd2dd3,fluid-2.0.1}.jar`。
+- worktree/全新检出无需再复制任何 jar：2026-11-03 起依赖已收敛（有公开坐标的走
+  Maven，只有 simurail 与 sable cui-modded 两个 jar 留在入库的 `dimblend/libs/`），
+  干净检出直接 `./gradlew build` 即可。此条旧记录保留：`dimblend-experience/libs/`
+  目录已不存在。
 
 ### 7.3 不要做的事
 
