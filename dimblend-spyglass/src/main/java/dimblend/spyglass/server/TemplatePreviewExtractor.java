@@ -66,7 +66,14 @@ final class TemplatePreviewExtractor {
             if (!outline.predicted()) {
                 continue;
             }
-            EncodedStructureShape shape = preview(context, outline);
+            EncodedStructureShape shape;
+            try {
+                shape = preview(context, outline);
+            } catch (RuntimeException exception) {
+                // A malformed template must not take the whole scan down; the client keeps the
+                // wireframe for this structure.
+                shape = null;
+            }
             if (shape != null) {
                 shapes.add(shape);
             }
