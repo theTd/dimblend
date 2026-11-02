@@ -28,7 +28,9 @@ import net.neoforged.neoforge.common.Tags;
  *
  * <p>Global: keep half the piles (independent of blob {@code size}); of the
  * survivors, replace the whole pile with andesite half the time. Surface lane:
- * cancel any mineral pile that is not coal / copper / iron / gold / zinc.
+ * the "keep the original" branch turns any mineral pile that is not
+ * coal / copper / iron / gold / zinc into emerald ore instead (deepslate ground
+ * gets {@code deepslate_emerald_ore}), so every ore type takes part in the roll.
  * Gate rolls use a seed derived from world seed + origin + targets so the
  * worldgen {@link RandomSource} that shapes the blob is not consumed.
  */
@@ -36,6 +38,8 @@ public final class OrePileRules {
     private static final long GATE_SALT = 0x4F524550494C45L;
     private static final TagKey<Block> ZINC_ORES =
             TagKey.create(Registries.BLOCK, ResourceLocation.fromNamespaceAndPath("c", "ores/zinc"));
+    private static final TagKey<Block> DEEPSLATE_GROUND =
+            TagKey.create(Registries.BLOCK, ResourceLocation.fromNamespaceAndPath("c", "ores_in_ground/deepslate"));
 
     private OrePileRules() {
     }
@@ -63,17 +67,39 @@ public final class OrePileRules {
             return null;
         }
         boolean surface = BandLayout.isSurfaceOverworld(rotating.delegateForBlockX(pos.getX()));
-        if (surface && !isSurfaceAllowed(ore)) {
-            return Boolean.FALSE;
-        }
         RandomSource gate = gateRandom(level.getSeed(), pos, ore);
+        return switch (decide(surface, ore, gate)) {
+            case CANCEL -> Boolean.FALSE;
+            case ORIGINAL -> null;
+            case EMERALD -> placeEmerald(feature, ore, level, generator, random, pos);
+            case ANDESITE -> placeAndesite(feature, ore, level, generator, random, pos);
+        };
+    }
+
+    /** 门控掷骰的结果，单独成枚举以便在没有 Level 的单测里断言分支走向。 */
+    enum Outcome {
+        /** 整堆取消。 */
+        CANCEL,
+        /** 原样交给原版生成。 */
+        ORIGINAL,
+        /** 整堆换成安山岩。 */
+        ANDESITE,
+        /** 整堆换成绿宝石（仅地表 lane 的非五种矿）。 */
+        EMERALD
+    }
+
+    /**
+     * 两次门控掷骰的纯决策，不接触 Level：第一次 50% 取消；存活堆第二次 50% 决定
+     * 原样生成（地表 lane 的非五种矿在这里改走绿宝石分支）还是整堆换安山岩。
+     */
+    static Outcome decide(boolean surface, OreConfiguration ore, RandomSource gate) {
         if (gate.nextBoolean()) {
-            return Boolean.FALSE;
+            return Outcome.CANCEL;
         }
         if (!gate.nextBoolean()) {
-            return null;
+            return surface && !isSurfaceAllowed(ore) ? Outcome.EMERALD : Outcome.ORIGINAL;
         }
-        return placeAndesite(feature, ore, level, generator, random, pos);
+        return Outcome.ANDESITE;
     }
 
     static boolean isMineralPile(OreConfiguration ore) {
@@ -140,6 +166,25 @@ public final class OrePileRules {
         return new OreConfiguration(targets, ore.size, ore.discardChanceOnAirExposure);
     }
 
+    /** 逐个 target 选绿宝石变体：深板岩地层用深板岩绿宝石矿，其余用普通绿宝石矿。 */
+    static OreConfiguration toEmerald(OreConfiguration ore) {
+        List<OreConfiguration.TargetBlockState> targets = new ArrayList<>(ore.targetStates.size());
+        for (OreConfiguration.TargetBlockState target : ore.targetStates) {
+            targets.add(OreConfiguration.target(target.target, emeraldFor(target.state)));
+        }
+        return new OreConfiguration(targets, ore.size, ore.discardChanceOnAirExposure);
+    }
+
+    static BlockState emeraldFor(BlockState original) {
+        boolean deepslate = original.is(DEEPSLATE_GROUND) || isDeepslateId(original);
+        return (deepslate ? Blocks.DEEPSLATE_EMERALD_ORE : Blocks.EMERALD_ORE).defaultBlockState();
+    }
+
+    private static boolean isDeepslateId(BlockState original) {
+        ResourceLocation id = BuiltInRegistries.BLOCK.getKey(original.getBlock());
+        return id != null && id.getPath().startsWith("deepslate_");
+    }
+
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static boolean placeAndesite(
             Feature<?> feature,
@@ -150,5 +195,17 @@ public final class OrePileRules {
             BlockPos pos
     ) {
         return ((Feature) feature).place(toAndesite(ore), level, generator, random, pos);
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static boolean placeEmerald(
+            Feature<?> feature,
+            OreConfiguration ore,
+            WorldGenLevel level,
+            ChunkGenerator generator,
+            RandomSource random,
+            BlockPos pos
+    ) {
+        return ((Feature) feature).place(toEmerald(ore), level, generator, random, pos);
     }
 }
