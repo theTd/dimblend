@@ -19,6 +19,7 @@ import dev.ryanhcode.sable.companion.math.BoundingBox3ic;
 import dev.ryanhcode.sable.companion.math.Pose3d;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dimblend.experience.Config;
+import dimblend.experience.compat.sable.LavaRestCell;
 import dimblend.experience.compat.sable.VoidFitApplier;
 import dimblend.experience.compat.sable.VoidFitColumnTops;
 import dimblend.experience.compat.sable.VoidFitTracker;
@@ -358,6 +359,25 @@ public final class SableLavaMeltGameTests {
     }
 
     /**
+     * 保留岩浆的期望落点（2026-11-03 落点修正）：与生产同口径，柱顶格若是载具方块自身
+     * 中心格（{@link VoidFitVoxelizer#ownBlockCell}）则熔岩被抬到柱顶 +1、柱顶格驱逐成
+     * 空位；否则熔岩留在柱顶格。测试只调生产判定、不重写规则——落点一旦再变，这里跟着变，
+     * 断言不会悄悄测旧口径。
+     */
+    private static Map<BlockPos, BlockPos> expectedLavaRests(ServerLevel level, Assembled assembled,
+            List<BlockPos> columnTops) {
+        LongOpenHashSet ownCells = new LongOpenHashSet();
+        VoidFitVoxelizer.voxelize(level, assembled.subLevel(), ownCells);
+        Map<BlockPos, BlockPos> rests = new LinkedHashMap<>();
+        for (BlockPos top : columnTops) {
+            long rest = LavaRestCell.restCell(top.asLong(), ownCells.contains(top.asLong()), true)
+                    .orElse(top.asLong());
+            rests.put(top, BlockPos.of(rest));
+        }
+        return rests;
+    }
+
+    /**
      * 围封岩浆格：把非 target、非岩浆同伴的邻格（空气/ stray 流体）垫成黑曜石，阻断一切
      * 进出流体——自家岩浆不外流，并发用例的水也进不来（target 邻格是结构空位，流体
      * 本就进不去，跳过）。垫过的格子记入 {@code sealed}（去重）供 {@link #unseal} 清理。
@@ -481,11 +501,17 @@ public final class SableLavaMeltGameTests {
     }
 
     /**
-     * 柱顶浇淋（投影柱顶格内有岩浆）：石头熔穿 + 浇淋期间柱顶岩浆不被拟合驱逐。
+     * 柱顶浇淋（投影柱顶格内有岩浆）：石头熔穿 + 浇淋期间岩浆不被拟合驱逐。
      * （2026-10-26 起"安全柱顶"还要求正下方仍在 target 内；本例的单方块载具在 scale=1
      * 下保守覆盖 ≥2 格、柱顶天然安全。低于柱顶的投影格岩浆照常驱逐，由
      * {@link #fitKeepsColumnTopLavaOnlyWhileMeltEnabled} 专测。）
      * 掉落物会落进熔岩烧毁，故掉落断言挪到贴壳用例（那里熔穿格无岩浆）。
+     *
+     * <p>2026-11-03 落点修正：柱顶格若是载具方块自身中心格（亚格沉降把保守覆盖顶格翻到
+     * 方块格），熔岩会被抬到柱顶 +1、柱顶格驱逐成空位（{@code LavaRestCell}）。期望落点
+     * 用生产同口径 {@link #expectedLavaRests} 算，断言"熔岩在 rest 格、rest = 柱顶 + 1 时
+     * 柱顶是空位"，不再一律要求熔岩留在柱顶格。断言前同步跑一轮 verify refit，不依赖
+     * 拟合调度节拍。</p>
      */
     @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_lava_melt_basic", timeoutTicks = 24000)
     public static void lavaMeltsStoneBlockAndKeepsLava(GameTestHelper helper) {
@@ -502,10 +528,38 @@ public final class SableLavaMeltGameTests {
         awaitFitted(helper, level, assembled, cleanup, () -> {
             try {
                 BlockPos cell = projectedCell(assembled);
+                VoidFitTracker tracker = VoidFitTracker.of(level.dimension());
                 VoidFitTracker.VehicleFit fit = trackedFit(helper, level, assembled);
                 helper.assertTrue(level.getBlockState(cell).is(Blocks.STRUCTURE_VOID),
                         "precondition: projected cell must be fitted");
                 List<BlockPos> lavaCells = placeLavaAtColumnTops(helper, level, fit, sealed);
+                // 落点变了：围封垫的是"熔岩周围一圈"，落点格若被垫成黑曜石，腾挪会被真实
+                // 方块挡住、熔岩只能被驱逐——先撤掉落点格上的围封（那是本用例自己垫的）
+                Map<BlockPos, BlockPos> rests = expectedLavaRests(level, assembled, lavaCells);
+                for (BlockPos rest : rests.values()) {
+                    if (lavaCells.contains(rest) || !sealed.remove(rest)) {
+                        continue;
+                    }
+                    if (level.getBlockState(rest).is(Blocks.OBSIDIAN)) {
+                        level.setBlockAndUpdate(rest, Blocks.AIR.defaultBlockState());
+                    }
+                }
+                // 同一位姿上同步跑一轮 verify refit（顺带清掉被浇淋覆盖的 materialized 账目），
+                // 让保留/抬升判定在本回调内定型
+                helper.assertTrue(VoidFitApplier.refit(level, tracker, assembled.subLevel(), true),
+                        "verify refit must complete after pouring lava");
+                for (BlockPos top : lavaCells) {
+                    BlockPos rest = rests.get(top);
+                    helper.assertTrue(level.getFluidState(rest).is(FluidTags.LAVA),
+                            "retained lava must sit at its rest cell but was "
+                                    + level.getBlockState(rest) + " at " + rest.toShortString()
+                                    + " (columnTop=" + top.toShortString() + ")");
+                    if (!rest.equals(top)) {
+                        helper.assertTrue(level.getBlockState(top).is(Blocks.STRUCTURE_VOID),
+                                "column top under a raised lava must be evicted to structure_void but was "
+                                        + level.getBlockState(top) + " at " + top.toShortString());
+                    }
+                }
                 helper.runAfterDelay(15, () -> {
                     if (!plotState(level, assembled).is(Blocks.STONE)) {
                         failAfter(helper, cleanup,
@@ -514,15 +568,7 @@ public final class SableLavaMeltGameTests {
                         return;
                     }
                     pollUntilMolten(helper, level, assembled, 40, () -> {
-                        try {
-                            for (BlockPos top : lavaCells) {
-                                helper.assertTrue(level.getFluidState(top).is(FluidTags.LAVA),
-                                        "column-top lava must not be evicted by the fit while melt is enabled but was "
-                                                + level.getBlockState(top) + " at " + top.toShortString());
-                            }
-                        } finally {
-                            cleanup.run();
-                        }
+                        cleanup.run();
                         helper.succeed();
                     }, cleanup);
                 });
@@ -702,6 +748,11 @@ public final class SableLavaMeltGameTests {
      * {@link #pickPourPair}）读到的 target 与第二次 refit 同 tick/同一位姿——套件并发
      * 载具增多后，就绪门只钉锚点格，全 target 仍可能在上次调度 refit 后微移，浇淋格
      * 脱靶成孤儿岩浆（HANDOFF §3 R6 同型）。</p>
+     *
+     * <p>2026-11-03 落点修正：柱顶格若是载具方块自身中心格（亚格沉降把保守覆盖顶格翻到
+     * 方块格），熔岩被抬到柱顶 +1、柱顶格驱逐成空位（{@code LavaRestCell}）；否则留在
+     * 柱顶格。期望落点用生产同口径 {@link #expectedLavaRests} 算，浇淋对的围封把落点格
+     * 一起跳过（不然抬升被本用例自己垫的黑曜石挡住）。</p>
      */
     @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_lava_melt_fit", timeoutTicks = 24000)
     public static void fitKeepsColumnTopLavaOnlyWhileMeltEnabled(GameTestHelper helper) {
@@ -728,7 +779,10 @@ public final class SableLavaMeltGameTests {
                 helper.assertTrue(VoidFitApplier.refit(level, tracker, assembled.subLevel(), true),
                         "pre-refit must complete with melt enabled");
                 PourPair pair = pickPourPair(helper, level, fit);
-                Set<BlockPos> pairCells = Set.of(pair.top(), pair.belowTop());
+                // 落点格不垫围封：柱顶格是方块自身格时熔岩要从柱顶抬到这里
+                BlockPos lavaRest = expectedLavaRests(level, assembled, List.of(pair.top())).get(pair.top());
+                Set<BlockPos> pairCells = new LinkedHashSet<>(List.of(pair.top(), pair.belowTop()));
+                pairCells.add(lavaRest);
                 sealAroundLava(level, fit, pair.top(), pairCells, sealed);
                 sealAroundLava(level, fit, pair.belowTop(), pairCells, sealed);
                 level.setBlockAndUpdate(pair.top(), Blocks.LAVA.defaultBlockState());
@@ -738,8 +792,15 @@ public final class SableLavaMeltGameTests {
                         "verify refit must complete with melt enabled");
                 helper.assertTrue(level.getBlockState(pair.belowTop()).is(Blocks.STRUCTURE_VOID),
                         "below-top lava must be evicted while melt is enabled");
-                helper.assertTrue(level.getFluidState(pair.top()).is(FluidTags.LAVA),
-                        "column-top lava must be kept while melt is enabled");
+                helper.assertTrue(level.getFluidState(lavaRest).is(FluidTags.LAVA),
+                        "retained lava must sit at its rest cell while melt is enabled but was "
+                                + level.getBlockState(lavaRest) + " at " + lavaRest.toShortString()
+                                + " (columnTop=" + pair.top().toShortString() + ")");
+                if (!lavaRest.equals(pair.top())) {
+                    helper.assertTrue(level.getBlockState(pair.top()).is(Blocks.STRUCTURE_VOID),
+                            "column top under a raised lava must be evicted to structure_void but was "
+                                    + level.getBlockState(pair.top()) + " at " + pair.top().toShortString());
+                }
                 helper.assertTrue(plotState(level, assembled).is(Blocks.OBSIDIAN),
                         "obsidian must survive phase one");
 
