@@ -47,6 +47,9 @@ import java.util.function.IntFunction;
  *       block. One shared block would be a cross-shape junction whose two track axes
  *       sit at different heights; two plain turnouts are each a known-good straight
  *       block with a curve attached.</li>
+ *   <li><b>Two stone-brick buffer stops, added 2026-11-02.</b> The picture has no buffer
+ *       stops; the user asked for one at each siding's dead end, fireplace-shaped with the
+ *       top open. They fill the two columns the hall keeps west of the rails.</li>
  * </ul>
  *
  * <p><b>Platform material banding.</b> The picture's cobble/stone-brick split is
@@ -70,13 +73,27 @@ public final class StationDepotGeometry {
     public static final int DECK_DY = -1;
     /** Deck columns at least this far from the centre are stone bricks. */
     public static final int BRICK_OUTER_DZ = 11;
-    /** Chamber the depot carves, in block X relative to the boundary column. */
-    public static final int CAVERN_MIN_DX = -SIDING_LENGTH / 2 - 11;
     /**
-     * Covers both curve landing columns, so the hall reaches the further merge. Derived
-     * from the curve layout rather than repeated, so the two can never drift apart.
+     * Chamber west edge. The two sidings dead-end at {@link #SIDING_WEST_DX}, so this
+     * leaves one column of open deck behind them (the buffer stop's mouth) plus the
+     * column its brick back wall stands on. Before 2026-11-02 it reached
+     * {@code SIDING_WEST_DX - 11}, i.e. eleven blocks of empty platform nobody wanted.
      */
-    public static final int CAVERN_MAX_DX = StationDepotCurves.NEGATIVE_MERGE_DX;
+    public static final int CAVERN_MIN_DX = SIDING_WEST_DX - 2;
+    /**
+     * Covers both curve landing columns, so the hall reaches the further merge, plus three
+     * columns of clearance east of it. One column was added on 2026-11-02 because the cars
+     * could not drive out of the hall with the wall one block off the last merge; the user
+     * asked for two more the same day, after trying it in game. Derived from the curve
+     * layout rather than repeated, so the two can never drift apart.
+     */
+    public static final int CAVERN_MAX_DX = StationDepotCurves.NEGATIVE_MERGE_DX + 3;
+    /** Column the two dead ends stop at; the buffer stop's wings stand here. */
+    public static final int BUFFER_MOUTH_DX = CAVERN_MIN_DX + 1;
+    /** Column the buffer stop's back wall stands on: the chamber's west edge. */
+    public static final int BUFFER_BACK_DX = CAVERN_MIN_DX;
+    /** Buffer stop height above the rails. The top stays open, like a fireplace. */
+    public static final int BUFFER_HEIGHT = 3;
     /**
      * Chamber height above the track floor. It stays well below the corridor vault
      * apex ({@link OakTrackCorridor#VAULT_APEX_DY} = 17) so the depot reads as a hall
@@ -106,7 +123,9 @@ public final class StationDepotGeometry {
         /** Workbench standing on the deck. */
         WORKBENCH,
         /** Lantern standing on a corner pillar. */
-        LANTERN
+        LANTERN,
+        /** Stone-brick buffer stop at a siding's dead end. */
+        BUFFER
     }
 
     /** One block the worldgen pass writes. {@code z} is absolute; {@code dy} is relative to the track floor. */
@@ -220,7 +239,7 @@ public final class StationDepotGeometry {
 
     /**
      * Every boundary column whose depot writes into this chunk's X span, ascending. A
-     * depot is 82 blocks wide and a chunk is 16, so the caller must not assume one hit;
+     * depot is 76 blocks wide and a chunk is 16, so the caller must not assume one hit;
      * with {@link BandIndex#DEFAULT_BAND_SIZE} it is at most one, with a small band two.
      *
      * <p>Enumerating the boundaries whose <b>write span overlaps</b> the chunk is the
@@ -293,6 +312,7 @@ public final class StationDepotGeometry {
         List<Cell> cells = new ArrayList<>();
         addDeck(cells, boundaryX);
         addSidings(cells, boundaryX);
+        addBuffers(cells, boundaryX);
         addFurniture(cells, boundaryX);
         return cells;
     }
@@ -323,6 +343,28 @@ public final class StationDepotGeometry {
                 OakTrackCorridor.CORRIDOR_Z, Kind.TRACK_XO));
         cells.add(new Cell(boundaryX + StationDepotCurves.NEGATIVE_MERGE_DX, 0,
                 OakTrackCorridor.CORRIDOR_Z, Kind.TRACK_XO));
+    }
+
+    /**
+     * A stone-brick buffer stop at each siding's dead end: a back wall three wide, two
+     * one-block wings one column nearer the track, and the top left open — the fireplace
+     * shape the user drew. The mouth (the middle column of the wings) is the one block of
+     * open deck behind the rails.
+     */
+    private static void addBuffers(List<Cell> cells, int boundaryX) {
+        for (int side : new int[] {-1, 1}) {
+            int z = side * SIDING_DZ;
+            for (int dz = -1; dz <= 1; dz++) {
+                for (int dy = 0; dy < BUFFER_HEIGHT; dy++) {
+                    cells.add(new Cell(boundaryX + BUFFER_BACK_DX, dy, z + dz, Kind.BUFFER));
+                }
+            }
+            for (int dz : new int[] {-1, 1}) {
+                for (int dy = 0; dy < BUFFER_HEIGHT; dy++) {
+                    cells.add(new Cell(boundaryX + BUFFER_MOUTH_DX, dy, z + dz, Kind.BUFFER));
+                }
+            }
+        }
     }
 
     private static void addFurniture(List<Cell> cells, int boundaryX) {

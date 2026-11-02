@@ -28,7 +28,7 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
  *
  * <p><b>Everything is clipped to this chunk first.</b> {@code setBlockState} does not
  * reject a coordinate outside the chunk: it wraps it with {@code & 15} and writes into
- * an unrelated column of the same chunk. A depot is 82 blocks wide and 33 deep, so
+ * an unrelated column of the same chunk. A depot is 76 blocks wide and 33 deep, so
  * chunks far from the boundary column still reach this pass; without the clip they
  * stamp a wrapped copy of the deck onto every Z chunk, and a chunk on the depot's west
  * edge (which contains no boundary column at all) is skipped entirely. Every write
@@ -116,6 +116,7 @@ public final class StationDepot {
                 case COBBLE -> cobble;
                 case BRICK -> brick;
                 case PILLAR -> brick;
+                case BUFFER -> brick;
                 case TRACK_XO -> track.defaultBlockState()
                         .setValue(TrackBlock.SHAPE, TrackShape.XO)
                         .setValue(TrackBlock.HAS_BE, false);

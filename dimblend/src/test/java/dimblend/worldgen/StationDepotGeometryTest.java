@@ -2,8 +2,10 @@ package dimblend.worldgen;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dimblend.api.StationDepotCurves;
 import java.util.List;
 import java.util.function.IntFunction;
 import org.junit.jupiter.api.Test;
@@ -247,6 +249,61 @@ class StationDepotGeometryTest {
         int previous = boundary - BAND;
         assertTrue(StationDepotGeometry.maxBlockX(boundary) < next, "cannot touch X=4096");
         assertTrue(StationDepotGeometry.minBlockX(boundary) > previous, "cannot touch X=0");
+    }
+
+    /**
+     * 2026-11-02. The hall used to run eleven blocks past the dead ends, and to stop one
+     * column short of the further merge. The user asked for one open column behind each
+     * buffer stop, then for clearance east of the merge: one column, and two more after
+     * trying it in game, because the cars still could not drive out.
+     */
+    @Test
+    void theDeadEndsKeepOneOpenColumnAndTheEastEndClearsTheLastMerge() {
+        assertEquals(StationDepotGeometry.SIDING_WEST_DX - 1, StationDepotGeometry.BUFFER_MOUTH_DX,
+                "one open column sits between the rail end and the buffer stop");
+        assertEquals(StationDepotGeometry.SIDING_WEST_DX - 2, StationDepotGeometry.BUFFER_BACK_DX,
+                "the buffer stop's back wall stands on the chamber's west edge");
+        assertFalse(StationDepotGeometry.carves(B, B + StationDepotGeometry.SIDING_WEST_DX - 3, 0, 0),
+                "nothing is carved further west than the back wall");
+        assertEquals(StationDepotCurves.NEGATIVE_MERGE_DX + 3, StationDepotGeometry.CAVERN_MAX_DX,
+                "the east edge clears the further merge by three columns");
+        assertTrue(StationDepotGeometry.carves(B, B + StationDepotCurves.NEGATIVE_MERGE_DX + 3, 0, 0));
+        assertFalse(StationDepotGeometry.carves(B, B + StationDepotGeometry.CAVERN_MAX_DX + 1, 0, 0));
+        assertEquals(B + StationDepotGeometry.CAVERN_MAX_DX + 1, StationDepotGeometry.writeMaxBlockX(B),
+                "the shell wall stands one column past the new east edge");
+        assertEquals(B + StationDepotGeometry.CAVERN_MIN_DX - 1, StationDepotGeometry.writeMinBlockX(B));
+    }
+
+    @Test
+    void eachDeadEndGetsAFireplaceShapedBufferStop() {
+        List<StationDepotGeometry.Cell> cells = StationDepotGeometry.placedCells(B);
+        int back = B + StationDepotGeometry.BUFFER_BACK_DX;
+        int mouth = B + StationDepotGeometry.BUFFER_MOUTH_DX;
+        for (int side : new int[] {-1, 1}) {
+            int z = side * StationDepotGeometry.SIDING_DZ;
+            for (int dy = 0; dy < StationDepotGeometry.BUFFER_HEIGHT; dy++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    assertEquals(StationDepotGeometry.Kind.BUFFER, kindAt(cells, back, dy, z + dz),
+                            "back wall side=" + side + " dy=" + dy + " dz=" + dz);
+                    assertEquals(dz == 0 ? null : StationDepotGeometry.Kind.BUFFER,
+                            kindAt(cells, mouth, dy, z + dz),
+                            "wings leave the mouth open, side=" + side + " dy=" + dy + " dz=" + dz);
+                }
+                assertNull(kindAt(cells, back, StationDepotGeometry.BUFFER_HEIGHT, z),
+                        "the top stays open, side=" + side + " dy=" + StationDepotGeometry.BUFFER_HEIGHT);
+            }
+        }
+        assertEquals(2 * (3 * 3 + 2 * 3), count(cells, StationDepotGeometry.Kind.BUFFER),
+                "two buffer stops, each a 3x3 back wall plus four wing columns");
+    }
+
+    private static StationDepotGeometry.Kind kindAt(
+            List<StationDepotGeometry.Cell> cells, int x, int dy, int z) {
+        return cells.stream()
+                .filter(cell -> cell.x() == x && cell.dy() == dy && cell.z() == z)
+                .map(StationDepotGeometry.Cell::kind)
+                .findFirst()
+                .orElse(null);
     }
 
     @Test

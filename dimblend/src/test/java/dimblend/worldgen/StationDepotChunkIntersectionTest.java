@@ -49,22 +49,22 @@ class StationDepotChunkIntersectionTest {
     }
 
     /**
-     * B — chunk 509 spans X 8144..8159 and lies west of the boundary column. The
-     * depot writes from B-36 = 8156, so this chunk holds the west shell column and
-     * the first three carved columns of the hall. The old enumeration only started at
+     * B — chunk 510 spans X 8160..8175 and lies west of the boundary column. The
+     * depot writes from B-27 = 8165, so this chunk holds the west shell column and
+     * the first carved columns of the hall. The old enumeration only started at
      * the first boundary at or after the chunk's west edge, so this chunk built
      * nothing: the west half of the hall, both buffers and the west side of the merge
      * were missing.
      */
     @Test
     void aChunkWestOfTheBoundaryBelongsToTheDepot() {
-        int minX = 509 * 16;
+        int minX = 510 * 16;
         int maxX = minX + 15;
         assertTrue(StationDepotGeometry.writeMinBlockX(B) <= maxX,
                 "the depot's write span must reach west of the boundary");
         assertTrue(StationDepotGeometry.boundaryIntersectsChunkX(B, minX, maxX));
         assertEquals(List.of(B), StationDepotGeometry.boundariesTouchingChunkX(BAND, minX, maxX),
-                "chunk 509 must process boundary 8192, and only it");
+                "chunk 510 must process boundary 8192, and only it");
     }
 
     /**
@@ -85,21 +85,21 @@ class StationDepotChunkIntersectionTest {
     }
 
     /**
-     * Every chunk column the depot's 82-wide write span overlaps must process it:
-     * 509..514 for B=8192. This is the direct pin for "the west half and the east
+     * Every chunk column the depot's 76-wide write span overlaps must process it:
+     * 510..515 for B=8192. This is the direct pin for "the west half and the east
      * merge are missing", because exactly one of those six ran before the fix.
      */
     @Test
     void everyChunkColumnTheDepotOverlapsProcessesIt() {
-        for (int chunkX = 509; chunkX <= 514; chunkX++) {
+        for (int chunkX = 510; chunkX <= 515; chunkX++) {
             int minX = chunkX * 16;
             assertTrue(StationDepotGeometry.boundariesTouchingChunkX(BAND, minX, minX + 15).contains(B),
                     "chunk " + chunkX + ' ' + minX + ".." + (minX + 15) + " is under the depot");
         }
-        assertFalse(StationDepotGeometry.boundariesTouchingChunkX(BAND, 508 * 16, 508 * 16 + 15).contains(B),
-                "chunk 508 ends at 8143, 12 blocks west of the shell at 8156");
-        assertFalse(StationDepotGeometry.boundariesTouchingChunkX(BAND, 515 * 16, 515 * 16 + 15).contains(B),
-                "chunk 515 starts at 8240, 3 blocks east of the shell at 8237");
+        assertFalse(StationDepotGeometry.boundariesTouchingChunkX(BAND, 509 * 16, 509 * 16 + 15).contains(B),
+                "chunk 509 ends at 8159, 6 blocks west of the shell at 8165");
+        assertFalse(StationDepotGeometry.boundariesTouchingChunkX(BAND, 516 * 16, 516 * 16 + 15).contains(B),
+                "chunk 516 starts at 8256, 16 blocks east of the shell at 8240");
     }
 
     /**
