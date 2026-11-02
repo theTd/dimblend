@@ -53,4 +53,29 @@ class ChassisSiteClearanceTest {
         assertTrue(ChassisSite.isIgnorable("minecraft:stone", false, true),
                 "our own built cells are expected, not obstacles");
     }
+
+    /**
+     * 2026-11-02. A freshly generated depot built no car: {@code built=0 assembled=0
+     * attempts=8}. A neighbouring chunk's oak tree left leaves at {@code (8175, 64, 13)} and
+     * a lush-caves patch left moss carpets on the deck, both inside the car's footprint.
+     * A depot clears that debris; one leaf may not cost the whole car.
+     */
+    @Test
+    void worldgenDebrisIsNotAnObstructionForADepot() {
+        assertTrue(ChassisSite.isDepotDebris("minecraft:oak_leaves", false, true),
+                "leaves are in replaceable_by_trees");
+        assertFalse(ChassisSite.isDepotDebris("minecraft:oak_leaves", false, false),
+                "and the tag is the only thing that excuses them");
+        assertTrue(ChassisSite.isDepotDebris("minecraft:moss_carpet", false, false),
+                "moss carpet is in neither list, yet a lush-caves patch drops it on the deck");
+        assertTrue(ChassisSite.isDepotDebris("minecraft:short_grass", true, false),
+                "grass declares canBeReplaced");
+    }
+
+    @Test
+    void aPlayersBlockIsStillAnObstructionForADepot() {
+        assertFalse(ChassisSite.isDepotDebris("minecraft:chest", false, false));
+        assertFalse(ChassisSite.isDepotDebris("minecraft:stone", false, false));
+        assertFalse(ChassisSite.isDepotDebris("create:andesite_casing", false, false));
+    }
 }

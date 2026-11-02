@@ -1,6 +1,7 @@
 package dimblend.experience.chassis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dimblend.api.StationDepotCurves;
@@ -100,6 +101,22 @@ class StationDepotSitesTest {
         assertEquals(32, power.getX());
         assertEquals(StationDepotSites.CHASSIS_Y, power.getY());
         assertEquals(0, power.getZ());
+    }
+
+    /**
+     * 2026-11-02. Two depots in one world deleted each other's switch machine for ever: 1192
+     * block changes inside one second, then Create's {@code create:sync_rail_graph} payload
+     * threw {@code ConcurrentModificationException} while the Netty thread encoded it, and
+     * the player was dropped out of the world. Retirement is now scoped to the hall one
+     * boundary owns.
+     */
+    @Test
+    void aDepotOnlyRetiresItsOwnSwitchMachine() {
+        assertTrue(StationDepotAssembly.isMachineOf(8192, StationDepotSwitch.machine(8192)));
+        assertTrue(StationDepotAssembly.isMachineOf(2048, StationDepotSwitch.machine(2048)));
+        assertFalse(StationDepotAssembly.isMachineOf(8192, StationDepotSwitch.machine(2048)),
+                "the neighbouring depot's machine is that depot's business");
+        assertFalse(StationDepotAssembly.isMachineOf(2048, StationDepotSwitch.machine(8192)));
     }
 
     @Test

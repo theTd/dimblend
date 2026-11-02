@@ -106,7 +106,7 @@ public final class StationDepotAssembly {
             return;
         }
         BlockPos machine = StationDepotSwitch.machine(boundaryX);
-        retireStaleMachines(level, data, machine);
+        retireStaleMachines(level, data, boundaryX, machine);
         if (data.switchFitted(machine)) {
             return;
         }
@@ -133,15 +133,27 @@ public final class StationDepotAssembly {
      * carries the old block, which would leave two machines standing at the junction — one
      * of them connected to nothing. Only positions this depot recorded are touched, so a
      * switch a player placed by hand is never removed.
+     *
+     * <p><b>Why it is scoped to one boundary.</b> A world can hold several depots at once
+     * (2048, 8192, …), and every depot records its own machine in one shared list. The first
+     * version of this method treated every recorded machine as its own stale one, so two
+     * depots deleted each other's machine for ever: each fit re-placed its own, the other
+     * deleted it again, and 1192 blocks were removed and re-placed in one second. That churn
+     * mutated Create's rail graph while the Netty thread was encoding
+     * {@code create:sync_rail_graph}, which threw {@code ConcurrentModificationException}
+     * and dropped the player out of the world.
      */
     private static void retireStaleMachines(ServerLevel level, StationDepotAssemblyData data,
-            BlockPos current) {
+            int boundaryX, BlockPos current) {
         var switchBlock = BuiltInRegistries.BLOCK.getOptional(StationDepotSwitch.SWITCH_ID).orElse(null);
         if (switchBlock == null) {
             return;
         }
         for (BlockPos stale : data.switchMachines()) {
             if (stale.equals(current)) {
+                continue;
+            }
+            if (!isMachineOf(boundaryX, stale)) {
                 continue;
             }
             if (level.getBlockState(stale).is(switchBlock)) {
@@ -151,6 +163,16 @@ public final class StationDepotAssembly {
             }
             data.forgetSwitch(stale);
         }
+    }
+
+    /**
+     * Whether {@code pos} lies inside the hall this boundary owns, i.e. whether this depot
+     * could have put a machine there. Depots are {@code BAND_SIZE} blocks apart and a hall is
+     * under a hundred wide, so no other depot's machine can answer true.
+     */
+    static boolean isMachineOf(int boundaryX, BlockPos pos) {
+        int dx = pos.getX() - boundaryX;
+        return dx >= StationDepotSites.CAVERN_MIN_DX && dx <= StationDepotSites.CAVERN_MAX_DX;
     }
 
     /**
@@ -202,7 +224,12 @@ public final class StationDepotAssembly {
     }
 
     private static boolean build(ServerLevel level, StationDepotAssemblyData.Site site) {
-        if (!ChassisSite.clear(level, site.center, Map.of(), false)) {
+        if (!ChassisSite.clear(level, site.center, Map.of(), false, true)) {
+            BlockPos blocker = ChassisSite.firstObstruction(level, site.center);
+            DimBlend.LOGGER.warn("Station depot chassis at {} is blocked{}", site.center,
+                    blocker == null
+                            ? " (a sub-level occupies the site, or its chunks are not loaded)"
+                            : " by " + level.getBlockState(blocker) + " at " + blocker);
             return failed(site);
         }
         Map<BlockPos, BlockState> placed = new HashMap<>();
@@ -227,7 +254,7 @@ public final class StationDepotAssembly {
         if (placed.isEmpty()) {
             return failed(site);
         }
-        if (!ChassisSite.clear(level, site.center, placed, false)) {
+        if (!ChassisSite.clear(level, site.center, placed, false, true)) {
             return failed(site);
         }
         var centre = site.center;
