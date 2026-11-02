@@ -177,17 +177,24 @@ public final class SpyglassShapeRenderer {
         double farthest = 0.0;
         StructureShape request = null;
         double requestDistance = Double.POSITIVE_INFINITY;
-        // Predicted structures: no mesh exists or ever will (their chunks were never generated), so
-        // they are marked with line boxes instead of block geometry.
+        // Predicted structures: a template preview gives them real block geometry; without one (or
+        // while its mesh is still being built) they keep the line-box fallback.
         for (int i = 0; i < structures.size(); i++) {
             StructureOutline outline = structures.get(i);
+            Optional<StructureShape> found = SpyglassShapeCache.shapeFor(outline);
             if (outline.predicted()) {
-                if (CULLING.isVisible(outline.bounds())) {
+                UploadedShapeMesh previewMesh = found.isEmpty()
+                        ? null
+                        : ShapeMeshStore.peek(found.get().key());
+                boolean previewReady = previewMesh != null
+                        && !previewMesh.isEmpty()
+                        && CULLING.isVisible(previewMesh.bounds());
+                if (PreviewSelection.forPredicted(found.isPresent(), previewReady)
+                                == PreviewSelection.Choice.WIREFRAME
+                        && CULLING.isVisible(outline.bounds())) {
                     MARKED.add(outline);
                 }
-                continue;
             }
-            Optional<StructureShape> found = SpyglassShapeCache.shapeFor(outline);
             if (found.isEmpty()) {
                 continue;
             }
