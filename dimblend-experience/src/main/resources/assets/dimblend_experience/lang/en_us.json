@@ -267,5 +267,16 @@
   "message.dimblend_experience.chassis.choose": "Right-click to choose a chassis type",
 	"message.dimblend_experience.depth_curse.max_health": "Long journey: max health -25%",
 	"effect.dimblend_experience.cursed_poison": "Cursed Poison",
-	"message.dimblend_experience.item_drain.nether_too_hot": "It is too hot here"
+	"message.dimblend_experience.item_drain.nether_too_hot": "It is too hot here",
+	"screen.dimblend_experience.tuning.section_spyglass": "Spyglass ▸",
+	"screen.dimblend_experience.spyglass_sources.title": "Spyglass Sources",
+	"screen.dimblend_experience.spyglass_sources.hint": "Turning a mod off stops its buildings from being marked. Vanilla structures always stay on.",
+	"screen.dimblend_experience.spyglass_sources.empty": "No switchable sources in the current datapack",
+	"screen.dimblend_experience.spyglass_sources.readonly": "Administrator permission is required to change this",
+	"screen.dimblend_experience.spyglass_sources.done": "Done",
+	"screen.dimblend_experience.spyglass_sources.status.no_permission": "No permission",
+	"screen.dimblend_experience.spyglass_sources.status.saved": "Saved",
+	"screen.dimblend_experience.spyglass_sources.status.save_failed": "Save failed",
+	"screen.dimblend_experience.spyglass_sources.status.invalid_source": "Invalid source",
+	"screen.dimblend_experience.spyglass_sources.status.unknown_source": "Unknown source"
 }

@@ -2,6 +2,7 @@ package dimblend.spyglass.net;
 
 import dimblend.spyglass.DimBlendSpyglass;
 import dimblend.spyglass.server.SpyglassServerService;
+import dimblend.spyglass.server.SpyglassSourceService;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -41,6 +42,22 @@ public final class SpyglassNetwork {
                 (payload, context) -> {
                     if (context.player() instanceof ServerPlayer player) {
                         SpyglassServerService.acceptReveal(player, payload.blocks());
+                    }
+                });
+        registrar.playToClient(
+                SpyglassSourcesPayload.TYPE,
+                SpyglassSourcesPayload.STREAM_CODEC,
+                (payload, context) -> SpyglassSourceHandlers.handle(payload));
+        registrar.playToServer(
+                SpyglassSourceEditPayload.TYPE,
+                SpyglassSourceEditPayload.STREAM_CODEC,
+                (payload, context) -> {
+                    if (context.player() instanceof ServerPlayer player) {
+                        if (payload.open()) {
+                            SpyglassSourceService.open(player);
+                        } else {
+                            SpyglassSourceService.edit(player, payload.namespace(), payload.enabled());
+                        }
                     }
                 });
     }

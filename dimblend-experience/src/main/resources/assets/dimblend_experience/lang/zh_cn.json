@@ -267,5 +267,16 @@
   "message.dimblend_experience.chassis.choose": "右键选择底盘类型",
 	"message.dimblend_experience.depth_curse.max_health": "远行 生命值上限 -25%",
 	"effect.dimblend_experience.cursed_poison": "诅咒中毒",
-	"message.dimblend_experience.item_drain.nether_too_hot": "这里太热了"
+	"message.dimblend_experience.item_drain.nether_too_hot": "这里太热了",
+	"screen.dimblend_experience.tuning.section_spyglass": "望远镜 ▸",
+	"screen.dimblend_experience.spyglass_sources.title": "望远镜来源",
+	"screen.dimblend_experience.spyglass_sources.hint": "按模组关闭后，该模组提供的建筑不再被标记。Minecraft 原版建筑始终开启。",
+	"screen.dimblend_experience.spyglass_sources.empty": "当前数据包没有可切换的来源",
+	"screen.dimblend_experience.spyglass_sources.readonly": "需要管理员权限才能修改",
+	"screen.dimblend_experience.spyglass_sources.done": "完成",
+	"screen.dimblend_experience.spyglass_sources.status.no_permission": "没有权限",
+	"screen.dimblend_experience.spyglass_sources.status.saved": "已保存",
+	"screen.dimblend_experience.spyglass_sources.status.save_failed": "保存失败",
+	"screen.dimblend_experience.spyglass_sources.status.invalid_source": "来源无效",
+	"screen.dimblend_experience.spyglass_sources.status.unknown_source": "来源不存在"
 }

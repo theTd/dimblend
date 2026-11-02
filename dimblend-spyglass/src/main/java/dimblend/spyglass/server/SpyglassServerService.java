@@ -113,6 +113,18 @@ public final class SpyglassServerService {
                 player.getUUID(), Mth.clamp(blocks, 0, (int) SpyglassDistance.MAX_BLOCKS));
     }
 
+    /**
+     * Forces every scoping player's next poll to rebuild the snapshot. Called by the source panel
+     * and by a config reload; it never interrupts a scan that is already running — that result is
+     * dropped by the sequence check when the new request finishes.
+     */
+    public static void invalidateAll() {
+        Session session = current;
+        if (session != null) {
+            session.invalidateAll();
+        }
+    }
+
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
         if (current != null && current.server == event.getServer()) {
@@ -246,10 +258,11 @@ public final class SpyglassServerService {
                 double revealBlocks) {
             ServerLevel level = player.serverLevel();
             Registry<Structure> registry = level.registryAccess().registryOrThrow(Registries.STRUCTURE);
+            Set<String> disabled = SpyglassServerSettings.disabledSources();
             List<StructureTarget> targets = new ArrayList<>();
             for (Holder<Structure> holder : registry.getTagOrEmpty(SpyglassStructureTags.VISIBLE)) {
                 ResourceLocation id = registry.getKey(holder.value());
-                if (id != null) {
+                if (id != null && SpyglassSourceFilter.keep(id, disabled::contains)) {
                     targets.add(new StructureTarget(id, holder));
                 }
             }
@@ -590,6 +603,12 @@ public final class SpyglassServerService {
             DimBlendSpyglass.LOGGER.warn(message, withFailure);
         }
 
+        private void invalidateAll() {
+            for (PlayerState state : this.states.values()) {
+                state.invalidate();
+            }
+        }
+
         private void close() {
             this.closed = true;
             for (PlayerState state : this.states.values()) {
@@ -622,6 +641,14 @@ public final class SpyglassServerService {
 
         private PlayerState(UUID playerId) {
             this.playerId = playerId;
+        }
+
+        /** Makes the next poll rebuild the snapshot; a scan that is already running is not touched. */
+        private void invalidate() {
+            this.requestPosition = null;
+            this.requestDimension = null;
+            this.requestNanos = 0L;
+            this.failedNanos = 0L;
         }
 
         /** Forces the next scoping tick to build a fresh snapshot. */

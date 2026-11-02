@@ -13,6 +13,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.settings.KeyConflictContext;
@@ -32,7 +33,17 @@ public final class TuningClient {
 
     @SubscribeEvent
     public static void setup(FMLClientSetupEvent event) {
-        event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(TuningClient::tick));
+        event.enqueueWork(() -> {
+            NeoForge.EVENT_BUS.addListener(TuningClient::tick);
+            NeoForge.EVENT_BUS.addListener(TuningClient::onLoggingOut);
+        });
+    }
+
+    /** Drops the source-panel callback so a disconnect cannot leave a dead Screen referenced. */
+    private static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        if (SpyglassTuningBridge.isLoaded()) {
+            SpyglassTuningBridge.clearCatalogReceiver();
+        }
     }
 
     private static void tick(ClientTickEvent.Post event) {
