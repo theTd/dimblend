@@ -25,6 +25,6 @@
 	"hud.dimblend_experience.item_drain.insufficient_water": "水量不足（%s/%s mb）",
 	"config.jade.plugin_dimblend_experience.item_drain_hud": "分液池灌溉狀態",
 	"message.dimblend_experience.depth_curse.max_health": "遠行 生命值上限 -25%",
-	"effect.dimblend_experience.cursed_poison": "詛咒中毒",
+	"effect.dimblend_experience.binding_curse": "綁定詛咒",
 	"message.dimblend_experience.item_drain.nether_too_hot": "這裡太熱了"
 }
