@@ -12,6 +12,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
+import net.neoforged.neoforge.network.registration.NetworkRegistry;
 
 /**
  * 服务端把区域进度条白线的参照位置（{@link BandTrainLocator} 的候选 + {@link BandTrainMath}
@@ -28,7 +29,8 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
  *
  * <p>用 {@code @EventBusSubscriber} 而不是在 {@link dimblend.DimBlend} 里注册：本类的方法签名
  * 不引用任何 sable 类型，FML 启动扫描可以安全加载它；sable 缺席由 locator 的 isLoaded 守卫
- * 处理。去重表按玩家记最后一次下发的 x；退出或换维度时清掉，回到旋转维度后一定重发一次。</p>
+ * 处理。去重表按玩家记最后一次下发的 x；退出或换维度时清掉，回到旋转维度后一定重发一次。
+ * 客户端没协商出 {@code dimblend:band_train} 通道时整条推送跳过，绝不发未注册的 modded payload。</p>
  */
 @EventBusSubscriber(modid = "dimblend")
 public final class BandTrainSync {
@@ -67,6 +69,12 @@ public final class BandTrainSync {
                 continue;
             }
             double centerX = located.getAsDouble();
+            // 客户端没装本模组、或没协商出这条通道时不能发原始包：NeoForge 发送侧会判定为
+            // 非法 payload，接收侧对没注册的 modded payload 会直接断开客户端。判定用 listener
+            // 自己的协议（服务端 play 监听器即 PLAY），与 MouseClickMixin 客户端侧同一惯例。
+            if (!NetworkRegistry.hasChannel(player.connection, BandTrainPayload.TYPE.id())) {
+                continue;
+            }
             Double previous = SENT.put(player.getUUID(), centerX);
             if (previous != null && previous.doubleValue() == centerX) {
                 continue;
