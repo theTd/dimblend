@@ -209,7 +209,10 @@ public final class VillagerMasterRules {
         clampSingleUse(villager.getOffers());
     }
 
-    /** 全量重建：清空后逐级取 2 条（1–5 级），新人新口味与 mod 增补一并生效。 */
+    /**
+     * 全量重建：清空后逐级取 2 条（1–5 级），新人新口味与 mod 增补一并生效；
+     * 重建完再把收购条目换成本职业的出售条目（F 只卖不收）。
+     */
     private static void rebuildTrades(Villager villager, VillagerProfession profession, MerchantOffers offers) {
         offers.clear();
         Int2ObjectMap<VillagerTrades.ItemListing[]> byLevel = VillagerTrades.TRADES.get(profession);
@@ -224,6 +227,9 @@ public final class VillagerMasterRules {
             }
             accessor.dimblend$addOffers(offers, listings, Math.min(2, listings.length));
         }
+        // 必须在重建之后、clampSingleUse 之前（本方法与两处调用方 adopt/normalize 的钳制之间）：
+        // 换出来的条目保留自己的 maxUses/xp，再被钳成一次
+        VillagerTradeSwap.replaceEmeraldBuys(villager, profession, offers);
     }
 
     private VillagerMasterRules() {

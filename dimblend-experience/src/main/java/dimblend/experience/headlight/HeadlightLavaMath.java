@@ -30,6 +30,9 @@ public final class HeadlightLavaMath {
     /** Hard cap on highlighted blocks per recompute; a 24-block beam covers far fewer even over a lava sea. */
     public static final int MAX_SURFACES = 1024;
 
+    /** 描边最大绘制距离（格）：相机到方块中心的 3D 欧氏距离超过这个值就不再画外框。 */
+    public static final double MAX_DRAW_DISTANCE = 64.0;
+
     /** Alpha pulse frequency in cycles per second (one cycle per 20 game ticks). */
     public static final double PULSE_HZ = 1.0;
 
@@ -98,6 +101,31 @@ public final class HeadlightLavaMath {
         double dy = (double) y + height - center.y;
         double dz = z + 0.5 - center.z;
         return dx * dx + dy * dy + dz * dz;
+    }
+
+    /**
+     * 单个岩浆顶面是否落在描边绘制距离内：相机到方块中心（含液面高度）的 3D 欧氏距离，与
+     * {@link #withinRadius} / {@link #anyWithin} 同一取样点。只服务客户端描边——服务端标记链路
+     * （{@code MarkedLavaTracker}）没有相机，不经过这里。
+     */
+    public static boolean withinDrawDistance(LavaSurface surface, Vec3 camera) {
+        return surfaceDistanceSqr(surface.x(), surface.y(), surface.z(), surface.height(), camera)
+                <= MAX_DRAW_DISTANCE * MAX_DRAW_DISTANCE;
+    }
+
+    /**
+     * 只保留描边绘制距离内的顶面，保持扫描顺序（按距离排序是 {@link #capped} 的事）。全在范围内时
+     * 原样返回、不复制。调用方应在 {@link #capped} 之前调用：数量上限只作用在相机 64 格内，
+     * 远处被照亮的岩浆不会挤掉近处的。
+     */
+    public static List<LavaSurface> withinDrawDistance(List<LavaSurface> surfaces, Vec3 camera) {
+        List<LavaSurface> kept = new ArrayList<>(surfaces.size());
+        for (LavaSurface surface : surfaces) {
+            if (withinDrawDistance(surface, camera)) {
+                kept.add(surface);
+            }
+        }
+        return kept.size() == surfaces.size() ? surfaces : List.copyOf(kept);
     }
 
     /**

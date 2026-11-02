@@ -13,31 +13,38 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.EnchantmentEffectComponents;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
+import net.minecraft.world.level.GameType;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.entity.living.LivingEquipmentChangeEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 
 /**
- * R19/R20 诅咒事件（全走 NeoForge 事件，不需要 mixin）。
+ * 两条诅咒的服务端判定（全走 NeoForge 事件与网络 payload，单个客户端 mixin 只负责上报点击）。
  *
- * <p>R19：{@link LivingEquipmentChangeEvent} 在服务端 {@code LivingEntity#tick} 里按装备槽与上一 tick
- * 快照的差异触发，所以玩家从背包里把绑定诅咒盔甲脱下也会命中；{@code from} 非空、{@code to} 为空、
- * 且离开的那件带 {@code PREVENT_ARMOR_CHANGE} 附魔效果（= 绑定诅咒）时给玩家加「诅咒中毒」。</p>
+ * <p><b>绑定诅咒</b>：{@link LivingEquipmentChangeEvent} 在服务端 {@code LivingEntity#tick} 里按装备槽
+ * 与上一 tick 快照的差异触发，所以从背包里把绑定诅咒装备脱下也会命中。三个条件同时成立才挂效果：
+ * 离开槽位的那件带 {@code PREVENT_ARMOR_CHANGE}、槽位变空、身上没有别的绑定诅咒装备；时长 72000 tick。
+ * 反向：换上来的那件带绑定诅咒就立刻解除。切创造模式（{@link PlayerEvent.PlayerChangeGameModeEvent}）
+ * 也解除。死亡不持久化，新 {@code ServerPlayer} 不复制效果，照常清空。</p>
  *
- * <p>R20：{@link LivingDamageEvent.Post} 只在服务端真正结算伤害后触发（{@code getNewDamage() > 0}
- * 才算真正造成伤害，因此火/摔落/中毒等环境伤害也算「受到一次攻击」）。对该玩家四盔甲槽 + 双手上
- * 每件带 {@code PREVENT_EQUIPMENT_DROP}（= 消失诅咒）的装备各掷一次 0.2%：命中就清空该槽
- * （不掉落）、播工具损坏音效并放 5 个物品粒子。创造模式不触发。</p>
+ * <p><b>消失诅咒</b>：触发从"受到伤害"改成"客户端每次左/右键物理按下"，见
+ * {@link CurseClickPayload} 与 {@code dimblend.experience.mixin.client.MouseClickMixin}。
+ * 服务端对四盔甲槽 + 双手上每件带 {@code PREVENT_EQUIPMENT_DROP} 的装备各掷一次 0.05%：
+ * 命中就清空该槽（不掉落）、同时播工具损坏音效与唤魔者"准备变羊"音效、放 5 个物品粒子。
+ * 创造、旁观、已死亡都不掷骰（死亡界面上的"重生"按钮同样是一次左键，不能借它删掉尸体上的
+ * 装备）；并且每个玩家每 tick 最多结算 2 次点击，见 {@link CurseClickLimiter}。</p>
  */
 @EventBusSubscriber(modid = DimBlend.MODID)
 public final class CurseEvents {
 
-    /** R20：消失时播的工具损坏音效。 */
+    /** 消失时的音效音量/音高：两条音效同一组参数。 */
     private static final float VANISH_SOUND_VOLUME = 1.0F;
     private static final float VANISH_SOUND_PITCH = 1.0F;
-    /** R20：可选物品粒子数量（用户需求外的小反馈，与音效同一处触发）。 */
+    /** 可选物品粒子数量（用户需求外的小反馈，与音效同一处触发）。 */
     private static final int VANISH_PARTICLE_COUNT = 5;
+    /** 点击限流状态：只按在线玩家记，登出清掉（见 {@link #onPlayerLoggedOut}）。 */
+    private static final CurseClickLimiter CLICK_LIMITER = new CurseClickLimiter();
 
     @SubscribeEvent
     public static void onEquipmentChanged(LivingEquipmentChangeEvent event) {
@@ -47,26 +54,58 @@ public final class CurseEvents {
         ItemStack from = event.getFrom();
         ItemStack to = event.getTo();
         // 1.21.1：绑定诅咒是附魔效果组件，用原版 EnchantmentHelper 判定（与 ArmorSlot#mayPickup 同口径）。
-        boolean hasBindingCurse = !from.isEmpty()
+        boolean toHasBindingCurse = !to.isEmpty()
+                && EnchantmentHelper.has(to, EnchantmentEffectComponents.PREVENT_ARMOR_CHANGE);
+        if (CurseRules.shouldClearBindingCurseOnEquip(to.isEmpty(), toHasBindingCurse)) {
+            player.removeEffect(CurseEffects.BINDING_CURSE);
+            return;
+        }
+        boolean fromHasBindingCurse = !from.isEmpty()
                 && EnchantmentHelper.has(from, EnchantmentEffectComponents.PREVENT_ARMOR_CHANGE);
-        if (!CurseRules.isBindingCurseArmorRemoval(event.getSlot(), from.isEmpty(), to.isEmpty(), hasBindingCurse)) {
+        boolean wearsOtherBindingCurse = wearsOtherBindingCurse(player, event.getSlot());
+        if (!CurseRules.shouldApplyBindingCurseOnRemoval(
+                from.isEmpty(), to.isEmpty(), fromHasBindingCurse, wearsOtherBindingCurse)) {
             return;
         }
         // 再脱一件：同等级效果 addEffect 走 MobEffectInstance#update，时长刷新到 60 分钟，不叠加。
         player.addEffect(new MobEffectInstance(
-                CurseEffects.CURSED_POISON,
-                CursedPoisonMobEffect.DURATION_TICKS,
-                CursedPoisonMobEffect.AMPLIFIER));
+                CurseEffects.BINDING_CURSE,
+                BindingCurseMobEffect.DURATION_TICKS,
+                BindingCurseMobEffect.AMPLIFIER));
     }
 
     @SubscribeEvent
-    public static void onDamagePost(LivingDamageEvent.Post event) {
+    public static void onGameModeChanged(PlayerEvent.PlayerChangeGameModeEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) {
             return;
         }
-        boolean damageDealt = event.getNewDamage() > 0.0F;
-        boolean creative = player.isCreative();
-        if (!damageDealt || creative) {
+        if (event.getNewGameMode() == GameType.CREATIVE) {
+            player.removeEffect(CurseEffects.BINDING_CURSE);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        // 限流窗口随会话一起结束：断线玩家的 UUID 不该一直留在静态表里。
+        CLICK_LIMITER.clear(event.getEntity().getUUID());
+    }
+
+    /**
+     * 消失诅咒的一次点击结算：由 {@link CurseClickPayload} 在服务端主线程调用。
+     * 每件带消失诅咒的装备独立掷骰，互不影响；整次结算先过旁观/死亡、创造与每 tick 限流三道闸。
+     */
+    public static void rollVanishingOnClick(ServerPlayer player) {
+        // 旁观玩家不参与这条诅咒；已死亡玩家在死亡界面点"重生"同样是一次左键，
+        // 不能让这一下把尸体上带消失诅咒的装备直接抹掉。
+        if (player.isSpectator() || player.isDeadOrDying()) {
+            return;
+        }
+        if (player.isCreative()) {
+            return;
+        }
+        // 每 tick 至多 2 次（= 40 次/秒，远高于人类点击上限），超出的点击静默丢弃。
+        // 放在创造/旁观判定之后：这些本来就不掷骰的情况不占用配额。
+        if (!CLICK_LIMITER.tryAcquire(player.getUUID(), player.serverLevel().getGameTime())) {
             return;
         }
         List<EquipmentSlot> vanishedSlots = new ArrayList<>();
@@ -80,11 +119,7 @@ public final class CurseEvents {
             }
             // 1.21.1：消失诅咒同样是附魔效果组件，与 Player#dropEquipment 同口径。
             boolean hasVanishingCurse = EnchantmentHelper.has(stack, EnchantmentEffectComponents.PREVENT_EQUIPMENT_DROP);
-            if (!hasVanishingCurse) {
-                continue;
-            }
-            // 每件装备各自独立掷骰，互不影响。
-            if (CurseRules.shouldVanishOnHit(damageDealt, creative, hasVanishingCurse, player.getRandom().nextDouble())) {
+            if (CurseRules.shouldVanishOnClick(player.isCreative(), hasVanishingCurse, player.getRandom().nextDouble())) {
                 vanishedSlots.add(slot);
             }
         }
@@ -97,10 +132,27 @@ public final class CurseEvents {
             player.setItemSlot(slot, ItemStack.EMPTY);
             player.serverLevel().playSound(null, player.getX(), player.getY(), player.getZ(),
                     SoundEvents.ITEM_BREAK, SoundSource.PLAYERS, VANISH_SOUND_VOLUME, VANISH_SOUND_PITCH);
+            player.serverLevel().playSound(null, player.getX(), player.getY(), player.getZ(),
+                    SoundEvents.EVOKER_PREPARE_WOLOLO, SoundSource.PLAYERS, VANISH_SOUND_VOLUME, VANISH_SOUND_PITCH);
             player.serverLevel().sendParticles(new ItemParticleOption(ParticleTypes.ITEM, stack),
                     player.getX(), player.getY() + 1.0D, player.getZ(),
                     VANISH_PARTICLE_COUNT, 0.2D, 0.2D, 0.2D, 0.05D);
         }
+    }
+
+    /** 除本次变化的槽位之外，身上是否还穿着/拿着别的绑定诅咒装备。 */
+    private static boolean wearsOtherBindingCurse(ServerPlayer player, EquipmentSlot changedSlot) {
+        for (EquipmentSlot slot : EquipmentSlot.values()) {
+            if (slot == changedSlot) {
+                continue;
+            }
+            ItemStack worn = player.getItemBySlot(slot);
+            if (!worn.isEmpty()
+                    && EnchantmentHelper.has(worn, EnchantmentEffectComponents.PREVENT_ARMOR_CHANGE)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private CurseEvents() {

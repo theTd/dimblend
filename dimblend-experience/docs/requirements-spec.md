@@ -1043,11 +1043,11 @@
 
 ### G11 观察者烈焰人（Observer Blaze，2026-10-26）
 
-- 方块 `dimblend_experience:observer_blaze`（无 BlockItem）、其 BE 与客户端 BER 仅在 Create + Sable 同时在场时注册。外观无笼子：方块模型 `dimblend_experience:block/observer_blaze` 继承 Create 座椅模型 `create:block/seat`，是 16×8×16 的红色坐垫（`create:block/seat/top_red` / `side_red` / `bottom`），破坏粒子取坐垫顶面贴图；烈焰人整体抬高 0.5 格坐在垫子上（BER 内 `PoseStack` 平移 0.5），火苗基线由 0.95–1.25 移到 1.45–1.75，悬浮望远镜由 y=1.5 移到 y=2.0。碰撞形状沿用燃烧室（含 Sable 特殊碰撞形状）；选中形状 = 燃烧室形状 ∪ 坐垫半格（2026-10-30 外观调整）。烈焰人由 BER 调 `BlazeBurnerRenderer.renderShared(..., HeatLevel.FADING, ..., AllPartialModels.LOGISTICS_HAT, ...)` 画出（与 Create 仓库管理员 GUI 预览同一入口；FADING 才有动画且不画火焰贴片），头顶 0.5 格悬浮、0.5 倍大小、缓慢旋转的望远镜；头部朝最近玩家，Sable plot 内先把玩家按 `renderPose` 投影进 plot 再取水平角。
+- 方块 `dimblend_experience:observer_blaze`（无 BlockItem）、其 BE 与客户端 BER 仅在 Create + Sable 同时在场时注册。外观无笼子：方块模型 `dimblend_experience:block/observer_blaze` 继承 Create 座椅模型 `create:block/seat`，是 16×8×16 的**橙色**坐垫（`create:block/seat/top_orange` / `side_orange` / `bottom`，2026-11-02 由红色改橙色），破坏粒子取坐垫顶面贴图；烈焰人落在垫子上（BER 内 `PoseStack` 平移 `BLAZE_RAISE=0.125`，正好抵消 Create 模型自带的 6/16 底距；2026-10-31 由抬高 0.5 回退），火苗基线 1.075–1.375，悬浮望远镜中心 y=1.5（头顶正上方半格，`SPYGLASS_Y = BLAZE_RAISE + 14/16 + 0.5`）。碰撞形状沿用燃烧室（含 Sable 特殊碰撞形状）；选中形状 = 燃烧室形状 ∪ 坐垫半格（2026-10-30 外观调整）。烈焰人由 BER 调 `BlazeBurnerRenderer.renderShared(..., HeatLevel.FADING, ..., AllPartialModels.LOGISTICS_HAT, ...)` 画出（与 Create 仓库管理员 GUI 预览同一入口；FADING 才有动画且不画火焰贴片），头顶 0.5 格悬浮、0.5 倍大小、缓慢旋转的望远镜；头部朝最近玩家，Sable plot 内先把玩家按 `renderPose` 投影进 plot 再取水平角。
 - 进入：手持望远镜（任一手）右键 **Sable 载具上** 的 `create:blaze_burner`（不是空燃烧室：`HEAT_LEVEL != NONE` 因而有 BE；也不是 `create:lit_blaze_burner`）。`PlayerInteractEvent.RightClickBlock` 双端取消（望远镜不会进入缩放），服务端先抓原方块状态与完整 BE NBT（`saveWithFullMetadata`），再 `setBlock` 本方块，生存消耗 1 个望远镜（创造不消耗），在原世界位置播一次 `entity.player.levelup`。
 - 退出：潜行 + 主手空手右键。原版 `ServerPlayerGameMode.useItemOn` 在主手为空时必走 `useWithoutItem`（潜行时也走，只有「潜行 + 手持物品」才跳过），本方块在该钩子拦截：服务端把望远镜放回空的主手（放不下进背包、再放不下掉落），恢复原方块状态后把 NBT 灌回新建的燃烧室 BE（燃料、剩余燃烧时间、护目镜、创造标记全部还原），并刷新正上方盆的缓存。
 - 无燃料、无热量：本方块不在 `BoilerHeater` 直接注册表、不在 `create:passive_boiler_heaters` 标签、也没有 `HEAT_LEVEL` 属性，故锅炉 `BoilerHeater.findHeat == -1`、盆 `BasinBlockEntity.getHeatLevelOf == NONE`；它没有物品处理器与 `useItemOn` 燃料路径，漏斗/溜槽/机械臂/发射器都不认它。破坏走战利品表，只掉 `create:blaze_burner` + `minecraft:spyglass`（与 Create 自身「燃烧室掉燃烧室」一致，NBT 不随物品走）；`getCloneItemStack` 给燃烧室。
-- 红石：`isSignalSource` 恒真、`getSignal` 在 POWERED 时六面皆 15（弱电，等价红石块）；POWERED 变更用 flag 3 写回并通知邻居，邻居当拍即读到新电平。`animateTick` 在 POWERED 时喷 3 个 `ParticleTypes.FLAME`，另由 BE 客户端 tick 每 2 tick 补 1 个——`animateTick` 是采样钩子（客户端每 tick 随机抽约 1334 个方块位置，单块命中率只有百分之几），两者合起来才是持续火苗。
+- 红石：`isSignalSource` 恒真、`getSignal` 在 POWERED 时六面皆 15（弱电，等价红石块）；POWERED 变更用 flag 3 写回并通知邻居；**开启当拍**邻居即读到新电平，**关断需连续 10 tick（0.5 s）扫不到标记岩浆**才掉电（2026-11-02 防抖口径，`ObserverBlazeSignal`），掉电的那一拍邻居才读到低电平。`animateTick` 在 POWERED 时喷 3 个 `ParticleTypes.FLAME`，另由 BE 客户端 tick 每 2 tick 补 1 个——`animateTick` 是采样钩子（客户端每 tick 随机抽约 1334 个方块位置，单块命中率只有百分之几），两者合起来才是持续火苗。
 - 渲染注意：BE 位于 plot 坐标，摄像机距离无意义，BER 的 `shouldRender` 恒真不剔除；且不注册 Flywheel visualizer，BER 在任何客户端都会执行（Create 自己的燃烧室用 `skipVanillaRender(true)`，其 BER 在 Flywheel 下永不执行，这正是本方案不选「给燃烧室加标记 mixin」的原因）。
 
 ### G12 服务端「标记岩浆」检测（2026-10-26，服务端）
@@ -1707,17 +1707,26 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
 - 连带：服务端 `MarkedLavaTracker` 复用同一 scan，观察者烈焰人触发范围随之扩大到岩浆柱（接受）。
 - 验证：`HeadlightLavaColumnTest` 7 条；实机渲染与遮挡待看。
 
-### 17.6 新增：绑定诅咒「诅咒中毒」与消失诅咒（R19/R20）
+### 17.6 绑定诅咒与消失诅咒（R19/R20，2026-11-02 按用户新口径重做）
 
-- 新效果 `dimblend_experience:cursed_poison`（`curse/CurseEffects`）：HARMFUL，颜色同中毒，图标为原版
-  poison.png 的逐字节拷贝；60 分钟、等级 I，照抄 `PoisonMobEffect`（血量 >1 时每 2.5 秒 1 点 magic）。
-  `fillEffectCures` 覆写为空集 → 牛奶与不死图腾都解不掉（死亡重生照常清空），不需要 mixin。
-- 触发：`LivingEquipmentChangeEvent`，盔甲槽「从有到无」且原装备带 `PREVENT_ARMOR_CHANGE`；重复触发刷新到
-  60 分钟不叠加；装备损坏、被消失诅咒吃掉、命令移除都会触发；创造模式不豁免（需求未提）。
-- 消失诅咒：`LivingDamageEvent.Post` 且 `getNewDamage()>0`（火/摔落/中毒也算），每件已装备物品
-  （四盔甲+双手，`PREVENT_EQUIPMENT_DROP`）各自独立掷 0.2%；命中清空该槽不掉落、播 `entity.item.break`
-  + 5 粒子；创造不触发；概率常量 0.002。
-- 验证：`CurseRules` 纯函数 +10 条单测；实机看图标、60:00 倒计时、牛奶无效、0.2% 手感。
+- 新效果 `dimblend_experience:binding_curse`（`curse/BindingCurseMobEffect`）：HARMFUL，颜色取原版
+  `MobEffects.WITHER`（7561558），图标为原版 `wither.png` 的逐字节拷贝（`textures/mob_effect/binding_curse.png`）。
+- 生命上限：`addAttributeModifiers` 挂固定 id `dimblend_experience:binding_curse_max_health` 的瞬态
+  `MAX_HEALTH` -18（ADD_VALUE，基础 20 → 2）；`removeAttributeModifiers` 摘除；当前血量由原版
+  `LivingEntity#refreshDirtyAttributes → onAttributeUpdated` 夹到新上限（不是 `addEffect` 内同步完成）。
+- `fillEffectCures` 覆写为空集 → 牛奶与不死图腾都解不掉；`/effect clear` 走 `removeAllEffects`，不额外拦截；
+  死亡后新 `ServerPlayer` 不复制效果，照常清空。
+- 触发：`LivingEquipmentChangeEvent`，离开槽位的装备带 `PREVENT_ARMOR_CHANGE`、该槽变空、且其余装备槽都没有
+  绑定诅咒 → 加 72000 tick；重复触发刷新不叠加。
+- 解除：`to` 非空且带绑定诅咒（重新穿上）→ `removeEffect`；`PlayerEvent.PlayerChangeGameModeEvent` 新游戏模式
+  为 CREATIVE → `removeEffect`。
+- 消失诅咒：客户端 `MouseHandler#onPress` 每次物理按下（button 0/1，含 GUI 与空挥）发 `CurseClickPayload`；
+  服务端非创造时对四盔甲+双手每件带 `PREVENT_EQUIPMENT_DROP` 的装备独立掷 0.0005；命中清空该槽不掉落、
+  同播 `entity.item.break` 与 `entity.evoker.prepare_wololo` + 5 粒子。
+- 已知代价（如实）：客户端可伪造点击频率——「每次点击都算」的直接后果，未限速；一件装备同时带两种诅咒时，
+  消失清空槽位会被下一 tick 的装备变化事件看成「脱掉最后一件绑定诅咒装备」，从而挂上绑定诅咒（旧实现相同）。
+- 验证：`CurseRulesTest` + `BindingCurseMobEffectTest` 共 17 条单测；实机看图标与粒子色、血量上限 2、牛奶/图腾
+  无效、穿回与切创造解除、两条音效、0.05% 手感。
 
 ### 17.7 新增：factory_blocks 风扇系列切石机配方（R11）
 

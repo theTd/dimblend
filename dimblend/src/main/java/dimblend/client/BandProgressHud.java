@@ -18,12 +18,17 @@ import net.minecraft.world.level.GameType;
  * (3px off the screen bottom, 6px off the hotbar), so it never overlaps the
  * armor/health rows. While the player is on the track corridor (|z| &lt; 16),
  * two centered lines sit right above the bar: "编号-当前区域名" over
- * "前方到达：…" (random-drawn neighbors show 未知; names come from
- * {@code BandLaneSync} pushes, mapped by {@link BandLaneNames}); off the
- * corridor the lines hide. Wherever the player is, a white vertical marker
- * pins the frontmost on-track Sable's centroid (see {@link SableTrainLocator})
+ * "前方到达：…" (random-drawn neighbors show 未知, except for creative players
+ * who get the real next lane; names come from {@code BandLaneSync} pushes,
+ * mapped by {@link BandLaneNames}); off the corridor the lines hide. Wherever
+ * the player is, a white vertical marker pins the train centroid x pushed by
+ * the server (see {@link ClientBandTrain} and {@code dimblend.band.BandTrainLocator})
  * so the player can see where the train is; when the train is in another band
- * the marker clamps to the bar edge on the train's side.
+ * the marker clamps to the bar edge on the train's side. The position must come
+ * from the server — force-load tickets are server-only and Sable drops
+ * sub-levels beyond its 320-block network tracking range — and the client keeps
+ * the last received value, so the marker stays put instead of vanishing while
+ * the player is far from the train.
  *
  * <p>Visible in survival, adventure and creative; hidden in spectator
  * (vanilla {@code canHurtPlayer} is survival/adventure-only, so the gate
@@ -44,6 +49,12 @@ public final class BandProgressHud {
     private static final int BACKGROUND_COLOR = 0xA0000000;
     private static final int FILL_COLOR = 0xFFE0A020;
     private static final int TRAIN_MARKER_COLOR = 0xFFFFFFFF;
+    /**
+     * 两行区域文字的显示半宽（|z| &lt; 16，轨道走廊）。与白线的列车走廊
+     * {@link dimblend.band.BandTrainMath#TRAIN_HALF_WIDTH}（7）是两个独立口径：
+     * 白线只认 ±7 内且有 force-load 票据的 sable，文字仍按 16 显隐。
+     */
+    private static final int TEXT_TRACK_HALF_WIDTH = 16;
 
     private BandProgressHud() {
     }
@@ -96,7 +107,7 @@ public final class BandProgressHud {
         }
 
         // 区段序号只出现在上方文字行里，不再重复画在进度条上。
-        if (Math.abs(player.getBlockZ()) < SableTrainLocator.TRACK_HALF_WIDTH) {
+        if (Math.abs(player.getBlockZ()) < TEXT_TRACK_HALF_WIDTH) {
             // 区域名两行居中挂在进度条正上方：上 = 当前「编号-区域名」，下 = 「前方到达：…」；
             // 前方区域为随机抽选（或服务端尚未推送）时显示「未知」
             int centerX = left + BAR_WIDTH / 2;
@@ -112,12 +123,12 @@ public final class BandProgressHud {
     }
 
     /**
-     * 1px 白色竖杠，标出最前轨道上 Sable 质心的位置；火车不在玩家当前区段时
+     * 1px 白色竖杠，标出服务端下发的列车质心位置；火车不在玩家当前区段时
      * 钉在指向火车那一侧的边缘，提示往回走的方向。
      */
     private static void drawTrainMarker(GuiGraphics graphics, Minecraft mc, int left, int barTop,
             int bandSize, int region) {
-        OptionalDouble trainX = SableTrainLocator.frontmostCenterX(mc.level);
+        OptionalDouble trainX = ClientBandTrain.centerX(mc.level);
         if (trainX.isEmpty()) {
             return;
         }

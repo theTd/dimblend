@@ -4,6 +4,7 @@ import dimblend.band.BandInfoPayload;
 import dimblend.band.BandInfoSync;
 import dimblend.band.BandLanePayload;
 import dimblend.band.BandLaneSync;
+import dimblend.band.BandTrainPayload;
 import dimblend.client.DimBlendClient;
 import dimblend.command.DimBlendCommands;
 import dimblend.diagnostics.HangWatchdog;
@@ -110,5 +111,6 @@ public final class DimBlend {
         TimeLockPayload.register(registrar);
         BandInfoPayload.register(registrar);
         BandLanePayload.register(registrar);
+        BandTrainPayload.register(registrar);
     }
 }

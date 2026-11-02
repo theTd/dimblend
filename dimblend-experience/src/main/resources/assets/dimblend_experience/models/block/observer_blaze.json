@@ -1,9 +1,9 @@
 {
   "textures": {
     "0": "create:block/seat/bottom",
-    "1": "create:block/seat/top_red",
-    "2": "create:block/seat/side_red",
-    "particle": "create:block/seat/top_red"
+    "1": "create:block/seat/top_orange",
+    "2": "create:block/seat/side_orange",
+    "particle": "create:block/seat/top_orange"
   },
   "elements": [
     {

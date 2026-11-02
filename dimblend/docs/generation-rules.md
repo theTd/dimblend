@@ -68,7 +68,7 @@
 - [x] 折越门对未授权实体是墙、对 Sable（含列车）是空气（`WarpGateBlock.getCollisionShape` 按 CollisionContext 分流；生存玩家需站在 Sable 结构上，创造/旁观/Create 车厢放行；`WarpGatePassageGuard` 只处理卡进门板）
 - [x] 走廊拱洞外 1 格壳内流体替换为玻璃（`OakTrackCorridor.sealVaultShell` / `glassForFluid`：与拱洞空气相邻的流体格全部玻璃化，含顶部 dy=maxDy+1；水/岩浆用蓝/红染色玻璃，其余流体用普通玻璃；不替换路基（Y=63）及以下）
 - [x] 左下角物品栏左侧显示当前区域序号 + 以玩家当前位置为准的行进进度（`BandProgressHud`：护甲行上方的进度条，区域序号居中，`BandInfoSync` 推送 band_size；生存/冒险/创造显示，旁观隐藏）
-- [x] 进度条正上方再挂两行居中文字（2026-10-23）：上「当前区域编号-区域名」、下「前方到达：…」；区域名映射 地表/地下/下界/天域/暮色/星光/末地/深暗/虚空（`BandLaneNames`，不识别的 mod 区域兜底「异界」）。「前方」只按位置取远离出生点一格（0→+1、负→-1、正→+1），与移动方向无关；下一格是固定剧本（0-20/32/33）或刚开地表连段的强制收尾格 → 显示具体名，随机抽选 → 显示「未知」（`BandLaneAssigner.scriptedOutwardDelegate`，随机结果不下发客户端）；`BandLaneSync` 按区域变化推送 当前lane+下一lane
+- [x] 进度条正上方再挂两行居中文字（2026-10-23）：上「当前区域编号-区域名」、下「前方到达：…」；区域名映射 地表/地下/下界/天域/暮色/星光/末地/深暗/虚空（`BandLaneNames`，不识别的 mod 区域兜底「异界」）。「前方」只按位置取远离出生点一格（0→+1、负→-1、正→+1），与移动方向无关；下一格是固定剧本（0-20/32/33）或刚开地表连段的强制收尾格 → 显示具体名，随机抽选 → 生存/冒险显示「未知」（`BandLaneAssigner.scriptedOutwardDelegate`，随机结果不下发）；**2026-11-02 起创造模式对随机抽选也下发真实区域名**（`BandLaneSync.nextLaneAt`），去重 key 带上创造标志以便原地切模式重发；`BandLaneSync` 按区域变化推送 当前lane+下一lane。白线（列车标记）同日改为服务端判定：只认有 force-load 票据、包围盒中心 |z|≤7、且与玩家距离 ≤320 格的 sable，走 `BandTrainPayload` 下发，客户端保留最后一次结果
 
 ## 三、分纬度规则
 
@@ -79,7 +79,7 @@
 - [x] 天气走原版（全维度唯一保留天气的 band；除地表外所有 band 一律锁定晴，机制见「地下」条目）
 - [x] 世界时钟与主世界共享且可写（2026-10-23 修订）：`RotatingLevelData.setDayTime` 穿透写主世界 PrimaryLevelData——原版 `DerivedLevelData` 该 setter 为空，曾致 rotating 睡觉跳夜静默失效；rotating 自身不会叠速——`MinecraftServer.createLevels` 以 `tickTime=false` 构造非主世界维度，`ServerLevel.tickTime()` 体不执行，共享时钟推进完全来自主世界自身逐 tick 自增。`/time add` 对全维度做相对写，rotating 穿透会与主世界回声叠成 +2X，由 `TimeCommandMixin` 跳过 rotating 那一笔（`/time set` 绝对幂等写不受影响）。地表 band 时间不锁，睡觉跳夜、`/time` 在 rotating 由此生效（写的就是共享时钟，主世界同步到早晨）
 - [x] 地表 band 不再切深度（`OverworldSlice.SURFACE`：源 Y-64–320，offset 0，无顶/底封）；Y32 以下的石头/深板岩替换为基岩（严格 y<32，仅 `STONE`/`DEEPSLATE`，空气/流体/矿石/结构保留，洞穴仍可走）
-- [x] 仅生成 煤 / 铜 / 铁 / 金 / 锌 五种矿石（地表 lane 上其它矿物堆直接取消；锌走 `c:ores/zinc` + 方块 id）
+- [x] 地表 lane 全部矿种参与抽取，五种以外改产绿宝石（2026-11-02 用户口径）：删掉旧的地表白名单早退，红石/钻石/青金石/绿宝石/铂金等全部进入抽签；50% 取消 / 25% 原矿 / 25% 安山岩不变；煤/铜/铁/金/锌以外的矿堆在「保留原矿」那一支整堆换绿宝石矿，变体按原方块选深板岩/石头（`size` 与暴露丢弃率原样）。结果是钻石/红石/青金石/铂金在地表 lane 不再以本体出现；锌仍走 `c:ores/zinc` + 方块 id 兜底；其它 lane 行为不变。只影响新生成区块
 - [x] 取消晶洞类 feature（地表 lane 在 `ConfiguredFeature.place` 拦截 `GeodeConfiguration`，原版紫水晶及走同一配置的模组晶洞一并取消；地下及其它 lane 不拦）
 
 ### 地下（Underground）
@@ -92,7 +92,7 @@
 
 ### 下界（Nether）
 
-- [x] 生成轨道：**黑石宽轨**，无路基（`CorridorTrackProfile.NETHER`）
+- [x] 生成轨道：**黑石宽轨**，3 格宽黑石路基（`CorridorTrackProfile.NETHER` = `minecraft:blackstone` + 半宽 1，写在 Y=63、z −1..+1；2026-11-02 用户口径，此前为「无路基」）
 - [x] 时间锁定 18000
 - [x] 天空套用下界 Effects（`ClientBandLane.netherSky()` → `NetherEffects`：`SkyType.NONE` / 浓雾 / constantAmbientLight；与地下相同）
 - [x] 天气锁定晴

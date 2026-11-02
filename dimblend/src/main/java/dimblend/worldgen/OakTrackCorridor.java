@@ -33,8 +33,6 @@ public final class OakTrackCorridor {
     public static final int VAULT_APEX_DY = 17;
     /** No structures may generate within this many chunks of CORRIDOR_Z (either side). */
     public static final int NO_STRUCTURE_CHUNK_RANGE = 16;
-    /** Half-width of the cobblestone roadbed under the track. 7 wide = Z[-3, +3]. */
-    private static final int ROADBED_HALF_WIDTH = 3;
     /** How deep below the vault floor a tree origin may sit and still lose its support column. */
     private static final int TREE_UNDERMINED_DEPTH = 48;
     private static final Direction[] DIRECTIONS = Direction.values();
@@ -85,6 +83,8 @@ public final class OakTrackCorridor {
             return;
         }
         Map<CorridorTrackProfile, Block> trackBlocks = new EnumMap<>(CorridorTrackProfile.class);
+        // 地基材质单独一张缓存表：键同为 lane 档案，与轨道方块混用会互相覆盖。
+        Map<CorridorTrackProfile, Block> foundationBlocks = new EnumMap<>(CorridorTrackProfile.class);
 
         int minX = chunk.getPos().getMinBlockX();
         int maxX = chunk.getPos().getMaxBlockX();
@@ -120,7 +120,12 @@ public final class OakTrackCorridor {
             clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, maxDy, carveBedrock,
                     rotating.hasStarterDepot(), live);
             stabilizeVaultCeiling(chunk, cursor, x, vaultMinZ, vaultMaxZ, maxDy, live);
-            writeRoadbed(profile.hasRoadbed(), chunk, cursor, x, minZ, maxZ, live);
+            // 地基（路基）：材质与半宽都由 lane 档案给出，下界是 3 格黑石，其余沿用旧值。
+            // 材质走方块注册表解析，和轨道方块同一条路径（档案里存 id，不存 Block 常量）。
+            if (profile.hasFoundation()) {
+                writeFoundation(foundationBlock(access, foundationBlocks, profile), profile.foundationHalfWidth(),
+                        chunk, cursor, x, minZ, maxZ, live);
+            }
         }
         for (int x = minX; x <= maxX; x++) {
             if (!carved[x - minX]) {
@@ -153,8 +158,23 @@ public final class OakTrackCorridor {
         });
     }
 
-    private static void writeRoadbed(
-            boolean hasRoadbed,
+    private static Block foundationBlock(
+            RegistryAccess access,
+            Map<CorridorTrackProfile, Block> cache,
+            CorridorTrackProfile profile
+    ) {
+        return cache.computeIfAbsent(profile, p -> {
+            Block block = access.registryOrThrow(Registries.BLOCK).get(p.foundationBlockId());
+            if (block == null) {
+                throw new IllegalStateException("missing required block " + p.foundationBlockId());
+            }
+            return block;
+        });
+    }
+
+    private static void writeFoundation(
+            Block material,
+            int halfWidth,
             ChunkAccess chunk,
             BlockPos.MutableBlockPos cursor,
             int x,
@@ -162,18 +182,20 @@ public final class OakTrackCorridor {
             int maxZ,
             @javax.annotation.Nullable ServerLevel live
     ) {
-        if (!hasRoadbed) {
+        if (halfWidth <= 0) {
             return;
         }
-        int zMin = Math.max(minZ, CORRIDOR_Z - ROADBED_HALF_WIDTH);
-        int zMax = Math.min(maxZ, CORRIDOR_Z + ROADBED_HALF_WIDTH);
+        int zMin = Math.max(minZ, CORRIDOR_Z - halfWidth);
+        int zMax = Math.min(maxZ, CORRIDOR_Z + halfWidth);
+        BlockState state = material.defaultBlockState();
         for (int z = zMin; z <= zMax; z++) {
+            // Y=63：轨道正下方那一格。Y=64 是轨道本身，永不在此写入。
             cursor.set(x, TRACK_Y - 1, z);
             BlockState current = chunk.getBlockState(cursor);
             if (current.is(Blocks.BEDROCK)) {
                 continue;
             }
-            setCell(chunk, live, cursor, Blocks.COBBLESTONE.defaultBlockState());
+            setCell(chunk, live, cursor, state);
         }
     }
 

@@ -21,7 +21,8 @@ import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import org.slf4j.Logger;
 
 /**
- * Lit-lava highlight: a pulsing orange wireframe around the lava a headlight beam reaches -- each lit block
+ * Lit-lava highlight: a pulsing orange wireframe around the lava a headlight beam reaches within
+ * {@link HeadlightLavaMath#MAX_DRAW_DISTANCE} blocks of the camera -- each lit block
  * wrapped in a 2x2x2 box centred on it, touching boxes merged into one shell ({@link LavaBoxOutline}), so the
  * highlight stands up above the pool and reads from the side, not only as a ring on the surface.
  * Only registered with the rest of the headlight renderer (sable + veil present, iris absent), and only lit
@@ -29,13 +30,23 @@ import org.slf4j.Logger;
  *
  * <p><b>Recompute schedule.</b> The world scan runs off the render loop, at most every
  * {@link #MIN_INTERVAL_TICKS} client ticks (10 Hz) and only when a beam actually moved: lens quantized to
- * {@link #POSE_STEP} blocks and axis to {@link #DIRECTION_STEP}. A train at 20 m/s moves 2 blocks between
+ * {@link #POSE_STEP} blocks and axis to {@link #DIRECTION_STEP}, or when the camera's block cell changed (the
+ * draw-distance cull follows the camera). A train at 20 m/s moves 2 blocks between
  * updates, so the lit edge steps forward in 2-block jumps at 10 Hz and never lags more than that; stationary
  * lamps are re-scanned only for the {@link #MAX_INTERVAL_TICKS} idle refresh, which picks up placed/removed
  * lava, world edits in the beam and chunks arriving. With the default beam the scan walks ~12k voxels of the
  * cone box but only the lava-bearing sections of it (palette-pruned), i.e. an estimated ~0.1-0.3 ms on the
  * client thread; the hard {@link HeadlightLavaScan#VOXEL_BUDGET} caps a pathological scene and
  * {@code -Ddimblend.headlight.diag=true} logs the measured cost.
+ *
+ * <p><b>绘制距离。</b>外框只在相机 {@link HeadlightLavaMath#MAX_DRAW_DISTANCE} 格内画：扫描结果先按
+ * 相机到方块中心的 3D 欧氏距离裁掉远处的顶面，再套 {@link HeadlightLavaMath#MAX_SURFACES} 上限
+ * （判定见 {@link HeadlightLavaMath#withinDrawDistance}，单测 {@code LavaOutlineCullTest}）。
+ * 只裁外框——岩浆方块本身由区块渲染器画，照亮与探照灯效果（{@code surface.fsh}）都不经过这条链路：
+ * 远处列车灯仍能照亮 64 格外的岩浆，只是那里不再给它描边。
+ *
+ * <p>裁剪结果跟着相机走，所以 {@link #signature} 里也混入了相机所在方块（按格量化）：相机跨过
+ * 方块边界就重扫一次，否则人走开后会一直沿用旧描边，直到 {@link #MAX_INTERVAL_TICKS} 的空闲刷新。
  *
  * <p><b>Drawing.</b> Two passes at {@code AFTER_TRANSLUCENT_BLOCKS}, both over the same edge list: first a
  * see-through pass (no depth test, no depth write, main-target output) at
@@ -95,7 +106,7 @@ public final class HeadlightLavaHighlight {
             clear();
             return;
         }
-        long next = signature(beams, range, angle, intensity, occlusion);
+        long next = signature(beams, camera, range, angle, intensity, occlusion);
         if (valid && next == signature) {
             idleTicks += MIN_INTERVAL_TICKS;
             if (idleTicks < MAX_INTERVAL_TICKS) {
@@ -107,7 +118,11 @@ public final class HeadlightLavaHighlight {
         idleTicks = 0;
         long start = DIAGNOSTIC ? System.nanoTime() : 0L;
         HeadlightLavaScan.Result result = HeadlightLavaScan.scan(mc.level, beams, range, angle, intensity, occlusion);
-        List<LavaSurface> lit = HeadlightLavaMath.capped(result.surfaces(), camera, HeadlightLavaMath.MAX_SURFACES);
+        // 外框只在相机 64 格内画：先按相机距离裁掉远处被照亮的顶面，再套 1024 面上限。
+        // 只裁外框——方块本身由区块渲染器画，surface.fsh 的照亮与探照灯效果不经过这条链路。
+        List<LavaSurface> lit = HeadlightLavaMath.capped(
+                HeadlightLavaMath.withinDrawDistance(result.surfaces(), camera),
+                camera, HeadlightLavaMath.MAX_SURFACES);
         surfaces = lit.size();
         edges = LavaBoxOutline.edges(lit);
         if (DIAGNOSTIC) diagnose(System.nanoTime() - start, result.reads(), surfaces);
@@ -199,10 +214,16 @@ public final class HeadlightLavaHighlight {
 
     /**
      * Quantized fingerprint of everything a scan depends on, for the "did anything move" gate: the beam
-     * poses, their order (nearest-eight selection), the photometry and the occlusion option.
+     * poses, their order (nearest-eight selection), the photometry, the occlusion option and the camera's
+     * block cell. The outline is culled to {@link HeadlightLavaMath#MAX_DRAW_DISTANCE} around the camera, so
+     * the camera alone must be able to invalidate the last scan -- without it a player who walks away keeps
+     * the old outline until the {@link #MAX_INTERVAL_TICKS} idle refresh or a beam moves.
+     *
+     * <p>按方块量化（不是原样坐标）：每穿过一个方块边界才多扫一次，站在原地不加重扫描；一个方块内
+     * 相机最多再移动约 1.7 格，64 格边界上的裁剪误差以此为上界，肉眼不可见。
      */
-    private static long signature(List<HeadlightBeam> beams, double range, double angle, double intensity,
-                                  boolean occlusion) {
+    private static long signature(List<HeadlightBeam> beams, Vec3 camera, double range, double angle,
+                                  double intensity, boolean occlusion) {
         long hash = 0xCBF29CE484222325L;
         hash = mix(hash, beams.size());
         for (HeadlightBeam beam : beams) {
@@ -213,6 +234,9 @@ public final class HeadlightLavaHighlight {
             hash = mix(hash, Math.round(beam.direction().y / DIRECTION_STEP));
             hash = mix(hash, Math.round(beam.direction().z / DIRECTION_STEP));
         }
+        hash = mix(hash, (long) Math.floor(camera.x));
+        hash = mix(hash, (long) Math.floor(camera.y));
+        hash = mix(hash, (long) Math.floor(camera.z));
         hash = mix(hash, Double.doubleToLongBits(range));
         hash = mix(hash, Double.doubleToLongBits(angle));
         hash = mix(hash, Double.doubleToLongBits(intensity));

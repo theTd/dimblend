@@ -5,7 +5,10 @@ import dev.ryanhcode.sable.companion.math.Pose3dc;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.plot.LevelPlot;
 import dev.ryanhcode.sable.sublevel.plot.PlotChunkHolder;
+import javax.annotation.Nullable;
+
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.server.level.ServerLevel;
@@ -37,11 +40,28 @@ public final class VoidFitVoxelizer {
     }
 
     public static LongOpenHashSet voxelize(ServerLevel level, ServerSubLevel subLevel) {
+        return voxelize(level, subLevel, null);
+    }
+
+    /**
+     * 体素化，并顺带收集载具方块自身中心格（同一趟枚举，供 {@link LavaRestCell} 判断
+     * "柱顶格是不是车顶方块自身那一格"）：保守覆盖除了方块自身格还会按旋转/缩放多收格，
+     * 只有"自身格"才是视觉上车顶方块真正占住的那一格。
+     *
+     * @param ownBlockCellsOut 非 {@code null} 时把每个载具方块的自身中心格加进来；
+     *                         {@code null} 表示只要保守覆盖格（旧调用点）
+     */
+    public static LongOpenHashSet voxelize(ServerLevel level, ServerSubLevel subLevel,
+            @Nullable LongSet ownBlockCellsOut) {
         LongOpenHashSet out = new LongOpenHashSet();
         int minY = level.getMinBuildHeight();
         int maxY = level.getMaxBuildHeight() - 1;
-        forEachProjectedBlock(subLevel, (plotPos, state, wx, wy, wz, hx, hy, hz) ->
-                addCoveredCells(out, wx, wy, wz, hx, hy, hz, minY, maxY));
+        forEachProjectedBlock(subLevel, (plotPos, state, wx, wy, wz, hx, hy, hz) -> {
+            if (ownBlockCellsOut != null) {
+                ownBlockCellsOut.add(ownBlockCell(wx, wy, wz));
+            }
+            addCoveredCells(out, wx, wy, wz, hx, hy, hz, minY, maxY);
+        });
         return out;
     }
 
@@ -118,6 +138,15 @@ public final class VoidFitVoxelizer {
                 }
             }
         }
+    }
+
+    /**
+     * 载具方块自身中心格：投影中心逐轴 {@code floor}（与 {@code LavaContactScan#blockCellY}
+     * 同一取整口径）。注意"自身格"是方块中心落进的格，不是 AABB 触及的全部格——后者由
+     * {@link #addCoveredCells} 收成保守覆盖。
+     */
+    static long ownBlockCell(double wx, double wy, double wz) {
+        return BlockPos.asLong((int) Math.floor(wx), (int) Math.floor(wy), (int) Math.floor(wz));
     }
 
     /** 把以 (wx,wy,wz) 为中心、半 extent (hx,hy,hz) 的 AABB 触及的所有世界格加入集合。 */
