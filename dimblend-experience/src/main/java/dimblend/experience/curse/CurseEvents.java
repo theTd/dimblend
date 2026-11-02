@@ -32,7 +32,8 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
  * {@link CurseClickPayload} 与 {@code dimblend.experience.mixin.client.MouseClickMixin}。
  * 服务端对四盔甲槽 + 双手上每件带 {@code PREVENT_EQUIPMENT_DROP} 的装备各掷一次 0.05%：
  * 命中就清空该槽（不掉落）、同时播工具损坏音效与唤魔者"准备变羊"音效、放 5 个物品粒子。
- * 创造模式不掷骰。</p>
+ * 创造、旁观、已死亡都不掷骰（死亡界面上的"重生"按钮同样是一次左键，不能借它删掉尸体上的
+ * 装备）；并且每个玩家每 tick 最多结算 2 次点击，见 {@link CurseClickLimiter}。</p>
  */
 @EventBusSubscriber(modid = DimBlend.MODID)
 public final class CurseEvents {
@@ -42,6 +43,8 @@ public final class CurseEvents {
     private static final float VANISH_SOUND_PITCH = 1.0F;
     /** 可选物品粒子数量（用户需求外的小反馈，与音效同一处触发）。 */
     private static final int VANISH_PARTICLE_COUNT = 5;
+    /** 点击限流状态：只按在线玩家记，登出清掉（见 {@link #onPlayerLoggedOut}）。 */
+    private static final CurseClickLimiter CLICK_LIMITER = new CurseClickLimiter();
 
     @SubscribeEvent
     public static void onEquipmentChanged(LivingEquipmentChangeEvent event) {
@@ -81,12 +84,28 @@ public final class CurseEvents {
         }
     }
 
+    @SubscribeEvent
+    public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        // 限流窗口随会话一起结束：断线玩家的 UUID 不该一直留在静态表里。
+        CLICK_LIMITER.clear(event.getEntity().getUUID());
+    }
+
     /**
      * 消失诅咒的一次点击结算：由 {@link CurseClickPayload} 在服务端主线程调用。
-     * 每件带消失诅咒的装备独立掷骰，互不影响。
+     * 每件带消失诅咒的装备独立掷骰，互不影响；整次结算先过旁观/死亡、创造与每 tick 限流三道闸。
      */
     public static void rollVanishingOnClick(ServerPlayer player) {
+        // 旁观玩家不参与这条诅咒；已死亡玩家在死亡界面点"重生"同样是一次左键，
+        // 不能让这一下把尸体上带消失诅咒的装备直接抹掉。
+        if (player.isSpectator() || player.isDeadOrDying()) {
+            return;
+        }
         if (player.isCreative()) {
+            return;
+        }
+        // 每 tick 至多 2 次（= 40 次/秒，远高于人类点击上限），超出的点击静默丢弃。
+        // 放在创造/旁观判定之后：这些本来就不掷骰的情况不占用配额。
+        if (!CLICK_LIMITER.tryAcquire(player.getUUID(), player.serverLevel().getGameTime())) {
             return;
         }
         List<EquipmentSlot> vanishedSlots = new ArrayList<>();
