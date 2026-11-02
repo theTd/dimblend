@@ -19,8 +19,11 @@ public final class SpyglassNetwork {
      * <p>Bumped to 6 when the display ring's inner edge became the fixed 128 blocks and the
      * per-player reveal-distance payload was removed: a protocol-5 client would still send a packet
      * this version no longer registers.
+     *
+     * <p>Bumped to 7 when the server started sending template-preview shapes for predicted
+     * structures: a protocol-6 client would store them but never draw them.
      */
-    private static final String PROTOCOL_VERSION = "6";
+    private static final String PROTOCOL_VERSION = "7";
 
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {

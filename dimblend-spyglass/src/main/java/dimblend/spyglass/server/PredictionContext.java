@@ -1,6 +1,7 @@
 package dimblend.spyglass.server;
 
 import dimblend.spyglass.DimBlendSpyglass;
+import dimblend.spyglass.structure.StructureKey;
 import dimblend.worldgen.RotatingChunkGenerator;
 import dimblend.worldgen.StructureNoiseSetup;
 import java.util.Objects;
@@ -20,6 +21,7 @@ import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.UpgradeData;
 import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager;
 
 /**
@@ -128,6 +130,35 @@ final class PredictionContext {
     @Nullable
     ResourceLocation idOf(Structure structure) {
         return this.registryAccess.registryOrThrow(Registries.STRUCTURE).getKey(structure);
+    }
+
+    /** The template manager the generator uses, for the M2 template preview. */
+    StructureTemplateManager templateManager() {
+        return this.templateManager;
+    }
+
+    /**
+     * Re-runs one predicted chunk's structure placement and returns the start with this key, or
+     * {@code null} when the chunk produced no valid start or the id does not match. Used by the M2
+     * template preview to reach the {@code PoolElementStructurePiece}s; the predictor discards them
+     * and keeps only the outline.
+     */
+    @Nullable
+    StructureStart startFor(StructureKey key) {
+        if (!this.generateStructures) {
+            return null;
+        }
+        try {
+            ProtoChunk chunk = createStructures(new ChunkPos(key.startChunkX(), key.startChunkZ()));
+            for (StructureStart start : chunk.getAllStarts().values()) {
+                if (start.isValid() && key.id().equals(idOf(start.getStructure()))) {
+                    return start;
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // A generator that fails on this chunk leaves no preview; the client keeps the wireframe.
+        }
+        return null;
     }
 
     @Override

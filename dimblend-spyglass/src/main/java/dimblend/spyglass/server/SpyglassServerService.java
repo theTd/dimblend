@@ -440,10 +440,16 @@ public final class SpyglassServerService {
                             .toList(),
                     this.shapeCache,
                     errors);
+            // M2: the nearest predicted structures get a template preview. The extractor returns
+            // nothing for structures without a full template, and those keep the client wireframe.
+            List<StructureOutline> previewCandidates = PreviewBudget.nearest(
+                    limited.structures(), request.playerX(), request.playerZ(), PreviewBudget.MAX_PREVIEWS);
+            List<EncodedStructureShape> previewShapes =
+                    TemplatePreviewExtractor.extract(request.prediction(), previewCandidates);
             long shapeNanos = System.nanoTime() - shapeStarted;
             DimBlendSpyglass.LOGGER.debug(
                     "Spyglass scan timings player={} limit={}ms predict={}ms(predicted={} generated={} "
-                            + "cached={} skipped={} failed={}) shapes={}ms",
+                            + "cached={} skipped={} failed={}) shapes={}ms previews={}",
                     request.playerId(),
                     limitNanos / 1_000_000L,
                     predictNanos / 1_000_000L,
@@ -452,9 +458,10 @@ public final class SpyglassServerService {
                     prediction.cacheHits(),
                     prediction.skippedChunks(),
                     prediction.failedChunks(),
-                    shapeNanos / 1_000_000L);
+                    shapeNanos / 1_000_000L,
+                    previewShapes.size());
             return new SpyglassScanOutcome(
-                    limited, extraction, errors.snapshot(), outlines.size(), prediction);
+                    limited, extraction, previewShapes, errors.snapshot(), outlines.size(), prediction);
         }
 
         private void complete(
@@ -488,7 +495,7 @@ public final class SpyglassServerService {
                 StructureShapeExtractor.ShapeStats shapeStats = outcome.extraction().stats();
                 DimBlendSpyglass.LOGGER.debug(
                         "Spyglass scan complete player={} rawOutlines={} visibleOutlines={} pieces={} "
-                                + "shapes={} noShape(notGenerated={} readFailed={} tooManyBlocks={} "
+                                + "shapes={} previews={} noShape(notGenerated={} readFailed={} tooManyBlocks={} "
                                 + "empty={} unencodable={} visibilityVolumeTooLarge={}) cacheHits={} "
                                 + "readFailures={}",
                         request.playerId(),
@@ -496,6 +503,7 @@ public final class SpyglassServerService {
                         limited.selected().size(),
                         limited.totalPieces(),
                         shapeStats.extracted(),
+                        outcome.previewShapes().size(),
                         shapeStats.notGenerated(),
                         shapeStats.readFailed(),
                         shapeStats.tooManyBlocks(),
@@ -506,8 +514,9 @@ public final class SpyglassServerService {
                         outcome.readErrors().total());
                 reportReadErrors(request, outcome.readErrors());
                 SpyglassSnapshotPayload.sendTo(player, request.sequence(), limited.structures());
-                this.shapeStreamer.onSnapshot(
-                        request.playerId(), request.dimension(), outcome.extraction().shapes());
+                List<EncodedStructureShape> shapes = new ArrayList<>(outcome.extraction().shapes());
+                shapes.addAll(outcome.previewShapes());
+                this.shapeStreamer.onSnapshot(request.playerId(), request.dimension(), shapes);
             } catch (RuntimeException exception) {
                 warnLimited(
                         "send",
