@@ -3,6 +3,8 @@ package dimblend.craft.recipe;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.InputStream;
@@ -28,6 +30,9 @@ import net.minecraft.resources.ResourceLocation;
  * 普通加热配方改为 8 铜粒 + 8 锌粒 = 1 黄铜锭」，于是删除规则必须撤掉、
  * 改为对该配方的字段改写。本类把这条口径钉死，防止删除规则又被加回来
  * （那种矛盾在运行期只留一条 WARN 日志，游戏里完全看不出异常）。</p>
+ *
+ * <p>2026-11-03 批次 M1 / T-01 起，本类还覆盖五条新增运行时规则（拆解台特殊配方、
+ * 森罗生面团、疣猪兽皮、末影袋、经验泵），并禁止把末影珍珠 / 末影之眼写成全局材料替换。</p>
  */
 class RecipeEditRulesTest {
 
@@ -40,6 +45,23 @@ class RecipeEditRulesTest {
             ResourceLocation.parse("create:crafting/kinetics/train_trapdoor");
     private static final ResourceLocation TRAIN_CONTROLS =
             ResourceLocation.parse("create:crafting/kinetics/controls");
+
+    // —— 2026-11-03 批次 M1 / T-01 的目标 ——
+
+    private static final Set<ResourceLocation> TWILIGHT_UNCRAFTING_SPECIAL = Set.of(
+            ResourceLocation.parse("twilightforest:uncrafting/tipped_arrow"),
+            ResourceLocation.parse("twilightforest:uncrafting/written_book"),
+            ResourceLocation.parse("twilightforest:relinquish_keepsakes"));
+    private static final ResourceLocation RAW_DOUGH = ResourceLocation.parse("kaleidoscope_cookery:raw_dough");
+    private static final ResourceLocation HOGLIN_HIDE_SPICY =
+            ResourceLocation.parse("kaleidoscope_nether:hoglin_hide");
+    private static final ResourceLocation HOGLIN_HIDE_COLD = ResourceLocation.parse("cold_sweat:hoglin_hide");
+    private static final ResourceLocation ENDER_POUCH = ResourceLocation.parse("enderstorage:ender_pouch");
+    private static final ResourceLocation XP_PUMP_UPGRADE =
+            ResourceLocation.parse("sophisticatedbackpacks:xp_pump_upgrade");
+    private static final ResourceLocation ENDER_EYE = ResourceLocation.parse("minecraft:ender_eye");
+    private static final ResourceLocation ENDER_PEARLS = ResourceLocation.parse("c:ender_pearls");
+    private static final ResourceLocation VOID_CORE = ResourceLocation.parse("voidscape:machine_core");
 
     /** 需求（2026-10-31 用户口径）：保留 Create 自带的加热搅拌，不得再删除它。 */
     @Test
@@ -183,6 +205,153 @@ class RecipeEditRulesTest {
         }
     }
 
+    // —— 2026-11-03 批次 M1 / T-01：五条运行时配方规则 ——
+
+    /** DoD 1：暮色拆解台的 3 条特殊拆解配方按配方 id 删除。 */
+    @Test
+    void twilightUncraftingSpecialRecipesAreDeletedById() {
+        RecipeEdit.DeleteByRecipeId rule = deleteRuleByLabel("暮色拆解台特殊配方");
+        assertNotNull(rule, "缺少规则「暮色拆解台特殊配方」");
+        assertEquals(TWILIGHT_UNCRAFTING_SPECIAL, rule.recipeIds(),
+                "规则「" + rule.label() + "」应删除 3 条特殊拆解配方，实际 " + rule.recipeIds());
+        assertFalse(rule.defensive(), "三条配方今天都随暮色森林 4.8.3345 提供，不属于防御性规则");
+    }
+
+    /**
+     * DoD 2：森罗生面团按产物删除。
+     *
+     * <p>8 条 {@code minecraft:flour_from_*_wheat} 都是 {@code minecraft:crafting_shapeless}，
+     * 走 {@link RecipeEdit.DeleteByResultId} 的默认合成台通道即可，不需要额外指定配方类型。</p>
+     */
+    @Test
+    void rawDoughRecipesAreDeletedByResult() {
+        RecipeEdit.DeleteByResultId rule = resultDeleteRuleByLabel("森罗生面团");
+        assertNotNull(rule, "缺少规则「森罗生面团」");
+        assertEquals(Set.of(RAW_DOUGH), rule.resultIds().exactIds(),
+                "规则「" + rule.label() + "」只删 kaleidoscope_cookery:raw_dough"
+                        + "（create:dough 是「面团」，不在需求内），实际 " + rule.resultIds().exactIds());
+        assertTrue(rule.resultIds().idPrefixes().isEmpty(), "产物删除必须按精确 ID，不能用前缀");
+        assertTrue(rule.recipeTypeIds().isEmpty(),
+                "8 条 flour_from_* 都是 crafting_shapeless，默认合成台通道已覆盖，不应额外指定配方类型");
+        assertFalse(rule.defensive(), "8 条配方今天都存在，不属于防御性规则");
+    }
+
+    /**
+     * DoD 3：材料里精确写成 {@code kaleidoscope_nether:hoglin_hide} 的替换为
+     * {@code cold_sweat:hoglin_hide}。
+     *
+     * <p>5 条配方（皮革转换、石磨、三口锅）今天都直接写物品 ID，不属于防御性规则；
+     * 替换是内容级变换，与配方类型无关，这里用无序合成与森罗锅两种真实写法各验一次。</p>
+     */
+    @Test
+    void hoglinHideIsReplacedWithColdSweatHide() {
+        RecipeEdit.ReplaceIngredient rule =
+                ingredientRuleFrom(RecipeEdit.IngredientTarget.item(HOGLIN_HIDE_SPICY.toString()));
+        assertNotNull(rule, "缺少 kaleidoscope_nether:hoglin_hide 的材料替换规则");
+        assertEquals("森罗疣猪兽皮改冷汗疣猪兽皮", rule.label(), "规则名必须与 DoD 一致");
+        assertEquals(RecipeEdit.IngredientTarget.item(HOGLIN_HIDE_COLD.toString()), rule.to(),
+                "材料必须替换成 cold_sweat:hoglin_hide");
+        assertFalse(rule.defensive(), "5 条配方今天都用它当材料，不属于防御性规则");
+
+        // 真实写法 1：hoglin_hide_to_leather（minecraft:crafting_shapeless，材料只写物品 ID）。
+        JsonElement shapeless = rule.transform(json("""
+                {"type":"minecraft:crafting_shapeless",
+                 "ingredients":[{"item":"kaleidoscope_nether:hoglin_hide"}],
+                 "result":{"id":"minecraft:leather","count":3}}
+                """));
+        assertEquals("cold_sweat:hoglin_hide", firstIngredientItem(shapeless),
+                "无序合成 hoglin_hide_to_leather 的材料未替换");
+        assertEquals(3, shapeless.getAsJsonObject().getAsJsonObject("result").get("count").getAsInt(),
+                "产物与数量必须原样");
+
+        // 真实写法 2：森罗锅 pot（自定义类型，材料列表里混着水桶）。
+        JsonElement pot = rule.transform(json("""
+                {"type":"kaleidoscope_cookery:pot",
+                 "ingredients":[{"item":"minecraft:water_bucket"},{"item":"kaleidoscope_nether:hoglin_hide"}],
+                 "result":{"id":"kaleidoscope_cookery:oil","count":4},"time":200}
+                """));
+        assertEquals("cold_sweat:hoglin_hide",
+                pot.getAsJsonObject().getAsJsonArray("ingredients").get(1).getAsJsonObject()
+                        .get("item").getAsString(),
+                "森罗锅配方（自定义类型）的材料未替换：替换必须与配方类型无关");
+        assertEquals("minecraft:water_bucket",
+                pot.getAsJsonObject().getAsJsonArray("ingredients").get(0).getAsJsonObject()
+                        .get("item").getAsString(),
+                "同一配方里的其它材料不得被改写");
+        assertSame(pot, rule.transform(pot), "材料替换必须幂等：第二次应用不得再产生变化");
+    }
+
+    /**
+     * DoD 4：末影袋只改 {@code key.P} 字段，禁止全局替换 {@code #c:ender_pearls}。
+     *
+     * <p>配方取自 EnderStorage-1.21.1-2.13.0.191 的
+     * {@code data/enderstorage/recipe/ender_pouch.json}：类型 {@code enderstorage:create_recipe}，
+     * pattern {@code BLB/LPL/BWB}，{@code key.P} 是 {@code {"tag":"c:ender_pearls"}}。</p>
+     */
+    @Test
+    void enderPouchPearlSlotIsRewrittenToVoidCore() {
+        RecipeEdit.ModifyRecipeFields rule = fieldRuleById(ENDER_POUCH);
+        assertNotNull(rule, "缺少对 enderstorage:ender_pouch 的字段改写规则");
+        assertEquals("末影袋珍珠改虚空核心", rule.label(), "规则名必须与 DoD 一致");
+        assertEquals(Set.of(ENDER_POUCH), rule.recipeIds(),
+                "规则只能命中 enderstorage:ender_pouch 一条配方，实际 " + rule.recipeIds());
+        assertEquals(1, rule.fieldEdits().size(),
+                "只允许改 key.P 一个字段，实际改写字段 " + rule.fieldEdits().keySet());
+        JsonElement pearlSlot = rule.fieldEdits().get("key.P");
+        assertNotNull(pearlSlot, "缺少 key.P 字段改写");
+        assertTrue(pearlSlot.isJsonObject(), "key.P 必须写成材料对象");
+        assertEquals(VOID_CORE.toString(), pearlSlot.getAsJsonObject().get("item").getAsString(),
+                "key.P 必须改成 voidscape:machine_core");
+        assertFalse(pearlSlot.getAsJsonObject().has("tag"), "key.P 只能写 item，不得同时保留 tag");
+    }
+
+    /**
+     * DoD 5：经验泵只改槽位 2 与 8，禁止全局替换 {@code minecraft:ender_eye}。
+     *
+     * <p>配方取自 sophisticatedbackpacks-1.21.1-3.25.44.1736 的
+     * {@code data/sophisticatedbackpacks/recipe/xp_pump_upgrade.json}：
+     * {@code minecraft:crafting_shaped}，pattern {@code RER/CPC/RER}，
+     * {@code key.E = minecraft:ender_eye}，按行优先落在槽位 2 与 8。</p>
+     */
+    @Test
+    void xpPumpEnderEyeSlotsAreRewrittenToVoidCore() {
+        RecipeEdit.ModifyShapedGrid rule = gridRuleByResult(XP_PUMP_UPGRADE);
+        assertNotNull(rule, "缺少产物为 sophisticatedbackpacks:xp_pump_upgrade 的网格改写规则");
+        assertEquals("经验泵末影之眼改虚空核心", rule.label(), "规则名必须与 DoD 一致");
+        assertEquals(Set.of(XP_PUMP_UPGRADE), rule.resultTargets(),
+                "规则只能命中经验泵升级这一条配方，实际 " + rule.resultTargets());
+        assertEquals(Set.of(2, 8), rule.slotEdits().keySet(),
+                "RER/CPC/RER 中 E 位于行优先槽位 2 与 8，实际 " + rule.slotEdits().keySet());
+        for (int slot : List.of(2, 8)) {
+            assertEquals(RecipeIngredient.item(VOID_CORE.toString()), rule.slotEdits().get(slot),
+                    "槽位 " + slot + " 必须改成 voidscape:machine_core");
+        }
+        assertNull(rule.newResultCount(), "只换材料，不得改产物数量");
+    }
+
+    /**
+     * DoD 6 的后半句：末影珍珠与末影之眼不得走全局材料替换。
+     *
+     * <p>全局 {@code ReplaceIngredient} 会重写全包所有命中配方（末影珍珠是常见材料），
+     * 这里对三个规则阶段一起扫描，防止以后有人把「只改指定配方」偷懒换成全局替换。</p>
+     */
+    @Test
+    void noGlobalReplacementTargetsEnderPearlsOrEnderEyes() {
+        List<RecipeEdit.IngredientTarget> forbidden = List.of(
+                RecipeEdit.IngredientTarget.item(ENDER_EYE.toString()),
+                RecipeEdit.IngredientTarget.tag(ENDER_PEARLS.toString()));
+        for (List<RecipeEdit> edits : List.of(RecipeEditRules.edits(),
+                RecipeEditRules.ingredientEdits(), RecipeEditRules.lateEdits())) {
+            for (RecipeEdit edit : edits) {
+                if (edit instanceof RecipeEdit.ReplaceIngredient replace) {
+                    assertFalse(forbidden.contains(replace.from()),
+                            "规则「" + replace.label() + "」用全局材料替换命中 " + replace.from().describe()
+                                    + "：必须改为只改 enderstorage:ender_pouch 的 key.P 或经验泵的槽位 2/8");
+                }
+            }
+        }
+    }
+
     /** 取出命中给定配方 ID 的字段改写规则；不存在即断言失败。 */
     private static RecipeEdit.FieldModify fieldRuleFor(List<RecipeEdit> edits, ResourceLocation recipeId) {
         for (RecipeEdit edit : edits) {
@@ -191,6 +360,65 @@ class RecipeEditRulesTest {
             }
         }
         throw new AssertionError("规则表中缺少对 " + recipeId + " 的字段改写规则");
+    }
+
+    /** 按规则名查找按配方 ID 删除的规则；不存在返回 null，由调用方断言并给出 DoD 文案。 */
+    private static RecipeEdit.DeleteByRecipeId deleteRuleByLabel(String label) {
+        for (RecipeEdit edit : RecipeEditRules.edits()) {
+            if (edit instanceof RecipeEdit.DeleteByRecipeId delete && label.equals(delete.label())) {
+                return delete;
+            }
+        }
+        return null;
+    }
+
+    /** 按规则名查找按产物删除的规则；不存在返回 null。 */
+    private static RecipeEdit.DeleteByResultId resultDeleteRuleByLabel(String label) {
+        for (RecipeEdit edit : RecipeEditRules.edits()) {
+            if (edit instanceof RecipeEdit.DeleteByResultId delete && label.equals(delete.label())) {
+                return delete;
+            }
+        }
+        return null;
+    }
+
+    /** 查找 from 为目标写法之一的全局材料替换规则；不存在返回 null。 */
+    private static RecipeEdit.ReplaceIngredient ingredientRuleFrom(RecipeEdit.IngredientTarget from) {
+        for (RecipeEdit edit : RecipeEditRules.edits()) {
+            if (edit instanceof RecipeEdit.ReplaceIngredient replace && replace.from().equals(from)) {
+                return replace;
+            }
+        }
+        return null;
+    }
+
+    /** 查找精确命中给定配方 ID 的字段改写规则（{@link RecipeEdit.ModifyRecipeFields}）；不存在返回 null。 */
+    private static RecipeEdit.ModifyRecipeFields fieldRuleById(ResourceLocation recipeId) {
+        for (RecipeEdit edit : RecipeEditRules.edits()) {
+            if (edit instanceof RecipeEdit.ModifyRecipeFields fields && fields.matchesId(recipeId)) {
+                return fields;
+            }
+        }
+        return null;
+    }
+
+    /** 查找以给定产物为目标的有序合成网格改写规则；不存在返回 null。 */
+    private static RecipeEdit.ModifyShapedGrid gridRuleByResult(ResourceLocation resultTarget) {
+        for (RecipeEdit edit : RecipeEditRules.edits()) {
+            if (edit instanceof RecipeEdit.ModifyShapedGrid grid && grid.resultTargets().contains(resultTarget)) {
+                return grid;
+            }
+        }
+        return null;
+    }
+
+    private static String firstIngredientItem(JsonElement recipe) {
+        return recipe.getAsJsonObject().getAsJsonArray("ingredients").get(0).getAsJsonObject()
+                .get("item").getAsString();
+    }
+
+    private static JsonElement json(String text) {
+        return JsonParser.parseString(text);
     }
 
     /**

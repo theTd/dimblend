@@ -88,6 +88,15 @@ import com.google.gson.JsonPrimitive;
  *       材料（物品与 c:flour 标签两种写法）改成 c:flours/wheat、唯一产出改成 create:wheat_flour。
  *       规则实现为「全配方 JSON 内容替换」原语（{@link RecipeEdit.ReplaceIngredient} /
  *       {@link RecipeEdit.ReplaceResultId}），与配方类型无关。</li>
+ *   <li>2026-11-03 批次 M1（拆解台 / 生面团 / 疣猪兽皮 / 末影袋 / 经验泵）：
+ *       暮色 4.8.3345 的 3 条特殊拆解配方按 ID 删除；森罗厨房的 8 条
+ *       {@code minecraft:flour_from_*_wheat}（均为 crafting_shapeless）按产物
+ *       {@code kaleidoscope_cookery:raw_dough} 删除；森罗下界 1.1.2 的 5 条以
+ *       {@code kaleidoscope_nether:hoglin_hide} 为材料的配方（皮革转换、石磨、三口锅）
+ *       改成 {@code cold_sweat:hoglin_hide}。末影袋只改 {@code enderstorage:ender_pouch}
+ *       的 {@code key.P}，经验泵只改 {@code sophisticatedbackpacks:xp_pump_upgrade} 的
+ *       槽位 2 与 8 —— 两者都<b>禁止</b>用全局材料替换：末影珍珠 / 末影之眼是全包常见材料，
+ *       全局替换会波及大量无关配方。</li>
  * </ul>
  */
 public final class RecipeEditRules {
@@ -350,6 +359,44 @@ public final class RecipeEditRules {
         edits.add(new RecipeEdit.ReplaceResultId("森罗面粉产物改 Create 小麦面粉",
                 ResourceLocation.parse("kaleidoscope_cookery:flour"),
                 ResourceLocation.parse("create:wheat_flour"), false));
+
+        // —— 3.18 2026-11-03 批次 M1：拆解台 / 生面团 / 疣猪兽皮 / 末影袋 / 经验泵 ——
+        // 3.18.1 暮色拆解台的特殊拆解配方（1.21.1-4.8.3345 实测正好 3 条，全包无其它 mod 追加）：
+        // 反推清单已由整合包配置关闭，这 3 条是数据包配方、不受该开关影响，只能按 ID 删除。
+        edits.add(new RecipeEdit.DeleteByRecipeId("暮色拆解台特殊配方",
+                Set.of(ResourceLocation.parse("twilightforest:uncrafting/tipped_arrow"),
+                        ResourceLocation.parse("twilightforest:uncrafting/written_book"),
+                        ResourceLocation.parse("twilightforest:relinquish_keepsakes")),
+                false));
+
+        // 3.18.2 森罗生面团：8 条 minecraft:flour_from_1_wheat … _8_wheat 均为 crafting_shapeless，
+        // 产物 kaleidoscope_cookery:raw_dough（create:dough 是「面团」，不在需求内）。
+        // DeleteByResultId 的默认合成台通道即覆盖全部 8 条，无需指定额外配方类型。
+        edits.add(new RecipeEdit.DeleteByResultId("森罗生面团",
+                ResultIdFilter.exact("kaleidoscope_cookery:raw_dough"), Set.of(), false));
+
+        // 3.18.3 森罗疣猪兽皮改冷汗疣猪兽皮：森罗下界 1.1.2 的 5 条配方直接写物品 ID
+        // （hoglin_hide_to_leather、millstone/hoglin_hide、pot/oil_from_hoglin_hide_1..3），
+        // 内容级替换与配方类型无关，磨石/锅两种自定义类型同样命中；当前 5 条都在，非防御性。
+        edits.add(new RecipeEdit.ReplaceIngredient("森罗疣猪兽皮改冷汗疣猪兽皮",
+                RecipeEdit.IngredientTarget.item("kaleidoscope_nether:hoglin_hide"),
+                RecipeEdit.IngredientTarget.item("cold_sweat:hoglin_hide"), false));
+
+        // 3.18.4 末影袋珍珠改虚空核心：EnderStorage 2.13.0.191 的 enderstorage:ender_pouch
+        //（type enderstorage:create_recipe，pattern BLB/LPL/BWB）里珍珠是正中心的 key.P，
+        // 写法为 {"tag":"c:ender_pearls"}。只按配方 ID 改写这一个字段：
+        // 全局 ReplaceIngredient 会把全包所有用到末影珍珠的配方一起改掉（用户明确禁止）。
+        edits.add(modifyFields("末影袋珍珠改虚空核心", "enderstorage:ender_pouch")
+                .setJson("key.P", "{\"item\": \"voidscape:machine_core\"}")
+                .build());
+
+        // 3.18.5 经验泵末影之眼改虚空核心：sophisticatedbackpacks 3.25.44.1736 的
+        // sophisticatedbackpacks:xp_pump_upgrade（minecraft:crafting_shaped，pattern RER/CPC/RER，
+        // key.E = minecraft:ender_eye）。行优先槽位中 E 落在 2 与 8；只改这两个槽位，产物数量不动。
+        // 全局替换末影之眼同样被用户明确禁止。
+        edits.add(modify("经验泵末影之眼改虚空核心", "sophisticatedbackpacks:xp_pump_upgrade")
+                .slots(Set.of(2, 8), RecipeIngredient.item("voidscape:machine_core"))
+                .build());
 
         return edits.build();
     }
