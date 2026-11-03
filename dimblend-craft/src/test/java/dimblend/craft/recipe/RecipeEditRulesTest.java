@@ -282,6 +282,82 @@ class RecipeEditRulesTest {
     }
 
     /**
+     * 用户 2026-11-04：删除「疣猪兽皮 => 皮革」的两个配方。
+     *
+     * <p>全包扫描（所有 mod jar 的 recipe JSON）确认「材料含 hoglin_hide 且产物含 leather」
+     * 的配方正好两条，与用户说的「两个」一致：合成台无序合成的
+     * {@code hoglin_hide_to_leather}（1 皮 → 3 皮革）与石磨的
+     * {@code millstone/hoglin_hide}（1 皮 → 5 皮革）。恶魂皮那条不在此列——那是恶魂皮。</p>
+     */
+    @Test
+    void hoglinHideToLeatherRecipesAreDeletedById() {
+        RecipeEdit.DeleteByRecipeId rule = deleteRuleByLabel("疣猪兽皮制皮革");
+        assertNotNull(rule, "缺少规则「疣猪兽皮制皮革」");
+        assertEquals(Set.of(ResourceLocation.parse("kaleidoscope_nether:hoglin_hide_to_leather"),
+                ResourceLocation.parse("kaleidoscope_nether:millstone/hoglin_hide")), rule.recipeIds(),
+                "必须正好删掉这两个把疣猪兽皮变成皮革的配方，实际 " + rule.recipeIds());
+        assertFalse(rule.defensive(), "两条配方随森罗下界 1.1.2 提供且实测存在，不属于防御性规则");
+        for (ResourceLocation id : rule.recipeIds()) {
+            assertFalse(id.getPath().contains("ghast"),
+                    "恶魂皮配方不得被误删：" + id);
+        }
+    }
+
+    /**
+     * 用户 2026-11-04：所有森罗生面团参与的配方改为 create 面团。
+     *
+     * <p>生产侧 8 条已在 3.18.2 删掉，所以生面团此后不可获得；还引用它的配方只有蒸笼一条，
+     * 而它的四个材料**和**产物里的方块实体数据都写死了生面团。这条测试钉住两件事：
+     * 材料改了、蒸笼里预装的东西也改了（正是 {@code ReplaceIngredient} 不覆盖的那部分），
+     * 同时不能误改方块实体**类型** id 或显示模型 id。</p>
+     */
+    @Test
+    void rawDoughIsUnifiedIntoCreateDoughIncludingSteamerContents() {
+        RecipeEdit.ReplaceItemIdDeep rule = deepIdRule("森罗生面团换 create 面团");
+        assertNotNull(rule, "缺少规则「森罗生面团换 create 面团」");
+        assertEquals(RAW_DOUGH, rule.from());
+        assertEquals(ResourceLocation.parse("create:dough"), rule.to(),
+                "森罗生面团必须整体换成 create 面团");
+        assertFalse(rule.defensive(), "蒸笼配方今天存在，不属于防御性规则");
+
+        // 真实写法：kaleidoscope_cookery:raw_dough_steamer（crafting_shapeless，
+        // 4 个生面团 + 蒸笼；产物把 4 个生面团预装进 block_entity_data）。
+        JsonElement steamer = rule.transform(json("""
+                {"type":"minecraft:crafting_shapeless",
+                 "ingredients":[{"item":"kaleidoscope_cookery:steamer"},
+                   {"item":"kaleidoscope_cookery:raw_dough"},{"item":"kaleidoscope_cookery:raw_dough"},
+                   {"item":"kaleidoscope_cookery:raw_dough"},{"item":"kaleidoscope_cookery:raw_dough"}],
+                 "result":{"id":"kaleidoscope_cookery:steamer","count":1,
+                   "components":{"minecraft:block_entity_data":{
+                     "id":"kaleidoscope_cookery:steamer",
+                     "Items":[{"id":"kaleidoscope_cookery:raw_dough","Slot":0,"Count":1},
+                              {"id":"kaleidoscope_cookery:raw_dough","Slot":1,"Count":1}]}}}}
+                """));
+        JsonObject out = steamer.getAsJsonObject();
+        JsonArray ingredients = out.getAsJsonArray("ingredients");
+        for (int i = 1; i <= 4; i++) {
+            assertEquals("create:dough", ingredients.get(i).getAsJsonObject().get("item").getAsString(),
+                    "第 " + i + " 个材料必须换成 create 面团");
+        }
+        assertEquals("kaleidoscope_cookery:steamer",
+                ingredients.get(0).getAsJsonObject().get("item").getAsString(),
+                "蒸笼本体不是生面团，不得被改写");
+
+        JsonObject beData = out.getAsJsonObject("result").getAsJsonObject("components")
+                .getAsJsonObject("minecraft:block_entity_data");
+        JsonArray items = beData.getAsJsonArray("Items");
+        for (int i = 0; i < items.size(); i++) {
+            assertEquals("create:dough", items.get(i).getAsJsonObject().get("id").getAsString(),
+                    "蒸笼预装的第 " + i + " 格必须换成 create 面团，否则玩家会拿到装着"
+                            + "已不可获得物品的蒸笼");
+        }
+        assertEquals("kaleidoscope_cookery:steamer", beData.get("id").getAsString(),
+                "方块实体类型 id 不得被改写（那是 BE 类型，不是物品）");
+
+        assertSame(steamer, rule.transform(steamer), "深度替换必须幂等：第二次应用不得再产生变化");
+    }
+
+    /**
      * DoD 4：末影袋只改 {@code key.P} 字段，禁止全局替换 {@code #c:ender_pearls}。
      *
      * <p>配方取自 EnderStorage-1.21.1-2.13.0.191 的
@@ -464,6 +540,16 @@ class RecipeEditRulesTest {
             }
         }
         throw new AssertionError("规则表中缺少以 " + RAILWAY_CASING + " 为原料的删除规则");
+    }
+
+    /** 按规则名取物品 id 深度替换规则；缺失返回 null 让断言给出可读失败。 */
+    private static RecipeEdit.ReplaceItemIdDeep deepIdRule(String label) {
+        for (RecipeEdit edit : RecipeEditRules.edits()) {
+            if (edit instanceof RecipeEdit.ReplaceItemIdDeep rule && rule.label().equals(label)) {
+                return rule;
+            }
+        }
+        return null;
     }
 
     private static Set<ResourceLocation> deliberatelyDeleted(List<RecipeEdit> edits) {

@@ -11,7 +11,8 @@
   ],
   "client": [
     "client.LanguageOverrideMixin",
-    "client.I18nAccessor"
+    "client.I18nAccessor",
+    "compat.twilightforest.UncraftingViewerMixin"
   ],
   "injectors": {
     "defaultRequire": 1
