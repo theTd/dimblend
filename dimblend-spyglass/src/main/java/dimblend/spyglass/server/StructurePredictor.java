@@ -57,8 +57,8 @@ import net.minecraft.world.level.levelgen.structure.StructureStart;
 final class StructurePredictor {
     /**
      * Chunks one scan may generate. Deliberately small: the scan executor is shared with the region
-     * reads and the shape extraction, and the cache carries results forward, so a small budget only
-     * delays how quickly distant unvisited structures appear.
+     * reads, and the cache carries results forward, so a small budget only delays how quickly
+     * distant unvisited structures appear.
      */
     static final int MAX_CHUNKS_PER_SCAN = 24;
     /** Bounded so a long session crossing a large unvisited area cannot grow without limit. */

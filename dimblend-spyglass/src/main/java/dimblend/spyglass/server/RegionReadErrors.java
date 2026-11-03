@@ -5,10 +5,10 @@ import javax.annotation.Nullable;
 /**
  * Mutable, thread-confined failure counter for one scan.
  *
- * <p>Shared by the structure-start scan and the shape extraction so both read passes of one request
- * are reported as a single throttled warning. Failures skip only the failing chunk; nothing aborts a
- * whole scan. The categories deliberately match vanilla's own read-failure modes plus the read-only
- * identity check this mod adds.
+ * <p>One counter per scan, so all region reads of one request are reported as a single throttled
+ * warning. Failures skip only the failing chunk; nothing aborts a whole scan. The categories
+ * deliberately match vanilla's own read-failure modes plus the read-only identity check this mod
+ * adds.
  */
 final class RegionReadErrors {
     private int regionFailures;

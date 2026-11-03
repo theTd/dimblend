@@ -1,6 +1,7 @@
 package dimblend.spyglass.client;
 
 import com.mojang.blaze3d.platform.Window;
+import com.mojang.blaze3d.vertex.PoseStack;
 import dimblend.spyglass.DimBlendSpyglass;
 import dimblend.spyglass.structure.OutlineBox;
 import java.util.ArrayList;
@@ -31,10 +32,10 @@ import org.joml.Vector3f;
  * lens is opening and with resource packs that change the scope texture. No mask geometry is
  * duplicated here.
  *
- * <p>Anchor: the union bounds' top-center, {@code (centerX, maxY + 1, centerZ)}. A 16×16 GUI-pixel
- * box is centered on the projected point; overlapping boxes are skipped nearest-first, so the
- * priority stays stable while panning. The projected result is published as {@link MarkScreenFrame}
- * for the HUD layers of the same frame.
+ * <p>Anchor: the union bounds' top-center, {@code (centerX, maxY + 1, centerZ)}. A 32×32 GUI-pixel
+ * box is centered on the projected point and the glyph is drawn at twice the font size inside it;
+ * overlapping boxes are skipped nearest-first, so the priority stays stable while panning. The
+ * projected result is published as {@link MarkScreenFrame} for the HUD layers of the same frame.
  */
 // RegisterGuiLayersEvent is an IModBusEvent: FML registers this listener on the mod bus by itself.
 @EventBusSubscriber(modid = DimBlendSpyglass.MODID, value = Dist.CLIENT)
@@ -42,8 +43,10 @@ public final class StructureMarkLayer {
     static final ResourceLocation LAYER_ID =
             ResourceLocation.fromNamespaceAndPath(DimBlendSpyglass.MODID, "structure_marks");
 
-    /** Fixed box size, in GUI pixels: the glyph is centered inside it. */
-    static final int MARK_SIZE = 16;
+    /** Fixed box size, in GUI pixels: the 2× glyph is centered inside it. */
+    static final int MARK_SIZE = 32;
+    /** The glyph is drawn at this multiple of the font's size. */
+    static final float GLYPH_SCALE = 2.0F;
     /** Marks whose center is inside this inset rectangle count as "in the lens" for the arrow layer. */
     static final double LENS_INSET = 24.0;
     private static final int COLOR = 0xFFFFFFFF;
@@ -106,9 +109,18 @@ public final class StructureMarkLayer {
         for (LabelPlacement.Candidate<MarkFrame.Mark> candidate : placed) {
             drawn.add(candidate.label());
             String glyph = MarkerGlyph.of(candidate.label().predicted());
-            int x = Math.round(candidate.left() + (MARK_SIZE - font.width(glyph)) * 0.5F);
-            int y = Math.round(candidate.top() + (MARK_SIZE - font.lineHeight) * 0.5F);
-            graphics.drawString(font, glyph, x, y, COLOR, true);
+            // Center the scaled glyph inside the MARK_SIZE box, then draw it through a 2× pose so the
+            // font itself is untouched. Pose transforms scale the translation too, hence the /2.
+            int x = Math.round(
+                    candidate.left() + (MARK_SIZE - font.width(glyph) * GLYPH_SCALE) * 0.5F);
+            int y = Math.round(
+                    candidate.top() + (MARK_SIZE - font.lineHeight * GLYPH_SCALE) * 0.5F);
+            PoseStack pose = graphics.pose();
+            pose.pushPose();
+            pose.scale(GLYPH_SCALE, GLYPH_SCALE, 1.0F);
+            pose.translate(x / GLYPH_SCALE, y / GLYPH_SCALE, 0.0F);
+            graphics.drawString(font, glyph, 0, 0, COLOR, true);
+            pose.popPose();
         }
 
         List<MarkScreenFrame.Mark> marks = new ArrayList<>(projected.size());

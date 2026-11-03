@@ -14,8 +14,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ViewportEvent;
 
 /**
- * The player's live reveal distance and the terrain fog band the structure meshes fade into: start,
- * end and shape of the last {@code FOG_TERRAIN} pass.
+ * The player's live reveal distance and the terrain fog band last observed on the client.
  *
  * <p>Vanilla computes the terrain fog planes once per frame in {@code FogRenderer.setupFog}
  * ({@code LevelRenderer.java:949}); for the non-foggy case the start is
@@ -30,10 +29,8 @@ import net.neoforged.neoforge.client.event.ViewportEvent;
  * cancelled event replace them, so an unmodified event exposes vanilla's fog start, end and shape.
  * Listening at {@link EventPriority#LOWEST} observes the values after every other listener.
  *
- * <p>{@link SpyglassShapeRenderer} reinstalls the same start/end/shape for both mesh passes. At
- * {@code AFTER_SKY} the shader fog still carries the sky pass's {@code FOG_SKY} values
- * ({@code LevelRenderer.java:947}, re-applied after the stars at {@code :1637}); the terrain pass runs
- * only afterwards ({@code :949}), so the last recorded terrain values are the correct ones there.
+ * <p>The recorded band still decides whether the feature is shown at all; no structure geometry is
+ * drawn, so the values only gate the {@code ?}/{@code !} marks, the distance text and the arrow.
  *
  * <p>Reveal is enabled only for {@link FogRenderer.FogMode#FOG_TERRAIN} with
  * {@link FogType#NONE} and no blindness/darkness effect. Every other fog (water, lava, powder snow)
@@ -41,8 +38,8 @@ import net.neoforged.neoforge.client.event.ViewportEvent;
  * whose start has nothing to do with the render distance; showing far structures through it would be
  * wrong, so the spyglass draws nothing at all then.
  *
- * <p>Client main thread only (the fog event, the level passes, the sender and the level clear all
- * run there); the value is a couple of plain fields.
+ * <p>Client main thread only (the fog event, the level pass and the level clear all run there); the
+ * value is a couple of plain fields.
  */
 @EventBusSubscriber(modid = DimBlendSpyglass.MODID, value = Dist.CLIENT)
 public final class SpyglassRevealState {

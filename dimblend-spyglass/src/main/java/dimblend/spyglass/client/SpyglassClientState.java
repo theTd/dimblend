@@ -1,9 +1,9 @@
 package dimblend.spyglass.client;
 
 import dimblend.spyglass.DimBlendSpyglass;
+import dimblend.spyglass.net.SpyglassBusyHandlers;
 import dimblend.spyglass.net.SpyglassSnapshotPayload;
 import dimblend.spyglass.structure.SpyglassDistance;
-import dimblend.spyglass.structure.StructureKey;
 import dimblend.spyglass.structure.StructureOutline;
 import java.util.List;
 import net.minecraft.client.Minecraft;
@@ -31,7 +31,7 @@ public final class SpyglassClientState {
     private static ResourceLocation dimension;
     private static long sequence;
     private static List<StructureOutline> structures = List.of();
-    /** Memo of the last {@link #currentStructures()} filter; both level passes use it per frame. */
+    /** Memo of the last {@link #currentStructures()} filter; the mark publisher uses it per frame. */
     private static long memoFrame = Long.MIN_VALUE;
     private static List<StructureOutline> memoSnapshot = List.of();
     private static double memoPlayerX;
@@ -71,8 +71,8 @@ public final class SpyglassClientState {
      * reveal distance away, i.e. at least part of it is past the fog. Callers must gate on
      * {@link SpyglassScopeGate#isScoping} themselves.
      *
-     * <p>Both level passes need this list every frame, so the result is memoized on the frame stamp,
-     * the snapshot identity, the live player position and the reveal distance.
+     * <p>The mark publisher needs this list every frame, so the result is memoized on the frame
+     * stamp, the snapshot identity, the live player position and the reveal distance.
      */
     public static List<StructureOutline> currentStructures() {
         Minecraft minecraft = Minecraft.getInstance();
@@ -122,19 +122,6 @@ public final class SpyglassClientState {
         return visible;
     }
 
-    /**
-     * True when this key belongs to the latest snapshot — the padded ring, not the exact display
-     * ring. The client shape cache uses it to keep snapshot shapes from evicting each other.
-     */
-    static boolean isInCurrentSnapshot(StructureKey key) {
-        for (int i = 0; i < structures.size(); i++) {
-            if (structures.get(i).key().equals(key)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     public static void clear() {
         dimension = null;
         sequence = 0L;
@@ -146,12 +133,9 @@ public final class SpyglassClientState {
         // The fog state is per level: forget the observed values, so nothing is drawn until the first
         // terrain fog pass of the new level.
         SpyglassRevealState.reset();
-        // Shapes are cached per dimension and keyed by structure; they must not survive a level,
-        // dimension or connection change either. This is the single clear point used by the renderer,
-        // the logout event and the level unload event. Their meshes go with them (GL buffers are
-        // deleted on the render thread; ShapeMeshStore defers if called elsewhere).
-        SpyglassShapeCache.clear();
-        ShapeMeshStore.clear();
+        // A scan flag belongs to the level it was requested for; never let the measuring line survive
+        // a dimension change or a disconnect.
+        SpyglassBusyHandlers.reset();
     }
 
     @SubscribeEvent

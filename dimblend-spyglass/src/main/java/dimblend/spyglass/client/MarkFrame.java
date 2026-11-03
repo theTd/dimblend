@@ -12,9 +12,9 @@ import org.joml.Matrix4f;
  * ({@code RenderLevelStageEvent} AFTER_PARTICLES) to {@link StructureMarkLayer} in the GUI pass of
  * the same frame.
  *
- * <p>Unlike the old label hand-off, this carries <b>every</b> structure in range, not only the ones
- * whose mesh was drawn: {@code !} must appear even when the shape never arrived (PRD P6). Each mark
- * also carries its center distance, so the layer does not recompute it.
+ * <p>It carries <b>every</b> structure in range, not only the ones whose glyph was drawn: the edge
+ * arrow still needs the direction of a mark that lost the overlap rule. Each mark also carries its
+ * center distance, so the layer does not recompute it.
  *
  * <p>{@code GameRenderer.render} draws the level and then the GUI under the same condition, so the
  * matrices always belong to the frame they are consumed in. Render thread only.

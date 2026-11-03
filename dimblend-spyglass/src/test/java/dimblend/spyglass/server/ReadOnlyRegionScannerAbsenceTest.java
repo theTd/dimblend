@@ -29,6 +29,9 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class ReadOnlyRegionScannerAbsenceTest {
     private static final int DATA_VERSION = 4000;
+    /** Overworld dimensions used by these tests. */
+    private static final int MIN_BUILD_HEIGHT = -64;
+    private static final int LEVEL_HEIGHT = 384;
     private static final ResourceLocation HOUSE = ResourceLocation.fromNamespaceAndPath("test", "house");
 
     @Test
@@ -130,8 +133,8 @@ class ReadOnlyRegionScannerAbsenceTest {
                         Level.OVERWORLD,
                         DATA_VERSION,
                         regionDirectory,
-                        dimblend.spyglass.test.ChunkNbtFixture.MIN_BUILD_HEIGHT,
-                        dimblend.spyglass.test.ChunkNbtFixture.LEVEL_HEIGHT),
+                        MIN_BUILD_HEIGHT,
+                        LEVEL_HEIGHT),
                 List.of(candidates));
     }
 

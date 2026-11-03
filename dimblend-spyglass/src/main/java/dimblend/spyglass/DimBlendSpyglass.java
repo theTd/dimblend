@@ -1,14 +1,11 @@
 package dimblend.spyglass;
 
 import com.mojang.logging.LogUtils;
-import dimblend.spyglass.client.SpyglassClientSetup;
 import dimblend.spyglass.server.SpyglassServerSettings;
-import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
-import net.neoforged.fml.loading.FMLEnvironment;
 import org.slf4j.Logger;
 
 @Mod(DimBlendSpyglass.MODID)
@@ -23,10 +20,7 @@ public final class DimBlendSpyglass {
         modEventBus.addListener(SpyglassServerSettings::onLoading);
         modEventBus.addListener(SpyglassServerSettings::onReloading);
         modEventBus.addListener(SpyglassServerSettings::onUnloading);
-        if (FMLEnvironment.dist == Dist.CLIENT) {
-            // Client config registration and its screen live in the client entry, so common code
-            // only names that class behind the dist check (same pattern as the dimblend module).
-            SpyglassClientSetup.register(container);
-        }
+        // The client-side snapshot handler install and the client GUI layers register themselves
+        // through @EventBusSubscriber; there is no client config and no client setup call any more.
     }
 }
