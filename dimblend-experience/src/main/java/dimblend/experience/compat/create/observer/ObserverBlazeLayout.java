@@ -27,8 +27,27 @@ public final class ObserverBlazeLayout {
     /** Where Create's blaze models top out, measured from the block's bottom face (14/16 for every lit variant). */
     public static final float BLAZE_MODEL_TOP = 14.0F / 16.0F;
 
-    /** The blaze stands on the cushion: the lift cancels the model's own 6/16 so the flames meet the cushion top. */
-    public static final float BLAZE_RAISE = CUSHION_HEIGHT - BLAZE_MODEL_BOTTOM;
+    /**
+     * Extra lift the user asked for on 2026-11-03: one more block on top of the cushion alignment,
+     * measured from the current position rather than replacing the lift.
+     *
+     * <p>History: 2026-10-30 raised the whole assembly 0.5 and the user reported in game that it
+     * still floated; 2026-10-31 dropped it back onto the cushion. The requirement then asked for
+     * another 0.5, corrected in the same message to 1.0. Applying it as "add 1.0 to what stands
+     * today" gives {@link #BLAZE_RAISE} = 1.125, which leaves the blaze clearly off the cushion —
+     * the user's own earlier "floating" complaint — but that is the answer they chose with that
+     * history on the page, so it is implemented as chosen.
+     */
+    public static final float RAISE_ABOVE_CUSHION = 1.0F;
+
+    /**
+     * The blaze stands this far above the block floor.
+     *
+     * <p>{@code CUSHION_HEIGHT - BLAZE_MODEL_BOTTOM} is the alignment that puts the flames exactly
+     * on the cushion top; {@link #RAISE_ABOVE_CUSHION} is added on top of it.
+     */
+    public static final float BLAZE_RAISE =
+            CUSHION_HEIGHT - BLAZE_MODEL_BOTTOM + RAISE_ABOVE_CUSHION;
 
     /**
      * Half a block above the raised blaze's head.

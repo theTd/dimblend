@@ -98,6 +98,9 @@ public final class ChassisConstruction {
                 center.getX() - 22, center.getY(), center.getZ() - 2,
                 center.getX() + 22, center.getY(), center.getZ() + 2));
         if (car == null || car.isRemoved()) throw new IllegalStateException("Chassis assembly failed at " + center);
+        // Sable's plot has its own light engine and assembly never fills it; without this the
+        // chassis renders and reloads fully black (see SablePlotRelight).
+        dimblend.experience.compat.sable.SablePlotRelight.relight(level, car);
         SubLevelContainer.getContainer(level).addForceLoadTicket(car, SubLevelLoadingTicketType.COMMAND_FORCED, Unit.INSTANCE);
         finish(level, data, build);
     }

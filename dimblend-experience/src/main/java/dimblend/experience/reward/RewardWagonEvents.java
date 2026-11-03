@@ -6,6 +6,7 @@ import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import dimblend.experience.Config;
 import dimblend.experience.DimBlend;
+import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -13,6 +14,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.neoforged.neoforge.common.util.TriState;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -66,7 +68,7 @@ public final class RewardWagonEvents {
         if (!(event.getLevel() instanceof ServerLevel level) || !guarded(level)) {
             return;
         }
-        if (RewardWagonGuard.denies(verdict(level, event.getPos(), true, false))) {
+        if (RewardWagonGuard.denies(verdict(level, event.getPos(), true, false, creative(event.getPlayer())))) {
             event.setCanceled(true);
         }
     }
@@ -76,7 +78,7 @@ public final class RewardWagonEvents {
         if (!(event.getLevel() instanceof ServerLevel level) || !guarded(level)) {
             return;
         }
-        if (RewardWagonGuard.denies(verdict(level, event.getPos(), true, false))) {
+        if (RewardWagonGuard.denies(verdict(level, event.getPos(), true, false, creative(event.getEntity())))) {
             event.setCanceled(true);
             // LeftClickBlock carries no cancellation result; refusing the block action is how
             // a break is stopped before any mining progress starts.
@@ -100,7 +102,7 @@ public final class RewardWagonEvents {
             event.setCancellationResult(InteractionResult.FAIL);
             return;
         }
-        if (RewardWagonGuard.denies(verdict(level, event.getPos(), false, true))) {
+        if (RewardWagonGuard.denies(verdict(level, event.getPos(), false, true, creative(event.getEntity())))) {
             event.setCanceled(true);
             event.setCancellationResult(InteractionResult.FAIL);
         }
@@ -113,7 +115,8 @@ public final class RewardWagonEvents {
         }
         RewardWagonGuard.Source source = event.getEntity() instanceof Player
                 ? RewardWagonGuard.Source.PLAYER : RewardWagonGuard.Source.OTHER;
-        if (RewardWagonGuard.denies(RewardWagonGuard.mayPlace(insideWagon(level, event.getPos()), source))) {
+        if (RewardWagonGuard.denies(RewardWagonGuard.mayPlace(
+                insideWagon(level, event.getPos()), source, creative(event.getEntity())))) {
             event.setCanceled(true);
         }
     }
@@ -135,18 +138,23 @@ public final class RewardWagonEvents {
      * source, and asks the pure rule.
      */
     private static RewardWagonGuard.Verdict verdict(ServerLevel level, BlockPos pos, boolean removing,
-            boolean interacting) {
+            boolean interacting, boolean creative) {
         if (!insideWagon(level, pos)) {
             return RewardWagonGuard.Verdict.ALLOW;
         }
         RewardWagonGuard.Brick brick = brickOf(level, pos);
         if (removing) {
-            return RewardWagonGuard.mayRemove(true, brick, RewardWagonGuard.Source.PLAYER);
+            return RewardWagonGuard.mayRemove(true, brick, RewardWagonGuard.Source.PLAYER, creative);
         }
         if (interacting) {
-            return RewardWagonGuard.mayInteract(true, brick);
+            return RewardWagonGuard.mayInteract(true, brick, creative);
         }
         return RewardWagonGuard.Verdict.ALLOW;
+    }
+
+    /** True when this actor is a creative player; anything else counts as survival. */
+    private static boolean creative(@Nullable Entity entity) {
+        return entity instanceof Player player && player.isCreative();
     }
 
     /**

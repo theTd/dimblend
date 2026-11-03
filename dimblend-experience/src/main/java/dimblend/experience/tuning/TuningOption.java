@@ -11,7 +11,7 @@ public enum TuningOption {
     DEADMAN_RADIUS("deadman_radius", 32.0D, 8.0D, 128.0D, 0, "simurail", Section.MAIN),
     BOGIE_ROLL_TORQUE("bogie_roll_torque", 5000.0D, 0.0D, 10000000.0D, 0, "simurail", Section.MAIN),
     SOILING_MULTIPLIER("soiling_multiplier", 0.5D, 1.0D, 2, "dimblend_carwash"),
-    COUPLER_REDSTONE("coupler_redstone", 1.0D, "simurail"),
+    COUPLER_REDSTONE("coupler_redstone", 0.0D, "simurail"),
     COUPLER_SURVIVAL("coupler_survival", 0.0D, "simurail"),
     LIMITED_WATER("limited_water", 1.0D, ""),
     SABLE_VOID_FIT("sable_void_fit", 1.0D, "sable"),
@@ -25,11 +25,6 @@ public enum TuningOption {
     STEAM_OVERLOAD("steam_overload", 1.0D, "create"),
     DIESEL_OVERLOAD("diesel_overload", 1.0D, "createdieselgenerators"),
     MOTOR_OVERLOAD("motor_overload", 1.0D, "createaddition"),
-    RADIO_STATIC("radio_static", 0.5D, 2.0D, 2, "dimblend_radio"),
-    RADIO_END_VOICE_FREQUENCY("radio_end_voice_frequency", 2.0D, 4.0D, 1, "dimblend_radio"),
-    // 默认值镜像 dimblend.radio.RadioLiveSettings.DEFAULT_END_VOICE_VOLUME（旧硬编码 0.5 × 1.5），由 TuningOptionTest 钉死
-    RADIO_END_VOICE_VOLUME("radio_end_voice_volume", 0.75D, 2.0D, 2, "dimblend_radio"),
-    RADIO_ACOUSTIC_INTENSITY("radio_acoustic_intensity", 1.0D, 2.0D, 2, "dimblend_radio"),
     EXP_CLEAR_RATIO("exp_clear_ratio", 1.0D, 1.0D, 2, ""),
     // 默认值镜像 Config.ROTATING_MONSTER_DENSITY ×100（0.5→50%），由 TuningOptionTest 钉死；
     // 2026-10-26 起该百分比作用于旋转维度全部受控怪物生成来源（不止自然刷怪全局上限）
@@ -116,11 +111,6 @@ public enum TuningOption {
     public double step() { return step; }
     public double minimum() { return minimum; }
     public double maximum() { return maximum; }
-    /** Settings owned by dimblend_radio, which every client applies to its own audio. */
-    public boolean radio() {
-        return this == RADIO_STATIC || this == RADIO_END_VOICE_FREQUENCY || this == RADIO_END_VOICE_VOLUME
-                || this == RADIO_ACOUSTIC_INTENSITY;
-    }
     /** Headlights appear on the Sable page but belong to experience's server config. */
     public boolean headlight() {
         return this == SABLE_HEADLIGHT || this == SABLE_HEADLIGHT_RANGE

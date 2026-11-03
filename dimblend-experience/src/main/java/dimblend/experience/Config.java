@@ -150,8 +150,9 @@ public final class Config {
             .define("simurailProtect", true);
 
     public static final ModConfigSpec.BooleanValue COUPLER_REDSTONE = BUILDER
-            .comment("E 板块 E5：自动车钩的红石信号解锁（true=红石信号不再断开车钩；false=红石信号可以断开车钩；贯通框不受影响）" + "；2026-10-31 R6 起默认 false（面板 coupler_redstone 默认 1=允许）")
-            .define("couplerRedstone", false);
+            .comment("E 板块 E5：自动车钩的红石信号解锁（true=红石信号不再断开车钩，即红石控制被禁止；false=红石信号可以断开车钩；贯通框不受影响）"
+                    + "；2026-11-03 用户要求面板 coupler_redstone 默认 0=禁止，故此处默认 true。整合包 config 早已是 true，本改动让代码默认值与之一致")
+            .define("couplerRedstone", true);
 
     public static final ModConfigSpec.BooleanValue ALLOW_SURVIVAL_COUPLER_INTERACTION = BUILDER
             .comment("Allow Survival players to right-click automatic couplers; default false. Other block protections remain active.")

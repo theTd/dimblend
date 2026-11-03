@@ -11,7 +11,6 @@ public final class TuningSettings {
         return switch (option) {
             case SOILING_MULTIPLIER -> CarwashTuningBridge.isLoaded();
             case BOGIE_ROLL_TORQUE -> SimurailTuningBridge.isLoaded();
-            case RADIO_STATIC, RADIO_END_VOICE_FREQUENCY, RADIO_END_VOICE_VOLUME, RADIO_ACOUSTIC_INTENSITY -> RadioTuningBridge.isLoaded();
             case SABLE_SUBSTEPS, SABLE_SOLVER_ITERATIONS, SABLE_PGS_ITERATIONS, SABLE_STABILIZATION_ITERATIONS,
                     SABLE_PHYSICS_TICK_INTERVAL, SABLE_SLEEP_SKIP, SABLE_CONTACT_FORCE_EVENTS,
                     SABLE_BIOME_PROJECTION_FAST_PATH, SABLE_EMPTY_CONTAINER_FAST_PATH ->
@@ -32,7 +31,6 @@ public final class TuningSettings {
             case DEADMAN_RADIUS -> Config.TRAIN_DEADMAN_RADIUS.get();
             case BOGIE_ROLL_TORQUE -> available(option) ? SimurailTuningBridge.get() : option.defaultValue();
             case SOILING_MULTIPLIER -> available(option) ? CarwashTuningBridge.get() : option.defaultValue();
-            case RADIO_STATIC, RADIO_END_VOICE_FREQUENCY, RADIO_END_VOICE_VOLUME, RADIO_ACOUSTIC_INTENSITY -> available(option) ? RadioTuningBridge.get(option) : option.defaultValue();
             case COUPLER_REDSTONE -> Config.COUPLER_REDSTONE.get() ? 0.0D : 1.0D;
             case COUPLER_SURVIVAL -> Config.ALLOW_SURVIVAL_COUPLER_INTERACTION.get() ? 1.0D : 0.0D;
             case LIMITED_WATER -> Config.LIMITED_WATER.get() ? 1.0D : 0.0D;
@@ -75,8 +73,6 @@ public final class TuningSettings {
             CarwashTuningBridge.set(value);
         } else if (option == TuningOption.BOGIE_ROLL_TORQUE) {
             SimurailTuningBridge.set(value);
-        } else if (option.radio()) {
-            RadioTuningBridge.set(option, value);
         } else if (option.sable()) {
             SableTuningBridge.set(option, value);
         } else {
@@ -121,7 +117,7 @@ public final class TuningSettings {
             case ROTATING_MONSTER_CAP -> Config.ROTATING_MONSTER_DENSITY.set(value / 100.0D);
             case ITEM_DRAIN_GROWTH_COST -> Config.ITEM_DRAIN_GROWTH_COST_MB.set((int) value);
             case STATION_CARRIAGE_LIMIT -> Config.STATION_CARRIAGE_LIMIT.set((int) value);
-            case BOGIE_ROLL_TORQUE, SOILING_MULTIPLIER, RADIO_STATIC, RADIO_END_VOICE_FREQUENCY, RADIO_END_VOICE_VOLUME, RADIO_ACOUSTIC_INTENSITY -> { }
+            case BOGIE_ROLL_TORQUE, SOILING_MULTIPLIER -> { }
             case SABLE_SUBSTEPS, SABLE_SOLVER_ITERATIONS, SABLE_PGS_ITERATIONS, SABLE_STABILIZATION_ITERATIONS,
                     SABLE_PHYSICS_TICK_INTERVAL, SABLE_SLEEP_SKIP, SABLE_CONTACT_FORCE_EVENTS,
                     SABLE_BIOME_PROJECTION_FAST_PATH, SABLE_EMPTY_CONTAINER_FAST_PATH -> { }
@@ -129,15 +125,14 @@ public final class TuningSettings {
     }
 
     /**
-     * A remote client's copy of the server's values, in memory only. Radio settings drive each
-     * client's own audio, so they are applied where the server offers them and radio is installed.
+     * A remote client's copy of the server's values, in memory only.
+     *
+     * <p>The radio branch is gone as of 2026-11-03: those four knobs moved to the jukebox screen in
+     * {@code dimblend-radio}, which owns their server round-trip itself, so this panel no longer
+     * carries a value for them to apply.
      */
     public static void applyRemote(TuningOption option, double value, boolean serverAvailable) {
-        if (option.radio()) {
-            if (serverAvailable && ModList.get().isLoaded(option.modId())) {
-                RadioTuningBridge.apply(option, value);
-            }
-        } else if (Config.isLoaded()) {
+        if (Config.isLoaded()) {
             applyExperience(option, value);
         }
     }

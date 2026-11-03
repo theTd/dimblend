@@ -61,19 +61,22 @@ class ObserverBlazeCushionTest {
     }
 
     /**
-     * 用户这次明确只换颜色、不动高度。三个高度常量是链式求值的
-     * （{@code SPYGLASS_Y} 与 {@code FLAME_BASE_Y} 都由 {@code BLAZE_RAISE} 推导），
-     * 所以改动 {@code BLAZE_RAISE} 会悄悄把望远镜和火苗一起挪走。
-     * 把现行数值钉死在这里，将来手滑改高度会直接在这里变红。
+     * 三个高度常量是链式求值的（{@code SPYGLASS_Y} 与 {@code FLAME_BASE_Y} 都由
+     * {@code BLAZE_RAISE} 推导），所以改动 {@code BLAZE_RAISE} 会悄悄把望远镜和火苗一起挪走。
+     *
+     * <p>2026-11-03 用户要求"y 上移 0.5 格，更改为 1 格"，并按推荐口径选择"在现在的位置上
+     * 再加 1.0 格"。原对齐值 0.125 加 1.0 得 1.125，三个派生值随之抬升，把新值钉死在这里。
      */
     @Test
     void verticalLayoutConstantsAreUnchanged() {
-        assertEquals(0.125F, ObserverBlazeLayout.BLAZE_RAISE, 1.0E-4F,
-                "BLAZE_RAISE 必须保持 0.125：本次只换坐垫颜色，不动高度");
-        assertEquals(1.5F, ObserverBlazeLayout.SPYGLASS_Y, 1.0E-4F,
-                "SPYGLASS_Y 必须保持 1.5：本次只换坐垫颜色，不动高度");
-        assertEquals(1.075F, ObserverBlazeLayout.FLAME_BASE_Y, 1.0E-4F,
-                "FLAME_BASE_Y 必须保持 1.075：本次只换坐垫颜色，不动高度");
+        assertEquals(1.0F, ObserverBlazeLayout.RAISE_ABOVE_CUSHION, 1.0E-4F,
+                "用户 2026-11-03 口径：在坐垫对齐的基础上再抬 1.0 格");
+        assertEquals(1.125F, ObserverBlazeLayout.BLAZE_RAISE, 1.0E-4F,
+                "0.125（坐垫对齐）+ 1.0（本次抬升）= 1.125");
+        assertEquals(2.5F, ObserverBlazeLayout.SPYGLASS_Y, 1.0E-4F,
+                "望远镜中心随烈焰人一起抬到 2.50");
+        assertEquals(2.075F, ObserverBlazeLayout.FLAME_BASE_Y, 1.0E-4F,
+                "火焰粒子随烈焰人一起抬到 2.075");
     }
 
     private static JsonObject loadModelTextures() throws Exception {

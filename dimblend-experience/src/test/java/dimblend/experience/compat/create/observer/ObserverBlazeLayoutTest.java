@@ -23,22 +23,31 @@ class ObserverBlazeLayoutTest {
     }
 
     /**
-     * The regression this pins: lifting the blaze by the cushion height alone left 6/16 of air between its flames and
-     * the cushion, so the blaze visibly floated. The lift has to cancel the model's own bottom offset, not repeat it.
+     * The cushion-alignment value is still the base the layout is built from; the user's
+     * 2026-11-03 lift is added on top of it, so the blaze deliberately no longer meets the cushion.
+     *
+     * <p>History: the original regression was "lifting by the cushion height alone left 6/16 of air
+     * between flames and cushion". That alignment is preserved here as
+     * {@code CUSHION_HEIGHT - BLAZE_MODEL_BOTTOM}; what changed is that {@link
+     * ObserverBlazeLayout#RAISE_ABOVE_CUSHION} is added deliberately, by the user's request.
      */
     @Test
-    void theBlazesUndersideMeetsTheCushionTop() {
-        assertEquals(ObserverBlazeLayout.CUSHION_HEIGHT,
-                ObserverBlazeLayout.BLAZE_RAISE + ObserverBlazeLayout.BLAZE_MODEL_BOTTOM, EPSILON,
-                "the flames must start exactly at the cushion top, not above it");
-        assertEquals(0.125F, ObserverBlazeLayout.BLAZE_RAISE, EPSILON);
+    void theBlazesUndersideClearsTheCushionByTheRequestedLift() {
+        float aligned = ObserverBlazeLayout.CUSHION_HEIGHT - ObserverBlazeLayout.BLAZE_MODEL_BOTTOM;
+        assertEquals(aligned + ObserverBlazeLayout.RAISE_ABOVE_CUSHION,
+                ObserverBlazeLayout.BLAZE_RAISE, EPSILON,
+                "the raise is the cushion alignment plus the user's requested lift");
+        assertEquals(1.0F, ObserverBlazeLayout.RAISE_ABOVE_CUSHION, EPSILON,
+                "the user asked for one block, corrected from half a block in the same message");
+        assertEquals(1.125F, ObserverBlazeLayout.BLAZE_RAISE, EPSILON);
     }
 
     @Test
     void spyglassFloatsHalfABlockAboveTheRaisedHead() {
         // Create's blaze model tops out at 14/16; half a block above that, plus the raise.
         assertEquals(ObserverBlazeLayout.BLAZE_RAISE + 0.875F + 0.5F, ObserverBlazeLayout.SPYGLASS_Y, EPSILON);
-        assertEquals(1.5F, ObserverBlazeLayout.SPYGLASS_Y, EPSILON);
+        assertEquals(2.5F, ObserverBlazeLayout.SPYGLASS_Y, EPSILON,
+                "with the one-block lift the spyglass centre sits at 2.50");
     }
 
     @Test

@@ -68,22 +68,35 @@ public final class SimurailBlockGuard {
             return;
         }
         BlockState state = event.getLevel().getBlockState(event.getPos());
-        if (isSimurailBlock(state)) {
-            Player player = event.getEntity();
-            boolean survival = player instanceof ServerPlayer serverPlayer
-                    ? serverPlayer.gameMode.getGameModeForPlayer() == GameType.SURVIVAL
-                    : !player.isSpectator() && player.getAbilities().mayBuild;
-            if (survival && SimurailBlocksHolder.isBogey(state)) {
+        if (!isSimurailBlock(state)) {
+            return;
+        }
+        Player player = event.getEntity();
+        boolean survival = player instanceof ServerPlayer serverPlayer
+                ? serverPlayer.gameMode.getGameModeForPlayer() == GameType.SURVIVAL
+                : !player.isSpectator() && player.getAbilities().mayBuild;
+        if (!survival) {
+            event.setCanceled(true);
+            return;
+        }
+        // 2026-11-03: the user wants the wrench charge usable in survival. A Create wrench on a
+        // coupler therefore reaches the vanilla path, where AutomaticCouplerWrenchMixin toggles the
+        // charge and returns before any type change. Everything else keeps its old answer.
+        SimurailSurvivalInteraction.Decision decision = SimurailSurvivalInteraction.decide(
+                SimurailBlocksHolder.isBogey(state),
+                SimurailBlocksHolder.isCoupler(state),
+                event.getItemStack().is(com.simibubi.create.AllItems.WRENCH),
+                Config.ALLOW_SURVIVAL_COUPLER_INTERACTION.get());
+        switch (decision) {
+            case ALLOW -> {
+                // Fall through to the vanilla interaction.
+            }
+            case PASS_BLOCK_ONLY -> {
                 // Let Simurail's block interaction open its own menu, but keep item hooks
                 // disabled: in particular, sneak-wrenching must not pick up the bogey.
                 event.setUseItem(TriState.FALSE);
-                return;
             }
-            if (survival
-                    && Config.ALLOW_SURVIVAL_COUPLER_INTERACTION.get() && SimurailBlocksHolder.isCoupler(state)) {
-                return;
-            }
-            event.setCanceled(true);
+            case DENY -> event.setCanceled(true);
         }
     }
 
