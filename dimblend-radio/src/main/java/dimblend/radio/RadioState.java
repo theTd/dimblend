@@ -19,9 +19,11 @@ public final class RadioState {
     }
 
     /** @param startMillis 定曲瞬间的 {@link RadioClock} 读数（毫秒）；切歌时钟不用 gameTime（掉刻被拉长） */
-    public record Entry(int station, int side, String trackHash, long startMillis, int nonce, boolean playing) {
+    public record Entry(int station, int side, String trackHash, long startMillis, int nonce, boolean playing,
+            int volumePercent) {
         public boolean audible() {
-            return playing && station >= RadioSignals.STATION_MIN && station <= RadioSignals.STATION_MAX && side > 0;
+            return playing && station >= RadioSignals.STATION_MIN && station <= RadioSignals.STATION_MAX
+                    && volumePercent > 0;
         }
     }
 
@@ -80,7 +82,7 @@ public final class RadioState {
                         ? prev.trackHash()
                         : trackPicker.pickNext(top, prev == null ? null : prev.trackHash());
         int nonce = prev == null ? 0 : prev.nonce() + 1;
-        Entry next = new Entry(top, side, track, RadioClock.now(), nonce, true);
+        Entry next = new Entry(top, side, track, RadioClock.now(), nonce, true, effectiveVolume(level, pos, side));
         STATES.put(key, next);
         logSchedule("recompute", pos, next);
         RadioEvents.changed(level, pos);
@@ -94,7 +96,7 @@ public final class RadioState {
             return;
         }
         String next = trackPicker.pickNext(prev.station(), prev.trackHash());
-        Entry entry = new Entry(prev.station(), prev.side(), next, RadioClock.now(), prev.nonce() + 1, true);
+        Entry entry = new Entry(prev.station(), prev.side(), next, RadioClock.now(), prev.nonce() + 1, true, prev.volumePercent());
         STATES.put(key, entry);
         logSchedule("advance", pos, entry);
         RadioEvents.changed(level, pos);
@@ -107,7 +109,7 @@ public final class RadioState {
         Entry prev = STATES.get(key);
         String next = trackPicker.pickNext(station, null);
         int nonce = prev == null ? 0 : prev.nonce() + 1;
-        Entry entry = new Entry(station, side, next, RadioClock.now(), nonce, true);
+        Entry entry = new Entry(station, side, next, RadioClock.now(), nonce, true, effectiveVolume(level, pos, side));
         STATES.put(key, entry);
         logSchedule("advanceNow", pos, entry);
         RadioEvents.changed(level, pos);
@@ -128,7 +130,8 @@ public final class RadioState {
             STATES.remove(key);
         } else {
             // nonce 保持：客户端 stale 判据含 nonce，不变即不重建实例、不重解码
-            STATES.put(key, new Entry(prev.station(), side, prev.trackHash(), prev.startMillis(), prev.nonce(), true));
+            STATES.put(key, new Entry(prev.station(), side, prev.trackHash(), prev.startMillis(), prev.nonce(), true,
+                    effectiveVolume(level, pos, side)));
         }
         RadioEvents.changed(level, pos);
     }
@@ -147,6 +150,24 @@ public final class RadioState {
                 reason, pos, entry.station(), RadioCatalog.shortHash(entry.trackHash()), entry.nonce(),
                 entry.startMillis(), lengthMillis, entry.startMillis() + lengthMillis + GAP_TICKS * 50L,
                 RadioClock.now());
+    }
+
+    /**
+     * The volume one jukebox should play at, right now: the user's per-block setting combined
+     * with the side redstone signal.
+     *
+     * <p>This is the single place the two are combined, and it is on the server, so every client
+     * hears the same loudness for the same radio. The client used to derive it from the signal
+     * itself; that cannot work any more, because the fixed value is not on the wire otherwise.
+     *
+     * <p>{@link RadioVolumeRule#decide} owns the policy — 0% follows the signal, anything else
+     * ignores its strength while still needing it to play at all — so this method only supplies
+     * the two inputs and turns "do not play" into 0, which is what the wire carries.
+     */
+    static int effectiveVolume(ServerLevel level, BlockPos pos, int side) {
+        int fixed = RadioVolumeSettings.at(level, pos);
+        RadioVolumeRule.Setting setting = RadioVolumeRule.decide(side, fixed);
+        return setting.playing() ? setting.volumePercent() : 0;
     }
 
     public interface TrackPicker {

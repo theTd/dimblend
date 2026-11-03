@@ -23,7 +23,7 @@ class JukeboxGoggleLayoutTest {
 
     private static RadioStatePayload state() {
         return new RadioStatePayload(ResourceLocation.withDefaultNamespace("overworld"),
-                BlockPos.ZERO, 3, 15, "hash", 0L, 0, true, 0L);
+                BlockPos.ZERO, 3, 15, "hash", 0L, 0, true, 0L, 150);
     }
 
     @Test

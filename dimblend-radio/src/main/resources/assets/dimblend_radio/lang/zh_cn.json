@@ -1,0 +1,16 @@
+{
+  "screen.dimblend_radio.tune.title": "电台调音",
+  "screen.dimblend_radio.tune.volume_hint": "本机音量（0% = 动态，跟随侧面红石信号）",
+  "screen.dimblend_radio.tune.volume.dynamic": "动态（跟随红石）",
+  "screen.dimblend_radio.tune.reception_noise": "电台杂音音量",
+  "screen.dimblend_radio.tune.end_voice_frequency": "末地人声频率倍率",
+  "screen.dimblend_radio.tune.end_voice_volume": "末地人声音量",
+  "screen.dimblend_radio.tune.acoustic_intensity": "声学模拟强度",
+  "screen.dimblend_radio.tune.read_only": "你没有权限修改这台电台",
+  "screen.dimblend_radio.tune.no_permission": "你没有权限修改电台设置",
+  "screen.dimblend_radio.tune.no_jukebox": "这里没有唱片机",
+  "screen.dimblend_radio.tune.not_a_radio": "这台唱片机当前没有在播放电台",
+  "screen.dimblend_radio.tune.invalid": "这个数值不被接受",
+  "screen.dimblend_radio.tune.save_failed": "保存失败，请查看日志",
+  "screen.dimblend_radio.tune.saved": "已保存"
+}

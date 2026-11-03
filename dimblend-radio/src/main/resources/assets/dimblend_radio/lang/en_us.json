@@ -1,0 +1,16 @@
+{
+  "screen.dimblend_radio.tune.title": "Radio Tuning",
+  "screen.dimblend_radio.tune.volume_hint": "This radio's volume (0% = dynamic, follows the side redstone signal)",
+  "screen.dimblend_radio.tune.volume.dynamic": "Dynamic (follows redstone)",
+  "screen.dimblend_radio.tune.reception_noise": "Reception noise volume",
+  "screen.dimblend_radio.tune.end_voice_frequency": "End voice frequency multiplier",
+  "screen.dimblend_radio.tune.end_voice_volume": "End voice volume",
+  "screen.dimblend_radio.tune.acoustic_intensity": "Acoustic simulation intensity",
+  "screen.dimblend_radio.tune.read_only": "You may not change this radio",
+  "screen.dimblend_radio.tune.no_permission": "You may not change radio settings",
+  "screen.dimblend_radio.tune.no_jukebox": "There is no jukebox here",
+  "screen.dimblend_radio.tune.not_a_radio": "This jukebox is not playing a station",
+  "screen.dimblend_radio.tune.invalid": "That value is not accepted",
+  "screen.dimblend_radio.tune.save_failed": "Could not save; see the log",
+  "screen.dimblend_radio.tune.saved": "Saved"
+}

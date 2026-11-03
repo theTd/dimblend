@@ -15,7 +15,13 @@ import net.minecraft.resources.ResourceLocation;
  * <p>startMillis/serverNow 都是服务端电台钟（{@code RadioClock} 毫秒，tick 累积真实时间、
  * 暂停冻结、掉刻不拉长）。客户端用 serverNow + 收包后本地流逝估当前服务钟。
  * 起播 offset 策略见 {@code RadioStartOffset}：中途走近/迟加入对齐服务钟，
- * 在场开播从头播（落后 ≤4s）。9 字段手写 codec（composite 上限 6 元）。</p>
+ * 在场开播从头播（落后 ≤4s）。10 字段手写 codec（composite 上限 6 元）。</p>
+ *
+ * <p><b>volumePercent（2026-11-03）</b>：该唱片机本刻应播的音量百分比，由服务端按
+ * {@code RadioVolumeRule} 把「逐台固定值」与「侧面红石信号」合成后下发。之前客户端自己用
+ * {@code RadioSignals.volumePercent(side)} 算，固定音量这种不来自信号的取值根本到不了客户端。
+ * 0 表示本刻不播（无信号或 dynamic 无信号），{@code audible()} 以它为准而不是以 side 为准。
+ * 追加在末尾、codec 顺序同步追加，便于逐字段核对。</p>
  */
 public record RadioStatePayload(
         ResourceLocation dimension,
@@ -26,7 +32,8 @@ public record RadioStatePayload(
         long startMillis,
         int nonce,
         boolean playing,
-        long serverNow) implements CustomPacketPayload {
+        long serverNow,
+        int volumePercent) implements CustomPacketPayload {
 
     public static final Type<RadioStatePayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(DimBlendRadio.MODID, "radio_state"));
@@ -44,7 +51,8 @@ public record RadioStatePayload(
                     friendly.readVarLong(),
                     friendly.readVarInt(),
                     friendly.readBoolean(),
-                    friendly.readVarLong());
+                    friendly.readVarLong(),
+                    friendly.readVarInt());
         }
 
         @Override
@@ -59,6 +67,7 @@ public record RadioStatePayload(
             friendly.writeVarInt(value.nonce());
             friendly.writeBoolean(value.playing());
             friendly.writeVarLong(value.serverNow());
+            friendly.writeVarInt(value.volumePercent());
         }
     };
 
