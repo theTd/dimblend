@@ -95,18 +95,21 @@ public final class StationDepotGeometry {
     /** Buffer stop height above the rails. The top stays open, like a fireplace. */
     public static final int BUFFER_HEIGHT = 3;
     /**
-     * Chamber height above the track floor. It stays well below the corridor vault
-     * apex ({@link OakTrackCorridor#VAULT_APEX_DY} = 17) so the depot reads as a hall
-     * inside the existing tunnel instead of puncturing its ceiling.
+     * Chamber height above the track floor: the corridor vault apex, so the hall is cut
+     * all the way up to the tunnel ceiling. The user asked on 2026-11-03 for everything
+     * above the structure to be air "up to the tunnel height, even through a mountain";
+     * a lower ceiling left a rock lid over the hall.
      */
-    public static final int CAVERN_APEX_DY = 6;
+    public static final int CAVERN_APEX_DY = OakTrackCorridor.VAULT_APEX_DY;
     /** Four corner pillars, outside every chassis footprint box. */
     public static final int PILLAR_DX = 26;
     public static final int PILLAR_DZ = 14;
     public static final int LANTERN_DY = 2;
-    /** The workbench stands on the deck, clear of both sidings. */
-    public static final int WORKBENCH_DX = 18;
-    public static final int WORKBENCH_DZ = -13;
+    /**
+     * The workbench is gone. The requirement asked to move it to the mirror of the
+     * switch machine across the track; the user's answer on 2026-11-03 was "remove the
+     * workbench" (see the PRD's Corrections section), so the depot no longer writes one.
+     */
     /** The one pre-placed Sable power chassis of every new world: x=32 on the main line. */
     public static final int POWER_CHASSIS_X = 32;
     public static final int POWER_CHASSIS_Z = OakTrackCorridor.CORRIDOR_Z;
@@ -120,8 +123,6 @@ public final class StationDepotGeometry {
         PILLAR,
         /** Straight wide-gauge track running along X. */
         TRACK_XO,
-        /** Workbench standing on the deck. */
-        WORKBENCH,
         /** Lantern standing on a corner pillar. */
         LANTERN,
         /** Stone-brick buffer stop at a siding's dead end. */
@@ -178,35 +179,24 @@ public final class StationDepotGeometry {
     }
 
     /**
-     * The depot hall is wider than the corridor's own 19-wide tunnel, so it needs walls
-     * and a ceiling of its own or water and lava in the surrounding terrain flow
-     * straight in. This is the one-block ring just outside the carved volume: the
-     * sides, the ceiling one row above the apex, and the footing one row below the deck.
+     * The pass writes exactly the carved volume. The sealed shell was removed on
+     * 2026-11-03: the user asked for the terrain to be cut open with no sealed edges.
      */
-    public static boolean isShell(int boundaryX, int x, int dy, int z) {
-        int dx = x - boundaryX;
-        boolean insideX = dx >= CAVERN_MIN_DX - 1 && dx <= CAVERN_MAX_DX + 1;
-        boolean insideZ = Math.abs(z) <= PLATFORM_HALF_WIDTH + 1;
-        boolean insideY = dy >= DECK_DY - 1 && dy <= CAVERN_APEX_DY + 1;
-        return insideX && insideZ && insideY && !carves(boundaryX, x, dy, z);
-    }
-
-    /** Block span the pass may write, shell ring included. */
     public static int writeMinBlockX(int boundaryX) {
-        return boundaryX + CAVERN_MIN_DX - 1;
+        return minBlockX(boundaryX);
     }
 
     public static int writeMaxBlockX(int boundaryX) {
-        return boundaryX + CAVERN_MAX_DX + 1;
+        return maxBlockX(boundaryX);
     }
 
-    /** Block span the pass may write in Z, shell ring included. */
+    /** Block span the pass may write in Z. */
     public static int writeMinBlockZ() {
-        return -PLATFORM_HALF_WIDTH - 1;
+        return -PLATFORM_HALF_WIDTH;
     }
 
     public static int writeMaxBlockZ() {
-        return PLATFORM_HALF_WIDTH + 1;
+        return PLATFORM_HALF_WIDTH;
     }
 
     /**
@@ -378,6 +368,5 @@ public final class StationDepotGeometry {
                 cells.add(new Cell(x, LANTERN_DY, z, Kind.LANTERN));
             }
         }
-        cells.add(new Cell(boundaryX + WORKBENCH_DX, 0, WORKBENCH_DZ, Kind.WORKBENCH));
     }
 }

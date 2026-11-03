@@ -92,7 +92,6 @@ public final class StationDepot {
     ) {
         BlockState cobble = Blocks.COBBLESTONE.defaultBlockState();
         BlockState brick = Blocks.STONE_BRICKS.defaultBlockState();
-        Block workbench = block(level, ResourceLocation.withDefaultNamespace("crafting_table"));
         Block lantern = block(level, ResourceLocation.withDefaultNamespace("lantern"));
         Block track = block(level, CorridorTrackProfile.SURFACE.trackId());
 
@@ -105,7 +104,6 @@ public final class StationDepot {
                 clearColumn(chunk, x, z);
             }
         }
-        sealShell(chunk, boundaryX, minX, maxX, minZ, maxZ);
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
         for (StationDepotGeometry.Cell cell : StationDepotGeometry.placedCells(boundaryX)) {
             if (!StationDepotGeometry.chunkContainsBlock(cell.x(), cell.z(), minX, maxX, minZ, maxZ)) {
@@ -120,7 +118,6 @@ public final class StationDepot {
                 case TRACK_XO -> track.defaultBlockState()
                         .setValue(TrackBlock.SHAPE, TrackShape.XO)
                         .setValue(TrackBlock.HAS_BE, false);
-                case WORKBENCH -> workbench.defaultBlockState();
                 case LANTERN -> lantern.defaultBlockState();
             };
             chunk.setBlockState(cursor.set(cell.x(), y, cell.z()), state, false);
@@ -146,40 +143,6 @@ public final class StationDepot {
             }
             chunk.setBlockState(cursor, Blocks.AIR.defaultBlockState(), false);
         }
-    }
-
-    /**
-     * Walls and roofs the hall. The depot is wider than the corridor's own 19-wide
-     * tunnel, so without this ring, water and lava in the surrounding terrain flow
-     * through the new side faces. Existing terrain is kept where it is already solid,
-     * so the hall reads as a hall carved out of the ground rather than a stone box.
-     */
-    private static void sealShell(ChunkAccess chunk, int boundaryX, int minX, int maxX, int minZ, int maxZ) {
-        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        BlockState stone = Blocks.STONE.defaultBlockState();
-        int from = Math.max(minX, StationDepotGeometry.writeMinBlockX(boundaryX));
-        int to = Math.min(maxX, StationDepotGeometry.writeMaxBlockX(boundaryX));
-        int fromZ = Math.max(minZ, StationDepotGeometry.writeMinBlockZ());
-        int toZ = Math.min(maxZ, StationDepotGeometry.writeMaxBlockZ());
-        for (int x = from; x <= to; x++) {
-            for (int z = fromZ; z <= toZ; z++) {
-                for (int dy = StationDepotGeometry.DECK_DY - 1;
-                        dy <= StationDepotGeometry.CAVERN_APEX_DY + 1; dy++) {
-                    if (!StationDepotGeometry.isShell(boundaryX, x, dy, z)) {
-                        continue;
-                    }
-                    int y = OakTrackCorridor.TRACK_Y + dy;
-                    BlockState current = chunk.getBlockState(cursor.set(x, y, z));
-                    if (current.isAir() || isFluid(current)) {
-                        chunk.setBlockState(cursor, stone, false);
-                    }
-                }
-            }
-        }
-    }
-
-    private static boolean isFluid(BlockState state) {
-        return !state.getFluidState().isEmpty();
     }
 
     private static Block block(WorldGenLevel level, ResourceLocation id) {

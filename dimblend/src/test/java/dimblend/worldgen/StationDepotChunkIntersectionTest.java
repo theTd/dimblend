@@ -85,27 +85,29 @@ class StationDepotChunkIntersectionTest {
     }
 
     /**
-     * Every chunk column the depot's 76-wide write span overlaps must process it:
-     * 510..515 for B=8192. This is the direct pin for "the west half and the east
-     * merge are missing", because exactly one of those six ran before the fix.
+     * Every chunk column the depot's write span overlaps must process it. The span is now the
+     * carved hall itself (2026-11-03 removed the sealed shell), so for B=8192 with
+     * CAVERN_MIN_DX = -26 and CAVERN_MAX_DX = 47 the hall runs 8166..8239: chunks 510..514.
+     * This still pins "the west half and the east merge are missing", because exactly one of
+     * those five ran before the fix.
      */
     @Test
     void everyChunkColumnTheDepotOverlapsProcessesIt() {
-        for (int chunkX = 510; chunkX <= 515; chunkX++) {
+        for (int chunkX = 510; chunkX <= 514; chunkX++) {
             int minX = chunkX * 16;
             assertTrue(StationDepotGeometry.boundariesTouchingChunkX(BAND, minX, minX + 15).contains(B),
                     "chunk " + chunkX + ' ' + minX + ".." + (minX + 15) + " is under the depot");
         }
         assertFalse(StationDepotGeometry.boundariesTouchingChunkX(BAND, 509 * 16, 509 * 16 + 15).contains(B),
-                "chunk 509 ends at 8159, 6 blocks west of the shell at 8165");
-        assertFalse(StationDepotGeometry.boundariesTouchingChunkX(BAND, 516 * 16, 516 * 16 + 15).contains(B),
-                "chunk 516 starts at 8256, 16 blocks east of the shell at 8240");
+                "chunk 509 ends at 8159, west of the hall's first column at 8166");
+        assertFalse(StationDepotGeometry.boundariesTouchingChunkX(BAND, 515 * 16, 515 * 16 + 15).contains(B),
+                "chunk 515 starts at 8240, one past the hall's last column at 8239");
     }
 
     /**
-     * D — chunk 512 with chunkZ 5 spans z 80..95. The depot spans z -16..16, so
-     * nothing of it may land here. ChunkZ -1, 0 and 1 are the only rows that hold
-     * depot blocks (the shell ring reaches z=+-16); chunkZ 2 and -2 are outside it.
+     * D — chunk 512 with chunkZ 5 spans z 80..95. The depot spans z -15..15 since the shell went,
+     * so nothing of it may land here. ChunkZ -1 and 0 are the only rows that hold depot blocks;
+     * chunkZ 1 and -2 are outside it.
      */
     @Test
     void aChunkFarFromTheDepotInZSpanWritesNothing() {
@@ -118,10 +120,12 @@ class StationDepotChunkIntersectionTest {
         }
         assertTrue(StationDepotGeometry.depotIntersectsChunkZ(-16, -1), "chunkZ -1 holds z -16..-1");
         assertTrue(StationDepotGeometry.depotIntersectsChunkZ(0, 15), "chunkZ 0 holds z 0..15");
-        assertTrue(StationDepotGeometry.depotIntersectsChunkZ(16, 31),
-                "chunkZ 1 holds the shell ring's z=16 column");
-        assertFalse(StationDepotGeometry.depotIntersectsChunkZ(32, 47), "chunkZ 2 starts past the shell");
-        assertFalse(StationDepotGeometry.depotIntersectsChunkZ(-32, -17), "chunkZ -2 ends before the shell");
+        // 2026-11-03: the sealed shell is gone, so the depot stops at z = +-PLATFORM_HALF_WIDTH.
+        // z = 16 no longer belongs to it, and chunkZ 1 (z 16..31) must process nothing.
+        assertFalse(StationDepotGeometry.depotIntersectsChunkZ(16, 31),
+                "chunkZ 1 starts at z=16, one past the hall now that the shell is gone");
+        assertFalse(StationDepotGeometry.depotIntersectsChunkZ(32, 47), "chunkZ 2 is far outside");
+        assertFalse(StationDepotGeometry.depotIntersectsChunkZ(-32, -17), "chunkZ -2 is far outside");
     }
 
     /**
