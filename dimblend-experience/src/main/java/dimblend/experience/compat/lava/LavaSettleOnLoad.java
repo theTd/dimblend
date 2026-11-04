@@ -180,6 +180,11 @@ public final class LavaSettleOnLoad {
                 active.remove(i);
                 continue;
             }
+            // 结算带里调色板都没有岩浆：这个区块无事可做，先出队，省掉下面 3×3 的 9 次区块查询
+            if (!hasLavaInBand(chunk)) {
+                active.remove(i);
+                continue;
+            }
             // 3×3 邻区块没齐就不动：原版流体一步会读/写相邻区块，这里绝不触发加载
             if (!neighbourhoodLoaded(level, job.pos)) {
                 active.remove(i);
@@ -206,11 +211,17 @@ public final class LavaSettleOnLoad {
             iterator.remove();
             scanned++;
             ChunkPos pos = new ChunkPos(packed);
-            if (loadedChunk(level, pos) == null) {
+            LevelChunk chunk = loadedChunk(level, pos);
+            if (chunk == null) {
                 continue; // 已卸载：丢
             }
             if (isActive(active, pos)) {
                 continue; // 同一区块已在结算中（重载事件与未完成的 job 撞上）
+            }
+            // 调色板判定必须排在 3×3 之前：轨道正上方那类「整片没有岩浆」的区块占绝大多数，
+            // 它们在这里就被丢掉，一次区块查询都不会花在邻居身上。
+            if (!hasLavaInBand(chunk)) {
+                continue;
             }
             if (!neighbourhoodLoaded(level, pos)) {
                 if (deferred == null) {
@@ -307,6 +318,29 @@ public final class LavaSettleOnLoad {
         }
         job.passes++;
         return LavaSettleMath.passesLeft(job.passes, LavaSettleMath.PASS_BUDGET) == 0;
+    }
+
+    /**
+     * 结算带（y {@link LavaSettleMath#BAND_MIN_Y}..{@link LavaSettleMath#BAND_MAX_Y}）里有没有岩浆。
+     *
+     * <p>只看每个 section 的调色板（{@code maybeHas}），不读任何方块、不碰区块系统，所以可以排在
+     * 3×3 邻区块检查之前：一整个地表区块在这里一步就被淘汰，不再为它付 9 次区块查询。
+     *
+     * <p>这是 2026-11-04「非阻塞 getChunkNow」之后剩下的开销——调用不再阻塞了，但每个候选仍然要
+     * 查一遍才能知道它无事可做。轨道走廊 z 带上的区块里，绝大多数是天空/地表，没有岩浆。
+     */
+    private static boolean hasLavaInBand(LevelChunk chunk) {
+        LevelChunkSection[] sections = chunk.getSections();
+        for (int y = LavaSettleMath.BAND_MIN_Y; y <= LavaSettleMath.BAND_MAX_Y; y++) {
+            int sectionIndex = chunk.getSectionIndex(y);
+            if (sectionIndex < 0 || sectionIndex >= sections.length) {
+                continue;
+            }
+            if (sections[sectionIndex].maybeHas(HAS_LAVA)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 3×3 邻区块是否都已加载（不触发加载，也不阻塞）。 */
