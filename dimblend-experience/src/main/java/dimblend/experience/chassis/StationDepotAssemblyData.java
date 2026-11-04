@@ -36,6 +36,14 @@ public final class StationDepotAssemblyData extends SavedData {
         boolean built;
         boolean assembled;
         int attempts;
+        /**
+         * The sub-level this site assembled, so a later visit can ask whether the car is still
+         * there. 2026-11-04: without it, "assembled" was a claim nobody ever re-checked, and a
+         * car whose stored blocks were lost (an all-zero {@code .slvls} file, which is what the
+         * 8192 depot ended up with) could never come back. Null on records written before the
+         * field existed; those fall back to the world box.
+         */
+        java.util.UUID carId;
         /** Blocks this pass placed for the site, cleared once the sub-level exists. */
         final Map<BlockPos, BlockState> placed = new LinkedHashMap<>();
 
@@ -172,6 +180,9 @@ public final class StationDepotAssemblyData extends SavedData {
             site.built = entry.getBoolean("built");
             site.assembled = entry.getBoolean("assembled");
             site.attempts = entry.getInt("attempts");
+            if (entry.hasUUID("car_id")) {
+                site.carId = entry.getUUID("car_id");
+            }
             data.sites.add(site);
         }
         // Saves written while the depot placed no switch still carry a "switches" key, and
@@ -206,6 +217,9 @@ public final class StationDepotAssemblyData extends SavedData {
             entry.putBoolean("built", site.built);
             entry.putBoolean("assembled", site.assembled);
             entry.putInt("attempts", site.attempts);
+            if (site.carId != null) {
+                entry.putUUID("car_id", site.carId);
+            }
             list.add(entry);
         }
         tag.put("sites", list);
