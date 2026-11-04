@@ -1,27 +1,19 @@
 package dimblend.experience.reward;
 
-import com.copycatsplus.copycats.foundation.copycat.multistate.IMultiStateCopycatBlockEntity;
 import com.crystaelix.simurail.content.automatic_coupler.AutomaticCouplerBlockEntity;
-import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import dimblend.experience.DimBlend;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.BlockStateProperties;
-import net.minecraft.world.level.block.state.properties.SlabType;
 
 /**
  * The server-thread half of the reward wagon: discovering sites near players, building
@@ -128,16 +120,25 @@ public final class RewardWagonTicker {
      * removal is due instead, and this compares it against the clock.
      */
     private static boolean advance(ServerLevel level, RewardWagonSites.Site site) {
-        if (site.attempts >= MAX_ATTEMPTS) {
-            return false;
-        }
         if (!site.built) {
+            // The attempt cap is a <i>build</i> cap. A built wagon has nothing left to attempt,
+            // and stopping here used to freeze one that had thrown eight times: it was never
+            // looked at again, so it could never dissolve.
+            if (site.attempts >= MAX_ATTEMPTS) {
+                return false;
+            }
             if (!nearPlayer(level, site.centerX, TRIGGER_RADIUS) || !chunksLoaded(level, site.centerX)) {
                 return false;
             }
             return build(level, site);
         }
-        ServerSubLevel car = existing(level, site.centerX);
+        // A wagon's chunks are what make its sub-level exist at all. While they are away, "gone"
+        // and "not loaded" are the same answer, and the consequence is permanent: retiring a site
+        // is written to the save and never revisited.
+        if (!chunksLoaded(level, site.centerX)) {
+            return false;
+        }
+        ServerSubLevel car = existing(level, site);
         if (car == null) {
             // The sub-level is gone: it dissolved already, or a save restored the region
             // without it. Rebuilding a wagon the player already emptied would be a gift they
@@ -145,20 +146,33 @@ public final class RewardWagonTicker {
             site.dissolved = true;
             return true;
         }
+        boolean changed = false;
+        if (site.subLevelId == null) {
+            // A record written before the identity was stored, found by its world box. Remember
+            // the identity now, so a wagon that gets pushed never depends on geometry again.
+            site.subLevelId = car.getUniqueId();
+            changed = true;
+        }
         if (site.dissolveDeadline > 0) {
             if (level.getGameTime() < site.dissolveDeadline) {
-                return false;
+                return changed;
             }
             remove(level, site, car);
             site.dissolved = true;
             site.dissolveDeadline = 0;
             return true;
         }
-        if (shouldDissolve(level, car)) {
-            beginDissolve(level, site, car);
+        RewardWagonPlotScan.Result scan = scan(level, car);
+        if (scan == null) {
+            // The plot reports no usable box, so "nothing is left" cannot be told apart from
+            // "nothing was read". Never dissolve on an unread wagon.
+            return changed;
+        }
+        if (touchesGate(level, car) || RewardWagonDissolve.isEmpty(scan.occupants())) {
+            beginDissolve(level, site, car, scan);
             return true;
         }
-        return false;
+        return changed;
     }
 
     private static boolean build(ServerLevel level, RewardWagonSites.Site site) {
@@ -200,19 +214,19 @@ public final class RewardWagonTicker {
     /**
      * Starts the dissolve: break the couplers, play the effects, set the deadline.
      *
-     * <p><b>The couplers are cleared in the plot, and the particles play in the world.</b> Those
-     * two are not the same coordinate. The wagon's blocks are stored in a Sable plot parked far
-     * away, so the couplers have to be reached through the pose-inverse (the old code wrote to the
-     * world position and therefore set air on empty corridor). The particle burst, on the other
-     * hand, is something the player sees, so it belongs at the wagon's world position — and the
-     * requirement pins it to the bogey's {@code y-1}.
+     * <p><b>The two halves of this method live in different coordinate spaces.</b> Breaking a
+     * coupler is a block write, so it happens at the coupler's <i>plot</i> position. The burst is
+     * something the player watches, so it happens at the bogey's <i>world</i> position. The
+     * previous version derived both from {@code pose.transformPosition(Vec3(dx, 0, dz))}, i.e. a
+     * world projection of a deck offset: that is tens of millions of blocks away, near the plot
+     * origin. So the couplers were never broken and the effects played where nobody was. The
+     * positions now come from the plot scan, and the world position is the forward transform of a
+     * plot position, which is the direction Sable itself uses.
      */
-    private static void beginDissolve(ServerLevel level, RewardWagonSites.Site site, ServerSubLevel car) {
-        for (RewardWagonLayout.Cell cell : RewardWagonLayout.couplers()) {
-            BlockPos plotPos = plotPos(car, cell);
-            if (plotPos == null) {
-                continue;
-            }
+    private static void beginDissolve(ServerLevel level, RewardWagonSites.Site site, ServerSubLevel car,
+            RewardWagonPlotScan.Result scan) {
+        for (RewardWagonPlotScan.Pos cell : scan.couplers()) {
+            BlockPos plotPos = new BlockPos(cell.x(), cell.y(), cell.z());
             if (level.getBlockEntity(plotPos) instanceof AutomaticCouplerBlockEntity coupler) {
                 coupler.removePartner();
             }
@@ -220,8 +234,10 @@ public final class RewardWagonTicker {
                     net.minecraft.world.level.block.Block.UPDATE_ALL);
         }
         if (!site.effectsPlayed) {
-            BlockPos worldBogey = worldPos(car, RewardWagonLayout.bogey());
-            RewardWagonBuilder.playDissolveEffects(level, worldBogey.below());
+            BlockPos worldBogey = scan.bogey() == null ? null : worldOf(car, scan.bogey());
+            if (worldBogey != null) {
+                RewardWagonBuilder.playDissolveEffects(level, worldBogey.below());
+            }
             site.effectsPlayed = true;
         }
         site.dissolveDeadline = level.getGameTime() + RewardWagonDissolve.DISSOLVE_DELAY_TICKS;
@@ -229,117 +245,84 @@ public final class RewardWagonTicker {
     }
 
     /**
-     * The plot position of one deck cell.
+     * The world position of one plot block, through the sub-level's pose.
      *
-     * <p>The cell offsets are local to the wagon, and the wagon may have been pushed or rotated
-     * since assembly, so the pose has to be applied. Unlike {@link #worldPos}, the result stays in
-     * the sub-level's own block region, which is where a block change has any effect.
+     * <p>This is the only pose transform the dissolve needs, and it runs plot to world, which is
+     * what {@code logicalPose} is for. Reading or writing a block must never go this way: those
+     * take the plot position the scan already produced.
      */
-    private static BlockPos plotPos(ServerSubLevel car, RewardWagonLayout.Cell cell) {
-        net.minecraft.world.phys.Vec3 local = new net.minecraft.world.phys.Vec3(cell.dx(), 0, cell.dz());
-        return BlockPos.containing(car.logicalPose().transformPosition(local));
-    }
-
-    /**
-     * The world position of one deck cell, through the sub-level's pose.
-     *
-     * <p>For things the player sees — particles, sounds — the world coordinate is the right one.
-     * For block reads and writes it is not; use {@link #plotPos} or {@link SablePlotRead}.
-     */
-    private static BlockPos worldPos(ServerSubLevel car, RewardWagonLayout.Cell cell) {
-        net.minecraft.world.phys.Vec3 local = new net.minecraft.world.phys.Vec3(cell.dx(), 0, cell.dz());
-        net.minecraft.world.phys.Vec3 world = car.logicalPose().transformPosition(local);
+    private static BlockPos worldOf(ServerSubLevel car, RewardWagonPlotScan.Pos pos) {
+        net.minecraft.world.phys.Vec3 world = car.logicalPose().transformPosition(
+                net.minecraft.world.phys.Vec3.atCenterOf(new BlockPos(pos.x(), pos.y(), pos.z())));
         return BlockPos.containing(world);
     }
 
+    /**
+     * Deletes the sub-level.
+     *
+     * <p>{@code removeSubLevel} throws when the grid no longer holds that sub-level, so the two
+     * ways that can be true are checked first: {@link #existing} already refuses a removed one,
+     * and the container is the same one the lookup came from. A retry that threw every tick would
+     * be worse than a missed removal, because it would log every tick as well.
+     */
     private static void remove(ServerLevel level, RewardWagonSites.Site site, ServerSubLevel car) {
         SubLevelContainer container = SubLevelContainer.getContainer(level);
+        if (container == null || car.isRemoved()) {
+            return;
+        }
         container.removeSubLevel(car, dev.ryanhcode.sable.sublevel.storage.SubLevelRemovalReason.REMOVED);
     }
 
-    /** Whether the wagon has nothing left, or has met a warp gate. */
-    private static boolean shouldDissolve(ServerLevel level, ServerSubLevel car) {
-        if (touchesGate(level, car)) {
-            return true;
-        }
-        return RewardWagonDissolve.isEmpty(occupants(level, car));
-    }
-
     /**
-     * Reads what is inside the wagon's box.
+     * Reads the wagon's blocks out of its plot.
      *
-     * <p><b>Every block read goes through the plot.</b> A sub-level's blocks are stored in a Sable
-     * plot parked far away, so {@code level.getBlockState(worldPos)} returns air for all of them.
-     * The first version did exactly that, which made this method report an empty wagon every tick:
-     * combined with an empty-box guard elsewhere it would have dissolved the wagon the instant it
-     * was assembled. {@link SablePlotRead#blockAt} converts the world position to the plot position
-     * first.
+     * <p><b>The plot's own box, not the world box.</b> {@code car.boundingBox()} is where the
+     * wagon appears; its blocks are stored elsewhere, and only {@code car.getPlot().getBoundingBox()}
+     * says where. The previous version walked the world box, mapped each cell into the plot, and
+     * then tested ownership against the <i>world</i> box a second time — a comparison between two
+     * different coordinate spaces, false for every cell, so every wagon read as empty.
      *
-     * <p>Only blocks this sub-level really owns are counted. Ownership is decided by the plot
-     * coordinate falling inside the sub-level's own box, because a plot chunk can hold a
-     * neighbouring sub-level's blocks.
+     * <p>Reading the plot box needs neither transform nor ownership test: that box already holds
+     * this sub-level's blocks and nothing else.
      */
-    private static List<RewardWagonDissolve.Occupant> occupants(ServerLevel level, ServerSubLevel car) {
-        List<RewardWagonDissolve.Occupant> out = new ArrayList<>();
-        var box = car.boundingBox();
-        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        for (int x = (int) Math.floor(box.minX()); x <= (int) Math.floor(box.maxX()); x++) {
-            for (int y = (int) Math.floor(box.minY()); y <= (int) Math.floor(box.maxY()); y++) {
-                for (int z = (int) Math.floor(box.minZ()); z <= (int) Math.floor(box.maxZ()); z++) {
-                    cursor.set(x, y, z);
-                    BlockPos plotPos = SablePlotRead.toPlotPos(car, cursor);
-                    if (plotPos == null || !SablePlotRead.owns(car, cursor)) {
-                        continue;
-                    }
-                    BlockState state = level.getBlockState(plotPos);
-                    if (state.isAir()) {
-                        continue;
-                    }
-                    out.add(classify(level, plotPos, state));
-                }
-            }
-        }
-        return out;
+    private static RewardWagonPlotScan.Result scan(ServerLevel level, ServerSubLevel car) {
+        var box = car.getPlot().getBoundingBox();
+        return RewardWagonPlotScan.scan(box.minX(), box.minY(), box.minZ(),
+                box.maxX(), box.maxY(), box.maxZ(), (x, y, z) -> fillAt(level, x, y, z));
     }
 
-    private static RewardWagonDissolve.Occupant classify(ServerLevel level, BlockPos pos, BlockState state) {
-        if (isStructure(state)) {
-            return RewardWagonDissolve.Occupant.STRUCTURE;
+    /** What one plot block is, as the dissolve rules see it. */
+    private static RewardWagonPlotScan.Fill fillAt(ServerLevel level, int x, int y, int z) {
+        BlockPos pos = new BlockPos(x, y, z);
+        BlockState state = level.getBlockState(pos);
+        if (state.isAir()) {
+            return RewardWagonPlotScan.Fill.AIR;
+        }
+        String id = BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
+        if (id.equals(RewardWagonBlocks.COUPLER)) {
+            return RewardWagonPlotScan.Fill.COUPLER;
+        }
+        if (id.equals(RewardWagonBlocks.BOGEY)) {
+            return RewardWagonPlotScan.Fill.BOGEY;
+        }
+        if (id.equals(RewardWagonBlocks.COPYCAT_SLAB)) {
+            return RewardWagonPlotScan.Fill.SLAB;
         }
         if (level.getBlockEntity(pos) instanceof RandomizableContainerBlockEntity container) {
             return container.isEmpty()
-                    ? RewardWagonDissolve.Occupant.EMPTY_CONTAINER
-                    : RewardWagonDissolve.Occupant.FILLED_CONTAINER;
+                    ? RewardWagonPlotScan.Fill.EMPTY_CONTAINER
+                    : RewardWagonPlotScan.Fill.FILLED_CONTAINER;
         }
-        return RewardWagonDissolve.Occupant.CONTENT;
-    }
-
-    /** The three brick kinds plus the coupler. */
-    static boolean isStructure(BlockState state) {
-        ResourceLocation id = BuiltInRegistries.BLOCK.getKey(state.getBlock());
-        if (id.toString().equals(RewardWagonBlocks.COUPLER)) {
-            return true;
-        }
-        return isDeckBrick(state);
-    }
-
-    /** The slab and the bogey, which are the bricks the interaction guard protects. */
-    static boolean isDeckBrick(BlockState state) {
-        String name = BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
-        return name.equals(RewardWagonBlocks.BOGEY) || name.equals(RewardWagonBlocks.COPYCAT_SLAB);
+        return RewardWagonPlotScan.Fill.CONTENT;
     }
 
     /**
      * True when the wagon's world box overlaps any warp gate block in the corridor.
      *
-     * <p><b>Read through the plot, not at the world coordinate.</b> The wagon's blocks live in a
-     * Sable plot parked millions of blocks away, so {@code level.getBlockState(worldPos)} always
-     * saw air here and this test never fired — which is why the requirement's "contacting a warp
-     * gate dissolves it" was reported as missing. {@link SablePlotRead} converts first.
-     *
-     * <p>A gate is a block of the <i>world</i>, though, not of the wagon: the wagon meets it by
-     * its world position. So this walks the world box and reads the world, which is the one place
-     * a world read is the correct one.
+     * <p><b>A gate is a block of the world, so this is the one place a world read is correct.</b>
+     * The wagon meets it by its world position, not by its plot position: the plot is parked
+     * millions of blocks away and carries no gate. The block reads below are therefore meant to
+     * be world reads, and the wagon's own blocks are deliberately not consulted.
      */
     private static boolean touchesGate(ServerLevel level, ServerSubLevel car) {
         var box = car.boundingBox();
@@ -364,11 +347,52 @@ public final class RewardWagonTicker {
         return false;
     }
 
-    /** The sub-level whose centre matches this wagon, if it still exists. */
-    private static ServerSubLevel existing(ServerLevel level, int centerX) {
-        BlockPos center = RewardWagonBuilder.center(centerX);
-        SubLevel found = Sable.HELPER.getContaining(level, center);
-        return found instanceof ServerSubLevel server ? server : null;
+    /**
+     * The sub-level this site assembled into, if it is loaded.
+     *
+     * <p><b>Identity, not geometry — and never a world position.</b> {@code Sable.HELPER.getContaining}
+     * is a <i>plot</i> lookup, not a world one: {@code SubLevelContainer.getPlot} divides its
+     * argument by the chunk size, then by the plot size, then subtracts the plot-grid origin
+     * ({@code DEFAULT_ORIGIN = 10000} plots), so only a plot coordinate can ever name a plot.
+     * Sable's own callers hand it a point that has already been through
+     * {@code pose.transformPositionInverse} — {@code BlockGetterMixin} compares
+     * {@code getContaining(level, localFrom) == subLevel}. The old code passed the wagon's
+     * <i>world</i> centre, so the answer was "no sub-level" for every wagon in every save, on
+     * every tick: each site was retired as already gone a tick after it was built, and a retired
+     * site is never visited again. That is why a reward wagon could not dissolve.
+     *
+     * <p>The UUID needs no such care. The box fallback below is only for records written before
+     * the UUID was stored: it recognises a wagon by standing where its centre is.
+     */
+    private static ServerSubLevel existing(ServerLevel level, RewardWagonSites.Site site) {
+        SubLevelContainer container = SubLevelContainer.getContainer(level);
+        if (container == null) {
+            return null;
+        }
+        if (site.subLevelId != null) {
+            SubLevel byId = container.getSubLevel(site.subLevelId);
+            return byId instanceof ServerSubLevel server && !server.isRemoved() ? server : null;
+        }
+        return coveringCenter(container, RewardWagonBuilder.center(site.centerX));
+    }
+
+    /** The loaded sub-level whose world box covers {@code center}, or null. */
+    private static ServerSubLevel coveringCenter(SubLevelContainer container, BlockPos center) {
+        double x = center.getX() + 0.5;
+        double y = center.getY() + 0.5;
+        double z = center.getZ() + 0.5;
+        for (SubLevel candidate : container.getAllSubLevels()) {
+            if (!(candidate instanceof ServerSubLevel server) || server.isRemoved()) {
+                continue;
+            }
+            var box = server.boundingBox();
+            if (x >= box.minX() && x <= box.maxX()
+                    && y >= box.minY() && y <= box.maxY()
+                    && z >= box.minZ() && z <= box.maxZ()) {
+                return server;
+            }
+        }
+        return null;
     }
 
     private static boolean nearPlayer(ServerLevel level, int centerX, int radius) {
