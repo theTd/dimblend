@@ -10,6 +10,7 @@ import dimblend.DimBlendRegistries;
 import dimblend.api.WarpGateMotion;
 import dimblend.api.WarpGateParticles;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -24,19 +25,19 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import org.joml.Vector3d;
-import org.joml.Vector3dc;
 import org.slf4j.Logger;
 
 /**
  * Warp gate behaviour for Sable sub-levels: the sound, the purple particles, the +X push, the
- * refusal to cross backwards, and the rule that nobody crosses unless the whole crew is on a
- * sub-level. User requirements 2026-11-03, corrected 2026-11-04.
+ * one-way rule, and the crew rule. User requirements 2026-11-03, corrected 2026-11-04 and by the
+ * 2026-11-04 supplement.
  *
  * <p><b>Why this is a per-tick sweep and not a block callback.</b> A Sable sub-level is not an
  * entity moving through blocks: its blocks live in a plot parked far away and only its
@@ -50,15 +51,14 @@ import org.slf4j.Logger;
  * The sub-level's box is also a world box ({@code SubLevel#boundingBox()}). Nothing here goes
  * through the plot: the sub-level's own blocks are not what this looks at.
  *
+ * <p><b>Velocity only, never position.</b> The first 2026-11-04 correction refused a backward
+ * crossing by teleporting the body back outside the gate every tick. In game that fought the
+ * physics solver, broke collision boxes and derailed the train. The supplement replaces every
+ * refusal with a velocity rule — see {@link WarpGateMotion} — so nothing in this class ever moves
+ * a body; it only adds an X velocity delta.
+ *
  * <p><b>Units.</b> Sable's physics works in metres per second, so the requirement's 1 m/s is
  * used directly — see {@link WarpGateMotion}.
- *
- * <p><b>Why the refusal moves the body and not only its velocity.</b> The 2026-11-04 correction
- * says enough thrust still pushed a structure backwards through the gate. Clearing the -X velocity
- * once per tick cannot stop that: the physics step runs before this sweep, so every tick the body
- * gains a little more westward displacement before the velocity is cleared again. The refusal is
- * therefore a position constraint — the body is put back outside the face it crossed (see
- * {@link #pin}) — and the velocity is cleared so it does not immediately cross again.
  */
 public final class WarpGateSableCrossing {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -136,9 +136,11 @@ public final class WarpGateSableCrossing {
         /**
          * One sub-level against the gate.
          *
-         * <p>The order matters. The reverse refusal comes first, so a structure the gate already
-         * released can never be pushed forward again; the crew rule comes next, because it can only
-         * ever refuse a forward crossing, never open one.
+         * <p>The order matters, and it is the order {@link WarpGateMotion#decide} encodes: a
+         * structure clear on the +X side is turned back out first, then a forward crossing is held
+         * while the crew is split, and only then does the push apply — to a structure somebody is
+         * riding. A crossing the gate refuses or holds never plays the crossing effects, because it
+         * is not crossing.
          */
         private static void crossOne(ServerLevel level, RotatingChunkGenerator rotating, ServerSubLevel sub,
                 CrewGate crew) {
@@ -156,54 +158,24 @@ public final class WarpGateSableCrossing {
             }
             Vector3d velocity = handle.getLinearVelocity(new Vector3d());
             WarpGateMotion.Side side = sideFor(sub.getUniqueId(), box, slabX);
-            WarpGateMotion.Action action = WarpGateMotion.decide(
-                    velocity.x, side, crew.everyPlayerAboard(level));
+            boolean crewAboard = crew.everySurvivalPlayerAboard(level);
+            boolean rides = crew.playerRides(level, sub);
+            WarpGateMotion.Action action = WarpGateMotion.decide(velocity.x, side, crewAboard, rides);
 
-            if (action == WarpGateMotion.Action.BLOCK_REVERSE) {
-                // Refuse the crossing: kill the backward component and put the body back east of
-                // the gate. Vertical and lateral motion are untouched — zeroing the whole velocity
-                // would drop a moving train out of the sky for the crime of backing into a gate.
+            double deltaX = WarpGateMotion.deltaX(action, velocity.x);
+            if (deltaX != 0.0) {
+                // Hold means "speed stays 0", which is the whole linear velocity; the two forward
+                // rules only ever touch X, so a structure keeps its vertical and lateral motion and
+                // is not dropped out of the sky for the crime of meeting a gate.
+                boolean hold = action == WarpGateMotion.Action.HOLD_STILL;
                 handle.addLinearAndAngularVelocity(
-                        new Vector3d(-velocity.x, 0.0, 0.0), new Vector3d(0.0, 0.0, 0.0));
-                pin(sub, handle, WarpGateMotion.reverseCorrection(box.minX, slabX));
-                return;
+                        new Vector3d(deltaX, hold ? -velocity.y : 0.0, hold ? -velocity.z : 0.0),
+                        new Vector3d(0.0, 0.0, 0.0));
             }
-
-            if (action == WarpGateMotion.Action.BLOCK_NO_CREW) {
-                // The gate is a wall while anyone is off a sub-level. Only the forward component is
-                // cleared: a structure that was already inside and is drifting out keeps drifting.
-                if (velocity.x > 0.0) {
-                    handle.addLinearAndAngularVelocity(
-                            new Vector3d(-velocity.x, 0.0, 0.0), new Vector3d(0.0, 0.0, 0.0));
-                }
-                pin(sub, handle, -WarpGateMotion.crewCorrection(box.maxX, slabX));
+            if (action == WarpGateMotion.Action.HOLD_STILL || action == WarpGateMotion.Action.TURN_PLUS_X) {
                 return;
-            }
-
-            if (action == WarpGateMotion.Action.PUSH_PLUS_X) {
-                double delta = WarpGateMotion.plusXDelta(velocity.x);
-                if (delta > 0.0) {
-                    handle.addLinearAndAngularVelocity(
-                            new Vector3d(delta, 0.0, 0.0), new Vector3d(0.0, 0.0, 0.0));
-                }
             }
             playCrossingEffects(level, sub, box, slabX);
-        }
-
-        /**
-         * Puts the body {@code dx} further along +X, through the physics pipeline's own teleport.
-         *
-         * <p>This is the only way to make the refusal a real wall: an impulse is undone by the next
-         * thrust, a position correction is not. The pose is the body's own, so the plot move is the
-         * plot's business — the pipeline writes the logical pose as well.
-         */
-        private static void pin(ServerSubLevel sub, RigidBodyHandle handle, double dx) {
-            if (dx == 0.0) {
-                return;
-            }
-            Vector3dc position = sub.logicalPose().position();
-            handle.teleport(new Vector3d(position.x() + dx, position.y(), position.z()),
-                    sub.logicalPose().orientation());
         }
 
         /**
@@ -246,51 +218,55 @@ public final class WarpGateSableCrossing {
                 }
             }
         }
-
-        /**
-         * Whether every player in this dimension is standing on a Sable sub-level.
-         *
-         * <p>The requirement is "若不是所有玩家（数量不限）均位于 sable 上 则不允许任何 sable 穿过".
-         * Two readings are settled here:
-         * <ul>
-         *   <li><b>This dimension only.</b> A player in another dimension cannot be standing on the
-         *       sub-level that is crossing this gate, so counting them would leave the gate shut
-         *       for as long as anyone is anywhere else.</li>
-         *   <li><b>Spectators do not count.</b> A spectator flies and cannot be on a sub-level;
-         *       counting them would shut the gate for the whole session.</li>
-         * </ul>
-         * The same lookup decides whether a walking player may stand inside a gate cell
-         * ({@code WarpGateBlock#mayPass}), so the two can never disagree about what "on a sub-level"
-         * means.
-         */
-        private static boolean allPlayersAboard(ServerLevel level) {
-            for (ServerPlayer player : level.players()) {
-                if (player.isSpectator()) {
-                    continue;
-                }
-                if (SableCompanion.INSTANCE.getTrackingOrVehicleSubLevel(player) == null) {
-                    return false;
-                }
-            }
-            return true;
-        }
     }
 
     /**
-     * One tick's answer to "is the whole crew aboard", asked at most once.
+     * One tick's answer to two questions about the players, asked once.
      *
-     * <p>Most dimensions have nothing near a gate, and every sub-level in the dimension is swept
-     * every tick. Asking this per sub-level would repeat the same player walk dozens of times, so
-     * the answer is memoised for the sweep that asked for it.
+     * <p>Every sub-level in the dimension is swept every tick, so asking per sub-level would repeat
+     * the same player walk dozens of times. Both answers come from one walk, memoised for the sweep
+     * that asked for them.
      */
     private static final class CrewGate {
         private Boolean aboard;
+        private Set<UUID> ridden;
 
-        boolean everyPlayerAboard(ServerLevel level) {
-            if (aboard == null) {
-                aboard = Sweep.allPlayersAboard(level);
-            }
+        /**
+         * Whether every <b>survival-mode</b> player is standing on a Sable sub-level.
+         *
+         * <p>The supplement narrows the rule to survival players: creative and spectator players may
+         * leave the train without shutting the gate for everyone. A player in another dimension
+         * cannot be standing on the sub-level that is crossing this gate, so only this dimension's
+         * players are walked — counting the others would leave the gate shut whenever anyone is
+         * elsewhere.
+         */
+        boolean everySurvivalPlayerAboard(ServerLevel level) {
+            collect(level);
             return aboard;
+        }
+
+        /** Whether a player in any game mode is riding this very sub-level. */
+        boolean playerRides(ServerLevel level, ServerSubLevel sub) {
+            collect(level);
+            return ridden.contains(sub.getUniqueId());
+        }
+
+        private void collect(ServerLevel level) {
+            if (aboard != null) {
+                return;
+            }
+            boolean all = true;
+            Set<UUID> ids = new HashSet<>();
+            for (ServerPlayer player : level.players()) {
+                var riding = SableCompanion.INSTANCE.getTrackingOrVehicleSubLevel(player);
+                if (riding != null) {
+                    ids.add(riding.getUniqueId());
+                } else if (player.gameMode.getGameModeForPlayer() == GameType.SURVIVAL) {
+                    all = false;
+                }
+            }
+            aboard = all;
+            ridden = ids;
         }
     }
 

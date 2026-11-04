@@ -3,28 +3,37 @@ package dimblend.api;
 /**
  * The warp gate's speed and passage rules for a Sable sub-level passing through it.
  *
- * <p>User requirements, 2026-11-03 and the 2026-11-04 corrections:
+ * <p>User requirements 2026-11-03, corrected twice: 2026-11-04 (first correction) and the
+ * 2026-11-04 supplement this version implements.
+ *
+ * <h2>The rules as they now stand</h2>
  * <ul>
- *   <li>a sub-level crossing the gate is given at least <b>1 m/s</b> toward +X; if it already moves
- *       faster no extra speed is added;</li>
- *   <li>a sub-level must not cross the gate from +X toward -X. The 2026-11-04 correction is
- *       explicit: "目前阻止力度不足 推力足够大依然可以反向通过 需要完全阻止反向运动" — so the
- *       refusal is a <b>position</b> constraint, not only a velocity one;</li>
- *   <li>no sub-level may cross at all unless every player is standing on a Sable sub-level.</li>
+ *   <li>a sub-level going through the gate is given at least <b>1 m/s</b> toward +X — but only when
+ *       there is a player riding <i>that</i> sub-level ("在其上有 任意游戏模式 玩家 时");</li>
+ *   <li>a sub-level must not cross back from +X toward -X. The supplement replaces the hard refusal
+ *       with a velocity rule: <b>force its X velocity to +1 m/s</b>;</li>
+ *   <li>when not every <b>survival-mode</b> player is standing on a Sable sub-level, the gate holds
+ *       a forward crossing at <b>zero velocity</b> instead of blocking it outright.</li>
  * </ul>
+ *
+ * <p><b>Why the first correction was replaced.</b> The first version refused a backward crossing
+ * by putting the body back outside the gate ({@code RigidBodyHandle#teleport}) every tick. In game
+ * that produced collision-box trouble and derailed the train — a position correction fights the
+ * physics solver instead of talking to it. The user's supplement is explicit: do not impose an
+ * absolute constraint, use velocity. So nothing here moves a body; every action is an X velocity
+ * delta.
  *
  * <p><b>Units.</b> Sable's {@code RigidBodyHandle#getLinearVelocity} and
  * {@code addLinearAndAngularVelocity} work in metres per second, so the requirement's "1 m/s" is
  * used directly and no tick conversion is needed. This class is pure so the boundaries — exactly
- * the minimum, just under, already faster, wrong side, crew outside — are pinned by tests rather
- * than discovered in game.
+ * the minimum, just under, already faster, wrong side, crew outside, nobody riding — are pinned by
+ * tests rather than discovered in game.
  *
- * <p><b>Why a velocity clamp alone could never satisfy the requirement.</b> Clearing the -X
- * velocity once per tick leaves the physics step free to push the body a little further west every
- * tick, and the old code additionally stopped firing as soon as the box centre crossed the slab
- * plane. Enough thrust therefore walked a structure straight through. The refusal is expressed here
- * as how far a box has overstepped a <i>face</i> of the gate, so the caller can put the body back
- * (see {@link #reverseCorrection} and {@link #crewCorrection}).
+ * <p><b>"Speed" means speed toward +X, not total speed.</b> The requirement's target is "a velocity
+ * of at least 1 m/s <i>toward the +X direction</i>", and the exemption is phrased against that same
+ * quantity. A sub-level drifting sideways still has zero speed toward +X, so it still needs the
+ * push; measuring the vector length instead would let a sideways drift suppress the gate's whole
+ * purpose.
  */
 public final class WarpGateMotion {
 
@@ -35,20 +44,20 @@ public final class WarpGateMotion {
     public enum Side {
         /** Clear on the -X side: this is the direction the gate lets through. */
         WEST,
-        /** Clear on the +X side: the gate refuses to let it back through. */
+        /** Clear on the +X side: the gate turns this one back around. */
         EAST
     }
 
     /** What the gate wants done to one sub-level this tick. */
     public enum Action {
-        /** Already fast enough toward +X: add nothing. */
+        /** Nothing to change: already fast enough, or a structure the gate has no business with. */
         NONE,
-        /** Below the minimum toward +X: push up to the minimum. */
+        /** Below the minimum toward +X, with a player aboard: raise it to the minimum. */
         PUSH_PLUS_X,
-        /** Coming from the +X side toward -X: refuse, and hold it at the gate's east face. */
-        BLOCK_REVERSE,
-        /** A forward crossing while not every player is aboard: refuse, hold it at the west face. */
-        BLOCK_NO_CREW
+        /** Coming from the +X side toward -X: force the X velocity to the minimum forward speed. */
+        TURN_PLUS_X,
+        /** A forward crossing while a survival player is off a sub-level: hold the velocity at zero. */
+        HOLD_STILL
     }
 
     /**
@@ -76,67 +85,47 @@ public final class WarpGateMotion {
     /**
      * Decides what to do with one sub-level at a gate.
      *
-     * <p><b>"Speed" means speed toward +X, not total speed.</b> The requirement's target is "a
-     * velocity of at least 1 m/s <i>toward the +X direction</i>", and the exemption is phrased
-     * against that same quantity. A sub-level drifting at 5 m/s sideways still has zero speed
-     * toward +X, so it still needs the push; measuring the vector length instead would let a
-     * sideways drift suppress the gate's whole purpose. The X component is therefore the measure
-     * everywhere in this class, which also keeps {@link #plusXDelta} in agreement with
-     * {@link #decide} at the boundary.
+     * <p>The order carries meaning. A structure that is already clear on the +X side is turned
+     * around first: the crew rule refuses <i>crossings</i>, and turning this one back out is the
+     * strongest thing the gate does to it. Then a forward crossing is held when the crew is split.
+     * Only then does the push apply, and only to a structure somebody is actually riding — an empty
+     * sub-level drifting through is neither pushed nor stopped.
      *
-     * @param velocityX         the sub-level's current world X velocity, m/s
-     * @param side              the side the sub-level was last clear of
-     * @param everyPlayerAboard whether every player is standing on a Sable sub-level
+     * @param velocityX                  the sub-level's current world X velocity, m/s
+     * @param side                       the side the sub-level was last clear of
+     * @param everySurvivalPlayerAboard  every survival-mode player is standing on a Sable sub-level
+     * @param playerOnThisStructure      a player in any game mode is riding this very sub-level
      */
-    public static Action decide(double velocityX, Side side, boolean everyPlayerAboard) {
+    public static Action decide(double velocityX, Side side, boolean everySurvivalPlayerAboard,
+            boolean playerOnThisStructure) {
         if (side == Side.EAST) {
-            // Approaching from the far side and moving backward, or already leaving toward +X:
-            // the gate never lets a structure it has already released come back through.
-            return velocityX < 0.0 ? Action.BLOCK_REVERSE : Action.NONE;
+            return velocityX < 0.0 ? Action.TURN_PLUS_X : Action.NONE;
         }
-        if (!everyPlayerAboard) {
-            return Action.BLOCK_NO_CREW;
+        if (!everySurvivalPlayerAboard) {
+            return Action.HOLD_STILL;
         }
-        if (velocityX >= MIN_PLUS_X_SPEED) {
-            // Already at or above the minimum toward +X: nothing to add.
+        if (!playerOnThisStructure) {
             return Action.NONE;
         }
-        return Action.PUSH_PLUS_X;
+        return velocityX >= MIN_PLUS_X_SPEED ? Action.NONE : Action.PUSH_PLUS_X;
     }
 
     /**
-     * The velocity change that brings a sub-level up to the minimum +X speed.
+     * The X velocity delta one action asks for, in m/s.
      *
-     * <p>Only the X component is added, so the sub-level keeps its lateral and vertical motion: the
-     * requirement asks for a speed <i>toward x+</i>, not for a total speed of 1 in some direction.
+     * <p>{@link Action#TURN_PLUS_X} is a <b>force</b>, not a clamp: the requirement says "速度强制为
+     * +1m/s", so a structure backing into the gate at -0.5 m/s gets +1.5 and leaves at exactly
+     * +1 m/s. {@link Action#HOLD_STILL} is the opposite extreme and simply cancels whatever the X
+     * velocity currently is.
      *
-     * @return the X delta to add, or 0 when no push is needed
+     * @return the delta to add, or 0 when the action changes nothing
      */
-    public static double plusXDelta(double velocityX) {
-        if (velocityX >= MIN_PLUS_X_SPEED) {
-            return 0.0;
-        }
-        return MIN_PLUS_X_SPEED - velocityX;
-    }
-
-    /**
-     * How far a box has overstepped the gate's <b>east</b> face, i.e. how far east the body has to
-     * go before the reverse crossing is undone.
-     *
-     * <p>{@code >= 0}, and zero when the box's west face is still at or east of that face.
-     */
-    public static double reverseCorrection(double boxMinX, int slabX) {
-        return Math.max(0.0, (slabX + 1.0) - boxMinX);
-    }
-
-    /**
-     * How far a box has overstepped the gate's <b>west</b> face, i.e. how far west the body has to
-     * go before a refused forward crossing is undone.
-     *
-     * <p>{@code >= 0}, and zero when the box's east face is still at or west of that face.
-     */
-    public static double crewCorrection(double boxMaxX, int slabX) {
-        return Math.max(0.0, boxMaxX - slabX);
+    public static double deltaX(Action action, double velocityX) {
+        return switch (action) {
+            case NONE -> 0.0;
+            case PUSH_PLUS_X, TURN_PLUS_X -> MIN_PLUS_X_SPEED - velocityX;
+            case HOLD_STILL -> -velocityX;
+        };
     }
 
     /**
