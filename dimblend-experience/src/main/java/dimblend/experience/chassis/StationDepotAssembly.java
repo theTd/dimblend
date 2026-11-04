@@ -73,6 +73,16 @@ public final class StationDepotAssembly {
                             site.center, site.attempts, failure.toString());
                     failed(site);
                 }
+            } else {
+                examined++;
+                try {
+                    if (verifyCar(level, data, site)) {
+                        data.setDirty();
+                    }
+                } catch (RuntimeException failure) {
+                    DimBlend.LOGGER.warn("Station depot car check at {} failed: {}",
+                            site.center, failure.toString());
+                }
             }
             // The junction's switch is fitted on the same visit: it needs the same
             // conditions (loaded chunks, a player near) and must not depend on the
@@ -109,7 +119,14 @@ public final class StationDepotAssembly {
         BlockPos machine = StationDepotSwitch.machine(boundaryX);
         retireStaleMachines(level, data, boundaryX, machine);
         if (data.switchFitted(machine)) {
-            return;
+            // 2026-11-04: "fitted" is a claim about the past, and the machine is only a block in
+            // the world — a region that is cleared and regenerated takes it with it. Ask the world
+            // instead, and let a machine that is gone be re-fitted (which also re-arms the report).
+            var switchBlock = BuiltInRegistries.BLOCK.getOptional(StationDepotSwitch.SWITCH_ID).orElse(null);
+            if (switchBlock != null && level.getBlockState(machine).is(switchBlock)) {
+                return;
+            }
+            data.forgetSwitch(machine);
         }
         var result = StationDepotSwitch.fit(level, boundaryX);
         if (result.fitted()) {
@@ -311,12 +328,99 @@ public final class StationDepotAssembly {
         SubLevelContainer.getContainer(level)
                 .addForceLoadTicket(car, SubLevelLoadingTicketType.COMMAND_FORCED, Unit.INSTANCE);
         site.assembled = true;
+        site.carId = car.getUniqueId();
         site.placed.clear();
         return true;
     }
 
-    private static boolean failed(StationDepotAssemblyData.Site site) {
-        site.attempts++;
+    /**
+     * Checks that a site recorded as assembled still owns a real car, and puts the site back to
+     * "not built" when it does not.
+     *
+     * <p><b>Why this exists.</b> {@code assembled} used to be a one-way claim: once written, no
+     * visit ever looked at the car again. A car whose stored blocks were lost therefore stayed
+     * invisible for ever — the 8192 depot on 2026-11-04 held a sub-level whose storage file was
+     * 4096 zero bytes while a working depot's file was 22887, and nothing ever rebuilt it.
+     *
+     * <p><b>What counts as lost.</b> Only answers the world can give are trusted:
+     * <ul>
+     *   <li>the site's chunks are loaded, so "the car is not loaded" cannot be the explanation;</li>
+     *   <li>the recorded sub-level is missing, or still exists with an empty plot (a shell).</li>
+     * </ul>
+     * A car the player coupled to a train is a <i>real</i> sub-level wherever it has been towed
+     * to, so it is left alone: this never hands out a second car for one the player already took.
+     *
+     * @return true when the site was reset and needs a rebuild
+     */
+    private static boolean verifyCar(ServerLevel level, StationDepotAssemblyData data,
+            StationDepotAssemblyData.Site site) {
+        if (!ChassisSite.loaded(level, site.center)) {
+            return false; // "not loaded" and "gone" are the same answer while the area is away
+        }
+        var container = dev.ryanhcode.sable.api.sublevel.SubLevelContainer.getContainer(level);
+        if (container == null) {
+            return false;
+        }
+        var car = findCar(container, site);
+        if (car != null) {
+            var plot = car.getPlot().getBoundingBox();
+            boolean empty = plot.maxX() < plot.minX() || plot.maxY() < plot.minY()
+                    || plot.maxZ() < plot.minZ();
+            if (!empty) {
+                if (site.carId == null) {
+                    // A record written before the identity was stored: adopt it now, so this site
+                    // never has to guess by position again.
+                    site.carId = car.getUniqueId();
+                    return true;
+                }
+                return false; // the car is there and has blocks
+            }
+            // A shell: the pointer and the force-load ticket survive, the blocks do not. It has to
+            // go before the site is rebuilt, or the rebuild would assemble a second body on top.
+            container.removeSubLevel(car,
+                    dev.ryanhcode.sable.sublevel.storage.SubLevelRemovalReason.REMOVED);
+            DimBlend.LOGGER.info("Station depot car at {} is empty; removed the shell", site.center);
+        } else {
+            DimBlend.LOGGER.info("Station depot car at {} is missing; rebuilding it", site.center);
+        }
+        site.assembled = false;
+        site.built = false;
+        site.attempts = 0;
+        site.placed.clear();
+        site.carId = null;
+        return true;
+    }
+
+    /**
+     * The sub-level this site assembled: by identity when the record has one, by world box when it
+     * does not (a record written before the identity was stored).
+     */
+    private static dev.ryanhcode.sable.sublevel.ServerSubLevel findCar(
+            dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer container,
+            StationDepotAssemblyData.Site site) {
+        if (site.carId != null) {
+            var byId = container.getSubLevel(site.carId);
+            return byId instanceof dev.ryanhcode.sable.sublevel.ServerSubLevel server && !server.isRemoved()
+                    ? server : null;
+        }
+        double x = site.center.getX();
+        double y = site.center.getY();
+        double z = site.center.getZ();
+        for (dev.ryanhcode.sable.sublevel.ServerSubLevel candidate : container.getAllSubLevels()) {
+            if (candidate.isRemoved()) {
+                continue;
+            }
+            var box = candidate.boundingBox();
+            if (x >= box.minX() && x <= box.maxX()
+                    && y >= box.minY() && y <= box.maxY()
+                    && z >= box.minZ() && z <= box.maxZ()) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static boolean failed(StationDepotAssemblyData.Site site) {        site.attempts++;
         if (site.attempts >= StationDepotAssemblyRule.MAX_ATTEMPTS) {
             DimBlend.LOGGER.warn("Station depot chassis at {} left unfinished after {} attempts",
                     site.center, site.attempts);
