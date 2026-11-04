@@ -79,24 +79,20 @@ class RewardWagonPlanTest {
     }
 
     @Test
-    void everyWagonSitsInsideAnEndWindowAndClearOfBothBoundaries() {
+    void everyWagonSitsInsideTheInteriorWindow() {
+        // 2026-11-04: 「每个区域开始 128格后 到1920格 之内的部分」 — whole wagon, not just centre.
         int halfLength = RewardWagonLayout.HALF_LENGTH;
+        assertEquals(128, RewardWagonPlan.WINDOW_START);
+        assertEquals(1920, RewardWagonPlan.WINDOW_END);
         for (int index = -12; index < 12; index++) {
             int lo = index * BAND;
-            int hi = lo + BAND - 1;
             for (var wagon : band(index, "surface")) {
                 int westEdge = wagon.centerX() - halfLength;
                 int eastEdge = wagon.centerX() + halfLength;
-                // 16 clear of the region's own columns ...
-                assertTrue(westEdge >= lo + RewardWagonPlan.BOUNDARY_CLEARANCE,
-                        "west edge " + westEdge + " in band " + index);
-                assertTrue(eastEdge <= hi - RewardWagonPlan.BOUNDARY_CLEARANCE + 1,
-                        "east edge " + eastEdge + " in band " + index);
-                // ... and wholly inside one of the two 128 windows.
-                boolean inWestWindow = westEdge >= lo && eastEdge < lo + RewardWagonPlan.END_WINDOW;
-                boolean inEastWindow = westEdge >= hi + 1 - RewardWagonPlan.END_WINDOW && eastEdge <= hi;
-                assertTrue(inWestWindow || inEastWindow,
-                        "wagon " + wagon.centerX() + " is outside both windows of band " + index);
+                assertTrue(westEdge >= lo + RewardWagonPlan.WINDOW_START,
+                        "west edge " + westEdge + " is before the window in band " + index);
+                assertTrue(eastEdge <= lo + RewardWagonPlan.WINDOW_END,
+                        "east edge " + eastEdge + " is past the window in band " + index);
             }
         }
     }
@@ -129,38 +125,65 @@ class RewardWagonPlanTest {
 
     @Test
     void aReservedColumnIsAvoided() {
-        // Reserve the whole west window of band 1 and check nothing lands there.
+        // Reserve the first 372 blocks of band 1's window and check nothing covers them.
         int lo = BAND;
-        IntPredicate reserveWest = x -> x >= lo && x < lo + RewardWagonPlan.END_WINDOW;
+        int reservedTo = lo + 500;
+        IntPredicate reserveStart = x -> x >= lo + RewardWagonPlan.WINDOW_START && x < reservedTo;
         for (int attempt = 0; attempt < 20; attempt++) {
-            var wagons = RewardWagonPlan.forBand(SEED + attempt, 1, BAND, "underground", reserveWest);
+            var wagons = RewardWagonPlan.forBand(SEED + attempt, 1, BAND, "underground", reserveStart);
             for (var wagon : wagons) {
                 int westEdge = wagon.centerX() - RewardWagonLayout.HALF_LENGTH;
-                int eastEdge = wagon.centerX() + RewardWagonLayout.HALF_LENGTH;
-                assertTrue(eastEdge < lo || westEdge >= lo + RewardWagonPlan.END_WINDOW,
-                        "wagon at " + wagon.centerX() + " overlaps the reserved west window");
+                assertTrue(westEdge >= reservedTo,
+                        "wagon at " + wagon.centerX() + " overlaps the reserved strip");
             }
         }
     }
 
     @Test
-    void forcedSpawnEndPutsTheWagonOnTheNearSideOfSpawn() {
-        // Regions east of spawn (index >= 0) keep their wagon at the west end; regions west
-        // of spawn keep it at the east end. Both are the end nearest X = 0.
+    void theAetherWagonSitsAtTheSpawnSideEdgeOfTheWindow() {
+        // "位于最开始的位置": the spawn-side edge of the window, which is its low edge for regions
+        // east of spawn and its high edge for regions west of it.
         for (int index = 0; index < 10; index++) {
-            int lo = index * BAND;
-            for (var wagon : band(index, "nether")) {
-                assertTrue(wagon.centerX() < lo + RewardWagonPlan.END_WINDOW,
-                        "band " + index + " nether wagon should sit at its west end, got " + wagon.centerX());
-            }
+            int edge = index * BAND + RewardWagonPlan.WINDOW_START + RewardWagonLayout.HALF_LENGTH;
+            var wagons = band(index, "aether");
+            assertEquals(1, wagons.size(), "band " + index);
+            assertEquals(edge, wagons.get(0).centerX(), "band " + index);
         }
         for (int index = -10; index < 0; index++) {
-            int hi = index * BAND + BAND - 1;
+            int edge = index * BAND + RewardWagonPlan.WINDOW_END - RewardWagonLayout.HALF_LENGTH;
+            var wagons = band(index, "aether");
+            assertEquals(1, wagons.size(), "band " + index);
+            assertEquals(edge, wagons.get(0).centerX(), "band " + index);
+        }
+    }
+
+    @Test
+    void aReservedStripAtTheSpawnEdgePushesTheAetherWagonInwards() {
+        int lo = 0;
+        int reservedTo = lo + RewardWagonPlan.WINDOW_START + 40;
+        IntPredicate reserveStart = x -> x < reservedTo;
+        var wagons = RewardWagonPlan.forBand(SEED, 0, BAND, "aether", reserveStart);
+        assertEquals(1, wagons.size());
+        int centre = wagons.get(0).centerX();
+        assertTrue(centre - RewardWagonLayout.HALF_LENGTH >= reservedTo,
+                "wagon at " + centre + " still overlaps the reserved strip");
+    }
+
+    @Test
+    void theNetherWagonMayLandAnywhereInTheWindow() {
+        // The nether line only says "exactly one"; with one window that is a draw anywhere in it,
+        // not a pin to the spawn edge (that pin belongs to the aether line alone).
+        int lowest = Integer.MAX_VALUE;
+        int highest = Integer.MIN_VALUE;
+        for (int index = 0; index < 80; index++) {
             for (var wagon : band(index, "nether")) {
-                assertTrue(wagon.centerX() >= hi + 1 - RewardWagonPlan.END_WINDOW,
-                        "band " + index + " nether wagon should sit at its east end, got " + wagon.centerX());
+                int offset = wagon.centerX() - index * BAND;
+                lowest = Math.min(lowest, offset);
+                highest = Math.max(highest, offset);
             }
         }
+        assertTrue(lowest < 400, "nether wagons never land near the start of the window: " + lowest);
+        assertTrue(highest > 1500, "nether wagons never land near the end of the window: " + highest);
     }
 
     @Test
@@ -174,38 +197,49 @@ class RewardWagonPlanTest {
     }
 
     @Test
-    void theSurfaceRollSplitsThirtySeventy() {
-        int iron = 0;
+    void theSurfaceRollSplitsThirtyFiftyTwenty() {
         int copper = 0;
+        int zinc = 0;
+        int iron = 0;
         for (int i = 0; i < 2000; i++) {
-            float roll = i / 2000.0F;
-            if (RewardWagonContent.roll("surface", roll) == RewardWagonContent.SHALLOW_IRON) {
-                iron++;
-            } else {
-                copper++;
+            switch (RewardWagonContent.roll("surface", i / 2000.0F)) {
+                case SHALLOW_COPPER -> copper++;
+                case SHALLOW_ZINC -> zinc++;
+                case SHALLOW_IRON -> iron++;
+                default -> throw new AssertionError("unexpected " + RewardWagonContent.roll("surface", i / 2000.0F));
             }
         }
-        assertEquals(600, iron, "30% shallow iron");
-        assertEquals(1400, copper, "70% shallow copper");
+        assertEquals(600, copper, "30% 浅层铜");
+        assertEquals(1000, zinc, "50% 浅层锌");
+        assertEquals(400, iron, "20% 浅层铁");
     }
 
     @Test
-    void theUndergroundRollSplitsSixtyTwentyTwenty() {
+    void theUndergroundRollSplitsFiftyThirtyTwenty() {
         int iron = 0;
-        int gold = 0;
+        int zinc = 0;
         int copper = 0;
         for (int i = 0; i < 2000; i++) {
             RewardWagonContent content = RewardWagonContent.roll("underground", i / 2000.0F);
             switch (content) {
                 case DEEP_IRON -> iron++;
-                case DEEP_GOLD -> gold++;
+                case DEEP_ZINC -> zinc++;
                 case DEEP_COPPER -> copper++;
                 default -> throw new AssertionError("unexpected " + content);
             }
         }
-        assertEquals(1200, iron);
-        assertEquals(400, gold);
-        assertEquals(400, copper);
+        assertEquals(1000, iron, "50% 深层铁");
+        assertEquals(600, zinc, "30% 深层锌");
+        assertEquals(400, copper, "20% 深层铜");
+    }
+
+    @Test
+    void theZincOresComeFromCreate() {
+        // Vanilla has no zinc: the 2026-11-04 table is only buildable through Create's blocks.
+        assertEquals("create:zinc_ore", RewardWagonContent.SHALLOW_ZINC.oreBlock());
+        assertEquals("create:raw_zinc_block", RewardWagonContent.SHALLOW_ZINC.rawBlock());
+        assertEquals("create:deepslate_zinc_ore", RewardWagonContent.DEEP_ZINC.oreBlock());
+        assertEquals("create:raw_zinc_block", RewardWagonContent.DEEP_ZINC.rawBlock());
     }
 
     @Test
