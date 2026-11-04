@@ -11,7 +11,9 @@ import dimblend.experience.DimBlend;
 import dimblend.experience.exploration.RotatingDimension;
 import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongLinkedOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.FluidTags;
@@ -38,32 +40,43 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
  *
  * <p>做法：{@code ChunkEvent.Load} 里只登记 ChunkPos，在 {@code LevelTickEvent.Post} 里
  * 按预算消化——区块任务邮箱上下文里同步写方块会和 Sable 物理钩子互相等锁
- * （docs/sable-void-fit-chunk-deadlock.md），所以事件回调里不入队以外的任何世界操作。
- * 每次结算取走廊带里最多 {@link LavaSettleMath#CELL_BUDGET} 个岩浆格，逐个跑一记原版
- * {@link FluidState#tick}（与 {@code ServerLevel#tickFluid} 的调用体相同），在玩家走近之前
- * 把扩散链推进若干步；每区块最多 {@link LavaSettleMath#PASS_BUDGET} 轮、每轮间隔
- * 1 tick，轮数耗尽即出队——固定轮数，不检查收敛，不是「循环到静止」。</p>
+ * （docs/sable-void-fit-chunk-deadlock.md），所以事件回调里不入队以外的任何世界操作。</p>
+ *
+ * <p><b>推进方式：前沿集合，跑到不再增长为止（2026-11-04 重写）。</b> 第一次碰到一个区块时
+ * 扫一遍走廊带得到「当前所有岩浆格」（这是种子）；之后每一轮只对**上一轮新产生的**岩浆格
+ * 调一记原版 {@link FluidState#tick}，再把它们的 6 个邻居里是岩浆、且从未排过的格子收进下一轮
+ * 前沿。前沿空了就说明这一片岩浆不再往新格子里长，也就是流完了。
+ *
+ * <p><b>为什么不再「固定 8 轮」。</b> 8 轮 = 8 步，而一条扩散链要 20–30 步才铺到轨道
+ * （ultraWarm：{@code getDropOff=1}、{@code getSlopeFindDistance=4}，垂直每步 1 格、
+ * 水平每步 1 格，结算带高 19 格——`LavaFluid.java:140/155`）。8 步之后剩下的部分按原版
+ * 10 tick/步 当着玩家的面流完，实测就是用户报告的「本应被结算但还在流动」。现在改成收敛，
+ * 但代价仍然封顶：每 tick 所有活跃区块合计 {@link LavaSettleMath#STEPS_PER_TICK} 步、
+ * 单区块合计 {@link LavaSettleMath#STEP_BUDGET} 步。
+ *
+ * <p><b>为什么不做「整区块重扫每一轮」。</b> 一次整扫在走廊带内约 3.3 千格读；8 轮就是 2.6 万，
+ * 而收敛要几十轮。前沿方案每轮只花「tick 若干格 + 每格 6 个邻居」，几十轮的总成本比原来的
+ * 8 轮整扫还低。</p>
  *
  * <p><b>为什么不是「scheduleTick(pos, fluid, 0)」</b>：原版 {@code LevelChunkTicks#schedule}
  * 用 {@code ScheduledTick.UNIQUE_TICK_HASH}（pos + 类型）去重，格子上已有 pending tick 时
  * 新的 {@code scheduleTick} 被静默丢弃；而 spring 的生成期 tick 由
  * {@code ProtoChunkTicks#schedule} 以 delay 0 存下、载入即到期。两条叠加的结果是
- * 「只调度一遍」什么也提前不了（详见 T-10 报告）。要真正推进扩散链，只能按固定轮数直接跑
- * 原版 tick；本类把轮数固定成常量、每轮格数固定成常量，任何时候都不会无限跑。</p>
+ * 「只调度一遍」什么也提前不了（详见 T-10 报告）。要真正推进扩散链，只能自己按轮次直接跑
+ * 原版 tick。</p>
  *
  * <p>边界：只处理已经加载、且 3×3 邻区块也都已加载的区块——原版流体一步会读/写相邻区块，
- * 3×3 保证这一读一写都落在已加载范围内，绝不替区块系统做加载。探测一律走
- * {@code ChunkSource#getChunkNow}，不走 {@code getChunk(x, z, FULL, false)}：后者的
- * {@code load=false} 只表示「不加 ticket」，主线程上它仍然调用
- * {@code mainThreadProcessor.managedBlock(future::isDone)}，区块没到 FULL 就把这一 tick
- * 堵在区块生成上。2026-11-04 的 spark 采样里这条路径占服务器线程 32.2%（26.77s / 84s），
+ * 3×3 保证这一读一写都落在已加载范围内，绝不替区块系统做加载。方块读取一律走
+ * {@code LevelChunk#getFluidState}，不经过 {@code Level#getBlockState}（那条路会 getChunkAt）。
+ * 区块探测一律走 {@code ChunkSource#getChunkNow}，不走 {@code getChunk(x, z, FULL, false)}：
+ * 后者的 {@code load=false} 只表示「不加 ticket」，主线程上它仍然调用
+ * {@code mainThreadProcessor.managedBlock(future::isDone)}，区块没到 FULL 就把这一 tick 堵在
+ * 区块生成上。2026-11-04 的 spark 采样里这条路径占服务器线程 32.2%（26.77s / 84s），
  * 其中 29.1% 直接是 {@code Unsafe.park}；{@code getChunkNow} 只查 ChunkHolder 的
- * {@code getChunkIfPresent(FULL)}，没就绪返回 null，不阻塞也不调度生成。
- * 待结算队列有上限 {@link #MAX_PENDING_CHUNKS}（满了丢最旧）、
- * 每次只扫 {@link #PROMOTION_SCAN_BUDGET} 个条目（未就绪的轮转到队尾），不会无限堆积。</p>
+ * {@code getChunkIfPresent(FULL)}，没就绪返回 null，不阻塞也不调度生成。</p>
  *
- * <p>已知代价（T-10 报告与 M3.md 都写明）：首次靠近会因「扫走廊带 + 连续跑流体步」卡一下，
- * 这是用户选定载入期方案时接受过的；最坏单区块 8 轮 × 64 格 = 512 步，摊在 8 tick 上。</p>
+ * <p>待结算队列有上限 {@link #MAX_PENDING_CHUNKS}（满了丢最旧），每次只扫
+ * {@link #PROMOTION_SCAN_BUDGET} 个条目（未就绪的轮转到队尾），不会无限堆积。</p>
  */
 @EventBusSubscriber(modid = DimBlend.MODID)
 public final class LavaSettleOnLoad {
@@ -74,10 +87,13 @@ public final class LavaSettleOnLoad {
     /** 一次从待结算队列里最多看几个条目：3×3 邻区块没就绪的条目轮转到队尾，下 tick 再看。 */
     private static final int PROMOTION_SCAN_BUDGET = 8;
 
+    /** 相邻格的方向：前沿只沿这 6 个方向生长。 */
+    private static final Direction[] DIRECTIONS = Direction.values();
+
     /** 按维度（只会有 rotating）登记待结算的区块，FIFO。 */
     private static final Map<ResourceKey<Level>, LongLinkedOpenHashSet> PENDING = new HashMap<>();
 
-    /** 正在结算的区块（每个维度最多 {@link LavaSettleMath#CHUNKS_PER_TICK} 个），每 tick 推一轮。 */
+    /** 正在结算的区块（每个维度最多 {@link LavaSettleMath#CHUNKS_PER_TICK} 个）。 */
     private static final Map<ResourceKey<Level>, List<SettleJob>> ACTIVE = new HashMap<>();
 
     /** 调色板级剪枝用：这一层方块里有没有岩浆。 */
@@ -86,11 +102,20 @@ public final class LavaSettleOnLoad {
     /** 队列打满只记一次，避免刷屏。 */
     private static boolean overflowLogged;
 
-    /** 一个区块的结算进度（固定轮数；每轮 ≤ {@link LavaSettleMath#CELL_BUDGET} 格）。 */
+    /** 一个区块的结算进度：种子在前沿里，每轮把前沿换成「新长出来的岩浆格」。 */
     private static final class SettleJob {
         final ChunkPos pos;
+        /** 下一轮要推进的岩浆格（打包坐标）；空 = 前沿不再增长 = 流完了。 */
+        final LongLinkedOpenHashSet frontier = new LongLinkedOpenHashSet();
+        /** 已经排进过前沿的格子，避免「A 发现 B、B 又发现 A」原地打转。 */
+        final LongOpenHashSet seen = new LongOpenHashSet();
+        /** 走廊带那份种子是否已经扫过。 */
+        boolean seeded;
         int passes;
-        boolean dropLogged;
+        int steps;
+        /** 种子格数，只用于那一行日志。 */
+        int seedCells;
+        boolean budgetLogged;
 
         SettleJob(ChunkPos pos) {
             this.pos = pos;
@@ -171,8 +196,9 @@ public final class LavaSettleOnLoad {
         }
     }
 
-    /** 每个活跃区块推一轮结算；完成或区块卸载就出队，邻区块暂时没就绪就退回等待队列。 */
+    /** 每个活跃区块在预算内推进；完成或区块卸载就出队，邻区块暂时没就绪就退回等待队列。 */
     private static void advanceActive(ServerLevel level, LongLinkedOpenHashSet pending, List<SettleJob> active) {
+        int budget = LavaSettleMath.stepBudgetFor(active.size());
         for (int i = active.size() - 1; i >= 0; i--) {
             SettleJob job = active.get(i);
             LevelChunk chunk = loadedChunk(level, job.pos);
@@ -180,8 +206,8 @@ public final class LavaSettleOnLoad {
                 active.remove(i);
                 continue;
             }
-            // 结算带里调色板都没有岩浆：这个区块无事可做，先出队，省掉下面 3×3 的 9 次区块查询
-            if (!hasLavaInBand(chunk)) {
+            // 还没扫过种子时先做调色板剪枝：结算带里没有岩浆的区块一步都不用走
+            if (!job.seeded && !hasLavaInBand(chunk)) {
                 active.remove(i);
                 continue;
             }
@@ -191,10 +217,140 @@ public final class LavaSettleOnLoad {
                 enqueue(pending, job.pos.toLong());
                 continue;
             }
-            if (runPass(level, chunk, job)) {
+            if (settle(level, chunk, job, budget)) {
                 active.remove(i);
             }
         }
+    }
+
+    /**
+     * 在预算内把一个区块推进到收敛。
+     *
+     * @return true 表示这个区块结算结束（前沿不再增长，或步数/轮数用尽）
+     */
+    private static boolean settle(ServerLevel level, LevelChunk chunk, SettleJob job, int budget) {
+        if (!job.seeded) {
+            seed(level, chunk, job);
+            job.seeded = true;
+            if (job.frontier.isEmpty()) {
+                return true;
+            }
+        }
+        if (job.passes == 0) {
+            // 每区块只打一行：种子规模，便于拿日志对照实机观察
+            DimBlend.LOGGER.info("[M3] lava settle: chunk {} seeded {} lava cell(s) near the track",
+                    chunk.getPos(), job.seedCells);
+        }
+        int left = budget;
+        while (left > 0 && !job.frontier.isEmpty()) {
+            if (job.steps >= LavaSettleMath.STEP_BUDGET
+                    || LavaSettleMath.passesLeft(job.passes, LavaSettleMath.PASS_BUDGET) == 0) {
+                if (!job.budgetLogged) {
+                    job.budgetLogged = true;
+                    DimBlend.LOGGER.debug("[M3] lava settle: chunk {} gave up after {} pass(es) / {} step(s)",
+                            chunk.getPos(), job.passes, job.steps);
+                }
+                return true;
+            }
+            int used = stepFrontier(level, job, Math.min(left, LavaSettleMath.CELL_BUDGET));
+            job.passes++;
+            job.steps += used;
+            left -= Math.max(1, used);
+            if (used == 0) {
+                // 排到的格子已经不是岩浆了：这一支流停了
+                return job.frontier.isEmpty();
+            }
+        }
+        return job.frontier.isEmpty();
+    }
+
+    /**
+     * 扫一遍走廊带得到种子（只在区块第一次结算时做一次）。
+     *
+     * <p>调色板级剪枝：这一层 16×16×16 里没有岩浆，就一行都不逐格读（无岩浆零开销）。
+     */
+    private static void seed(ServerLevel level, LevelChunk chunk, SettleJob job) {
+        int minX = chunk.getPos().getMinBlockX();
+        int maxX = chunk.getPos().getMaxBlockX();
+        int minZ = chunk.getPos().getMinBlockZ();
+        int maxZ = chunk.getPos().getMaxBlockZ();
+        LevelChunkSection[] sections = chunk.getSections();
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        for (int y = LavaSettleMath.BAND_MIN_Y; y <= LavaSettleMath.BAND_MAX_Y; y++) {
+            int sectionIndex = chunk.getSectionIndex(y);
+            if (sectionIndex < 0 || sectionIndex >= sections.length) {
+                continue;
+            }
+            if (!sections[sectionIndex].maybeHas(HAS_LAVA)) {
+                continue;
+            }
+            for (int x = minX; x <= maxX; x++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    if (!LavaSettleMath.inBand(y, z)) {
+                        continue;
+                    }
+                    cursor.set(x, y, z);
+                    // 读本区块自己的方块，不走 Level#getFluidState（那条路会 getChunkAt 触发加载）
+                    if (!chunk.getFluidState(cursor).is(FluidTags.LAVA)) {
+                        continue;
+                    }
+                    long packed = cursor.asLong();
+                    if (job.seen.add(packed)) {
+                        job.frontier.add(packed);
+                        job.seedCells++;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 推进一轮前沿：最多 {@code cap} 格，每格跑一记原版流体 tick，再把「新长出来的」岩浆格
+     * 收进下一轮。返回真正跑了几格。
+     *
+     * <p>已经 {@link SettleJob#seen} 过的格子不会被再次排进前沿，否则相邻两格会互相发现对方，
+     * 前沿永远不空、收敛永远不成立。
+     */
+    private static int stepFrontier(ServerLevel level, SettleJob job, int cap) {
+        List<Long> batch = new ArrayList<>(Math.min(cap, 64));
+        LongIterator iterator = job.frontier.iterator();
+        while (iterator.hasNext() && batch.size() < cap) {
+            long packed = iterator.nextLong();
+            iterator.remove();
+            batch.add(packed);
+        }
+        int stepped = 0;
+        for (long packed : batch) {
+            BlockPos pos = BlockPos.of(packed);
+            FluidState fluid = fluidAt(level, pos);
+            if (fluid == null || !fluid.is(FluidTags.LAVA)) {
+                continue;
+            }
+            // 与 ServerLevel#tickFluid 同一条调用：原版 FlowingFluid#tick 自己扩散/重算，
+            // FlowingFluidTickMixin 照常生效（下界口径的速度常数按这个列走）。
+            fluid.tick(level, pos);
+            stepped++;
+            for (Direction direction : DIRECTIONS) {
+                BlockPos next = pos.relative(direction);
+                FluidState neighbour = fluidAt(level, next);
+                if (neighbour == null || !neighbour.is(FluidTags.LAVA)) {
+                    continue;
+                }
+                if (job.seen.add(next.asLong())) {
+                    job.frontier.add(next.asLong());
+                }
+            }
+        }
+        return stepped;
+    }
+
+    /** 该格的流体状态；所在区块没加载就返回 null（绝不触发加载）。 */
+    private static FluidState fluidAt(ServerLevel level, BlockPos pos) {
+        LevelChunk chunk = loadedChunk(level, new ChunkPos(pos));
+        if (chunk == null) {
+            return null;
+        }
+        return chunk.getFluidState(pos);
     }
 
     /**
@@ -250,84 +406,10 @@ public final class LavaSettleOnLoad {
     }
 
     /**
-     * 扫一个区块的走廊带并跑一轮原版流体 step；预算内处理，其余丢弃。
-     *
-     * @return true 表示该区块结算结束（没有岩浆了，或轮数用尽）
-     */
-    private static boolean runPass(ServerLevel level, LevelChunk chunk, SettleJob job) {
-        ChunkPos chunkPos = chunk.getPos();
-        int minX = chunkPos.getMinBlockX();
-        int maxX = chunkPos.getMaxBlockX();
-        int minZ = chunkPos.getMinBlockZ();
-        int maxZ = chunkPos.getMaxBlockZ();
-        LevelChunkSection[] sections = chunk.getSections();
-        List<BlockPos> candidates = new ArrayList<>(LavaSettleMath.CELL_BUDGET);
-        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        int found = 0;
-        for (int y = LavaSettleMath.BAND_MIN_Y; y <= LavaSettleMath.BAND_MAX_Y; y++) {
-            int sectionIndex = chunk.getSectionIndex(y);
-            if (sectionIndex < 0 || sectionIndex >= sections.length) {
-                continue;
-            }
-            // 调色板级剪枝：这一层 16×16×16 里没有岩浆，就一行都不逐格读（无岩浆零开销）
-            if (!sections[sectionIndex].maybeHas(HAS_LAVA)) {
-                continue;
-            }
-            for (int x = minX; x <= maxX; x++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    // 候选格的几何判定收在 LavaSettleMath（走廊带 + 岩浆水平可达）
-                    if (!LavaSettleMath.inBand(y, z)) {
-                        continue;
-                    }
-                    cursor.set(x, y, z);
-                    // 读本区块自己的方块，不走 Level#getFluidState（那条路会 getChunkAt 触发加载）
-                    if (!chunk.getBlockState(cursor).getFluidState().is(FluidTags.LAVA)) {
-                        continue;
-                    }
-                    found++;
-                    if (candidates.size() < LavaSettleMath.CELL_BUDGET) {
-                        candidates.add(cursor.immutable());
-                    }
-                }
-            }
-        }
-        LavaSettleMath.Plan plan = LavaSettleMath.plan(found, LavaSettleMath.CELL_BUDGET);
-        if (!job.dropLogged && plan.dropped() > 0) {
-            job.dropLogged = true;
-            DimBlend.LOGGER.debug("[M3] lava settle: chunk {} dropped {} lava cell(s) over the {} budget",
-                    chunkPos, plan.dropped(), LavaSettleMath.CELL_BUDGET);
-        }
-        if (plan.idle()) {
-            return true;
-        }
-        int stepped = 0;
-        for (BlockPos pos : candidates) {
-            FluidState fluid = chunk.getFluidState(pos);
-            if (!fluid.is(FluidTags.LAVA)) {
-                continue;
-            }
-            // 与 ServerLevel#tickFluid 同一条调用：原版 FlowingFluid#tick 自己扩散/重算，
-            // FlowingFluidTickMixin 照常生效（下界口径的速度常数按这个列走）。
-            fluid.tick(level, pos);
-            stepped++;
-        }
-        if (job.passes == 0) {
-            // 每个区块只打一行：既让效果可观察，也不逐格刷屏
-            DimBlend.LOGGER.info("[M3] lava settle: chunk {} stepped {} of {} lava cell(s) near the track",
-                    chunkPos, stepped, found);
-        }
-        job.passes++;
-        return LavaSettleMath.passesLeft(job.passes, LavaSettleMath.PASS_BUDGET) == 0;
-    }
-
-    /**
      * 结算带（y {@link LavaSettleMath#BAND_MIN_Y}..{@link LavaSettleMath#BAND_MAX_Y}）里有没有岩浆。
      *
      * <p>只看每个 section 的调色板（{@code maybeHas}），不读任何方块、不碰区块系统，所以可以排在
      * 3×3 邻区块检查之前：一整个地表区块在这里一步就被淘汰，不再为它付 9 次区块查询。
-     *
-     * <p>这是 2026-11-04「非阻塞 getChunkNow」之后剩下的开销——调用不再阻塞了，但每个候选仍然要
-     * 查一遍才能知道它无事可做。轨道走廊 z 带上的区块里，绝大多数是天空/地表，没有岩浆。
      */
     private static boolean hasLavaInBand(LevelChunk chunk) {
         LevelChunkSection[] sections = chunk.getSections();
