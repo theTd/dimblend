@@ -30,7 +30,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.level.LevelEvent;
@@ -366,12 +365,18 @@ public final class MarkedLavaTracker {
     }
 
     /**
-     * Frontlights in one world chunk, or {@code null} when that chunk is not loaded: the query is the non-loading
-     * chunk lookup, so a world lamp never pulls a chunk in from the server tick.
+     * Frontlights in one world chunk, or {@code null} when that chunk is not loaded.
+     *
+     * <p>{@code getChunkNow} is the only lookup that is safe to call from the server tick:
+     * {@code getChunk(x, z, FULL, false)} does not add a ticket, but for a chunk that already has a
+     * full-level ticket and is still loading it schedules the work and parks the server thread in
+     * {@code managedBlock} until generation finishes. See {@code AetherSpawnChunkScan} for the same
+     * trap costing 0.2-0.8 s of server stall every ~2 s.
      */
     @Nullable
     private static List<BlockPos> scanWorldChunk(ServerLevel level, int chunkX, int chunkZ) {
-        if (!(level.getChunkSource().getChunk(chunkX, chunkZ, ChunkStatus.FULL, false) instanceof LevelChunk chunk)) {
+        LevelChunk chunk = level.getChunkSource().getChunkNow(chunkX, chunkZ);
+        if (chunk == null) {
             return null;
         }
         List<BlockPos> out = new ArrayList<>();

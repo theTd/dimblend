@@ -20,7 +20,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.material.FluidState;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -52,9 +51,15 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
  * 「只调度一遍」什么也提前不了（详见 T-10 报告）。要真正推进扩散链，只能按固定轮数直接跑
  * 原版 tick；本类把轮数固定成常量、每轮格数固定成常量，任何时候都不会无限跑。</p>
  *
- * <p>边界：只处理已经加载、且 3×3 邻区块也都已加载的区块（{@code getChunk(..., false)}
- * 不触发加载）——原版流体一步会读/写相邻区块，3×3 保证这一读一写都落在已加载范围内，
- * 绝不替区块系统做加载。待结算队列有上限 {@link #MAX_PENDING_CHUNKS}（满了丢最旧）、
+ * <p>边界：只处理已经加载、且 3×3 邻区块也都已加载的区块——原版流体一步会读/写相邻区块，
+ * 3×3 保证这一读一写都落在已加载范围内，绝不替区块系统做加载。探测一律走
+ * {@code ChunkSource#getChunkNow}，不走 {@code getChunk(x, z, FULL, false)}：后者的
+ * {@code load=false} 只表示「不加 ticket」，主线程上它仍然调用
+ * {@code mainThreadProcessor.managedBlock(future::isDone)}，区块没到 FULL 就把这一 tick
+ * 堵在区块生成上。2026-11-04 的 spark 采样里这条路径占服务器线程 32.2%（26.77s / 84s），
+ * 其中 29.1% 直接是 {@code Unsafe.park}；{@code getChunkNow} 只查 ChunkHolder 的
+ * {@code getChunkIfPresent(FULL)}，没就绪返回 null，不阻塞也不调度生成。
+ * 待结算队列有上限 {@link #MAX_PENDING_CHUNKS}（满了丢最旧）、
  * 每次只扫 {@link #PROMOTION_SCAN_BUDGET} 个条目（未就绪的轮转到队尾），不会无限堆积。</p>
  *
  * <p>已知代价（T-10 报告与 M3.md 都写明）：首次靠近会因「扫走廊带 + 连续跑流体步」卡一下，
@@ -304,7 +309,7 @@ public final class LavaSettleOnLoad {
         return LavaSettleMath.passesLeft(job.passes, LavaSettleMath.PASS_BUDGET) == 0;
     }
 
-    /** 3×3 邻区块是否都已加载（不触发任何加载）。 */
+    /** 3×3 邻区块是否都已加载（不触发加载，也不阻塞）。 */
     private static boolean neighbourhoodLoaded(ServerLevel level, ChunkPos pos) {
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
@@ -316,11 +321,17 @@ public final class LavaSettleOnLoad {
         return true;
     }
 
-    /** 已加载的 FULL 区块；没有就返回 null，绝不触发加载。 */
+    /**
+     * 已加载的 FULL 区块；没有就返回 null。
+     *
+     * <p>必须走 {@code getChunkNow}。{@code getChunk(x, z, FULL, false)} 里的 {@code false}
+     * 只表示「不加 ticket」，主线程上它仍然执行
+     * {@code mainThreadProcessor.managedBlock(future::isDone)}——区块没到 FULL 时会把整个
+     * tick 堵在生成任务上。{@code getChunkNow} 只查 ChunkHolder 的
+     * {@code getChunkIfPresent(FULL)}，不阻塞、也不调度生成。
+     */
     private static LevelChunk loadedChunk(ServerLevel level, ChunkPos pos) {
-        return level.getChunkSource().getChunk(pos.x, pos.z, ChunkStatus.FULL, false) instanceof LevelChunk chunk
-                ? chunk
-                : null;
+        return level.getChunkSource().getChunkNow(pos.x, pos.z);
     }
 
     private LavaSettleOnLoad() {
