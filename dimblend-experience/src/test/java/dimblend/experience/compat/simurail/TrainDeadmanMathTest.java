@@ -182,4 +182,23 @@ class TrainDeadmanMathTest {
         assertEquals(Set.of(id(1)), TrainDeadmanMath.updateLatches(Set.of(id(1)), List.of(),
                 Set.of(), group -> false));
     }
+
+    @Test
+    void aRewardWagonContributesNoBogeyToTheUnattendedCheck() {
+        // 2026-11-04：奖励车厢的车架不参与玩家掉落检测。一个自己会跑的马达板车，若把它的车架
+        // 算进来，就等于「编组在动 + 无人在车上」，锁存会当场把它刹死。
+        List<TrainDeadmanMath.Probe> fast = probes(0, 64, 0, 12.0);
+        assertEquals(List.of(), TrainDeadmanMath.crewProbes(fast, true),
+                "奖励车厢不出任何 Probe：它既不算在动，也不当值守锚点");
+        assertEquals(fast, TrainDeadmanMath.crewProbes(fast, false),
+                "普通车厢的车架照旧参与");
+        var consist = TrainDeadmanMath.cluster(List.of(
+                new TrainDeadmanMath.Carriage(id(1), List.of(),
+                        TrainDeadmanMath.crewProbes(fast, true))));
+        assertFalse(TrainDeadmanMath.hasFast(consist.get(0).bogeys()),
+                "只剩自己的奖励车厢不算「在动」");
+        assertEquals(Double.MAX_VALUE,
+                TrainDeadmanMath.nearestDistanceSq(consist.get(0).bogeys(), 0, 64, 0), 1.0E-9,
+                "奖励车厢不当距离锚点");
+    }
 }

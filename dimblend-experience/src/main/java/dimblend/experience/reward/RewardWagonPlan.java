@@ -13,29 +13,31 @@ import java.util.function.IntPredicate;
  * fixes), so a restart, a reload or a second player sees the same wagons in the same
  * places. Nothing is stored to make that true.
  *
- * <p><b>The windows.</b> A region runs {@code [lo, hi]} with {@code hi = lo + bandSize - 1}.
- * The requirement puts wagons "within 128 blocks of either end of the region". The
- * player additionally asked for the whole wagon to stay at least 16 blocks away from any
- * boundary column, so the usable centre range is
- * {@code [lo + 16 + 4, lo + 128 - 4]} at the low end and {@code [hi + 1 - 128 + 4, hi + 1 - 16 - 4]}
- * at the high end, where 4 is the wagon's half length.
+ * <p><b>The window.</b> The 2026-11-02 wording put wagons "within 128 blocks of either end of the
+ * region". The 2026-11-04 correction replaces it: "车厢位置位于每个区域开始 128格后 到1920格
+ * 之内的部分". So there is one window per region now — from 128 to 1920 blocks after the region
+ * start — and the whole wagon has to sit inside it, not only its centre. At the default 2048-wide
+ * region that leaves the first 128 and the last 128 blocks empty, which is also what keeps a wagon
+ * clear of the region boundary columns at both ends.
  *
- * <p><b>Two wagons are drawn independently.</b> The player chose that over "one at each
- * end", so both may land at the same end; a minimum spacing keeps them apart, and if the
- * roll cannot satisfy it the second wagon is dropped rather than stacked on the first.
+ * <p><b>Where the "spawn end" went.</b> With one window there is no pair of ends left to choose
+ * from, so a lane that asks for its wagon "at the start" (the aether line) takes the spawn-side
+ * edge of the window and walks inwards only as far as a reserved column forces it to.
  */
 public final class RewardWagonPlan {
     /** One wagon: where its centre sits, what it carries, and the seed its ore pattern uses. */
     public record Wagon(int centerX, RewardWagonContent content, long seed) {
     }
 
-    /** The requirement's "within 128 blocks of either end". */
-    public static final int END_WINDOW = 128;
-    /** How far the whole wagon stays from a boundary column. */
-    public static final int BOUNDARY_CLEARANCE = 16;
+    /** Blocks after the region start where the wagon window opens. 2026-11-04 requirement. */
+    public static final int WINDOW_START = 128;
+    /** Blocks after the region start where the wagon window closes. 2026-11-04 requirement. */
+    public static final int WINDOW_END = 1920;
     /** Minimum centre-to-centre distance between two wagons of one region. */
     public static final int MIN_SPACING = 16;
     private static final int MAX_REROLLS = 16;
+    /** How far the spawn-side edge walks inwards before giving up on a fully reserved strip. */
+    private static final int EDGE_SCAN = 256;
 
     private RewardWagonPlan() {
     }
@@ -52,7 +54,7 @@ public final class RewardWagonPlan {
      */
     public static List<Wagon> forBand(long worldSeed, int bandIndex, int bandSize, String lane,
             IntPredicate reservedX) {
-        if (bandSize < END_WINDOW + 2 * (BOUNDARY_CLEARANCE + RewardWagonLayout.HALF_LENGTH)) {
+        if (bandSize <= WINDOW_START + 2 * RewardWagonLayout.HALF_LENGTH) {
             return List.of();
         }
         Random random = new Random(mix(worldSeed, bandIndex));
@@ -61,22 +63,24 @@ public final class RewardWagonPlan {
             return List.of();
         }
         int lo = bandIndex * bandSize;
-        int hi = lo + bandSize - 1;
-        // Low end: the whole wagon inside the 128 window and 16 clear of the boundary at lo.
-        int westMin = lo + BOUNDARY_CLEARANCE + RewardWagonLayout.HALF_LENGTH;
-        int westMax = lo + END_WINDOW - RewardWagonLayout.HALF_LENGTH;
-        // High end: the same against the boundary at hi + 1.
-        int eastMin = hi + 1 - END_WINDOW + RewardWagonLayout.HALF_LENGTH;
-        int eastMax = hi + 1 - BOUNDARY_CLEARANCE - RewardWagonLayout.HALF_LENGTH;
-        boolean forcedSpawnEnd = RewardWagonContent.countRule(lane) == RewardWagonContent.CountRule.ONE_AT_SPAWN_END;
+        // The whole wagon has to be inside [lo + 128, lo + 1920]; a region narrower than the
+        // requirement asks for keeps its own end clearance instead of reading past its edge.
+        int windowLo = lo + WINDOW_START;
+        int windowHi = Math.min(lo + WINDOW_END, lo + bandSize - 1);
+        int min = windowLo + RewardWagonLayout.HALF_LENGTH;
+        int max = windowHi - RewardWagonLayout.HALF_LENGTH;
+        if (min > max) {
+            return List.of();
+        }
+        RewardWagonContent.CountRule rule = RewardWagonContent.countRule(lane);
+        boolean atSpawnEdge = rule == RewardWagonContent.CountRule.ONE_AT_SPAWN_END;
         boolean westIsSpawnEnd = bandIndex >= 0;
 
         List<Wagon> wagons = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {
-            boolean west = forcedSpawnEnd ? westIsSpawnEnd : random.nextBoolean();
-            int min = west ? westMin : eastMin;
-            int max = west ? westMax : eastMax;
-            int centerX = drawCenter(random, min, max, reservedX, wagons);
+            int centerX = atSpawnEdge
+                    ? spawnEdgeCentre(westIsSpawnEnd, min, max, reservedX, wagons)
+                    : drawCenter(random, min, max, reservedX, wagons);
             if (centerX == NO_POSITION) {
                 continue;
             }
@@ -99,6 +103,31 @@ public final class RewardWagonPlan {
         return NO_POSITION;
     }
 
+    /**
+     * The free centre nearest the spawn end of the window.
+     *
+     * <p>Regions east of spawn have their spawn end at the window's low edge, regions west of spawn
+     * at its high edge. The walk moves inwards one block at a time and stops at the first centre
+     * that is free: a reserved strip (the starter depot reaches 260 blocks past spawn, and the
+     * window of the region just west of spawn starts inside it) only pushes the wagon as far as it
+     * has to go.
+     */
+    private static int spawnEdgeCentre(boolean westIsSpawnEnd, int min, int max, IntPredicate reservedX,
+            List<Wagon> taken) {
+        int step = westIsSpawnEnd ? 1 : -1;
+        int start = westIsSpawnEnd ? min : max;
+        for (int index = 0; index < EDGE_SCAN; index++) {
+            int candidate = start + step * index;
+            if (candidate < min || candidate > max) {
+                return NO_POSITION;
+            }
+            if (!blocked(candidate, reservedX, taken)) {
+                return candidate;
+            }
+        }
+        return NO_POSITION;
+    }
+
     private static boolean blocked(int centerX, IntPredicate reservedX, List<Wagon> taken) {
         for (Wagon other : taken) {
             if (Math.abs(other.centerX() - centerX) < MIN_SPACING) {
@@ -117,7 +146,7 @@ public final class RewardWagonPlan {
     private static int count(String lane, Random random) {
         return switch (RewardWagonContent.countRule(lane)) {
             case NONE -> 0;
-            case ONE_AT_SPAWN_END -> 1;
+            case ONE_AT_SPAWN_END, ONE_RANDOM -> 1;
             case ROLL_0_1_2 -> {
                 float roll = random.nextFloat();
                 if (roll < 0.20F) {
