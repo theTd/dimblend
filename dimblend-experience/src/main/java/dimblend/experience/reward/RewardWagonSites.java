@@ -139,13 +139,29 @@ public final class RewardWagonSites extends SavedData {
             if (entry.hasUUID("sub_level_id")) {
                 site.subLevelId = entry.getUUID("sub_level_id");
             }
-            site.dissolved = entry.getBoolean("dissolved");
+            boolean dissolved = entry.getBoolean("dissolved");
             site.attempts = entry.getInt("attempts");
             site.dissolveDeadline = entry.getLong("dissolve_deadline");
             site.effectsPlayed = entry.getBoolean("effects_played");
+            site.dissolved = dissolved && !wasRetiredWithoutDissolving(dissolved, site.effectsPlayed);
             data.sites.put(site.centerX, site);
         }
         return data;
+    }
+
+    /**
+     * Whether a record was closed without a dissolve ever running.
+     *
+     * <p><b>This is a repair, and it runs once per load.</b> A dissolve always sets
+     * {@code effectsPlayed}, so that flag is what separates a wagon the player emptied from one
+     * the old sub-level lookup gave up on. Every existing save has wagons of the second kind:
+     * they were marked dissolved one tick after they were built, and a dissolved site is never
+     * looked at again, so no amount of emptying could make them vanish. Such a record is reopened
+     * so the fixed ticker can look at the wagon once more; one that really is gone is retired
+     * again on that visit, this time only after a loaded-chunk check.
+     */
+    static boolean wasRetiredWithoutDissolving(boolean dissolved, boolean effectsPlayed) {
+        return dissolved && !effectsPlayed;
     }
 
     /** Whether any site still needs work, so an idle server can skip the whole pass. */
