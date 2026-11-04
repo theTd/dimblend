@@ -17,17 +17,39 @@ package dimblend.experience.compat.lava;
  */
 public final class LavaSettleMath {
 
-    /** 单区块每轮结算最多处理的流体格数（T-10 DoD 常量）；超出部分丢弃，不排队。 */
+    /** 单区块每轮结算最多处理的流体格数（T-10 DoD 常量）；超出部分顺延到下一轮。 */
     public static final int CELL_BUDGET = 64;
 
     /** 每 tick 最多消化的待结算区块数（单区块最坏 {@link #CELL_BUDGET} 格 → 每 tick ≤ 128 格）。 */
     public static final int CHUNKS_PER_TICK = 2;
 
     /**
-     * 每区块最多跑几轮结算（固定轮数，不检查收敛）：每轮 ≤ {@link #CELL_BUDGET} 格、间隔 1 tick。
-     * 最坏 {@code 8 × 64 = 512} 个原版流体 step / 区块，摊在 8 tick 上。
+     * 每 tick 所有活跃区块加起来最多跑多少个原版流体 step。
+     *
+     * <p><b>这是「卡顿上界」，不是「轮数上界」。</b> 2026-11-04 的实测（spark 与日志）表明：原来
+     * 每区块固定 8 轮、每轮 1 tick，等于只把扩散链推进 8 格；而 ultraWarm 岩浆要铺到轨道并停住
+     * 需要 20–30 格（`LavaFluid` 的 `getDropOff=1`、`getSlopeFindDistance=4`，垂直每步 1 格、
+     * 水平每步 1 格，结算带高 19 格）。8 格之后剩下的部分就当着玩家的面按原版 10 tick/步流完，
+     * 也就是用户报告的「本应被结算但还在流动」。
+     *
+     * <p>现在改为「跑到前沿不再增长为止」，代价由每 tick 的流体步预算封顶：一个区块一 tick 内
+     * 可以跑多轮，只要总数不超过预算。128 步 ≈ 一条扩散链铺完的四五倍，正常 1–2 tick 收敛；这也是原来「2 区块 × 64 格」的每 tick 上限，没有把卡顿放大。
      */
-    public static final int PASS_BUDGET = 8;
+    public static final int STEPS_PER_TICK = 128;
+
+    /**
+     * 单区块总共允许跑多少个原版流体 step（硬上界，与 {@link #STEPS_PER_TICK} 一起保证不会
+     * 无限跑）。2 048 步是「收敛」与「卡死」之间的取舍：正常扩散链只需要几十步，用光这个数
+     * 说明地形异常（例如岩浆一直在往新格子里漏），此时放弃并记一条调试日志。
+     */
+    public static final int STEP_BUDGET = 2048;
+
+    /**
+     * 单区块最多跑几轮。每轮至少推进 1 格前沿，所以它只是循环护栏；真正的界是
+     * {@link #STEP_BUDGET} 与 {@link #STEPS_PER_TICK}。
+     */
+    public static final int PASS_BUDGET = 512;
+
 
     /** 轨道所在 z（OakTrackCorridor.CORRIDOR_Z）。 */
     public static final int TRACK_Z = 0;
@@ -71,6 +93,18 @@ public final class LavaSettleMath {
     /** 本次 tick 从待结算队列里取几个区块：待处理再多也只取 {@link #CHUNKS_PER_TICK} 个。 */
     public static int chunksThisTick(int pending) {
         return Math.min(Math.max(0, pending), CHUNKS_PER_TICK);
+    }
+
+    /**
+     * 本 tick 分给一个活跃区块的流体步预算：{@link #STEPS_PER_TICK} 在活跃区块之间均分，至少 1。
+     *
+     * <p>均分而不是「先到先得」，是为了让两辆车同时靠近两个不同区块时不会有一个被饿死。
+     */
+    public static int stepBudgetFor(int activeJobs) {
+        if (activeJobs <= 0) {
+            return STEPS_PER_TICK;
+        }
+        return Math.max(1, STEPS_PER_TICK / activeJobs);
     }
 
     /** 本轮之后还剩几轮；0 表示该区块结算结束、应出队（固定轮数，不是「跑到不动点」）。 */

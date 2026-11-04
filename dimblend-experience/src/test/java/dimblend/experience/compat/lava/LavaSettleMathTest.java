@@ -57,16 +57,33 @@ class LavaSettleMathTest {
     }
 
     @Test
-    void fixedPassBudgetIsBounded() {
-        // 固定轮数、不检查收敛（不是「跑到不动点」）：每区块最多 PASS_BUDGET 轮
-        assertEquals(8, LavaSettleMath.PASS_BUDGET);
+    void theHardCeilingIsTheStepBudgetNotThePassCount() {
+        // 2026-11-04 重写：轮数不再是「固定 8 轮不检查收敛」，而是循环护栏；
+        // 真正的界是每 tick 的流体步预算与每区块的总步数预算。
+        assertTrue(LavaSettleMath.PASS_BUDGET >= 64, "轮数只是护栏，不能卡在原来的 8");
+        assertEquals(128, LavaSettleMath.STEPS_PER_TICK);
+        assertEquals(2048, LavaSettleMath.STEP_BUDGET);
+
+        // 一条铺到轨道的扩散链：约 30 步、前沿每步 8 格 → 约 240 步，必须装得下
+        assertTrue(LavaSettleMath.STEP_BUDGET > 8 * 30,
+                "30 步 × 8 格的扩散链要能在硬上界内跑完，否则又会停在半路");
+
         assertEquals(LavaSettleMath.PASS_BUDGET, LavaSettleMath.passesLeft(0, LavaSettleMath.PASS_BUDGET));
-        assertEquals(1, LavaSettleMath.passesLeft(LavaSettleMath.PASS_BUDGET - 1, LavaSettleMath.PASS_BUDGET));
         assertEquals(0, LavaSettleMath.passesLeft(LavaSettleMath.PASS_BUDGET, LavaSettleMath.PASS_BUDGET));
         assertEquals(0, LavaSettleMath.passesLeft(LavaSettleMath.PASS_BUDGET + 5, LavaSettleMath.PASS_BUDGET));
         assertEquals(0, LavaSettleMath.passesLeft(0, 0));
-        // 最坏单区块开销：8 轮 × 64 格 = 512 个原版流体 step
-        assertEquals(512, LavaSettleMath.PASS_BUDGET * LavaSettleMath.CELL_BUDGET);
+    }
+
+    @Test
+    void theTickBudgetIsSharedBetweenActiveJobs() {
+        // 每 tick 的流体步预算在活跃区块之间均分，至少 1：两辆车同时靠近不会有一个被饿死
+        assertEquals(LavaSettleMath.STEPS_PER_TICK, LavaSettleMath.stepBudgetFor(0));
+        assertEquals(LavaSettleMath.STEPS_PER_TICK, LavaSettleMath.stepBudgetFor(-2));
+        assertEquals(LavaSettleMath.STEPS_PER_TICK, LavaSettleMath.stepBudgetFor(1));
+        assertEquals(LavaSettleMath.STEPS_PER_TICK / 2, LavaSettleMath.stepBudgetFor(2));
+        assertEquals(LavaSettleMath.STEPS_PER_TICK / 4, LavaSettleMath.stepBudgetFor(4));
+        // 多到除不尽也不归零
+        assertEquals(1, LavaSettleMath.stepBudgetFor(LavaSettleMath.STEPS_PER_TICK * 4));
     }
 
     @Test
