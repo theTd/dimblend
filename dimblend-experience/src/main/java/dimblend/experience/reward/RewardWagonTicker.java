@@ -6,6 +6,8 @@ import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import dimblend.experience.DimBlend;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -36,6 +38,9 @@ public final class RewardWagonTicker {
     private static final int SITES_PER_TICK = 2;
 
     private static int cursor;
+
+    /** Sites whose wagon was missing on the previous visit, so the diagnostic logs once per streak. */
+    private static final Set<Integer> REPORTED_MISSING = ConcurrentHashMap.newKeySet();
 
     private RewardWagonTicker() {
     }
@@ -132,20 +137,23 @@ public final class RewardWagonTicker {
             }
             return build(level, site);
         }
-        // A wagon's chunks are what make its sub-level exist at all. While they are away, "gone"
-        // and "not loaded" are the same answer, and the consequence is permanent: retiring a site
-        // is written to the save and never revisited.
-        if (!chunksLoaded(level, site.centerX)) {
-            return false;
-        }
         ServerSubLevel car = existing(level, site);
         if (car == null) {
-            // The sub-level is gone: it dissolved already, or a save restored the region
-            // without it. Rebuilding a wagon the player already emptied would be a gift they
-            // did not ask for, so a built-but-gone site is retired.
-            site.dissolved = true;
-            return true;
+            // "Not found" is not "gone" (2026-11-04). A reward wagon can be coupled to a train and
+            // towed away from the X it spawned at. Its sub-level then leaves the loaded set,
+            // getSubLevel(uuid) answers null, and the old code wrote dissolved — which is
+            // permanent, and which is exactly why a wagon that was towed away could be emptied and
+            // never dissolve while a wagon emptied where it spawned vanished fine. A site is now
+            // retired only by a dissolve that really ran; a miss is retried on the next visit.
+            if (REPORTED_MISSING.add(site.centerX)) {
+                // One line per missing streak, not per visit: an unloaded wagon is visited many
+                // times a second and the diagnostic must not flood debug.log.
+                DimBlend.LOGGER.debug("Reward wagon at X={} is not loaded right now; site kept",
+                        site.centerX);
+            }
+            return false;
         }
+        REPORTED_MISSING.remove(site.centerX);
         boolean changed = false;
         if (site.subLevelId == null) {
             // A record written before the identity was stored, found by its world box. Remember
@@ -287,6 +295,13 @@ public final class RewardWagonTicker {
      */
     private static RewardWagonPlotScan.Result scan(ServerLevel level, ServerSubLevel car) {
         var box = car.getPlot().getBoundingBox();
+        // The plot's chunks travel with the sub-level, so this only bites if the plot itself is
+        // mid-load — and reading blocks there would make the level generate them, which is far
+        // worse than skipping a turn. Never conclude anything from a plot that cannot be read.
+        if (!level.isLoaded(new BlockPos(box.minX(), box.minY(), box.minZ()))
+                || !level.isLoaded(new BlockPos(box.maxX(), box.maxY(), box.maxZ()))) {
+            return null;
+        }
         return RewardWagonPlotScan.scan(box.minX(), box.minY(), box.minZ(),
                 box.maxX(), box.maxY(), box.maxZ(), (x, y, z) -> fillAt(level, x, y, z));
     }
@@ -338,6 +353,11 @@ public final class RewardWagonTicker {
             for (int y = minY; y <= maxY; y++) {
                 for (int z = minZ; z <= maxZ; z++) {
                     cursor.set(x, y, z);
+                    // Only already-loaded world columns: a wagon towed far away must not make the
+                    // server load (and generate) the chunks under it just to ask about a gate.
+                    if (!level.isLoaded(cursor)) {
+                        continue;
+                    }
                     if (level.getBlockState(cursor).is(gate)) {
                         return true;
                     }
@@ -372,6 +392,12 @@ public final class RewardWagonTicker {
         if (site.subLevelId != null) {
             SubLevel byId = container.getSubLevel(site.subLevelId);
             return byId instanceof ServerSubLevel server && !server.isRemoved() ? server : null;
+        }
+        // Legacy record without an identity: geometry is the only clue, so it may only be read
+        // where the geometry can actually be seen. Without this guard a merely unloaded home area
+        // reads as "not there".
+        if (!chunksLoaded(level, site.centerX)) {
+            return null;
         }
         return coveringCenter(container, RewardWagonBuilder.center(site.centerX));
     }
