@@ -69,6 +69,18 @@ public final class TrainDeadmanMath {
         return false;
     }
 
+    /**
+     * 参与「玩家掉落检测」的车架：奖励车厢的车架一律不参与（2026-11-04 用户条目）。
+     *
+     * <p>奖励车厢是自带马达、拉杆一拉就自行往 x+ 走的可搜刮小车，没有司机值守这回事。
+     * 若把它的车架算进这套判定，它自己的移动会被读成「编组在动且无人值守」，锁存当场把它刹死。
+     * 因此它既不提供「编组在动」的证据，也不当距离判定里的最近车架锚点；它挂在玩家列车上时，
+     * 列车自己的车架照旧判定，锁存仍会传播到它（那是列车的规则，不是它的）。
+     */
+    public static List<Probe> crewProbes(List<Probe> probes, boolean rewardWagon) {
+        return rewardWagon ? List.of() : probes;
+    }
+
     /** 编组上离给定点最近的车架的距离平方（距离判定不看该架速度——2026-10-15 用户口径）。 */
     public static double nearestDistanceSq(List<Probe> group,
                                            double px, double py, double pz) {

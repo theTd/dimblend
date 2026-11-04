@@ -103,6 +103,25 @@ public final class RewardWagonSites extends SavedData {
         return null;
     }
 
+    /**
+     * Every sub-level this world built as a reward wagon.
+     *
+     * <p>Other systems need to recognise a wagon as a <i>set</i> rather than one lookup at a time:
+     * the unattended-brake scan walks every bogey once per check and asks whether its carriage is a
+     * wagon, and an {@code O(sites)} search per bogey would turn one scan into sites × bogeys. A
+     * dissolved wagon's identity stays in the set; it names a sub-level that no longer exists, so
+     * nothing matches it.
+     */
+    public java.util.Set<java.util.UUID> subLevelIds() {
+        java.util.Set<java.util.UUID> out = new java.util.HashSet<>();
+        for (Site site : sites.values()) {
+            if (site.subLevelId != null) {
+                out.add(site.subLevelId);
+            }
+        }
+        return out;
+    }
+
     /** Forgets every record. Used by the tests and by a config reset, never at runtime. */
     public void clear() {
         sites.clear();

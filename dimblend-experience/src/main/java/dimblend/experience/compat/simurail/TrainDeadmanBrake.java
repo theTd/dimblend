@@ -9,6 +9,7 @@ import dev.ryanhcode.sable.sublevel.SubLevel;
 import dimblend.experience.Config;
 import dimblend.experience.compat.sable.SableWorldPosition;
 import dimblend.experience.exploration.RotatingDimension;
+import dimblend.experience.reward.RewardWagonSites;
 import dimblend.experience.mixin.compat.simurail.AutomaticCouplerPartnerAccessor;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
@@ -243,12 +244,20 @@ public final class TrainDeadmanBrake {
         if (container == null) {
             return List.of();
         }
+        // 2026-11-04 用户条目：奖励车厢的车架不参与玩家掉落检测。它的车架既不算「编组在动」，
+        // 也不当值守锚点——否则马达板车一拉杆自己往 x+ 走、玩家还站在站台上，它就被当成
+        // 「无人值守的列车」当场刹死，这个功能就没有意义了。挂在玩家列车上的奖励车厢仍然
+        // 计入编组（能连钩），只是它自己不出 Probe，列车自己的车架照旧判定。
+        Set<UUID> rewardWagons = RewardWagonSites.get(level).subLevelIds();
         Map<UUID, List<TrainDeadmanMath.Probe>> probes = new HashMap<>();
         for (var entry : fleet.samples.entrySet()) {
             var bogey = entry.getKey();
             SubLevel carriage = Sable.HELPER.getContaining(bogey);
             if (carriage == null || carriage.isRemoved()) {
                 continue; // Unassembled blocks are not a moving train.
+            }
+            if (rewardWagons.contains(carriage.getUniqueId())) {
+                continue;
             }
             Vec3 pos = SableWorldPosition.project(level, bogey.getBlockPos().getCenter());
             probes.computeIfAbsent(carriage.getUniqueId(), key -> new ArrayList<>())
@@ -272,7 +281,8 @@ public final class TrainDeadmanBrake {
                 }
             }
             carriages.add(new TrainDeadmanMath.Carriage(carriage.getUniqueId(), partners,
-                    probes.getOrDefault(carriage.getUniqueId(), List.of())));
+                    TrainDeadmanMath.crewProbes(probes.getOrDefault(carriage.getUniqueId(), List.of()),
+                            rewardWagons.contains(carriage.getUniqueId()))));
         }
         return carriages;
     }
