@@ -28,17 +28,17 @@ public final class ObserverBlazeLayout {
     public static final float BLAZE_MODEL_TOP = 14.0F / 16.0F;
 
     /**
-     * Extra lift the user asked for on 2026-11-03: one more block on top of the cushion alignment,
-     * measured from the current position rather than replacing the lift.
+     * Extra lift on top of the cushion alignment, in block units: a quarter block as of 2026-11-04.
      *
-     * <p>History: 2026-10-30 raised the whole assembly 0.5 and the user reported in game that it
-     * still floated; 2026-10-31 dropped it back onto the cushion. The requirement then asked for
-     * another 0.5, corrected in the same message to 1.0. Applying it as "add 1.0 to what stands
-     * today" gives {@link #BLAZE_RAISE} = 1.125, which leaves the blaze clearly off the cushion —
-     * the user's own earlier "floating" complaint — but that is the answer they chose with that
-     * history on the page, so it is implemented as chosen.
+     * <p>History: on 2026-10-30 the assembly was raised 0.5 and the user reported in game that it
+     * still floated; 2026-10-31 it went back onto the cushion, which is this constant being 0.
+     * The 2026-11-03 requirement asked for a lift and the decision page answered "one more block
+     * on top of the current position", so it became 1.0 and {@link #BLAZE_RAISE} 1.125 -- a full
+     * block of daylight between the flames and the cushion, which is the very "floating" the user
+     * had complained about a month earlier. 2026-11-04 walked it back down: 0.5 first, then this
+     * quarter block, giving {@link #BLAZE_RAISE} = 0.375 and 4/16 of gap above the cushion top.
      */
-    public static final float RAISE_ABOVE_CUSHION = 1.0F;
+    public static final float RAISE_ABOVE_CUSHION = 0.25F;
 
     /**
      * The blaze stands this far above the block floor.
