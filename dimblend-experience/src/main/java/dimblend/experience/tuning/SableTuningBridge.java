@@ -29,7 +29,7 @@ final class SableTuningBridge {
                     SABLE_VOID_FIT, SABLE_LAVA_MELT, SABLE_LAVA_MELT_SPEED,
                     SABLE_VOID_FIT_SCAN_BUDGET, SABLE_LAVA_MELT_SCAN_BUDGET,
                     PORTABLE_ENGINE_LIMIT, STEAM_OVERLOAD,
-                    DIESEL_OVERLOAD, MOTOR_OVERLOAD, RADIO_STATIC, RADIO_END_VOICE_FREQUENCY, RADIO_END_VOICE_VOLUME, RADIO_ACOUSTIC_INTENSITY, EXP_CLEAR_RATIO,
+                    DIESEL_OVERLOAD, MOTOR_OVERLOAD, EXP_CLEAR_RATIO,
                     ROTATING_MONSTER_CAP, ITEM_DRAIN_GROWTH_COST, STATION_CARRIAGE_LIMIT ->
                     throw new IllegalArgumentException("Not a sable tuning option: " + option);
         };
@@ -56,7 +56,7 @@ final class SableTuningBridge {
                     SABLE_VOID_FIT, SABLE_LAVA_MELT, SABLE_LAVA_MELT_SPEED,
                     SABLE_VOID_FIT_SCAN_BUDGET, SABLE_LAVA_MELT_SCAN_BUDGET,
                     PORTABLE_ENGINE_LIMIT, STEAM_OVERLOAD,
-                    DIESEL_OVERLOAD, MOTOR_OVERLOAD, RADIO_STATIC, RADIO_END_VOICE_FREQUENCY, RADIO_END_VOICE_VOLUME, RADIO_ACOUSTIC_INTENSITY, EXP_CLEAR_RATIO,
+                    DIESEL_OVERLOAD, MOTOR_OVERLOAD, EXP_CLEAR_RATIO,
                     ROTATING_MONSTER_CAP, ITEM_DRAIN_GROWTH_COST, STATION_CARRIAGE_LIMIT ->
                     throw new IllegalArgumentException("Not a sable tuning option: " + option);
         }

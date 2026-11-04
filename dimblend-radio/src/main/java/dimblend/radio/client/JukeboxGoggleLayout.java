@@ -38,11 +38,15 @@ public final class JukeboxGoggleLayout {
     /** ASCII 细竖线，无额外字体资源要求。 */
     private static final String BAR_BLOCK = "|";
 
-    /** 首行：基线 + 灰 label（台号 + 音量）。 */
+    /**
+     * 首行：基线 + 灰 label（台号 + 音量）。
+     *
+     * <p>音量取服务端下发的 {@code volumePercent}，不再由本地从 side 信号推算：2026-11-03 起
+     * 每台唱片机可以设固定音量，那个值不来自信号，客户端自己算不出来。0 表示本刻不播。
+     */
     public static Component contextLine(RadioStatePayload state) {
         return Component
-                .literal(GUTTER + "电台 " + state.station() + "台 · 音量 "
-                        + RadioSignals.volumePercent(state.side()) + "%")
+                .literal(GUTTER + "电台 " + state.station() + "台 · 音量 " + state.volumePercent() + "%")
                 .withStyle(ChatFormatting.GRAY);
     }
 

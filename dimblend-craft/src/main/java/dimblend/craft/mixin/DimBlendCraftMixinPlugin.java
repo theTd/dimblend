@@ -29,9 +29,11 @@ public final class DimBlendCraftMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        // 拆解台清空只对暮色森林有意义。TF 缺席时目标类不存在，mixin 必须不应用，
-        // 否则类加载即失败（本模块不声明 TF 依赖，任何整合包都可能没有它）。
-        if (mixinClassName.endsWith(".compat.twilightforest.UncraftingMenuMixin")) {
+        // 暮色森林兼容（拆解台清单 + 配方查看器分类）只对 TF 有意义。TF 缺席时目标类不存在，
+        // mixin 必须不应用，否则类加载即失败（本模块不声明 TF 依赖，任何整合包都可能没有它）。
+        // 按整包判断而不是逐个类名：2026-11-03 新增第二个 TF mixin 时，逐个点名漏一个就会
+        // 让它落进下面的森罗分支，被错误地按 kaleidoscope 在场与否决定。
+        if (mixinClassName.contains(".compat.twilightforest.")) {
             return isLoaded("twilightforest");
         }
         return kaleidoscope.shouldApplyMixin(targetClassName, mixinClassName);

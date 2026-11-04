@@ -8,11 +8,12 @@ import org.junit.jupiter.api.Test;
 
 class TuningSignBitTest {
     @Test
-    void snapshotProtocolIsTwentyNineAfterAddingTheStationCarriageLimit() {
+    void snapshotProtocolIsThirtyAfterRemovingTheRadioKnobs() {
         // The snapshot carries one value per option, so the wire length changed when OBSERVER_BLAZE_RADIUS was
-        // added (v28) and again when STATION_CARRIAGE_LIMIT was: any client still speaking an older version
-        // would mis-decode the tail of the list and be rejected.
-        assertEquals("29", TuningNetwork.PROTOCOL_VERSION);
+        // added (v28), when STATION_CARRIAGE_LIMIT was (v29), and again when the four radio knobs left for the
+        // jukebox screen (v30): any client still speaking an older version would mis-decode the tail of the
+        // list and be rejected.
+        assertEquals("30", TuningNetwork.PROTOCOL_VERSION);
         assertTrue(TuningOption.values().length <= Long.SIZE, "the availability mask is a long");
         assertTrue(TuningOption.OBSERVER_BLAZE_RADIUS.ordinal() < Long.SIZE);
         assertTrue(TuningOption.STATION_CARRIAGE_LIMIT.ordinal() < Long.SIZE);

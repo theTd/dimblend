@@ -200,23 +200,28 @@ public final class RewardWagonTicker {
     /**
      * Starts the dissolve: break the couplers, play the effects, set the deadline.
      *
-     * <p><b>Every position here comes from the sub-level's pose, not from the planned
-     * centre.</b> Once assembled, the wagon's blocks live in the sub-level's plot, and the
-     * wagon may have been pushed anywhere since. A planned-centre offset would point at empty
-     * rails. {@link #worldPos} is the transform that makes this correct.
+     * <p><b>The couplers are cleared in the plot, and the particles play in the world.</b> Those
+     * two are not the same coordinate. The wagon's blocks are stored in a Sable plot parked far
+     * away, so the couplers have to be reached through the pose-inverse (the old code wrote to the
+     * world position and therefore set air on empty corridor). The particle burst, on the other
+     * hand, is something the player sees, so it belongs at the wagon's world position — and the
+     * requirement pins it to the bogey's {@code y-1}.
      */
     private static void beginDissolve(ServerLevel level, RewardWagonSites.Site site, ServerSubLevel car) {
         for (RewardWagonLayout.Cell cell : RewardWagonLayout.couplers()) {
-            BlockPos pos = worldPos(car, cell);
-            if (level.getBlockEntity(pos) instanceof AutomaticCouplerBlockEntity coupler) {
+            BlockPos plotPos = plotPos(car, cell);
+            if (plotPos == null) {
+                continue;
+            }
+            if (level.getBlockEntity(plotPos) instanceof AutomaticCouplerBlockEntity coupler) {
                 coupler.removePartner();
             }
-            level.setBlock(pos, Blocks.AIR.defaultBlockState(),
+            level.setBlock(plotPos, Blocks.AIR.defaultBlockState(),
                     net.minecraft.world.level.block.Block.UPDATE_ALL);
         }
         if (!site.effectsPlayed) {
-            BlockPos bogey = worldPos(car, RewardWagonLayout.bogey());
-            RewardWagonBuilder.playDissolveEffects(level, bogey.below());
+            BlockPos worldBogey = worldPos(car, RewardWagonLayout.bogey());
+            RewardWagonBuilder.playDissolveEffects(level, worldBogey.below());
             site.effectsPlayed = true;
         }
         site.dissolveDeadline = level.getGameTime() + RewardWagonDissolve.DISSOLVE_DELAY_TICKS;
@@ -224,13 +229,22 @@ public final class RewardWagonTicker {
     }
 
     /**
+     * The plot position of one deck cell.
+     *
+     * <p>The cell offsets are local to the wagon, and the wagon may have been pushed or rotated
+     * since assembly, so the pose has to be applied. Unlike {@link #worldPos}, the result stays in
+     * the sub-level's own block region, which is where a block change has any effect.
+     */
+    private static BlockPos plotPos(ServerSubLevel car, RewardWagonLayout.Cell cell) {
+        net.minecraft.world.phys.Vec3 local = new net.minecraft.world.phys.Vec3(cell.dx(), 0, cell.dz());
+        return BlockPos.containing(car.logicalPose().transformPosition(local));
+    }
+
+    /**
      * The world position of one deck cell, through the sub-level's pose.
      *
-     * <p>{@code transformPosition} maps a <b>local</b> coordinate to the world, which is the
-     * direction wanted: the cell offsets are local to the wagon, and the wagon may have been
-     * pushed anywhere since it was assembled. Reading them against the planned centre would
-     * work only while the wagon has never moved, which is exactly the case a player pushing
-     * it breaks.
+     * <p>For things the player sees — particles, sounds — the world coordinate is the right one.
+     * For block reads and writes it is not; use {@link #plotPos} or {@link SablePlotRead}.
      */
     private static BlockPos worldPos(ServerSubLevel car, RewardWagonLayout.Cell cell) {
         net.minecraft.world.phys.Vec3 local = new net.minecraft.world.phys.Vec3(cell.dx(), 0, cell.dz());
@@ -254,9 +268,16 @@ public final class RewardWagonTicker {
     /**
      * Reads what is inside the wagon's box.
      *
-     * <p>Only blocks the sub-level actually contains are counted, tested by object identity
-     * through {@code Sable.HELPER.getContaining} rather than by the box alone: the box of a
-     * wagon is a whole chunk section and covering it would count the corridor walls.
+     * <p><b>Every block read goes through the plot.</b> A sub-level's blocks are stored in a Sable
+     * plot parked far away, so {@code level.getBlockState(worldPos)} returns air for all of them.
+     * The first version did exactly that, which made this method report an empty wagon every tick:
+     * combined with an empty-box guard elsewhere it would have dissolved the wagon the instant it
+     * was assembled. {@link SablePlotRead#blockAt} converts the world position to the plot position
+     * first.
+     *
+     * <p>Only blocks this sub-level really owns are counted. Ownership is decided by the plot
+     * coordinate falling inside the sub-level's own box, because a plot chunk can hold a
+     * neighbouring sub-level's blocks.
      */
     private static List<RewardWagonDissolve.Occupant> occupants(ServerLevel level, ServerSubLevel car) {
         List<RewardWagonDissolve.Occupant> out = new ArrayList<>();
@@ -266,14 +287,15 @@ public final class RewardWagonTicker {
             for (int y = (int) Math.floor(box.minY()); y <= (int) Math.floor(box.maxY()); y++) {
                 for (int z = (int) Math.floor(box.minZ()); z <= (int) Math.floor(box.maxZ()); z++) {
                     cursor.set(x, y, z);
-                    if (Sable.HELPER.getContaining(level, cursor) != car) {
+                    BlockPos plotPos = SablePlotRead.toPlotPos(car, cursor);
+                    if (plotPos == null || !SablePlotRead.owns(car, cursor)) {
                         continue;
                     }
-                    BlockState state = level.getBlockState(cursor);
+                    BlockState state = level.getBlockState(plotPos);
                     if (state.isAir()) {
                         continue;
                     }
-                    out.add(classify(level, cursor, state));
+                    out.add(classify(level, plotPos, state));
                 }
             }
         }
@@ -307,7 +329,18 @@ public final class RewardWagonTicker {
         return name.equals(RewardWagonBlocks.BOGEY) || name.equals(RewardWagonBlocks.COPYCAT_SLAB);
     }
 
-    /** True when the wagon's world box overlaps any warp gate block in the corridor. */
+    /**
+     * True when the wagon's world box overlaps any warp gate block in the corridor.
+     *
+     * <p><b>Read through the plot, not at the world coordinate.</b> The wagon's blocks live in a
+     * Sable plot parked millions of blocks away, so {@code level.getBlockState(worldPos)} always
+     * saw air here and this test never fired — which is why the requirement's "contacting a warp
+     * gate dissolves it" was reported as missing. {@link SablePlotRead} converts first.
+     *
+     * <p>A gate is a block of the <i>world</i>, though, not of the wagon: the wagon meets it by
+     * its world position. So this walks the world box and reads the world, which is the one place
+     * a world read is the correct one.
+     */
     private static boolean touchesGate(ServerLevel level, ServerSubLevel car) {
         var box = car.boundingBox();
         int minX = (int) Math.floor(box.minX());
@@ -317,12 +350,12 @@ public final class RewardWagonTicker {
         int minZ = (int) Math.floor(box.minZ());
         int maxZ = (int) Math.floor(box.maxZ());
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        var gate = BuiltInRegistries.BLOCK.get(ResourceLocation.parse(RewardWagonBlocks.WARP_GATE));
         for (int x = minX; x <= maxX; x++) {
             for (int y = minY; y <= maxY; y++) {
                 for (int z = minZ; z <= maxZ; z++) {
                     cursor.set(x, y, z);
-                    if (level.getBlockState(cursor).is(BuiltInRegistries.BLOCK.get(
-                            ResourceLocation.parse(RewardWagonBlocks.WARP_GATE)))) {
+                    if (level.getBlockState(cursor).is(gate)) {
                         return true;
                     }
                 }

@@ -1,11 +1,5 @@
 {
-  "dimblend_spyglass.configuration.farFogStrength": "Far Fog Strength",
-  "dimblend_spyglass.configuration.farFogStrength.tooltip": "Share of the real fog at 1024 blocks; ramps up from the near value at the fog end. 0 = crisp meshes, 1 = the same fog as the terrain.",
-  "dimblend_spyglass.configuration.nearFogStrength": "Near Fog Strength",
-  "dimblend_spyglass.configuration.nearFogStrength.tooltip": "Share of the real terrain fog applied to structures inside loaded terrain and at the fog edge. 0 = crisp meshes, 1 = the same fog as the terrain.",
-  "dimblend_spyglass.configuration.section.dimblend.spyglass.client.toml": "Client settings",
-  "dimblend_spyglass.configuration.section.dimblend.spyglass.client.toml.title": "Client settings",
-  "dimblend_spyglass.configuration.title": "DimBlend Spyglass",
+  "dimblend_spyglass.label.measuring": "Measuring...",
   "dimblend_spyglass.label.not_generated": "(not generated)",
   "dimblend_spyglass.structure.minecraft.ancient_city": "Ancient City",
   "dimblend_spyglass.structure.minecraft.bastion_remnant": "Bastion Remnant",

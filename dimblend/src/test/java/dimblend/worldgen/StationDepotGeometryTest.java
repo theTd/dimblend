@@ -107,10 +107,22 @@ class StationDepotGeometryTest {
     }
 
     @Test
-    void thePictureFurnitureIsExactlyOneWorkbenchAndFourLanterns() {
+    void thePictureFurnitureIsFourLanternsAndNoWorkbench() {
         List<StationDepotGeometry.Cell> cells = StationDepotGeometry.placedCells(B);
-        assertEquals(1, count(cells, StationDepotGeometry.Kind.WORKBENCH));
         assertEquals(4, count(cells, StationDepotGeometry.Kind.LANTERN));
+        // The requirement asked to move the workbench across the track from the switch machine;
+        // the user's 2026-11-03 answer was to remove it instead (PRD Corrections). The WORKBENCH
+        // kind no longer exists, so the absence is pinned through the kinds that remain: every
+        // furniture cell must be a lantern or the pillar under it.
+        for (var cell : cells) {
+            boolean furniture = cell.kind() == StationDepotGeometry.Kind.LANTERN
+                    || cell.kind() == StationDepotGeometry.Kind.PILLAR;
+            assertTrue(furniture || cell.kind() == StationDepotGeometry.Kind.COBBLE
+                            || cell.kind() == StationDepotGeometry.Kind.BRICK
+                            || cell.kind() == StationDepotGeometry.Kind.BUFFER
+                            || cell.kind() == StationDepotGeometry.Kind.TRACK_XO,
+                    "unexpected furniture cell: " + cell);
+        }
     }
 
     @Test
@@ -122,19 +134,6 @@ class StationDepotGeometryTest {
             assertEquals(StationDepotGeometry.LANTERN_DY, cell.dy());
             assertTrue(Math.abs(cell.z()) != StationDepotGeometry.SIDING_DZ, "no lantern on a siding");
             assertTrue(Math.abs(cell.z()) < StationDepotGeometry.PLATFORM_HALF_WIDTH, "lantern on the deck");
-        }
-    }
-
-    @Test
-    void theWorkbenchStandsOnTheDeckClearOfBothSidings() {
-        for (var cell : StationDepotGeometry.placedCells(B)) {
-            if (cell.kind() != StationDepotGeometry.Kind.WORKBENCH) {
-                continue;
-            }
-            assertEquals(0, cell.dy(), "a workbench sits on the deck surface, not below it");
-            assertTrue(Math.abs(cell.z()) != StationDepotGeometry.SIDING_DZ, "no workbench on a siding");
-            assertTrue(cell.z() != OakTrackCorridor.CORRIDOR_Z, "no workbench on the main line");
-            assertTrue(Math.abs(cell.z()) <= StationDepotGeometry.PLATFORM_HALF_WIDTH);
         }
     }
 
@@ -269,9 +268,12 @@ class StationDepotGeometryTest {
                 "the east edge clears the further merge by three columns");
         assertTrue(StationDepotGeometry.carves(B, B + StationDepotCurves.NEGATIVE_MERGE_DX + 3, 0, 0));
         assertFalse(StationDepotGeometry.carves(B, B + StationDepotGeometry.CAVERN_MAX_DX + 1, 0, 0));
-        assertEquals(B + StationDepotGeometry.CAVERN_MAX_DX + 1, StationDepotGeometry.writeMaxBlockX(B),
-                "the shell wall stands one column past the new east edge");
-        assertEquals(B + StationDepotGeometry.CAVERN_MIN_DX - 1, StationDepotGeometry.writeMinBlockX(B));
+        // 2026-11-03: the sealed shell is gone, so the write span no longer reaches one column past
+        // the carve. It ends exactly where the hall ends.
+        assertEquals(B + StationDepotGeometry.CAVERN_MAX_DX, StationDepotGeometry.writeMaxBlockX(B),
+                "no shell column past the east edge any more");
+        assertEquals(B + StationDepotGeometry.CAVERN_MIN_DX, StationDepotGeometry.writeMinBlockX(B),
+                "and none past the west edge");
     }
 
     @Test

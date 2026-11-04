@@ -37,7 +37,7 @@
 	"screen.dimblend_experience.tuning.soiling_multiplier": "脏污增长抽签概率系数",
 	"screen.dimblend_experience.tuning.soiling_multiplier.description": "默认：0.5。范围：0.00-1.00，精度：0.01。概率 = min(1, 速度 / 12 × 系数)。设为 0 时不进行积灰抽签。",
 	"screen.dimblend_experience.tuning.coupler_redstone": "允许红石信号激活车钩",
-	"screen.dimblend_experience.tuning.coupler_redstone.description": "默认：开启。允许红石信号解锁自动车钩。",
+	"screen.dimblend_experience.tuning.coupler_redstone.description": "默认：关闭（禁止红石信号断开车钩）。开启后红石信号可以断开车钩。",
 	"screen.dimblend_experience.tuning.coupler_survival": "允许生存模式右键车钩",
 	"screen.dimblend_experience.tuning.coupler_survival.description": "默认：关闭。允许生存模式玩家与自动车钩交互。",
 	"screen.dimblend_experience.tuning.sable_headlight": "载具前照灯",

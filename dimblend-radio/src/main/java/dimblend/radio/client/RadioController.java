@@ -195,7 +195,7 @@ public final class RadioController {
                 it.remove();
                 continue;
             }
-            int volume = RadioSignals.volumePercent(state.side());
+            int volume = state.volumePercent();
             float gain = PcmHeadroom.channelGain(volume, live.boost());
             if (gain != live.gain()) {
                 live.instance().setVolume(gain);
@@ -369,7 +369,7 @@ public final class RadioController {
                     double offset = local.position(now);
                     RadioPcmFeed.Handle feed = RadioPcmFeed.register(pcm.format(), pcm.pcm(), offset);
                     followReception(mc, key.pos(), feed);
-                    int volume = RadioSignals.volumePercent(current.side());
+                    int volume = current.volumePercent();
                     float gain = PcmHeadroom.channelGain(volume, pcm.boost());
                     RadioInstance instance = new RadioInstance(mc.level, key.pos(), feed.id(), gain);
                     RadioAcousticController.bind(mc, instance, feed, volume / 100.0f);

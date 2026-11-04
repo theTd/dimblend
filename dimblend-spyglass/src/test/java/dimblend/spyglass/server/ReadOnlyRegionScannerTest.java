@@ -9,7 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dimblend.spyglass.structure.OutlineBox;
 import dimblend.spyglass.structure.StructureOutline;
-import dimblend.spyglass.test.ChunkNbtFixture;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -39,6 +38,9 @@ class ReadOnlyRegionScannerTest {
      * Passing it in keeps the read path free of {@code SharedConstants}.
      */
     private static final int DATA_VERSION = 4000;
+    /** Overworld dimensions used by these tests. */
+    private static final int MIN_BUILD_HEIGHT = -64;
+    private static final int LEVEL_HEIGHT = 384;
 
     private static final ResourceLocation HOUSE = ResourceLocation.fromNamespaceAndPath("test", "house");
     private static final ResourceLocation OTHER = ResourceLocation.fromNamespaceAndPath("test", "other");
@@ -189,8 +191,8 @@ class ReadOnlyRegionScannerTest {
                         Level.OVERWORLD,
                         DATA_VERSION,
                         regionDirectory,
-                        ChunkNbtFixture.MIN_BUILD_HEIGHT,
-                        ChunkNbtFixture.LEVEL_HEIGHT),
+                        MIN_BUILD_HEIGHT,
+                        LEVEL_HEIGHT),
                 List.of(candidates));
     }
 

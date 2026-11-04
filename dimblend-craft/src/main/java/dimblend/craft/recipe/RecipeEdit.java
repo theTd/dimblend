@@ -267,4 +267,26 @@ public sealed interface RecipeEdit {
             return "产物 " + from + " -> " + to;
         }
     }
+
+    /**
+     * 物品 id 的深度替换：材料与产物 NBT 里的同 id 一起改。
+     *
+     * <p>与 {@link ReplaceIngredient} 的区别是「配方里写了这个物品的地方都算」，
+     * 包括写进产物方块实体数据的内容（森罗蒸笼把 4 个生面团预装在
+     * {@code block_entity_data} 里）。需求「所有生面团参与的配方改为 create 面团」要求
+     * 蒸笼内装的东西也一起换，否则玩家会得到装着已不可获得物品的蒸笼。
+     */
+    record ReplaceItemIdDeep(String label, ResourceLocation from, ResourceLocation to, boolean defensive)
+            implements ContentEdit {
+
+        @Override
+        public JsonElement transform(JsonElement recipeJson) {
+            return RecipeContentTransform.replaceItemIdDeep(recipeJson, from, to);
+        }
+
+        @Override
+        public String describe() {
+            return "物品 " + from + " -> " + to + "（含产物 NBT）";
+        }
+    }
 }

@@ -22,8 +22,12 @@ public final class SpyglassNetwork {
      *
      * <p>Bumped to 7 when the server started sending template-preview shapes for predicted
      * structures: a protocol-6 client would store them but never draw them.
+     *
+     * <p>Bumped to 8 when the shape payload was removed entirely: the spyglass no longer sends
+     * structure block data, and a protocol-7 client would wait for packets this version never sends.
+     * Version 8 also adds the {@link SpyglassBusyPayload} scan flag.
      */
-    private static final String PROTOCOL_VERSION = "7";
+    private static final String PROTOCOL_VERSION = "8";
 
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
@@ -35,9 +39,9 @@ public final class SpyglassNetwork {
                 SpyglassSnapshotPayload.STREAM_CODEC,
                 (payload, context) -> SpyglassSnapshotHandlers.handle(payload));
         registrar.playToClient(
-                SpyglassShapePayload.TYPE,
-                SpyglassShapePayload.STREAM_CODEC,
-                (payload, context) -> SpyglassShapeHandlers.handle(payload));
+                SpyglassBusyPayload.TYPE,
+                SpyglassBusyPayload.STREAM_CODEC,
+                (payload, context) -> SpyglassBusyHandlers.handle(payload));
         registrar.playToClient(
                 SpyglassSourcesPayload.TYPE,
                 SpyglassSourcesPayload.STREAM_CODEC,

@@ -10,6 +10,7 @@
 		"compat.yat.SleepThirstSuspensionMixin",
 		"compat.dndecor.FrontlightSpotlightStateMixin",
 		"BeaconBlockEntityMixin",
+		"CurseOfBindingPickupMixin",
 		"NaturalSpawnerCapMixin",
 		"CopycatBlockStateBaseMixin",
 		"CopycatBlockStateExtensionMixin",

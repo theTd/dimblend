@@ -15,15 +15,15 @@ class CrosshairPickingTest {
 
     @Test
     void theBoxPlusToleranceIsStillAHit() {
-        // 8 (half box) + 4 (tolerance) = 12; 11.9 is inside.
+        // 16 (half box) + 4 (tolerance) = 20; 19.9 is inside.
         assertEquals(0, CrosshairPicking.hit(
-                new double[] {111.9}, new double[] {100.0}, 1, 100.0, 100.0, TOLERANCE));
+                new double[] {119.9}, new double[] {100.0}, 1, 100.0, 100.0, TOLERANCE));
     }
 
     @Test
     void justPastTheLimitIsNotAHit() {
         assertEquals(-1, CrosshairPicking.hit(
-                new double[] {112.1}, new double[] {100.0}, 1, 100.0, 100.0, TOLERANCE));
+                new double[] {120.1}, new double[] {100.0}, 1, 100.0, 100.0, TOLERANCE));
     }
 
     @Test

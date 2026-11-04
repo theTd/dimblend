@@ -233,9 +233,26 @@ public final class StationDepotAssemblyData extends SavedData {
         return ChassisBlueprint.CARRIAGE;
     }
 
-    /** Blueprint of the one power chassis every new world gets. */
+    /**
+     * Blueprint of the one chassis every new world gets at X = 32.
+     *
+     * <p><b>POWER, and this is the bug the user reported.</b> The requirement's wording is a
+     * "sable-ised power chassis" (动力底盘). It was CARRIAGE here — the shell of a hauled
+     * carriage, with the drive force coming only from {@code drivesEndBogeys} — so what stood at
+     * X = 32 was a carriage shell wearing a power chassis's behaviour, not a power chassis. The
+     * two blueprints differ in their middle rows: POWER carries the HHDHH frame row plus the
+     * P/S/W/I power block pattern, CARRIAGE carries the HNNNH row and plain H/N cells. The
+     * cockpit rows (C, B at each end) are the same, which is why the finished car looked right
+     * from outside and only the description was wrong.
+     *
+     * <p><b>Why the siding car stays CARRIAGE.</b> The depot car was a POWER shell before
+     * 2026-11-02 and the user asked for the carriage shell back at both sites, so the choice
+     * moved out of the blueprint: that shell is CARRIAGE, and {@code driveEnds} makes its end
+     * bogeys pull. Only that car keeps the carriage shell; the free car at X = 32 is the power
+     * chassis the requirement names.
+     */
     static ChassisBlueprint powerBlueprint() {
-        return ChassisBlueprint.CARRIAGE;
+        return ChassisBlueprint.POWER;
     }
 
     /**

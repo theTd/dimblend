@@ -305,6 +305,9 @@ public final class StationDepotAssembly {
         if (car == null || car.isRemoved()) {
             return failed(site);
         }
+        // Sable's plot has its own light engine and assembly never fills it; without this the
+        // chassis renders and reloads fully black (see SablePlotRelight).
+        dimblend.experience.compat.sable.SablePlotRelight.relight(level, car);
         SubLevelContainer.getContainer(level)
                 .addForceLoadTicket(car, SubLevelLoadingTicketType.COMMAND_FORCED, Unit.INSTANCE);
         site.assembled = true;

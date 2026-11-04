@@ -37,7 +37,7 @@
   "screen.dimblend_experience.tuning.soiling_multiplier": "Dirtiness probability multiplier",
   "screen.dimblend_experience.tuning.soiling_multiplier.description": "Default: 0.5. Range: 0.00-1.00, step: 0.01. Chance = min(1, speed / 12 x multiplier). 0 disables dirtiness draws.",
   "screen.dimblend_experience.tuning.coupler_redstone": "Allow redstone activation of couplers",
-  "screen.dimblend_experience.tuning.coupler_redstone.description": "Default: on. Allows redstone signals to unlock automatic couplers.",
+  "screen.dimblend_experience.tuning.coupler_redstone.description": "Default: off (redstone cannot uncouple). When on, a redstone signal can uncouple automatic couplers.",
   "screen.dimblend_experience.tuning.coupler_survival": "Allow Survival right-click on couplers",
   "screen.dimblend_experience.tuning.coupler_survival.description": "Default: off. Allows Survival players to interact with automatic couplers.",
   "screen.dimblend_experience.tuning.sable_headlight": "Vehicle headlights",

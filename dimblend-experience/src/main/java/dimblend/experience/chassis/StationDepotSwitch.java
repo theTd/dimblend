@@ -63,10 +63,18 @@ public final class StationDepotSwitch {
 
     /**
      * Lateral offset of the machine from the main-line centre, in blocks: on the siding's
-     * side of the rails. {@link ChassisBlueprint#SAFE_Z} is the chassis's own lateral
-     * clearance (3), so 4 keeps the block outside every car the depot can launch.
+     * side of the rails.
+     *
+     * <p>{@link ChassisBlueprint#SAFE_Z} is the chassis's own lateral clearance (3), so
+     * {@code SAFE_Z + 1} keeps the block clear of any car on the main line. The user moved it
+     * three blocks further on 2026-11-03 ({@link #MACHINE_DZ_SHIFT}), which lands it at z = 7:
+     * still off the main line, and one block short of a carriage standing on the positive siding
+     * (that car spans z = 8..12, since the siding is at z = 10 and the blueprint is five wide).
+     * One block further would put the switch inside a car's footprint and the car would hit it —
+     * the same defect the first version had when the machine stood above the rails.
      */
-    static final int MACHINE_DZ = ChassisBlueprint.SAFE_Z + 1;
+    static final int MACHINE_DZ_SHIFT = 3;
+    static final int MACHINE_DZ = ChassisBlueprint.SAFE_Z + 1 + MACHINE_DZ_SHIFT;
 
     private StationDepotSwitch() {
     }

@@ -1,12 +1,12 @@
 package dimblend.spyglass.client;
 
 /**
- * Picks the mark under the crosshair: the mark box is 16×16 GUI pixels (half-size 8), plus a
+ * Picks the mark under the crosshair: the mark box is 32×32 GUI pixels (half-size 16), plus a
  * tolerance. Multiple hits go to the box whose center is nearest the screen center; equal distances
  * keep the earlier input (the arrays are in the mark frame's order, so the result is stable).
  */
 final class CrosshairPicking {
-    static final double HALF_BOX = 8.0;
+    static final double HALF_BOX = 16.0;
 
     /**
      * @return the index of the hit mark, or {@code -1}

@@ -1,11 +1,5 @@
 {
-  "dimblend_spyglass.configuration.farFogStrength": "远处雾浓度",
-  "dimblend_spyglass.configuration.farFogStrength.tooltip": "1024 格处结构叠加的真实雾比例，从雾终点的近处浓度渐变。0 = 清晰无雾，1 = 与地形雾一致。",
-  "dimblend_spyglass.configuration.nearFogStrength": "近处雾浓度",
-  "dimblend_spyglass.configuration.nearFogStrength.tooltip": "已加载地形内以及雾边缘处结构叠加的真实地形雾比例。0 = 清晰无雾，1 = 与地形雾一致。",
-  "dimblend_spyglass.configuration.section.dimblend.spyglass.client.toml": "客户端设置",
-  "dimblend_spyglass.configuration.section.dimblend.spyglass.client.toml.title": "客户端设置",
-  "dimblend_spyglass.configuration.title": "DimBlend 望远镜",
+  "dimblend_spyglass.label.measuring": "测算中",
   "dimblend_spyglass.label.not_generated": "（未生成）",
   "dimblend_spyglass.structure.minecraft.ancient_city": "远古城市",
   "dimblend_spyglass.structure.minecraft.bastion_remnant": "堡垒遗迹",

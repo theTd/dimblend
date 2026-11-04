@@ -24,6 +24,8 @@ public class DimBlendRadio {
         modEventBus.addListener(RadioServerConfig::onLoading);
         modEventBus.addListener(RadioServerConfig::onReloading);
         modEventBus.addListener(RadioServerConfig::onUnloading);
+        // 逐台唱片机音量：NeoForge 附件（BE 不是我们的类，换方块会砸掉原版唱片机）
+        RadioVolumeSettings.ATTACHMENTS.register(modEventBus);
         RadioNetwork.register(modEventBus);
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(RadioSync.class);
         RadioCatalog.scanServerAsync();

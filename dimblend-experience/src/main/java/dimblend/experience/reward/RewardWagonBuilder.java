@@ -262,6 +262,9 @@ public final class RewardWagonBuilder {
         if (car == null || car.isRemoved()) {
             return null;
         }
+        // Sable's plot has its own light engine and assembly never fills it; without this the
+        // wagon renders and reloads fully black (see SablePlotRelight).
+        dimblend.experience.compat.sable.SablePlotRelight.relight(level, car);
         // Intentionally no SubLevelContainer.addForceLoadTicket here: the requirement says
         // this wagon is not force-loaded.
         return car;
@@ -286,12 +289,38 @@ public final class RewardWagonBuilder {
         return center.offset(dx, dy, dz);
     }
 
-    /** Plays the requirement's dissolve feedback at one spot. */
+    /**
+     * Plays the requirement's dissolve feedback: the monster-death particle burst and the
+     * Create wrench-remove sound.
+     *
+     * <p><b>"Monster death particles".</b> A vanilla living entity's death plays
+     * {@code ParticleTypes.POOF} twenty times ({@code LivingEntity.java:1841,1851-1858}), which is
+     * what this burst reproduces.
+     *
+     * <p><b>Radius five, not a point.</b> The requirement says "在物理转向架位置 y-1 半径 5"
+     * (at the bogey's y-1, radius 5). The first version spawned every particle at the bogey
+     * itself with a 0.5 spread, so the burst was invisible from a few blocks away. The positions
+     * are now drawn uniformly inside a five-block sphere around that point, with the count kept
+     * at the vanilla twenty: the requirement moved the burst's extent, not its density.
+     *
+     * <p><b>The sound.</b> {@code AllSoundEvents.WRENCH_REMOVE} is the compound Create calls
+     * "wrench_remove": it is a {@code playExisting} group of {@code ITEM_PICKUP} and
+     * {@code NETHERITE_BLOCK_HIT}, so playing this one event already produces both halves and no
+     * second call is needed.
+     */
     public static void playDissolveEffects(ServerLevel level, BlockPos bogeyPos) {
-        var random = level.getRandom();
-        level.sendParticles(net.minecraft.core.particles.ParticleTypes.POOF,
-                bogeyPos.getX() + 0.5, bogeyPos.getY() + 0.5, bogeyPos.getZ() + 0.5,
-                20, 0.5, 0.5, 0.5, 0.02);
+        net.minecraft.util.RandomSource random = level.getRandom();
+        for (int i = 0; i < RewardWagonBurst.PARTICLES; i++) {
+            RewardWagonBurst.Offset at = RewardWagonBurst.sample(
+                    random.nextDouble(), random.nextDouble(), random.nextDouble());
+            level.sendParticles(
+                    net.minecraft.core.particles.ParticleTypes.POOF,
+                    bogeyPos.getX() + 0.5 + at.dx(),
+                    bogeyPos.getY() + 0.5 + at.dy(),
+                    bogeyPos.getZ() + 0.5 + at.dz(),
+                    1,
+                    0.0, 0.0, 0.0, 0.0);
+        }
         AllSoundEvents.WRENCH_REMOVE.playOnServer(level, bogeyPos, 1.0F, 1.0F);
     }
 

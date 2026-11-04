@@ -170,4 +170,84 @@ public final class RecipeContentTransform {
             replaceResultIdInPlace(entry.getValue(), inResult || RESULT_KEYS.contains(entry.getKey()), from, to);
         }
     }
+
+    /**
+     * 物品 id 的深度替换：把配方里**任何位置**写成 {@code from} 的物品改成 {@code to}。
+     *
+     * <p><b>为什么不能复用 {@link #replaceIngredient}。</b>那条只认材料对象的 {@code item}/{@code tag}，
+     * 明确不碰产物路径。但有一类配方把物品 id 写进了产物的 NBT 里：森罗蒸笼
+     * （{@code kaleidoscope_cookery:raw_dough_steamer}）产出的蒸笼在
+     * {@code result.components."minecraft:block_entity_data".Items[].id} 里直接写了 4 个生面团，
+     * 那是方块实体内容而不是材料。只改材料的话，配方的四个材料变成面团、蒸笼里装的仍是生面团，
+     * 而那个物品此后已无法获得 —— 玩家会拿到一个装着幽灵物品的蒸笼。
+     *
+     * <p><b>为什么这样是安全的。</b>{@code item} 与 {@code id} 这两个键在这套配方 JSON 里就是
+     * 「一个物品」的两种写法（材料用 {@code item}，产物与 BE 数据用 {@code id}），不存在
+     * 同名但含义不同的情况。{@code block_entity_data.id}（方块实体**类型** id）与
+     * {@code model_id}（显示模型）不会与本方法的 {@code from} 相同，因此不受影响。
+     *
+     * <p>未命中时返回输入实例（不做深拷贝），理由同 {@link #replaceIngredient}。
+     */
+    public static JsonElement replaceItemIdDeep(JsonElement recipeJson, ResourceLocation from,
+            ResourceLocation to) {
+        if (!containsItemIdDeep(recipeJson, from)) {
+            return recipeJson;
+        }
+        JsonElement copy = recipeJson.deepCopy();
+        replaceItemIdDeepInPlace(copy, from, to);
+        return copy;
+    }
+
+    /** 快速预检：任意深度下是否存在 {@code item}/{@code id} 等于 {@code from}。 */
+    private static boolean containsItemIdDeep(JsonElement node, ResourceLocation from) {
+        if (node.isJsonArray()) {
+            for (JsonElement child : node.getAsJsonArray()) {
+                if (containsItemIdDeep(child, from)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (!node.isJsonObject()) {
+            return false;
+        }
+        JsonObject object = node.getAsJsonObject();
+        if (matchesItemId(object, ITEM_KEY, from) || matchesItemId(object, ID_KEY, from)) {
+            return true;
+        }
+        for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
+            if (containsItemIdDeep(entry.getValue(), from)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean matchesItemId(JsonObject object, String key, ResourceLocation from) {
+        JsonElement value = object.get(key);
+        return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()
+                && from.toString().equals(value.getAsString());
+    }
+
+    private static void replaceItemIdDeepInPlace(JsonElement node, ResourceLocation from, ResourceLocation to) {
+        if (node.isJsonArray()) {
+            for (JsonElement child : node.getAsJsonArray()) {
+                replaceItemIdDeepInPlace(child, from, to);
+            }
+            return;
+        }
+        if (!node.isJsonObject()) {
+            return;
+        }
+        JsonObject object = node.getAsJsonObject();
+        if (matchesItemId(object, ITEM_KEY, from)) {
+            object.add(ITEM_KEY, new JsonPrimitive(to.toString()));
+        }
+        if (matchesItemId(object, ID_KEY, from)) {
+            object.add(ID_KEY, new JsonPrimitive(to.toString()));
+        }
+        for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
+            replaceItemIdDeepInPlace(entry.getValue(), from, to);
+        }
+    }
 }

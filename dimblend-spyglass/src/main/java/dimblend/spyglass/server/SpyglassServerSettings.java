@@ -21,8 +21,8 @@ public final class SpyglassServerSettings {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
     public static final ModConfigSpec.ConfigValue<List<? extends String>> DISABLED_SOURCES = BUILDER
-            .comment("Namespaces whose whitelisted structures are not marked: no scan, no prediction,",
-                    "no shape extraction. The panel at /dbx tune -> Spyglass writes this list.",
+            .comment("Namespaces whose whitelisted structures are not marked: no scan and no prediction.",
+                    "The panel at /dbx tune -> Spyglass writes this list.",
                     "minecraft is always enabled and is never stored here.")
             .defineListAllowEmpty(
                     "disabledSources",

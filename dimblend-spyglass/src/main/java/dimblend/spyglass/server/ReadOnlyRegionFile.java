@@ -14,7 +14,7 @@ import javax.annotation.Nullable;
 import net.minecraft.world.level.chunk.storage.RegionFileVersion;
 
 /**
- * Read-only view of one region file, shared by the structure-start scan and the shape extraction.
+ * Read-only view of one region file, used by the structure-start scan.
  *
  * <p>Every file is opened with {@link StandardOpenOption#READ} only: no directory or file is ever
  * created and the vanilla {@code RegionFile} is not used (it opens read-write, may repair the header

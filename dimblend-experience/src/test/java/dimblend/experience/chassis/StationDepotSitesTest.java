@@ -38,8 +38,12 @@ class StationDepotSitesTest {
         assertEquals(StationDepotSites.POWER_CHASSIS_Z, target.getZ(), "it works the main-line rail");
         assertTrue(Math.abs(machine.getZ()) > ChassisBlueprint.SAFE_Z,
                 "the machine's column must lie outside the widest car's lateral clearance");
-        assertEquals(ChassisBlueprint.SAFE_Z + 1, Math.abs(machine.getZ()),
-                "and no further out than the first free column, so it still reads as trackside");
+        assertEquals(ChassisBlueprint.SAFE_Z + 1 + StationDepotSwitch.MACHINE_DZ_SHIFT,
+                Math.abs(machine.getZ()),
+                "2026-11-03: the user moved the machine three blocks further out, so the column is"
+                        + " SAFE_Z + 1 + 3, not the first free column any more");
+        assertTrue(Math.abs(machine.getZ()) < StationDepotSites.SIDING_DZ - 2,
+                "and it still has to stay outside the parked car's five-wide footprint");
         assertEquals(target.getX(), machine.getX(),
                 "the machine stands in the same column as the rail it points its rod at");
     }
@@ -64,6 +68,22 @@ class StationDepotSitesTest {
                 "and the machine stands on that same side, not across the running line from its work");
     }
 
+    /**
+     * The machine moved three blocks toward positive Z on 2026-11-03. It must stay clear of a car
+     * parked on the positive siding: that car is five wide and centred at {@code SIDING_DZ}, so its
+     * near edge is {@code SIDING_DZ - 2}. A switch inside that footprint stops the car, which is
+     * exactly what the first version did when it stood above the rails.
+     */
+    @Test
+    void theSwitchMachineMovedThreeBlocksAndClearOfTheParkedCar() {
+        assertEquals(ChassisBlueprint.SAFE_Z + 1 + 3, StationDepotSwitch.machine(B).getZ(),
+                "the machine is three blocks further along +Z than the first placement");
+        int carNearEdge = StationDepotSites.SIDING_DZ - 2;
+        assertTrue(StationDepotSwitch.machine(B).getZ() < carNearEdge,
+                "the machine must stay outside the parked car's footprint: machine z="
+                        + StationDepotSwitch.machine(B).getZ() + " car near edge z=" + carNearEdge);
+    }
+
     @Test
     void theSidingSiteIsThePositiveSidingAndTheNegativeOneIsEmpty() {
         BlockPos siding = StationDepotAssemblyData.sidingCenter(B);
@@ -75,24 +95,32 @@ class StationDepotSitesTest {
     }
 
     /**
-     * Both cars the world hands out must be the same car, and that car must drive itself.
-     * A user hit the reverse on 2026-11-01: the siding car never moved, because CARRIAGE
-     * tunes every bogey to stress 0 and stress multiplies the drive force. On 2026-11-02 the
-     * user asked for the carriage shell back at both sites, so the shell is CARRIAGE and the
-     * drive comes from the assembly telling the bogeys to pull — not from the blueprint.
+     * The two cars the world hands out are not the same shell any more.
+     *
+     * <p>On 2026-11-02 the user asked for the carriage shell back at both sites, so both were
+     * CARRIAGE and the drive came from the assembly telling the end bogeys to pull. On
+     * 2026-11-03 the user reported that the X = 32 car must be a <b>power chassis</b> (动力底盘) and
+     * is a carriage chassis instead; that is this test's subject. The siding car keeps the
+     * carriage shell — the user asked for that one explicitly — and still drives, because
+     * {@code drivesEndBogeys} wakes its end bogeys.
      */
     @Test
-    void bothSitesUseTheCarriageShellWithDrivenEndBogeys() {
+    void theSidingCarIsTheCarriageShellAndTheFreeCarIsThePowerChassis() {
         assertEquals(ChassisBlueprint.CARRIAGE, StationDepotAssemblyData.sidingBlueprint(),
-                "the siding car is the carriage shell");
-        assertEquals(ChassisBlueprint.CARRIAGE, StationDepotAssemblyData.powerBlueprint(),
-                "the spawn car is the same shell");
-        float stress = ChassisBlueprint
+                "the siding car keeps the carriage shell the user asked for");
+        assertEquals(ChassisBlueprint.POWER, StationDepotAssemblyData.powerBlueprint(),
+                "the free car at X=32 is the power chassis the requirement names");
+        float carriageStress = ChassisBlueprint
                 .bogeyTuning(ChassisBlueprint.CARRIAGE, 17, StationDepotAssemblyData.drivesEndBogeys())
                 .orElseThrow().stress();
-        assertTrue(stress > 0.0F, "the car this world builds must produce drive force");
+        assertTrue(carriageStress > 0.0F, "the siding car must still produce drive force");
         assertEquals(0.0F, ChassisBlueprint.bogeyTuning(ChassisBlueprint.CARRIAGE, 17).orElseThrow().stress(),
                 0.0F, "a printed carriage stays dead-hauled");
+        // The power chassis pulls from its own blueprint, so it needs no driveEnds override.
+        assertEquals(ChassisBlueprint.bogeyTuning(ChassisBlueprint.POWER, 17).orElseThrow(),
+                ChassisBlueprint.bogeyTuning(ChassisBlueprint.POWER, 17, StationDepotAssemblyData.drivesEndBogeys())
+                        .orElseThrow(),
+                "driving the end bogeys changes nothing on a power chassis");
     }
 
     @Test

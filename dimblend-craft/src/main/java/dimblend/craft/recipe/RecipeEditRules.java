@@ -382,6 +382,32 @@ public final class RecipeEditRules {
                 RecipeEdit.IngredientTarget.item("kaleidoscope_nether:hoglin_hide"),
                 RecipeEdit.IngredientTarget.item("cold_sweat:hoglin_hide"), false));
 
+        // 3.19.1 疣猪兽皮制皮革两条全删（用户 2026-11-04）：全包扫描确认「材料含
+        // hoglin_hide 且产物含 leather」的配方正好两条，与用户说的「两个」一致：
+        //   kaleidoscope_nether:hoglin_hide_to_leather  crafting_shapeless，1 皮 -> 3 皮革
+        //   kaleidoscope_nether:millstone/hoglin_hide   石磨，1 皮 -> 5 皮革
+        // 恶魂皮那条（ghast_hide_to_leather）不在需求内：那是恶魂皮不是疣猪兽皮。
+        // 上面 3.18.3 把这两条的材料换成了 cold_sweat:hoglin_hide，但本次是整条删除，
+        // 所以那两条不再有实体被改写——3.18.3 仍会命中剩下 3 条 pot 榨油配方，不会变成空规则。
+        edits.add(new RecipeEdit.DeleteByRecipeId("疣猪兽皮制皮革",
+                Set.of(ResourceLocation.parse("kaleidoscope_nether:hoglin_hide_to_leather"),
+                        ResourceLocation.parse("kaleidoscope_nether:millstone/hoglin_hide")),
+                false));
+
+        // 3.19.2 森罗生面团全面换成 create 面团（用户 2026-11-04「所有森罗生面团参与的配方
+        // 改为 create 面团」）。生产侧 3.18.2 已删掉 8 条面粉+水配方，所以生面团此后不可获得，
+        // 需要改的是**还引用它**的配方。全包扫描（所有 mod jar 的 recipe JSON）只有两条引用：
+        //   kaleidoscope_cookery:chopping_board/raw_noodles_from_raw_dough 材料是标签 c:dough，
+        //     而 create:dough 经 c:foods/dough 已在 c:dough 内（实测标签文件），本来就吃面团，
+        //     无需改；它的 model_id 只是显示模型，不动。
+        //   kaleidoscope_cookery:raw_dough_steamer 四个材料**和**产物 NBT
+        //     （block_entity_data.Items[].id）都写死生面团，所以必须用深度替换，
+        //     否则玩家会做出一个装着已不可获得物品的蒸笼。用 ReplaceItemIdDeep 而不是
+        //     ReplaceIngredient 正是为了覆盖后者明确不碰的产物 NBT。
+        edits.add(new RecipeEdit.ReplaceItemIdDeep("森罗生面团换 create 面团",
+                ResourceLocation.parse("kaleidoscope_cookery:raw_dough"),
+                ResourceLocation.parse("create:dough"), false));
+
         // 3.18.4 末影袋珍珠改虚空核心：EnderStorage 2.13.0.191 的 enderstorage:ender_pouch
         //（type enderstorage:create_recipe，pattern BLB/LPL/BWB）里珍珠是正中心的 key.P，
         // 写法为 {"tag":"c:ender_pearls"}。只按配方 ID 改写这一个字段：

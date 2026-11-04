@@ -23,10 +23,11 @@ import net.neoforged.neoforge.network.PacketDistributor;
  * <b>predicted</b> outline — one replayed from the seed for a chunk the world has not generated, whose
  * geometry is real but whose blocks do not exist yet.
  *
- * <p>The key was added in protocol 3 so a streamed {@link SpyglassShapePayload} can be linked to the
- * outline it belongs to; the client cache is keyed by it. Protocol 5 added the predicted flag, which
- * the client needs to draw a marker instead of a block mesh. Protocol 6 fixed the display ring's
- * inner edge at 128 blocks; the wire format is unchanged.
+ * <p>The key was added in protocol 3 so a streamed shape payload could be linked to the outline it
+ * belongs to; protocol 8 removed that shape payload, but the key still identifies one structure in
+ * the snapshot. Protocol 5 added the predicted flag, which the client needs to draw a marker for an
+ * outline replayed from the seed. Protocol 6 fixed the display ring's inner edge at 128 blocks; the
+ * wire format is unchanged.
  */
 public record SpyglassSnapshotPayload(
         ResourceLocation dimension,

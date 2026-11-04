@@ -7,9 +7,8 @@ import net.minecraft.resources.ResourceLocation;
 /**
  * One structure outline as transmitted to the client.
  *
- * <p>{@code key} identifies the individual start (structure id + start chunk) so a streamed
- * {@link StructureShape} can be linked to the outline it belongs to. Two outlines may share an id but
- * never a key.
+ * <p>{@code key} identifies the individual start (structure id + start chunk). Two outlines may
+ * share an id but never a key.
  *
  * <p>{@code bounds} is the union box over <b>all</b> pieces and is computed before any piece cap is
  * applied, so the horizontal center used for distance never drifts when the transmitted piece list is
@@ -19,8 +18,8 @@ import net.minecraft.resources.ResourceLocation;
  * <p>{@code predicted} says this start was <b>not read from the world</b>: it comes from replaying
  * world generation for a chunk that has no saved data ({@code StructurePredictor}). The geometry is
  * the real structure's piece boxes, but no blocks exist there yet, so the client marks the outline
- * instead of drawing a block mesh, and its label says so. A predicted outline never replaces a read
- * one: the server predicts only for chunks that hold no saved start.
+ * with {@code ?} instead of treating it as a saved structure. A predicted outline never replaces a
+ * read one: the server predicts only for chunks that hold no saved start.
  */
 public record StructureOutline(
         StructureKey key, OutlineBox bounds, List<OutlineBox> pieces, boolean predicted) {

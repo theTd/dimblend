@@ -103,11 +103,12 @@ public final class RadioSync {
         var entry = RadioState.get(dim.toString(), pos);
         RadioStatePayload payload;
         if (entry.isEmpty()) {
-            payload = new RadioStatePayload(dim, pos, 0, 0, "", 0, 0, false, now);
+            payload = new RadioStatePayload(dim, pos, 0, 0, "", 0, 0, false, now, 0);
         } else {
             var e = entry.get();
             payload = new RadioStatePayload(dim, pos, e.station(), e.side(),
-                    e.trackHash() == null ? "" : e.trackHash(), e.startMillis(), e.nonce(), e.playing(), now);
+                    e.trackHash() == null ? "" : e.trackHash(), e.startMillis(), e.nonce(), e.playing(), now,
+                    e.volumePercent());
         }
         for (ServerPlayer player : level.players()) {
             PacketDistributor.sendToPlayer(player, payload);

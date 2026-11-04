@@ -22,9 +22,6 @@ import java.util.List;
  *       the outline, so center and distance do not drift.</li>
  *   <li>When the total piece cap is reached, the remaining (farther) structures are dropped.</li>
  * </ul>
- *
- * <p>Each selected entry keeps the <b>full</b> piece list next to the transmitted (possibly
- * truncated) outline: shape extraction has to look at every piece the saved start contains.
  */
 final class SpyglassSnapshotLimiter {
     private SpyglassSnapshotLimiter() {
@@ -68,7 +65,7 @@ final class SpyglassSnapshotLimiter {
                 omittedStructures++;
                 continue;
             }
-            selected.add(new LimitedStructure(transmitted, outline.pieces()));
+            selected.add(new LimitedStructure(transmitted));
             totalPieces += pieceCount;
         }
         return new LimitResult(
@@ -109,14 +106,8 @@ final class SpyglassSnapshotLimiter {
     private record MeasuredOutline(StructureOutline outline, double distance) {
     }
 
-    /** One selected structure: the transmitted outline plus every saved piece for shape extraction. */
-    record LimitedStructure(StructureOutline outline, List<OutlineBox> allPieces) {
-        LimitedStructure {
-            if (allPieces.isEmpty()) {
-                throw new IllegalArgumentException("A structure needs at least one piece");
-            }
-            allPieces = List.copyOf(allPieces);
-        }
+    /** One selected structure: the possibly truncated outline that goes into the snapshot. */
+    record LimitedStructure(StructureOutline outline) {
     }
 
     record LimitResult(

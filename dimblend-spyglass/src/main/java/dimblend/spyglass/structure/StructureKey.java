@@ -8,11 +8,11 @@ import net.minecraft.resources.ResourceLocation;
  * in.
  *
  * <p>Structure type alone is not unique: the same structure can be saved many times in one world,
- * and the client caches per-structure data (generated shape) that must not mix two villages up. The
- * start chunk is unique per structure type in a chunk: {@code structures.starts} is a map keyed by
- * structure id inside each chunk ({@code ChunkSerializer.java:442-452}), and a chunk only holds the
- * start of a structure whose placement put it there. The key is carried in
- * {@link StructureOutline}, so outlines and streamed shapes can be linked on both sides.
+ * and per-structure data (bounds, predicted flag) must not mix two villages up. The start chunk is
+ * unique per structure type in a chunk: {@code structures.starts} is a map keyed by structure id
+ * inside each chunk ({@code ChunkSerializer.java:442-452}), and a chunk only holds the start of a
+ * structure whose placement put it there. The key is carried in {@link StructureOutline}, so both
+ * sides can refer to one identified structure.
  *
  * <p>Both coordinates are bounded like outline coordinates: a chunk coordinate beyond
  * {@link OutlineBox#MAX_COORDINATE} {@code >> 4} cannot come from a saved structure start and is

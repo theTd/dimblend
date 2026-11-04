@@ -104,65 +104,34 @@ class TuningOptionTest {
     }
 
     @Test
-    void couplerRedstoneDefaultsToAllowedAndMirrorsTheConfigPolarity() {
+    void theRadioKnobsAreNoLongerPartOfThisPanel() {
+        // 2026-11-03: the four radio knobs moved to the jukebox tuning screen in dimblend-radio,
+        // because the requirement puts them behind a right-click on the radio itself rather than
+        // in a world-wide panel. They must not come back here — a knob offered in two places is a
+        // knob with two sources of truth.
+        for (String id : new String[] {"radio_static", "radio_end_voice_frequency",
+                "radio_end_voice_volume", "radio_acoustic_intensity"}) {
+            assertNull(TuningOption.byId(id), "the panel must no longer carry " + id);
+        }
+    }
+
+    @Test
+    void couplerRedstoneDefaultsToForbiddenAndMirrorsTheConfigPolarity() {
         var option = TuningOption.COUPLER_REDSTONE;
         assertTrue(option.isCheckbox());
         assertEquals("coupler_redstone", option.id());
         assertEquals("simurail", option.modId());
-        // 用户 2026-10-31 口径：dbx tune 里列车车钩的红石信号控制默认"允许"。
-        // 面板 1 = 允许红石断开车钩；同时 Config 默认必须是 false（取反后才等于 1）。
-        assertEquals(1.0D, option.defaultValue(), "panel default is 1 = allowed");
-        assertFalse(Config.COUPLER_REDSTONE.getDefault(), "config default false -> panel 1");
+        // 用户 2026-11-03 口径（覆盖 2026-10-31 的"允许"）：dbx tune 里列车车钩的红石信号
+        // 控制默认"禁止"。面板 0 = 禁止红石断开车钩；同时 Config 默认必须是 true（取反后才等于 0）。
+        assertEquals(0.0D, option.defaultValue(), "panel default is 0 = forbidden");
+        assertTrue(Config.COUPLER_REDSTONE.getDefault(), "config default true -> panel 0");
         assertEquals(Config.COUPLER_REDSTONE.getDefault() ? 0.0D : 1.0D, option.defaultValue(),
                 "panel and config must stay mirror images");
         for (double valid : new double[] {0.0D, 1.0D}) {
             assertTrue(option.isValid(valid));
         }
         assertFalse(option.isValid(0.5D));
-        assertEquals("1", option.format(option.defaultValue()));
-    }
-
-    @Test
-    void radioNoiseVolumeAcceptsHundredthsAroundTheFormerOnLevel() {
-        var option = TuningOption.RADIO_STATIC;
-        assertFalse(option.isCheckbox());
-        assertEquals(0.5D, option.defaultValue());
-        for (int i = 0; i <= 200; i++) {
-            assertTrue(option.isValid(i / 100.0D));
-        }
-        assertFalse(option.isValid(0.005D));
-        assertFalse(option.isValid(2.01D));
-        assertEquals("0.50", option.format(option.defaultValue()));
-    }
-
-    @Test
-    void radioEndVoiceFrequencyDefaultsToDoubleAndAcceptsTenths() {
-        var option = TuningOption.RADIO_END_VOICE_FREQUENCY;
-        assertTrue(option.radio());
-        assertEquals(2.0D, option.defaultValue());
-        for (double valid : new double[] {0.0D, 0.1D, 1.0D, 2.0D, 3.9D, 4.0D}) {
-            assertTrue(option.isValid(valid));
-        }
-        for (double invalid : new double[] {-0.1D, 0.01D, 2.05D, 4.1D}) {
-            assertFalse(option.isValid(invalid));
-        }
-        assertEquals("2.0", option.format(option.defaultValue()));
-    }
-
-    @Test
-    void radioEndVoiceVolumeDefaultsToPointSevenFiveAndAcceptsHundredths() {
-        var option = TuningOption.RADIO_END_VOICE_VOLUME;
-        assertTrue(option.radio());
-        assertFalse(option.isCheckbox());
-        // 面板默认值与 radio 的人声音量默认常量互为镜像（旧硬编码 0.5 × 1.5），漂移即失败
-        assertEquals(dimblend.radio.RadioLiveSettings.DEFAULT_END_VOICE_VOLUME, option.defaultValue());
-        assertEquals(0.75D, option.defaultValue());
-        for (int i = 0; i <= 200; i++) {
-            assertTrue(option.isValid(i / 100.0D));
-        }
-        assertFalse(option.isValid(0.005D));
-        assertFalse(option.isValid(2.01D));
-        assertEquals("0.75", option.format(option.defaultValue()));
+        assertEquals("0", option.format(option.defaultValue()));
     }
 
     @Test

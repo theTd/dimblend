@@ -1,65 +1,59 @@
 package dimblend.worldgen;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.List;
-import java.util.function.IntFunction;
 import org.junit.jupiter.api.Test;
 
-/** R6 depot hall shell: the cave is wider than the corridor tunnel, so it must seal itself. */
+/**
+ * R6 depot hall: the terrain is cut open, not sealed.
+ *
+ * <p>The sealed shell existed because the hall is wider than the corridor tunnel and water or
+ * lava in the surrounding terrain could flow in. The user removed it on 2026-11-03 ("cut the
+ * terrain open, no need to seal the edges"), so the worldgen pass now writes exactly the carved
+ * volume and the shell geometry is gone. This test pins that removal so a later edit cannot put
+ * a wall or a roof back by accident.
+ */
 class StationDepotShellTest {
     private static final int BAND = BandIndex.DEFAULT_BAND_SIZE;
     private static final int B = 2048;
-    private static final IntFunction<String> LANES = region -> Math.abs(region) <= 1 ? "surface" : "underground";
 
     @Test
-    void theShellIsTheRingJustOutsideTheCarvedHall() {
-        // Sides.
-        assertTrue(StationDepotGeometry.isShell(B, B + StationDepotGeometry.CAVERN_MIN_DX - 1, 0, 0));
-        assertTrue(StationDepotGeometry.isShell(B, B + StationDepotGeometry.CAVERN_MAX_DX + 1, 0, 0));
-        assertTrue(StationDepotGeometry.isShell(B, B, 0, StationDepotGeometry.PLATFORM_HALF_WIDTH + 1));
-        assertTrue(StationDepotGeometry.isShell(B, B, 0, -StationDepotGeometry.PLATFORM_HALF_WIDTH - 1));
-        // Ceiling and footing.
-        assertTrue(StationDepotGeometry.isShell(B, B, StationDepotGeometry.CAVERN_APEX_DY + 1, 0));
-        assertTrue(StationDepotGeometry.isShell(B, B, StationDepotGeometry.DECK_DY - 1, 0));
+    void theWriteSpanIsExactlyTheCarvedHall() {
+        assertEquals(StationDepotGeometry.minBlockX(B), StationDepotGeometry.writeMinBlockX(B),
+                "no shell column west of the hall");
+        assertEquals(StationDepotGeometry.maxBlockX(B), StationDepotGeometry.writeMaxBlockX(B),
+                "no shell column east of the hall");
+        assertEquals(-StationDepotGeometry.PLATFORM_HALF_WIDTH, StationDepotGeometry.writeMinBlockZ(),
+                "no shell column on the negative Z side");
+        assertEquals(StationDepotGeometry.PLATFORM_HALF_WIDTH, StationDepotGeometry.writeMaxBlockZ(),
+                "no shell column on the positive Z side");
     }
 
     @Test
-    void theShellNeverLandsInsideTheHall() {
-        for (var cell : StationDepotGeometry.placedCells(B)) {
-            assertFalse(StationDepotGeometry.isShell(B, cell.x(), cell.dy(), cell.z()),
-                    "a shell block would overwrite depot content: " + cell);
-        }
-    }
-
-    @Test
-    void theShellStopsTwoBlocksAwayFromTheHall() {
-        assertFalse(StationDepotGeometry.isShell(B, B + StationDepotGeometry.CAVERN_MIN_DX - 2, 0, 0));
-        assertFalse(StationDepotGeometry.isShell(B, B + StationDepotGeometry.CAVERN_MAX_DX + 2, 0, 0));
-        assertFalse(StationDepotGeometry.isShell(B, B, 0, StationDepotGeometry.PLATFORM_HALF_WIDTH + 2));
-        assertFalse(StationDepotGeometry.isShell(B, B, StationDepotGeometry.CAVERN_APEX_DY + 2, 0));
-        assertFalse(StationDepotGeometry.isShell(B, B, StationDepotGeometry.DECK_DY - 2, 0));
-    }
-
-    @Test
-    void theShellAndTheHallTogetherFitBetweenTwoBoundaryColumns() {
+    void theHallStillFitsBetweenTwoBoundaryColumns() {
         assertTrue(StationDepotGeometry.writeMinBlockX(B) > B - BAND, "does not reach the previous boundary");
         assertTrue(StationDepotGeometry.writeMaxBlockX(B) < B + BAND, "does not reach the next boundary");
-        // The write span is the hall plus exactly one shell column on each end.
-        assertEquals(StationDepotGeometry.minBlockX(B) - 1, StationDepotGeometry.writeMinBlockX(B));
-        assertEquals(StationDepotGeometry.maxBlockX(B) + 1, StationDepotGeometry.writeMaxBlockX(B));
     }
 
     @Test
-    void theShellEntirelyCoversTheCeilingSoNoFluidLeaksFromAbove() {
-        for (int dx = StationDepotGeometry.CAVERN_MIN_DX; dx <= StationDepotGeometry.CAVERN_MAX_DX; dx++) {
-            for (int z = -StationDepotGeometry.PLATFORM_HALF_WIDTH;
-                    z <= StationDepotGeometry.PLATFORM_HALF_WIDTH; z++) {
-                assertTrue(StationDepotGeometry.isShell(B, B + dx, StationDepotGeometry.CAVERN_APEX_DY + 1, z),
-                        "no gap in the ceiling at dx=" + dx + " z=" + z);
-            }
+    void theCarvedHallReachesTheTunnelCeiling() {
+        assertEquals(OakTrackCorridor.VAULT_APEX_DY, StationDepotGeometry.CAVERN_APEX_DY,
+                "the chamber is cut up to the corridor vault apex, not stopped below it");
+        assertTrue(StationDepotGeometry.carves(B, B, OakTrackCorridor.VAULT_APEX_DY, 0),
+                "the apex row is inside the carve");
+        assertTrue(!StationDepotGeometry.carves(B, B, OakTrackCorridor.VAULT_APEX_DY + 1, 0),
+                "one row above the apex is outside the carve");
+    }
+
+    @Test
+    void everyWrittenCellIsInsideTheCarveOrItsDeck() {
+        for (var cell : StationDepotGeometry.placedCells(B)) {
+            int dx = cell.x() - B;
+            assertTrue(dx >= StationDepotGeometry.CAVERN_MIN_DX && dx <= StationDepotGeometry.CAVERN_MAX_DX,
+                    "cell outside the hall in X: " + cell);
+            assertTrue(Math.abs(cell.z()) <= StationDepotGeometry.PLATFORM_HALF_WIDTH,
+                    "cell outside the hall in Z: " + cell);
         }
     }
 }
