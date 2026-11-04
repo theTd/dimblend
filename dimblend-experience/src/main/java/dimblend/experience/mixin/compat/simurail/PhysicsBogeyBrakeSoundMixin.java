@@ -5,6 +5,7 @@ import dev.ryanhcode.sable.Sable;
 import dimblend.experience.Config;
 import dimblend.experience.ModSounds;
 import dimblend.experience.compat.simurail.TrainBrakeBroadcast;
+import dimblend.experience.compat.simurail.TrainDeadmanBrake;
 import dimblend.experience.compat.simurail.TrainSpeedGateMath;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.phys.Vec3;
@@ -84,7 +85,10 @@ public abstract class PhysicsBogeyBrakeSoundMixin {
         if (last <= EDGE_EPSILON && brake > EDGE_EPSILON) {
             // E3：沿基线始终更新，避免低于阈值施闸后加速误补沿
             if (TrainSpeedGateMath.isBrakeAudible(speed, Config.TRAIN_BRAKE_SOUND_SPEED_THRESHOLD.get())) {
-                dimblend$broadcast(self, speed, ModSounds.TRAIN_BRAKE.get(), BRAKE_VOLUME, 1.0F, now);
+                // 2026-11-04：无人值守锁存引起的那一次施闸是「急刹」，播报音调降到 0.5；
+                // 司机自己施闸仍按原音调（口径见 TrainSpeedGateMath#brakePitch）。
+                float pitch = TrainSpeedGateMath.brakePitch(TrainDeadmanBrake.isLatched(self));
+                dimblend$broadcast(self, speed, ModSounds.TRAIN_BRAKE.get(), BRAKE_VOLUME, pitch, now);
             }
         } else if (last > EDGE_EPSILON && brake <= EDGE_EPSILON) {
             dimblend$broadcast(self, speed, ModSounds.BRAKE_RELEASE.get(), RELEASE_VOLUME, 1.0F, now);
