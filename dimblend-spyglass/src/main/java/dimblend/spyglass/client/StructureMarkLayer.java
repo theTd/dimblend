@@ -3,7 +3,6 @@ package dimblend.spyglass.client;
 import com.mojang.blaze3d.platform.Window;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dimblend.spyglass.DimBlendSpyglass;
-import dimblend.spyglass.structure.OutlineBox;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -24,7 +23,8 @@ import org.joml.Vector3f;
 
 /**
  * Draws one {@code ?} or {@code !} above every structure in range: {@code ?} for an outline replayed
- * from the seed (no blocks exist yet), {@code !} for a structure read from a saved chunk.
+ * from the seed (no blocks exist yet), {@code !} for a structure read from a saved chunk. The
+ * selected structure is drawn in brackets, {@code [?]} or {@code [!]}.
  *
  * <p>The layer sits directly <b>below</b> {@link VanillaGuiLayers#CAMERA_OVERLAYS}, the layer that
  * draws the spyglass scope, so the vanilla lens texture and its four black fills mask these marks
@@ -32,10 +32,16 @@ import org.joml.Vector3f;
  * lens is opening and with resource packs that change the scope texture. No mask geometry is
  * duplicated here.
  *
- * <p>Anchor: the union bounds' top-center, {@code (centerX, maxY + 1, centerZ)}. A 32×32 GUI-pixel
- * box is centered on the projected point and the glyph is drawn at twice the font size inside it;
- * overlapping boxes are skipped nearest-first, so the priority stays stable while panning. The
- * projected result is published as {@link MarkScreenFrame} for the HUD layers of the same frame.
+ * <p>Anchor: the union bounds' top-center, {@code (centerX, maxY + 1, centerZ)}. A box is centered
+ * on the projected point and the glyph is drawn at twice the font size inside it; the selection's
+ * brackets widen the box (and therefore its click target). Overlapping boxes are skipped
+ * nearest-first, except that the selected mark is placed before all others, so it is never hidden
+ * while it is selected.
+ *
+ * <p>The layer also refreshes the saved selection from the live outline (so a {@code ?} selected
+ * outline that becomes {@code !} keeps its selection under the same key) and publishes the
+ * projected result as {@link MarkScreenFrame} for the HUD layers and the click handler of the same
+ * frame.
  */
 // RegisterGuiLayersEvent is an IModBusEvent: FML registers this listener on the mod bus by itself.
 @EventBusSubscriber(modid = DimBlendSpyglass.MODID, value = Dist.CLIENT)
@@ -43,10 +49,6 @@ public final class StructureMarkLayer {
     static final ResourceLocation LAYER_ID =
             ResourceLocation.fromNamespaceAndPath(DimBlendSpyglass.MODID, "structure_marks");
 
-    /** Fixed box size, in GUI pixels: the 2× glyph is centered inside it. */
-    static final int MARK_SIZE = 32;
-    /** The glyph is drawn at this multiple of the font's size. */
-    static final float GLYPH_SCALE = 2.0F;
     /** Marks whose center is inside this inset rectangle count as "in the lens" for the arrow layer. */
     static final double LENS_INSET = 24.0;
     private static final int COLOR = 0xFFFFFFFF;
@@ -72,15 +74,24 @@ public final class StructureMarkLayer {
         double guiWidth = window.getWidth() / guiScale;
         double guiHeight = window.getHeight() / guiScale;
         Font font = minecraft.font;
+        int boxHeight = MarkLayout.boxHeight();
 
         List<LabelPlacement.Candidate<MarkFrame.Mark>> candidates = new ArrayList<>(frame.marks().size());
         List<Projected> projected = new ArrayList<>(frame.marks().size());
         Vector2f anchor = new Vector2f();
         for (MarkFrame.Mark mark : frame.marks()) {
-            OutlineBox bounds = mark.outline().bounds();
-            double relX = bounds.centerX() - frame.cameraX();
-            double relY = bounds.maxY() + 1.0 - frame.cameraY();
-            double relZ = bounds.centerZ() - frame.cameraZ();
+            StructureSelection.Entry entry = mark.entry();
+            // Keep the saved identity and anchor current: a structure that turns from predicted
+            // into saved (? -> !) keeps its key, so the selection survives that transition.
+            StructureSelection.observe(
+                    entry.key(), entry.predicted(), entry.centerX(), entry.anchorY(), entry.centerZ());
+            boolean selected = StructureSelection.isSelected(entry.key());
+            String glyph = MarkerGlyph.of(entry.predicted(), selected);
+            int boxWidth = MarkLayout.boxWidth(MarkLayout.scaledGlyphWidth(font.width(glyph)));
+
+            double relX = entry.centerX() - frame.cameraX();
+            double relY = entry.anchorY() - frame.cameraY();
+            double relZ = entry.centerZ() - frame.cameraZ();
 
             Vector3f view = new Vector3f((float) relX, (float) relY, (float) relZ);
             frame.modelView().transformPosition(view);
@@ -89,7 +100,8 @@ public final class StructureMarkLayer {
                     frame.worldToClip(), relX, relY, relZ, guiWidth, guiHeight, anchor)) {
                 // Behind the camera or off screen: no glyph, but the arrow layer still needs the
                 // direction, so the mark stays in the frame with NaN screen coordinates.
-                projected.add(new Projected(mark, Float.NaN, Float.NaN, false, view.x, view.y, view.z));
+                projected.add(new Projected(
+                        mark, Float.NaN, Float.NaN, false, boxWidth, view.x, view.y, view.z));
                 continue;
             }
             boolean inLens = anchor.x >= LENS_INSET && anchor.x <= guiWidth - LENS_INSET
@@ -98,27 +110,31 @@ public final class StructureMarkLayer {
                     mark,
                     mark.centerDistance(),
                     anchor.x,
-                    anchor.y + MARK_SIZE * 0.5F,
-                    MARK_SIZE,
-                    MARK_SIZE));
-            projected.add(new Projected(mark, anchor.x, anchor.y, inLens, view.x, view.y, view.z));
+                    anchor.y + boxHeight * 0.5F,
+                    boxWidth,
+                    boxHeight,
+                    selected));
+            projected.add(new Projected(
+                    mark, anchor.x, anchor.y, inLens, boxWidth, view.x, view.y, view.z));
         }
 
         List<LabelPlacement.Candidate<MarkFrame.Mark>> placed = LabelPlacement.place(candidates);
         Set<MarkFrame.Mark> drawn = Collections.newSetFromMap(new IdentityHashMap<>());
         for (LabelPlacement.Candidate<MarkFrame.Mark> candidate : placed) {
-            drawn.add(candidate.label());
-            String glyph = MarkerGlyph.of(candidate.label().predicted());
-            // Center the scaled glyph inside the MARK_SIZE box, then draw it through a 2× pose so the
-            // font itself is untouched. Pose transforms scale the translation too, hence the /2.
-            int x = Math.round(
-                    candidate.left() + (MARK_SIZE - font.width(glyph) * GLYPH_SCALE) * 0.5F);
+            MarkFrame.Mark mark = candidate.label();
+            drawn.add(mark);
+            boolean selected = StructureSelection.isSelected(mark.entry().key());
+            String glyph = MarkerGlyph.of(mark.entry().predicted(), selected);
+            int scaledWidth = MarkLayout.scaledGlyphWidth(font.width(glyph));
+            // Center the scaled glyph inside the box, then draw it through a 2x pose so the font
+            // itself is untouched. Pose transforms scale the translation too, hence the /2.
+            int x = Math.round(candidate.left() + (candidate.width() - scaledWidth) * 0.5F);
             int y = Math.round(
-                    candidate.top() + (MARK_SIZE - font.lineHeight * GLYPH_SCALE) * 0.5F);
+                    candidate.top() + (candidate.height() - font.lineHeight * MarkLayout.GLYPH_SCALE) * 0.5F);
             PoseStack pose = graphics.pose();
             pose.pushPose();
-            pose.scale(GLYPH_SCALE, GLYPH_SCALE, 1.0F);
-            pose.translate(x / GLYPH_SCALE, y / GLYPH_SCALE, 0.0F);
+            pose.scale(MarkLayout.GLYPH_SCALE, MarkLayout.GLYPH_SCALE, 1.0F);
+            pose.translate(x / MarkLayout.GLYPH_SCALE, y / MarkLayout.GLYPH_SCALE, 0.0F);
             graphics.drawString(font, glyph, 0, 0, COLOR, true);
             pose.popPose();
         }
@@ -126,21 +142,29 @@ public final class StructureMarkLayer {
         List<MarkScreenFrame.Mark> marks = new ArrayList<>(projected.size());
         for (Projected mark : projected) {
             marks.add(new MarkScreenFrame.Mark(
+                    mark.mark().entry(),
                     mark.x(),
                     mark.y(),
-                    mark.mark().predicted(),
                     mark.mark().centerDistance(),
                     drawn.contains(mark.mark()),
                     mark.inLens(),
+                    mark.boxWidth() * 0.5F,
                     mark.viewX(),
                     mark.viewY(),
                     mark.viewZ()));
         }
-        MarkScreenFrame.publish(new MarkScreenFrame(marks, guiWidth, guiHeight));
+        MarkScreenFrame.publish(new MarkScreenFrame(marks, guiWidth, guiHeight, System.nanoTime()));
     }
 
     private record Projected(
-            MarkFrame.Mark mark, float x, float y, boolean inLens, float viewX, float viewY, float viewZ) {
+            MarkFrame.Mark mark,
+            float x,
+            float y,
+            boolean inLens,
+            int boxWidth,
+            float viewX,
+            float viewY,
+            float viewZ) {
     }
 
     private StructureMarkLayer() {

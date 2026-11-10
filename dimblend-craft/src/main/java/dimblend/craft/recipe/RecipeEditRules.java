@@ -97,6 +97,21 @@ import com.google.gson.JsonPrimitive;
  *       的 {@code key.P}，经验泵只改 {@code sophisticatedbackpacks:xp_pump_upgrade} 的
  *       槽位 2 与 8 —— 两者都<b>禁止</b>用全局材料替换：末影珍珠 / 末影之眼是全包常见材料，
  *       全局替换会波及大量无关配方。</li>
+ *   <li>末影存储标准合成（2026-11-11 批次）：EnderStorage 2.13.0.191 的
+ *       {@code enderstorage:ender_tank} 与 {@code enderstorage:ender_chest} 都由
+ *       {@code codechicken.enderstorage.recipe.CreateRecipe extends ShapedRecipe} 承载
+ *       （配方类型 {@code enderstorage:create_recipe}，pattern 均为 {@code BWB/OCO/BPB}，
+ *       其 serializer 的 Codec 由 {@code ShapedRecipePattern.MAP_CODEC} 编码
+ *       {@code key} + {@code pattern} + {@code result}）。因此材料替换只能改 JSON
+ *       {@code key} 里对应的符号：水缸改 {@code key.P}（末影珍珠位）为虚空核心
+ *       {@code voidscape:machine_core}；末影箱改 {@code key.B}（四个角）为烈焰粉
+ *       {@code minecraft:blaze_powder}。<b>禁止</b>用 {@link RecipeEdit.ModifyShapedGrid}：
+ *       {@code ShapedGridEditor} 重建的是普通 {@code ShapedRecipe}，会丢掉 CreateRecipe
+ *       按羊毛颜色生成 Frequency 的 {@code assemble} 行为，也丢掉子类 serializer；
+ *       同样<b>禁止</b>全局 {@link RecipeEdit.ReplaceIngredient}（末影珍珠 / 烈焰棒是全包常见材料）。
+ *       水缸四角烈焰棒（key.B）与箱子末影珍珠（key.P）都不动。另注意
+ *       {@code enderstorage:recolour_ender_tank} / {@code ..._ender_chest} 与标准合成
+ *       共享同一个输出物品，按产物匹配的删除或网格规则会误伤，二者必须保留。</li>
  * </ul>
  */
 public final class RecipeEditRules {
@@ -422,6 +437,29 @@ public final class RecipeEditRules {
         // 全局替换末影之眼同样被用户明确禁止。
         edits.add(modify("经验泵末影之眼改虚空核心", "sophisticatedbackpacks:xp_pump_upgrade")
                 .slots(Set.of(2, 8), RecipeIngredient.item("voidscape:machine_core"))
+                .build());
+
+        // —— 3.20 EnderStorage 标准合成（2026-11-11 批次） ——
+        // 两个配方都是 codechicken.enderstorage.recipe.CreateRecipe（extends ShapedRecipe），
+        // 配方类型 enderstorage:create_recipe，pattern 均为 BWB/OCO/BPB，材料写在 JSON 的
+        // key 符号表里。它的 Serializer.codec() 用 ShapedRecipePattern.MAP_CODEC 编码
+        // key + pattern + result（CFR 反编译 CreateRecipe$Serializer 核实），所以
+        // 「换材料」在数据层就是改 key 里对应的符号，pattern 本身不动。
+        //
+        // 不能用 ModifyShapedGrid：ShapedGridEditor 会把配方重建成普通 ShapedRecipe，
+        // 丢失 CreateRecipe#assemble 的羊毛颜色 -> Frequency 行为，也丢掉专用 serializer。
+        // 不能用 ReplaceIngredient：它扫描全部配方，末影珍珠 / 烈焰棒是全包常见材料。
+        //
+        // 3.20.1 末影水缸：P 只在第三行中间出现一次（BWB/OCO/BPB 的第三行 BPB），
+        // 珍珠位 key.P 换成虚空核心；四角 key.B（烈焰棒）与 C/O/W 原样。
+        edits.add(modifyFields("末影水缸珍珠改虚空核心", "enderstorage:ender_tank")
+                .setJson("key.P", "{\"item\": \"voidscape:machine_core\"}")
+                .build());
+
+        // 3.20.2 末影箱：B 在第一行两端与第三行两端，共 4 个角，
+        // key.B 整组换成烈焰粉；末影珍珠位 key.P 与 C/O/W 原样。
+        edits.add(modifyFields("末影箱四角烈焰棒改烈焰粉", "enderstorage:ender_chest")
+                .setJson("key.B", "{\"item\": \"minecraft:blaze_powder\"}")
                 .build());
 
         return edits.build();

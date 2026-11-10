@@ -23,7 +23,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  *
  * <p>在 {@code renderChunkedSubLevel}（每个 RenderType 一次）前，把本帧要绘制的子层级区块
  * 用到的动画贴图逐张标活跃；贴图集合按已编译区块缓存，区块重建时才扫描，且每个游戏刻只补
- * 打一次（Sodium 的贴图 tick 每刻清空一次活跃标记）。</p>
+ * 打一次（Sodium 的贴图 tick 每刻清空一次活跃标记）。缓存会随资源重载作废（见
+ * {@link SubLevelAnimatedSprites} 的代次说明），否则重载后仍会标记已失效的旧贴图实例。</p>
  */
 @Pseudo
 @Mixin(targets = "dev.ryanhcode.sable.sublevel.render.vanilla.VanillaChunkedSubLevelRenderData", remap = false)
@@ -49,6 +50,7 @@ public abstract class SableSubLevelSpriteAnimationMixin {
         if (this.dimblend$animatedSprites == null) {
             this.dimblend$animatedSprites = new SubLevelAnimatedSprites();
         }
+        // ObjectList 实现 Collection，直接按集合交给缓存（retain 需要 size 且按引用比较）。
         this.dimblend$animatedSprites.markSections(this.allRenderSections, this.subLevel.getLevel());
     }
 }

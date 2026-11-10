@@ -9,7 +9,7 @@
 - `DollKeeperSeatBlockEntity.java`：`copyWithCount(1)` 保存完整 ItemStack，包含全部数据组件；存档和更新包都写入 `Doll`。配对以方块 `FACING` 保存相邻方向，不保存世界绝对位置；方块旋转/镜像时同步转换方向。标准 BE NBT 迁移适配 Sable 装配。邻居通知即时检查原配对 ticker，另每 20 tick 对账；只在 ticker 所在区块已加载且 ticker 确实消失时 `destroyBlock(..., true)`，不把卸载当破坏。
 - `DollKeeperSeatBlock.java`：保留原色、水状态、Create 碰撞形状与座椅模型。覆盖手持交互和跌落后自动落座入口。选择框包含上方玩偶，碰撞/遮挡仍使用原坐垫形状。中键取样得到原色 Create 坐垫，不产生可携带的管理员方块。正常掉落只走 `getDrops`，返回原色 Create 坐垫和一个完整玩偶；`onRemove` 不生成掉落，避免玩家破坏与 ticker 连带销毁重复计算。创造破坏遵守原坐垫不掉坐垫物品的行为，但单独取出并掉落一个玩偶。
 - `client/dolls/DollKeeperSeatRenderer.java`：使用保存的实际 ItemStack 解析上游已有库存模型，NONE 变换，面向 ticker。读取已烘焙模型底部高度，把模型底部落在 Create 坐垫 y=8/16 顶面；无新模型/贴图，无活体实体。
-- `client/dolls/DollStockKeeperScreenSupport.java` 与 `mixin/client/DollStockKeeperRequestScreenMixin.java`：仅在 ticker 邻接合法玩偶座椅时跳过 `containerTick` 中唯一的 `Player.closeContainer()`，库存刷新、JEI 同步、搜索、滚动等其余 tick 照常运行。`renderBg` 尾部在原管理员所在左下区域，以 2 倍缩放渲染实际玩偶库存物品（16×16 → 32×32）。不会阻止发送订单后的原生关闭路径。
+- `client/dolls/DollStockKeeperScreenSupport.java` 与 `mixin/compat/create/stockkeeper/DollStockKeeperRequestScreenMixin.java`（合并后唯一入口，详见 `docs/doll-stockkeeper.md`）：仅在 ticker 邻接合法玩偶座椅时跳过 `containerTick` 中唯一的 `Player.closeContainer()`，库存刷新、JEI 同步、搜索、滚动等其余 tick 照常运行。`renderBg` 尾部在原管理员所在左下区域，以 2 倍缩放渲染实际玩偶库存物品（16×16 → 32×32）。不会阻止发送订单后的原生关闭路径。
 - `assets/dimblend_experience/blockstates/*_doll_keeper_seat.json`：16 份直接引用 `create:block/<color>_seat`。`getDrops` 覆盖掉落生成，因此不需要新增 16 份 loot table。
 
 交互调用严格是 `StockTickerInteractionHandler.interactWithLogisticsManagerAt(player, level, tickerPos)`。没有自建菜单、订单网络包或权限逻辑；手持订货单仍走 Create 自己的订货单分支。
@@ -50,13 +50,13 @@ public static void onRegisterDollRenderers(
 
 ### Mixin 清单与门控
 
-在 `dimblend_experience.mixins.json` 的 `client` 数组添加唯一一项：
+在 `dimblend_experience.mixins.json` 的 `client` 数组添加唯一一项（与真实 DollEntity 路径共用同一 mixin，2026-11-11 合流后）：
 
 ```json
-"client.DollStockKeeperRequestScreenMixin"
+"compat.create.stockkeeper.DollStockKeeperRequestScreenMixin"
 ```
 
-在 `DimBlendMixinPlugin.shouldApplyMixin` 中对后缀 `.client.DollStockKeeperRequestScreenMixin` 返回 `ModList.get().isLoaded("create")`。不要添加 common mixin。本 mixin 只有 private 实例注入方法及 private shadow 字段；`require=1, allow=1` 限定两处注入匹配数。所有 helper 在正常的 `client/dolls` 包中。
+在 `DimBlendMixinPlugin.shouldApplyMixin` 中由 `.compat.create.stockkeeper.` 包判据（create 且 kaleidoscope_doll 同时在场）统一门控；不要再加 `.client` 后缀分支。本 mixin 只有 private 实例注入方法、`@Unique` 字段与 private shadow 字段；构造器 `require=2, allow=2`（燃烧室早退与正常结束两个返回点），其余注入 `require=1, allow=1`。所有 helper 在正常的 `client/dolls` 包中。
 
 ### GameTest
 

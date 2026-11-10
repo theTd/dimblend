@@ -124,6 +124,9 @@ dependencies {
     localRuntime files("E:/misc/TrainTripWorld/mods/BiomesOPlenty-neoforge-1.21.1-21.1.0.13.jar")
     localRuntime files("E:/misc/TrainTripWorld/mods/GlitchCore-neoforge-1.21.1-2.1.0.0.jar")
     localRuntime files("D:/Downloads/deeperdarker-neoforge-1.21.1-1.4.1.jar")
+    // Aether 的 PlacementBanEvent 被 AetherPlacementBanCompat 的订阅方法直接引用，编译期必须可见；
+    // 走公开定点坐标（Modrinth version K5X5qMwG = 1.21.1-1.5.10-neoforge），不用本机绝对路径。
+    compileOnly "maven.modrinth:aether:K5X5qMwG"
     localRuntime files("D:/Downloads/aether-1.21.1-1.5.10-neoforge.jar")
     localRuntime files("D:/Downloads/owo-lib-neoforge-0.12.15.1-beta.6+1.21.jar")
     // 编译期必需：Eternal Starlight 的 BE/维度类被 RotatingDimensionEffects 直接引用。

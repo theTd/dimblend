@@ -24,6 +24,7 @@ import dimblend.experience.gametest.SableLavaMeltGameTests;
 import dimblend.experience.gametest.SableVoidFitGameTests;
 import dimblend.experience.gametest.CopycatObsidianHardnessGameTests;
 import dimblend.experience.gametest.DeployerIcePlacementGameTests;
+import dimblend.experience.gametest.DollStockKeeperGameTests;
 import dimblend.experience.gametest.FireHoseDropGameTests;
 import dimblend.experience.gametest.LimitedWaterGameTests;
 import dimblend.experience.gametest.LootMapFilterGameTests;
@@ -128,10 +129,8 @@ public class DimBlend {
                 event.register(dimblend.experience.gametest.BackpackTotemGameTests.WithoutPowder.class);
             }
         }
-        if (Boolean.getBoolean("dimblend.supplementTests") && ModList.get().isLoaded("create")
-                && ModList.get().isLoaded("sable") && ModList.get().isLoaded("kaleidoscope_doll")) {
-            event.register(dimblend.experience.gametest.DollStockKeeperGameTests.class);
-        }
+        // DollStockKeeperGameTests 由下面的 Create 门控统一注册一次：合并后该类同时覆盖
+        // 上游代理坐垫与真实 DollEntity 两种管理员，缺玩偶时各用例自行 SKIP，不再重复注册。
         if (Boolean.getBoolean("dimblend.supplementTests") && ModList.get().isLoaded("dimblend")
                 && ModList.get().isLoaded("simulated")) {
             event.register(dimblend.experience.gametest.SupplementCompassGameTests.class);
@@ -165,6 +164,9 @@ public class DimBlend {
             event.register(KineticUnloadedShareGameTests.class);
             event.register(CdgKineticOverloadGameTests.class);
             event.register(TrainHornGameTests.class);
+            // 玩偶售货员：目标类来自 Create，Doll 只按注册名访问，缺 Doll 时各用例自己
+            // SKIP 并打 WARN（不是不注册），所以只按 Create 门控。
+            event.register(DollStockKeeperGameTests.class);
         }
         if (ModList.get().isLoaded("create_connected")) {
             event.register(LinkedTransmitterGameTests.class);

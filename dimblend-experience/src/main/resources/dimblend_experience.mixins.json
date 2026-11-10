@@ -2,6 +2,9 @@
 	"required": true,
 	"package": "dimblend.experience.mixin",
 	"compatibilityLevel": "JAVA_21",
+	"mixinextras": {
+		"minVersion": "0.5.3"
+	},
 	"plugin": "dimblend.experience.mixin.DimBlendMixinPlugin",
 	"mixins": [
 		"OriginCompassMixin",
@@ -73,6 +76,10 @@
 		"compat.create.SteamEngineOverloadMixin",
 		"compat.create.WhistleHornBlockMixin",
 		"compat.create.WhistleHornBlockEntityMixin",
+		"compat.create.stockkeeper.DollStockTickerInteractionMixin",
+		"compat.create.stockkeeper.DollSeatBlockInteractionMixin",
+		"compat.create.stockkeeper.DollEntityItemSeatMixin",
+		"compat.create.stockkeeper.DollStockTickerBlockEntityMixin",
 		"compat.firefightingadd.FireHoseExtraDropMixin",
 		"compat.firefightingadd.FireHosePlacementCostMixin",
 		"compat.simurail.PhysicsBogeyBrakeSoundMixin",
@@ -87,7 +94,6 @@
 		"compat.simurail.AutomaticCouplerTypeAccessor"
 	],
 	"client": [
-		"client.DollStockKeeperRequestScreenMixin",
 		"client.InBedChatScreenMixin",
 		"client.FrontlightBlockChangeMixin",
 		"client.SableSubLevelSpriteAnimationMixin",
@@ -103,6 +109,7 @@
 		"compat.create.ItemDrainGoggleMixin",
 		"compat.create.WhistleHornClientMixin",
 		"compat.create.ElectricMotorGeneratorStatsMixin",
+		"compat.create.stockkeeper.DollStockKeeperRequestScreenMixin",
 		"compat.simurail.PhysicsBogeyTrackSoundMixin",
 		"compat.simurail.PhysicsBogeyWideGaugeParticleMixin",
 		"compat.simurail.PhysicsBogeyDeadmanParticleMixin",

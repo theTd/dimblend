@@ -15,9 +15,6 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        if (mixinClassName.endsWith(".client.DollStockKeeperRequestScreenMixin")) {
-            return isLoaded("create");
-        }
         if (mixinClassName.contains(".compat.simulated.")) {
             return isLoaded("simulated");
         }
@@ -106,6 +103,14 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         }
         if (mixinClassName.endsWith(".compat.dimblend.WarpGateBlockMixin")) {
             return isLoaded("dimblend");
+        }
+        // 玩偶兼任售货员（两套管理员已合并为同一入口）：目标分属 Create（SeatBlock /
+        // StockTickerInteractionHandler / StockTickerBlockEntity / StockKeeperRequestScreen）与
+        // Kaleidoscope Doll（DollEntityItem），两端必须同时在场。只有 Create 时 Doll 的目标类
+        // 不存在，整个包跳过，避免 mixin 应用即崩。client 侧同一 mixin 同时覆盖代理坐垫与
+        // 真实 DollEntity，因此也走本判据，不再有单独的 client 后缀分支。
+        if (mixinClassName.contains(".compat.create.stockkeeper.")) {
+            return isLoaded("create") && isLoaded("kaleidoscope_doll");
         }
         if (mixinClassName.endsWith(".compat.create.ItemDrainIrrigationMixin")
                 || mixinClassName.endsWith(".compat.create.ItemDrainGrowthBoostMixin")
