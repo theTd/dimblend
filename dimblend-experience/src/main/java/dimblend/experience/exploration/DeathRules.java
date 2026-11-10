@@ -4,18 +4,20 @@ import dimblend.experience.Config;
 import dimblend.experience.DimBlend;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.entity.living.LivingDropsEvent;
 import net.neoforged.neoforge.event.entity.living.LivingExperienceDropEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 
 /**
- * A1 死亡经验规则（v1.13 重写，仅 rotating 维度生效）：
+ * A1 死亡经验规则（v1.13 比率制仅 rotating 生效；背包图腾保护不限维度）：
  * <ul>
  * <li>重生克隆时按 {@code deathExpClearRatio} 比率清除经验：新玩家经验 =
  * 死亡前（等级+进度）× (1 − 比率)，总量同比缩放。无视 keepInventory 游戏规则——
  * 开启时覆盖原版 {@code ServerPlayer#restoreFrom} 的经验复制，关闭时按比率回补，
- * 两种 gamerule 下结果一致。</li>
+ * 两种 gamerule 下结果一致。背包图腾保护的死亡优先保留死亡瞬间的完整经验。</li>
  * <li>经验球掉落同步取消（不能找回）：比率是唯一的经验损失规则，不掉球防止
  * 比率外找回/复制（比率 0 时若掉球会白嫖一份）。</li>
  * </ul>
@@ -26,9 +28,15 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 @EventBusSubscriber(modid = DimBlend.MODID)
 public final class DeathRules {
 
-    @SubscribeEvent
+    @SubscribeEvent(priority = EventPriority.HIGHEST, receiveCanceled = true)
+    public static void onDeathDrops(LivingDropsEvent event) {
+        BackpackTotemProtection.collectOverflowPowder(event);
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onExperienceDrop(LivingExperienceDropEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player) || !RotatingDimension.is(player)) {
+        if (!(event.getEntity() instanceof ServerPlayer player)
+                || (!BackpackTotemProtection.active(player) && !RotatingDimension.is(player))) {
             return;
         }
         event.setCanceled(true);
@@ -36,6 +44,7 @@ public final class DeathRules {
 
     @SubscribeEvent
     public static void onClone(PlayerEvent.Clone event) {
+        if (BackpackTotemProtection.restore(event)) return;
         if (!event.isWasDeath() || !RotatingDimension.is(event.getOriginal().level())) {
             return;
         }

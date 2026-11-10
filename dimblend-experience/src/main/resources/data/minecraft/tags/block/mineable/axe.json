@@ -1,0 +1,21 @@
+{
+  "replace": false,
+  "values": [
+    { "id": "dimblend_experience:white_doll_keeper_seat", "required": false },
+    { "id": "dimblend_experience:orange_doll_keeper_seat", "required": false },
+    { "id": "dimblend_experience:magenta_doll_keeper_seat", "required": false },
+    { "id": "dimblend_experience:light_blue_doll_keeper_seat", "required": false },
+    { "id": "dimblend_experience:yellow_doll_keeper_seat", "required": false },
+    { "id": "dimblend_experience:lime_doll_keeper_seat", "required": false },
+    { "id": "dimblend_experience:pink_doll_keeper_seat", "required": false },
+    { "id": "dimblend_experience:gray_doll_keeper_seat", "required": false },
+    { "id": "dimblend_experience:light_gray_doll_keeper_seat", "required": false },
+    { "id": "dimblend_experience:cyan_doll_keeper_seat", "required": false },
+    { "id": "dimblend_experience:purple_doll_keeper_seat", "required": false },
+    { "id": "dimblend_experience:blue_doll_keeper_seat", "required": false },
+    { "id": "dimblend_experience:brown_doll_keeper_seat", "required": false },
+    { "id": "dimblend_experience:green_doll_keeper_seat", "required": false },
+    { "id": "dimblend_experience:red_doll_keeper_seat", "required": false },
+    { "id": "dimblend_experience:black_doll_keeper_seat", "required": false }
+  ]
+}

@@ -15,7 +15,7 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
  * <p>Vanilla {@code LavaFluid} reads {@code DimensionType.ultraWarm()} for tick delay
  * (30 → 10), slope find distance (2 → 4) and drop-off (2 → 1). The rotating dimension
  * type is a single {@code ultrawarm: false} entry shared by every band, and flipping it
- * would also evaporate water and change sponges everywhere. So the nether and Voidscape
+ * would also evaporate water and change sponges everywhere. So the underground, nether and Voidscape
  * bands answer {@code ultraWarm} per column instead: the three {@code LavaFluid}
  * readers (see {@link dimblend.mixin.LavaFluidUltrawarmMixin}) ask {@link #active}, which
  * resolves the lane of the column pushed by the fluid entry points
@@ -31,7 +31,7 @@ public final class NetherLavaFlow {
 
     /** Lanes whose lava flows like the real Nether's ({@link BandLayout#laneName}). */
     public static boolean isNetherSpeedLane(String laneName) {
-        return "nether".equals(laneName) || "voidscape".equals(laneName);
+        return "underground".equals(laneName) || "nether".equals(laneName) || "voidscape".equals(laneName);
     }
 
     /**

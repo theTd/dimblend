@@ -12,14 +12,15 @@ import org.junit.jupiter.api.Test;
 
 class NetherLavaFlowTest {
     @Test
-    void netherAndVoidscapeLanesFlowAtNetherSpeed() {
+    void undergroundNetherAndVoidscapeLanesFlowAtNetherSpeed() {
+        assertTrue(NetherLavaFlow.isNetherSpeedLane("underground"));
         assertTrue(NetherLavaFlow.isNetherSpeedLane("nether"));
         assertTrue(NetherLavaFlow.isNetherSpeedLane("voidscape"));
     }
 
     @Test
     void otherLanesKeepOverworldLavaSpeed() {
-        for (String lane : new String[]{"surface", "underground", "end", "twilight", "starlight", "aether", "deeperdarker", "mod"}) {
+        for (String lane : new String[]{"surface", "end", "twilight", "starlight", "aether", "deeperdarker", "mod", "", null}) {
             assertFalse(NetherLavaFlow.isNetherSpeedLane(lane), lane);
         }
     }

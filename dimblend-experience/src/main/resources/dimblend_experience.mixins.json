@@ -4,6 +4,10 @@
 	"compatibilityLevel": "JAVA_21",
 	"plugin": "dimblend.experience.mixin.DimBlendMixinPlugin",
 	"mixins": [
+		"OriginCompassMixin",
+		"compat.simulated.NavigationCompassMixin",
+		"ServerPlayerTotemDeathMixin",
+		"compat.solcarrot.FoodRecordDeathMixin",
 		"PlayerBedRestMixin",
 		"PlayerStandingFitInvoker",
 		"ServerLevelBedRestMixin",
@@ -83,6 +87,7 @@
 		"compat.simurail.AutomaticCouplerTypeAccessor"
 	],
 	"client": [
+		"client.DollStockKeeperRequestScreenMixin",
 		"client.InBedChatScreenMixin",
 		"client.FrontlightBlockChangeMixin",
 		"client.SableSubLevelSpriteAnimationMixin",

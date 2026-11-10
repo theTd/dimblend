@@ -86,6 +86,14 @@ config="${mod_id}.mixins.json"
     ordering="NONE"
     side="BOTH"
 
+# 坐垫属性供应器解析 Create 原方块，需保证其注册在本模组之前完成。
+[[dependencies.${mod_id}]]
+    modId="create"
+    type="optional"
+    versionRange="[6.0.10,)"
+    ordering="AFTER"
+    side="BOTH"
+
 # CDG 提供柴油机 BE 目标（B 板块，可选：缺失时该板块 mixin 由 plugin 过滤禁用）
 # 下限 1.3.15：B 板块燃油门控经 IEngine#getFuelThrottle（旧版无此方法），
 # 额定公式按新版 throttle 口径对齐
@@ -118,6 +126,14 @@ config="${mod_id}.mixins.json"
     type="optional"
     versionRange="[0.0.0-a,)"
     ordering="NONE"
+    side="BOTH"
+
+# 同 ID 浮空材质数据覆盖需在 Aeronautics 后加载；缺席时保持可选。
+[[dependencies.${mod_id}]]
+    modId="aeronautics"
+    type="optional"
+    versionRange="[1.3.0,)"
+    ordering="AFTER"
     side="BOTH"
 
 # Factory Blocks 提供切石机配方的产物方块（装饰类 42 种，可选：缺失时配方由 mod_loaded 条件过滤跳过）

@@ -84,6 +84,9 @@ public class DimBlend {
             TrainForceGroups.FORCE_GROUPS.register(modEventBus);
             dimblend.experience.compat.simurail.TrainDeadmanBrake.register();
         }
+        if (ModList.get().isLoaded("create") && ModList.get().isLoaded("simurail")) {
+            dimblend.experience.compat.simurail.TractionDisplaySources.register(modEventBus);
+        }
 
         // G3 配套：Sable 载具世界侧结构空位拟合（引 Sable 类型，仅 Sable 在场时解析注册）
         if (ModList.get().isLoaded("sable")) {
@@ -104,6 +107,7 @@ public class DimBlend {
         // 分液池管道补水：补齐 UP 面流体接口，仅 Create 在场时注册（避免无 Create 环境类加载失败）
         if (ModList.get().isLoaded("create")) {
             modEventBus.addListener(ItemDrainPipeRefill::registerCapabilities);
+            dimblend.experience.compat.dolls.DollKeeperSeats.register(modEventBus);
         }
 
         // 探索规则都在服务端执行，走 SERVER 配置
@@ -117,6 +121,21 @@ public class DimBlend {
     }
 
     private static void onRegisterGameTests(RegisterGameTestsEvent event) {
+        if (Boolean.getBoolean("dimblend.test.supplementDeath") && ModList.get().isLoaded("solcarrot")) {
+            if (ModList.get().isLoaded("kaleidoscope_grilling")) {
+                event.register(dimblend.experience.gametest.BackpackTotemGameTests.class);
+            } else {
+                event.register(dimblend.experience.gametest.BackpackTotemGameTests.WithoutPowder.class);
+            }
+        }
+        if (Boolean.getBoolean("dimblend.supplementTests") && ModList.get().isLoaded("create")
+                && ModList.get().isLoaded("sable") && ModList.get().isLoaded("kaleidoscope_doll")) {
+            event.register(dimblend.experience.gametest.DollStockKeeperGameTests.class);
+        }
+        if (Boolean.getBoolean("dimblend.supplementTests") && ModList.get().isLoaded("dimblend")
+                && ModList.get().isLoaded("simulated")) {
+            event.register(dimblend.experience.gametest.SupplementCompassGameTests.class);
+        }
         event.register(dimblend.experience.gametest.BedRestGameTests.class);
         if (ModList.get().isLoaded("yet_another_thirst")) {
             event.register(dimblend.experience.gametest.ThirstBedRestGameTests.class);

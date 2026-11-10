@@ -4,6 +4,14 @@
     {
       "id": "#create:non_breakable",
       "required": false
+    },
+    {
+      "id": "aeronautics:levitite",
+      "required": false
+    },
+    {
+      "id": "aeronautics:pearlescent_levitite",
+      "required": false
     }
   ]
 }
