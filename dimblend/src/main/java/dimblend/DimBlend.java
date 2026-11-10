@@ -19,6 +19,7 @@ import dimblend.time.TimeLockPayload;
 import dimblend.time.TimeLockSync;
 import dimblend.weather.ServerGlobalWeatherLock;
 import dimblend.worldgen.ChunkGenMonitor;
+import dimblend.worldgen.CorridorLavaOriginals;
 import dimblend.worldgen.PregenConfig;
 import dimblend.worldgen.PregenController;
 import dimblend.worldgen.RegionBoundaryWallProtector;
@@ -33,6 +34,7 @@ import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.RegisterGameTestsEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
@@ -48,12 +50,14 @@ public final class DimBlend {
 
     public DimBlend(IEventBus modBus, ModContainer container) {
         DimBlendRegistries.register(modBus);
+        CorridorLavaOriginals.ATTACHMENTS.register(modBus);
         container.registerConfig(ModConfig.Type.SERVER, PregenConfig.SPEC);
         container.registerConfig(ModConfig.Type.SERVER, RegionPurgeConfig.SPEC, RegionPurgeConfig.FILE_NAME);
         container.registerConfig(ModConfig.Type.CLIENT, dimblend.diagnostics.SkyTimeTraceSettings.SPEC);
         NeoForge.EVENT_BUS.register(PREGEN);
         NeoForge.EVENT_BUS.addListener(DimBlend::onRegisterCommands);
         modBus.addListener(DimBlend::onRegisterPayloads);
+        modBus.addListener(DimBlend::onRegisterGameTests);
         NeoForge.EVENT_BUS.register(TIME_LOCK);
         NeoForge.EVENT_BUS.register(BAND_INFO);
         NeoForge.EVENT_BUS.register(BAND_LANE);
@@ -114,5 +118,9 @@ public final class DimBlend {
         BandInfoPayload.register(registrar);
         BandLanePayload.register(registrar);
         BandTrainPayload.register(registrar);
+    }
+
+    private static void onRegisterGameTests(RegisterGameTestsEvent event) {
+        event.register(dimblend.gametest.CorridorLavaSourceGameTests.class);
     }
 }

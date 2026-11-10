@@ -15,6 +15,15 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        if (mixinClassName.endsWith(".client.DollStockKeeperRequestScreenMixin")) {
+            return isLoaded("create");
+        }
+        if (mixinClassName.contains(".compat.simulated.")) {
+            return isLoaded("simulated");
+        }
+        if (mixinClassName.contains(".compat.solcarrot.")) {
+            return isLoaded("solcarrot");
+        }
         if (mixinClassName.endsWith(".compat.yat.SleepThirstSuspensionMixin")) {
             return isLoaded("yet_another_thirst");
         }

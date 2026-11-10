@@ -30,6 +30,13 @@ public final class CouplerCharge {
                 || !(be instanceof CouplerChargeAccess access)) {
             return false;
         }
+        // The client acknowledges the click; only the server decides and synchronizes state.
+        if (level.isClientSide()) return true;
+        if (!access.dimblend$wrenchCharged()
+                && (!net.neoforged.fml.ModList.get().isLoaded("dimblend")
+                || !CoreRegions.isSurface(level, pos))) {
+            return false;
+        }
         access.dimblend$setWrenchCharged(!access.dimblend$wrenchCharged());
         be.setChanged();
         be.sendData();
@@ -67,5 +74,13 @@ public final class CouplerCharge {
     }
 
     private CouplerCharge() {
+    }
+
+    /** Loaded only behind the core-mod guard; the experience mod can run without core. */
+    private static final class CoreRegions {
+        private static boolean isSurface(Level level, BlockPos pos) {
+            return dimblend.api.RegionLanes.isSurface(level,
+                    dimblend.experience.compat.sable.SableWorldPosition.projectBlock(level, pos));
+        }
     }
 }

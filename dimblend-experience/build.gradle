@@ -104,6 +104,10 @@ configurations {
     runtimeClasspath.extendsFrom localRuntime
 }
 
+if (project.hasProperty('supplementNoPowder') && !project.hasProperty('withSupplementDeath')) {
+    throw new GradleException('supplementNoPowder requires the independent -PwithSupplementDeath fixture')
+}
+
 dependencies {
     // Optional panel bridge: experience only imports carwash's api package.
     compileOnly project(":dimblend-carwash")
@@ -251,6 +255,62 @@ dependencies {
                     'Voidscape-*.jar', 'owo-lib-*.jar', 'create-aeronautics-bundled-*.jar', 'TerraBlender-*.jar'])
         }
     }
+    // Explicit supplement fixture: installed jars only, plus the current core project.
+    // Do not inherit core's machine-local runtime jars or a second copy of Create/Sable.
+    if (project.hasProperty('withSupplement') || project.hasProperty('withSupplementDeath')) {
+        if (project.hasProperty('withChassis')) {
+            throw new GradleException('Supplement and chassis tests use separate fixtures; select one')
+        }
+        if (project.hasProperty('withSupplement') && project.hasProperty('withSupplementDeath')) {
+            throw new GradleException('withSupplement includes positive death tests; select withSupplementDeath alone for its independent fixture')
+        }
+        def modsPath = providers.gradleProperty('supplementModsDir')
+        if (!modsPath.isPresent()) {
+            throw new GradleException('Supplement tests require -PsupplementModsDir=<installed mods directory>')
+        }
+        def installedMods = file(modsPath.get())
+        if (!installedMods.isDirectory()) {
+            throw new GradleException("Supplement mods directory does not exist: ${installedMods}")
+        }
+        // Required closure verified from the installed top-level AND nested metadata.
+        // Aether embeds Accessories, whose required owo dependency is listed explicitly.
+        def requiredJars = [solcarrot: 'solcarrot-*.jar']
+        if (!project.hasProperty('supplementNoPowder')) {
+            requiredJars.putAll([
+                    kaleidoscope_grilling: 'kaleidoscope_grilling-*.jar',
+                    kaleidoscope_cookery: '*kaleidoscopecookery-*.jar'])
+        }
+        if (project.hasProperty('withSupplement')) {
+            requiredJars.putAll([
+                    kaleidoscope_doll: '*kaleidoscopedoll-*.jar',
+                    aeronautics_bundled: 'create-aeronautics-bundled-*.jar',
+                    simurail: 'simurail-*.jar',
+                    twilightforest: '*twilightforest-*.jar',
+                    railways: 'railways-*.jar',
+                    deeperdarker: 'deeperdarker-*.jar',
+                    aether: 'aether-*.jar',
+                    eternal_starlight: 'eternalstarlight-*.jar',
+                    voidscape: 'Voidscape-*.jar',
+                    biomesoplenty: 'BiomesOPlenty-*.jar',
+                    glitchcore: 'GlitchCore-*.jar',
+                    terrablender: 'TerraBlender-*.jar',
+                    owo: 'owo-lib-*.jar'])
+        }
+        requiredJars.each { modId, pattern ->
+            // No recursive fileTree and no backups: exactly one top-level installed jar.
+            def matches = installedMods.listFiles().findAll { candidate ->
+                candidate.isFile() && java.nio.file.FileSystems.getDefault().getPathMatcher("glob:${pattern}")
+                        .matches(candidate.toPath().fileName)
+            }
+            if (matches.size() != 1) {
+                throw new GradleException("Supplement ${modId}: expected one ${pattern} in ${installedMods}, found ${matches.size()}")
+            }
+            localRuntime files(matches.first())
+        }
+        if (project.hasProperty('withSupplement')) {
+            localRuntime(project(':dimblend')) { transitive = false }
+        }
+    }
     // 奖励车厢要把「创造模式洁净伪装半砖」贴成工业铁块材质：材质存在 Copycats+ 的多状态
     // 方块实体里，只能通过它的接口写入。与 dimblend-blocks 同一坐标、同一理由的 compileOnly：
     // 编译可见、运行由整合包提供，且不在 compileOnly 之上再加下载。
@@ -314,6 +374,57 @@ if (project.hasProperty('withChassis')) {
         }
     }
     sourceSets.main.resources.srcDir(chassisPreset)
+}
+
+if (project.hasProperty('withSupplement')) {
+    def namespaces = providers.gradleProperty('supplementTestNamespaces')
+            .getOrElse('dimblend_chassis,dimblend_compat_batch,dimblend_supplement_death,dimblend')
+    neoForge.runs.configureEach {
+        systemProperty 'dimblend.supplementTests', 'true'
+        systemProperty 'dimblend.test.supplementDeath', 'true'
+        systemProperty 'neoforge.enabledGameTestNamespaces', namespaces
+    }
+    neoForge.runs.client.gameDirectory = layout.buildDirectory.dir('supplement-client-run')
+    neoForge.runs.server.gameDirectory = layout.buildDirectory.dir('supplement-server-run')
+    neoForge.runs.gameTestServer.gameDirectory = layout.buildDirectory.dir('supplement-gametest-run')
+
+    // GameTestServer bakes minecraft:flat only. Supply real rotating codec/type with
+    // four vanilla delegates, as in the existing chassis fixture (no late-bound Twilight preset).
+    def supplementPreset = tasks.register('generateSupplementTestPreset') {
+        def sourceDimension = rootProject.file('dimblend/src/main/resources/data/dimblend/dimension/rotating.json')
+        def outputDir = layout.buildDirectory.dir('generated/supplement-test-preset')
+        inputs.file(sourceDimension)
+        outputs.dir(outputDir)
+        doLast {
+            def rotating = new groovy.json.JsonSlurper().parse(sourceDimension, 'UTF-8')
+            rotating.generator.delegates = rotating.generator.delegates.take(4)
+            def dimensions = [
+                    'minecraft:overworld': [type: 'minecraft:overworld', generator: [type: 'minecraft:flat', settings: [
+                            biome: 'minecraft:plains', features: false, lakes: false, structure_overrides: [],
+                            layers: [[block: 'minecraft:bedrock', height: 1], [block: 'minecraft:dirt', height: 2],
+                                     [block: 'minecraft:grass_block', height: 1]]]]],
+                    'minecraft:the_nether': [type: 'minecraft:the_nether', generator: rotating.generator.delegates[3]],
+                    'minecraft:the_end': [type: 'minecraft:the_end', generator: rotating.generator.delegates[2]],
+                    'dimblend:rotating': rotating]
+            def output = outputDir.get().file('data/minecraft/worldgen/world_preset/flat.json').asFile
+            output.parentFile.mkdirs()
+            output.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([dimensions: dimensions])), 'UTF-8')
+        }
+    }
+    // Keep the dev preset out of the published main jar, even when building with this flag.
+    def supplementFixture = sourceSets.create('supplementFixture')
+    supplementFixture.resources.srcDir(supplementPreset)
+    neoForge.mods.named(project.mod_id) {
+        sourceSet(supplementFixture)
+    }
+}
+
+if (project.hasProperty('withSupplementDeath')) {
+    neoForge.runs.gameTestServer.systemProperty 'dimblend.test.supplementDeath', 'true'
+    neoForge.runs.gameTestServer.systemProperty 'neoforge.enabledGameTestNamespaces', 'dimblend_supplement_death'
+    neoForge.runs.gameTestServer.gameDirectory = layout.buildDirectory.dir(
+            project.hasProperty('supplementNoPowder')
+                    ? 'supplement-death-no-powder-gametest-run' : 'supplement-death-gametest-run')
 }
 
 tasks.named('test', Test).configure {

@@ -33,6 +33,7 @@ public abstract class AutomaticCouplerWrenchMixin {
         Level level = context.getLevel();
         BlockPos pos = context.getClickedPos();
         if (!CouplerCharge.toggleCharge(level, pos)) {
+            cir.setReturnValue(InteractionResult.FAIL);
             return;
         }
         IWrenchable.playRotateSound(level, pos);

@@ -278,5 +278,10 @@
 	"screen.dimblend_experience.spyglass_sources.status.saved": "Saved",
 	"screen.dimblend_experience.spyglass_sources.status.save_failed": "Save failed",
 	"screen.dimblend_experience.spyglass_sources.status.invalid_source": "Invalid source",
-	"screen.dimblend_experience.spyglass_sources.status.unknown_source": "Unknown source"
+	"screen.dimblend_experience.spyglass_sources.status.unknown_source": "Unknown source",
+	"item.dimblend_experience.supplement.totem": "Keep in your inventory to protect experience and extra health",
+	"item.dimblend_experience.supplement.wrench": "On a coupler: temporarily uncouple once in a safe region",
+	"item.dimblend_experience.supplement.levitite_bucket": "Effectively lightens trains without adding drag",
+	"item.dimblend_experience.supplement.doll": "It would also make a capable stock keeper",
+	"dimblend_experience.display_source.traction_efficiency": "Traction Efficiency"
 }

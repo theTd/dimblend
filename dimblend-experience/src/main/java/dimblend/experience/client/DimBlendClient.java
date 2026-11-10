@@ -20,6 +20,11 @@ public final class DimBlendClient {
 
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
+        if (net.neoforged.fml.ModList.get().isLoaded("create")
+                && net.neoforged.fml.ModList.get().isLoaded("simurail")) {
+            event.enqueueWork(() -> net.createmod.ponder.foundation.PonderIndex.addPlugin(
+                    new dimblend.experience.client.ponder.SupplementPonderPlugin()));
+        }
         if (net.neoforged.fml.ModList.get().isLoaded("sable")
                 && net.neoforged.fml.ModList.get().isLoaded("veil")
                 && !net.neoforged.fml.ModList.get().isLoaded("iris")) {
@@ -28,6 +33,7 @@ public final class DimBlendClient {
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(LinkedTransmitterDebugClient::tick));
         // G8/G11 探照灯与观察者烈焰人的物品提示（纯客户端，按注册名判定，不解析第三方类型）
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(SearchlightTooltips::onItemTooltip));
+        event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(SupplementTooltips::onItemTooltip));
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(
                 (ClientPlayerNetworkEvent.LoggingOut logout) -> {
                     ClientFarCurseTier.reset();
@@ -35,6 +41,16 @@ public final class DimBlendClient {
                     TrainHornClient.reset();
                     dimblend.experience.compat.connected.LinkedTransmitterDiagnostics.reset();
                 }));
+    }
+
+    @SubscribeEvent
+    public static void onRegisterDollRenderers(
+            net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers event) {
+        if (net.neoforged.fml.ModList.get().isLoaded("create")) {
+            event.registerBlockEntityRenderer(
+                    dimblend.experience.compat.dolls.DollKeeperSeats.BLOCK_ENTITY.get(),
+                    dimblend.experience.client.dolls.DollKeeperSeatRenderer::new);
+        }
     }
 
     @SubscribeEvent
