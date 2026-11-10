@@ -65,6 +65,27 @@ class LabelPlacementTest {
     }
 
     @Test
+    void aSelectedLabelIsPlacedBeforeNearerOnes() {
+        // The selected mark is farther away but must not be hidden by the nearer one.
+        LabelPlacement.Candidate<String> selected = LabelPlacement.Candidate.above(
+                "selected", 900.0, 100.0F, 100.0F, WIDTH, HEIGHT, true);
+        LabelPlacement.Candidate<String> nearer = label("nearer", 300.0, 120.0F, 105.0F);
+
+        assertEquals(List.of("selected"), names(LabelPlacement.place(List.of(nearer, selected))));
+    }
+
+    @Test
+    void aSelectedLabelDoesNotBlockLabelsThatStillFit() {
+        LabelPlacement.Candidate<String> selected = LabelPlacement.Candidate.above(
+                "selected", 900.0, 100.0F, 100.0F, WIDTH, HEIGHT, true);
+        LabelPlacement.Candidate<String> near = label("near", 300.0, 120.0F, 105.0F);
+        LabelPlacement.Candidate<String> apart = label("apart", 500.0, 300.0F, 100.0F);
+
+        assertEquals(
+                List.of("selected", "apart"), names(LabelPlacement.place(List.of(near, apart, selected))));
+    }
+
+    @Test
     void sitsAboveItsAnchorHorizontallyCentered() {
         LabelPlacement.Candidate<String> candidate = label("a", 300.0, 100.0F, 50.0F);
 

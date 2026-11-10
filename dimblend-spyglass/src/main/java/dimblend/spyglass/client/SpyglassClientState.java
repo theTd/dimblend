@@ -136,6 +136,12 @@ public final class SpyglassClientState {
         // A scan flag belongs to the level it was requested for; never let the measuring line survive
         // a dimension change or a disconnect.
         SpyglassBusyHandlers.reset();
+        // A selection belongs to the level it was made in: never let it point into another dimension,
+        // and never let a held mouse button survive a disconnect as an armed latch.
+        StructureSelection.clear();
+        MarkFrame.publish(null);
+        MarkScreenFrame.reset();
+        StructureMarkInput.reset();
     }
 
     @SubscribeEvent

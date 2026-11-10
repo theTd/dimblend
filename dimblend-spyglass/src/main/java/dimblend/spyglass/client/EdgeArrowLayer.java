@@ -15,12 +15,14 @@ import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
 import org.joml.Vector3f;
 
 /**
- * One edge arrow pointing at the nearest {@code ?} that is not inside the lens. {@code !} never
- * participates, and no {@code ?} means no arrow.
+ * One edge arrow. With a selection it points at the selected structure only, and only while that
+ * mark is outside the lens; without a selection it points at the nearest {@code ?} that is not
+ * inside the lens. {@code !} never participates in the fallback, and no candidate means no arrow.
  *
  * <p>Reads the same {@link MarkScreenFrame} the marker layer published this frame, so the target and
- * the glyphs are projected identically. The arrow is drawn above the scope overlay, on the black
- * frame, as a small filled triangle rotated to the target direction.
+ * the glyphs are projected identically, and a selected mark hidden by the overlap rule is still
+ * located by its projected direction ({@link EdgeArrowTarget}). The arrow is drawn above the scope
+ * overlay, on the black frame, as a small filled triangle rotated to the target direction.
  */
 // RegisterGuiLayersEvent is an IModBusEvent: FML registers this listener on the mod bus by itself.
 @EventBusSubscriber(modid = DimBlendSpyglass.MODID, value = Dist.CLIENT)
@@ -44,7 +46,9 @@ public final class EdgeArrowLayer {
             return;
         }
         MarkScreenFrame frame = MarkScreenFrame.current();
-        MarkScreenFrame.Mark target = nearestUnknownOutsideTheLens(frame);
+        StructureSelection.Entry selected = StructureSelection.current();
+        MarkScreenFrame.Mark target =
+                EdgeArrowTarget.choose(frame, selected == null ? null : selected.key());
         if (target == null) {
             return;
         }
@@ -58,20 +62,6 @@ public final class EdgeArrowLayer {
             return;
         }
         draw(graphics, arrow);
-    }
-
-    /** Nearest predicted mark whose center is outside the inset lens rectangle. */
-    private static MarkScreenFrame.Mark nearestUnknownOutsideTheLens(MarkScreenFrame frame) {
-        MarkScreenFrame.Mark best = null;
-        for (MarkScreenFrame.Mark mark : frame.marks()) {
-            if (!mark.predicted() || mark.inLens()) {
-                continue;
-            }
-            if (best == null || mark.distance() < best.distance()) {
-                best = mark;
-            }
-        }
-        return best;
     }
 
     private static void draw(GuiGraphics graphics, EdgeArrowGeometry.Arrow arrow) {

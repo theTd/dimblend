@@ -8,9 +8,12 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.junit.jupiter.api.Test;
@@ -428,6 +431,198 @@ class RecipeEditRulesTest {
         }
     }
 
+    // —— 2026-11-11 EnderStorage 标准合成 ——
+    //
+    // fixture 逐字取自整合包 EnderStorage-1.21.1-2.13.0.191.jar 的
+    // data/enderstorage/recipe/*.json（只做缩进整理，字段与值未改动）。
+    // 真实配方由 codechicken.enderstorage.recipe.CreateRecipe extends ShapedRecipe 承载，
+    // serializer 的 Codec 是 ShapedRecipePattern.MAP_CODEC，所以「材料」在 JSON 里是
+    // key 符号表，pattern 只是布局。单测通过反射调用生产 RecipeJsonEditor.writePath 把规则
+    // 字段编辑写入 fixture 后按 pattern 展开，断言槽位；Codec 往返本身仍只能实机验证。
+
+    private static final ResourceLocation ENDER_TANK = ResourceLocation.parse("enderstorage:ender_tank");
+    private static final ResourceLocation ENDER_CHEST = ResourceLocation.parse("enderstorage:ender_chest");
+    private static final ResourceLocation ENDER_TANK_RECOLOUR =
+            ResourceLocation.parse("enderstorage:recolour_ender_tank");
+    private static final ResourceLocation ENDER_CHEST_RECOLOUR =
+            ResourceLocation.parse("enderstorage:recolour_ender_chest");
+
+    private static final String ENDER_TANK_JSON = """
+            {
+              "type": "enderstorage:create_recipe",
+              "key": {
+                "B": { "item": "minecraft:blaze_rod" },
+                "C": { "item": "minecraft:cauldron" },
+                "O": { "tag": "c:obsidians" },
+                "P": { "tag": "c:ender_pearls" },
+                "W": { "tag": "c:wools" }
+              },
+              "pattern": [ "BWB", "OCO", "BPB" ],
+              "result": { "count": 1, "id": "enderstorage:ender_tank" }
+            }
+            """;
+
+    private static final String ENDER_CHEST_JSON = """
+            {
+              "type": "enderstorage:create_recipe",
+              "key": {
+                "B": { "item": "minecraft:blaze_rod" },
+                "C": { "tag": "c:chests/wooden" },
+                "O": { "tag": "c:obsidians" },
+                "P": { "tag": "c:ender_pearls" },
+                "W": { "tag": "c:wools" }
+              },
+              "pattern": [ "BWB", "OCO", "BPB" ],
+              "result": { "count": 1, "id": "enderstorage:ender_chest" }
+            }
+            """;
+
+    private static final String ENDER_TANK_RECOLOUR_JSON = """
+            {
+              "type": "enderstorage:recolour_recipe",
+              "result": { "count": 1, "id": "enderstorage:ender_tank" }
+            }
+            """;
+
+    private static final String ENDER_CHEST_RECOLOUR_JSON = """
+            {
+              "type": "enderstorage:recolour_recipe",
+              "result": { "count": 1, "id": "enderstorage:ender_chest" }
+            }
+            """;
+
+    /**
+     * 2026-11-11：末影水缸只把末影珍珠位（key.P）换成虚空核心，四角烈焰棒保留。
+     *
+     * <p>pattern {@code BWB/OCO/BPB} 中 P 只在第三行中间出现一次；B 在四个角。
+     * 断言按 3×3 行优先展开后的每个槽位，确认改的是珍珠位而不是四角。</p>
+     */
+    @Test
+    void enderTankPearlSlotIsRewrittenToVoidCoreKeepingBlazeRodCorners() {
+        RecipeEdit.ModifyRecipeFields rule = fieldRuleById(ENDER_TANK);
+        assertNotNull(rule, "缺少对 enderstorage:ender_tank 的字段改写规则");
+        assertEquals(Set.of(ENDER_TANK), rule.recipeIds(), "规则必须只命中 enderstorage:ender_tank");
+
+        JsonObject fixture = json(ENDER_TANK_JSON).getAsJsonObject();
+        assertEquals(List.of(
+                "minecraft:blaze_rod", "#c:wools", "minecraft:blaze_rod",
+                "#c:obsidians", "minecraft:cauldron", "#c:obsidians",
+                "minecraft:blaze_rod", "#c:ender_pearls", "minecraft:blaze_rod"),
+                expandGrid(fixture), "fixture 与 EnderStorage 2.13.0.191 的 ender_tank.json 不一致");
+
+        JsonObject edited = applyFieldEdits(fixture, rule.fieldEdits());
+        assertEquals(List.of(
+                "minecraft:blaze_rod", "#c:wools", "minecraft:blaze_rod",
+                "#c:obsidians", "minecraft:cauldron", "#c:obsidians",
+                "minecraft:blaze_rod", "voidscape:machine_core", "minecraft:blaze_rod"),
+                expandGrid(edited),
+                "水缸只应把第三行中间（槽位 8）的末影珍珠换成虚空核心，四角烈焰棒与 C/O/W 原样");
+        assertEquals("enderstorage:create_recipe", edited.get("type").getAsString(),
+                "改材料不得改变自定义配方类型（CreateRecipe 的羊毛染色 assemble 依赖它）");
+        assertSameKeySymbols(fixture, edited);
+        assertResultUnchanged(fixture, edited);
+        assertOtherKeysUnchanged(fixture, edited, "B", "C", "O", "W");
+    }
+
+    /**
+     * 2026-11-11：末影箱四角烈焰棒（key.B）整组换成烈焰粉，末影珍珠保留。
+     *
+     * <p>pattern {@code BWB/OCO/BPB} 中 B 位于 4 个角（槽位 1/3/7/9），
+     * P 位于第三行中间（槽位 8）。C 仍是 {@code c:chests/wooden} 标签。</p>
+     */
+    @Test
+    void enderChestBlazeRodCornersAreRewrittenToBlazePowderKeepingPearl() {
+        RecipeEdit.ModifyRecipeFields rule = fieldRuleById(ENDER_CHEST);
+        assertNotNull(rule, "缺少对 enderstorage:ender_chest 的字段改写规则");
+        assertEquals(Set.of(ENDER_CHEST), rule.recipeIds(), "规则必须只命中 enderstorage:ender_chest");
+
+        JsonObject fixture = json(ENDER_CHEST_JSON).getAsJsonObject();
+        assertEquals(List.of(
+                "minecraft:blaze_rod", "#c:wools", "minecraft:blaze_rod",
+                "#c:obsidians", "#c:chests/wooden", "#c:obsidians",
+                "minecraft:blaze_rod", "#c:ender_pearls", "minecraft:blaze_rod"),
+                expandGrid(fixture), "fixture 与 EnderStorage 2.13.0.191 的 ender_chest.json 不一致");
+
+        JsonObject edited = applyFieldEdits(fixture, rule.fieldEdits());
+        assertEquals(List.of(
+                "minecraft:blaze_powder", "#c:wools", "minecraft:blaze_powder",
+                "#c:obsidians", "#c:chests/wooden", "#c:obsidians",
+                "minecraft:blaze_powder", "#c:ender_pearls", "minecraft:blaze_powder"),
+                expandGrid(edited),
+                "末影箱四个角都应变成烈焰粉；末影珍珠位（槽位 8）与 C/W/O 不得变化");
+        assertSameKeySymbols(fixture, edited);
+        assertResultUnchanged(fixture, edited);
+        assertOtherKeysUnchanged(fixture, edited, "C", "O", "P", "W");
+    }
+
+    /**
+     * 染色配方必须原样保留：{@code enderstorage:recolour_ender_tank} /
+     * {@code ..._ender_chest} 与标准合成<b>共享同一个输出物品</b>，任何按产物匹配的
+     * 删除或网格规则都会误伤它们；两条新规则必须严格按配方 ID 命中。
+     *
+     * <p>染色配方的 JSON 只有 type + result，没有 key/pattern。规则按精确配方 ID 命中，
+     * 根本不会走到路径写入；即使以后误命中，{@code RecipeJsonEditor.writePath} 也会失败
+     * 并让执行器保留原配方。</p>
+     */
+    @Test
+    void enderStorageRecolourRecipesAreNeverTargeted() {
+        RecipeEdit.ModifyRecipeFields tank = fieldRuleById(ENDER_TANK);
+        RecipeEdit.ModifyRecipeFields chest = fieldRuleById(ENDER_CHEST);
+        assertNotNull(tank);
+        assertNotNull(chest);
+
+        JsonObject recolourTank = json(ENDER_TANK_RECOLOUR_JSON).getAsJsonObject();
+        JsonObject recolourChest = json(ENDER_CHEST_RECOLOUR_JSON).getAsJsonObject();
+        assertEquals("enderstorage:recolour_recipe", recolourTank.get("type").getAsString());
+        assertEquals("enderstorage:ender_tank", recolourTank.getAsJsonObject("result").get("id").getAsString());
+        assertEquals("enderstorage:recolour_recipe", recolourChest.get("type").getAsString());
+        assertEquals("enderstorage:ender_chest", recolourChest.getAsJsonObject("result").get("id").getAsString());
+
+        for (ResourceLocation recolour : List.of(ENDER_TANK_RECOLOUR, ENDER_CHEST_RECOLOUR)) {
+            assertFalse(tank.matchesId(recolour), "水缸规则不得命中染色配方 " + recolour);
+            assertFalse(chest.matchesId(recolour), "末影箱规则不得命中染色配方 " + recolour);
+        }
+
+        // 三个规则阶段一起扫描：不得有任何按输出物品 / 配方 ID 命中末影水缸、末影箱
+        // （或其染色配方）的删除、网格、产物替换或排序规则。
+        Set<ResourceLocation> enderOutputs = Set.of(ENDER_TANK, ENDER_CHEST);
+        Set<ResourceLocation> recolours = Set.of(ENDER_TANK_RECOLOUR, ENDER_CHEST_RECOLOUR);
+        for (List<RecipeEdit> edits : List.of(RecipeEditRules.edits(),
+                RecipeEditRules.ingredientEdits(), RecipeEditRules.lateEdits())) {
+            for (RecipeEdit edit : edits) {
+                if (edit instanceof RecipeEdit.DeleteByRecipeId delete) {
+                    for (ResourceLocation id : delete.recipeIds()) {
+                        assertFalse(recolours.contains(id), "规则「" + delete.label() + "」删除了染色配方 " + id);
+                    }
+                }
+                if (edit instanceof RecipeEdit.DeleteByResultId delete) {
+                    for (ResourceLocation output : enderOutputs) {
+                        assertFalse(delete.resultIds().matches(output), "规则「" + delete.label()
+                                + "」按产物 " + output + " 删除，会连带删掉共享该产物的染色配方");
+                    }
+                }
+                if (edit instanceof RecipeEdit.ModifyShapedGrid grid) {
+                    for (ResourceLocation output : enderOutputs) {
+                        assertFalse(grid.resultTargets().contains(output), "规则「" + grid.label()
+                                + "」按产物 " + output + " 做网格改写，会连带改写染色配方（且丢失 CreateRecipe 子类）");
+                    }
+                }
+                if (edit instanceof RecipeEdit.ReplaceResultId replace) {
+                    assertFalse(enderOutputs.contains(replace.from()) || enderOutputs.contains(replace.to()),
+                            "规则「" + replace.label() + "」改写了末影水缸/末影箱的产物 ID，会影响标准合成与染色配方");
+                }
+                if (edit instanceof RecipeEdit.ReplaceItemIdDeep deep) {
+                    assertFalse(enderOutputs.contains(deep.from()) || enderOutputs.contains(deep.to()),
+                            "规则「" + deep.label() + "」深度替换了末影水缸/末影箱的物品 ID");
+                }
+                if (edit instanceof RecipeEdit.MoveRecipeBefore move) {
+                    assertFalse(recolours.contains(move.recipeId()) || recolours.contains(move.anchorId()),
+                            "规则「" + move.label() + "」把染色配方当排序目标或锚点");
+                }
+            }
+        }
+    }
+
     /** 取出命中给定配方 ID 的字段改写规则；不存在即断言失败。 */
     private static RecipeEdit.FieldModify fieldRuleFor(List<RecipeEdit> edits, ResourceLocation recipeId) {
         for (RecipeEdit edit : edits) {
@@ -560,6 +755,88 @@ class RecipeEditRulesTest {
             }
         }
         return deleted;
+    }
+
+    private static final Method EDITOR_WRITE_PATH = editorWritePath();
+
+    /**
+     * 反射取得生产 {@code RecipeJsonEditor.writePath} 的私有方法句柄。
+     *
+     * <p>测试不复制路径写入算法，直接调用产品代码本身；产品 API 不因此扩大，
+     * 共享编辑器也不改。它只执行「路径写入」这一步：完整的 serializer Codec
+     * 编解码需要游戏注册表与配方实例，离线跑不了，单测不是 serializer 保真证明。</p>
+     */
+    private static Method editorWritePath() {
+        try {
+            Method method = RecipeJsonEditor.class.getDeclaredMethod(
+                    "writePath", JsonObject.class, String.class, JsonElement.class);
+            method.setAccessible(true);
+            return method;
+        } catch (ReflectiveOperationException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
+    /**
+     * 用生产 {@code writePath} 把规则字段编辑写进 fixture 的深拷贝。
+     *
+     * <p>返回 {@code false} 说明规则路径在真实配方 JSON 上不存在（例如误命中染色配方），
+     * 生产执行器会保留原配方；测试直接按失败处理，不允许悄悄跳过。</p>
+     */
+    private static JsonObject applyFieldEdits(JsonObject fixture, Map<String, JsonElement> fieldEdits) {
+        JsonObject edited = fixture.deepCopy();
+        for (Map.Entry<String, JsonElement> edit : fieldEdits.entrySet()) {
+            boolean written;
+            try {
+                written = Boolean.TRUE.equals(EDITOR_WRITE_PATH.invoke(null, edited, edit.getKey(), edit.getValue()));
+            } catch (ReflectiveOperationException e) {
+                throw new AssertionError("无法调用 RecipeJsonEditor.writePath", e);
+            }
+            assertTrue(written, "生产 RecipeJsonEditor.writePath 拒绝路径 " + edit.getKey()
+                    + "：真实配方 JSON 的形状与规则假设不符");
+        }
+        return edited;
+    }
+
+    /** 只允许改符号的值：新增或删除符号会让 {@code ShapedRecipePattern.unpack} 直接解码失败。 */
+    private static void assertSameKeySymbols(JsonObject before, JsonObject after) {
+        assertEquals(before.getAsJsonObject("key").keySet(), after.getAsJsonObject("key").keySet(),
+                "字段编辑不得新增或删除 key 符号");
+    }
+
+    /** 按 pattern + key 展开成 3×3 行优先槽位列表，用于断言布局而不是断言规则字符串。 */
+    private static List<String> expandGrid(JsonObject recipe) {
+        JsonObject key = recipe.getAsJsonObject("key");
+        List<String> slots = new ArrayList<>(9);
+        for (JsonElement row : recipe.getAsJsonArray("pattern")) {
+            for (char symbol : row.getAsString().toCharArray()) {
+                slots.add(symbol == ' ' ? "empty" : describeIngredient(key.getAsJsonObject(String.valueOf(symbol))));
+            }
+        }
+        return slots;
+    }
+
+    /** 材料对象的可读形式：物品写 id，标签写 #tag。 */
+    private static String describeIngredient(JsonElement ingredient) {
+        JsonObject object = ingredient.getAsJsonObject();
+        if (object.has("tag")) {
+            return "#" + object.get("tag").getAsString();
+        }
+        if (object.has("item")) {
+            return object.get("item").getAsString();
+        }
+        return "<other:" + object + ">";
+    }
+
+    private static void assertResultUnchanged(JsonObject before, JsonObject after) {
+        assertEquals(before.get("result"), after.get("result"), "产物 ID、数量与组件必须原样");
+    }
+
+    private static void assertOtherKeysUnchanged(JsonObject before, JsonObject after, String... symbols) {
+        for (String symbol : symbols) {
+            assertEquals(before.getAsJsonObject("key").get(symbol), after.getAsJsonObject("key").get(symbol),
+                    "key." + symbol + " 不在本次需求内，不得改写");
+        }
     }
 
     private static JsonObject packResource(String path) throws Exception {

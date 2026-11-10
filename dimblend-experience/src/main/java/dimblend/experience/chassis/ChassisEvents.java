@@ -2,8 +2,10 @@ package dimblend.experience.chassis;
 
 import com.simibubi.create.AllBlocks;
 import dimblend.experience.DimBlend;
+import dimblend.experience.compat.sable.ChassisWorldAnchorProbe;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -40,21 +42,43 @@ public final class ChassisEvents {
         PENDING.add(new Placement(level, event.getPos().immutable()));
     }
 
+    /**
+     * 驾驶台右键：主手空手或 Create 扳手、未潜行、且驾驶台当前可用时才开选择页。
+     *
+     * <p>副手事件直接放行（{@code getHand() != MAIN_HAND}）；潜行放行，保留扳手拆卸；
+     * 其他物品放行，不吞掉放置/使用。服务端只有在 {@link ChassisSelection#open} 真正建立
+     * 会话后才取消事件；客户端用同一份 {@link ChassisSelection#applicable} 判据取消，
+     * 避免“点了没菜单”。</p>
+     */
     @SubscribeEvent
     public static void onUse(PlayerInteractEvent.RightClickBlock event) {
-        if (!available() || !event.getLevel().getBlockState(event.getPos()).is(AllBlocks.TRAIN_CONTROLS.get())
-                || !event.getLevel().dimension().location().toString().equals("dimblend:rotating")) return;
-        // Preserve wrench removal before the irreversible confirmation.
-        if (event.getItemStack().is(com.simibubi.create.AllItems.WRENCH)) return;
+        if (!available() || event.getHand() != InteractionHand.MAIN_HAND) return;
+        if (!(event.getEntity() instanceof Player player)) return;
+        boolean menuTrigger = event.getItemStack().isEmpty()
+                || event.getItemStack().is(com.simibubi.create.AllItems.WRENCH);
+        boolean applicable = ChassisSelection.applicable(event.getLevel(), player, event.getPos());
+        if (ChassisInteraction.decide(true, player.isShiftKeyDown(), menuTrigger, applicable)
+                != ChassisInteraction.Action.OPEN) return;
+        if (event.getLevel() instanceof ServerLevel) {
+            if (!(player instanceof net.minecraft.server.level.ServerPlayer serverPlayer)
+                    || !ChassisSelection.open(serverPlayer, event.getPos())) {
+                return;
+            }
+        }
         event.setCanceled(true);
         event.setCancellationResult(InteractionResult.SUCCESS);
-        if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player) {
-            ChassisSelection.open(player, event.getPos());
-        }
     }
 
     @SubscribeEvent
     public static void onTick(ServerTickEvent.Post event) {
+        if (ModList.get().isLoaded("sable") && ModList.get().isLoaded("simurail")) {
+            try {
+                ChassisWorldAnchorProbe.tick(event.getServer());
+            } catch (RuntimeException failure) {
+                DimBlend.LOGGER.warn("Chassis world anchor probe tick failed", failure);
+                ChassisWorldAnchorProbe.stop("tick_error");
+            }
+        }
         if (!available()) return;
         List<Placement> placements = List.copyOf(PENDING);
         PENDING.clear();
@@ -72,6 +96,9 @@ public final class ChassisEvents {
 
     @SubscribeEvent
     public static void onStop(ServerStoppedEvent event) {
+        if (ModList.get().isLoaded("sable") && ModList.get().isLoaded("simurail")) {
+            ChassisWorldAnchorProbe.shutdown();
+        }
         PENDING.clear();
         ChassisSelection.clear();
     }

@@ -98,6 +98,12 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.endsWith(".compat.dimblend.WarpGateBlockMixin")) {
             return isLoaded("dimblend");
         }
+        // 玩偶兼任售货员：整套包的目标分属 Create（SeatBlock / StockTickerInteractionHandler /
+        // StockKeeperRequestScreen）与 Kaleidoscope Doll（DollEntityItem），两端必须同时在场。
+        // 只有 Create 时 Doll 的目标类不存在，整个包跳过，避免 mixin 应用即崩。
+        if (mixinClassName.contains(".compat.create.stockkeeper.")) {
+            return isLoaded("create") && isLoaded("kaleidoscope_doll");
+        }
         if (mixinClassName.endsWith(".compat.create.ItemDrainIrrigationMixin")
                 || mixinClassName.endsWith(".compat.create.ItemDrainGrowthBoostMixin")
                 || mixinClassName.endsWith(".compat.create.ItemDrainNetherEvaporationMixin")

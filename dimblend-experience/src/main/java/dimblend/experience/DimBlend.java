@@ -24,6 +24,7 @@ import dimblend.experience.gametest.SableLavaMeltGameTests;
 import dimblend.experience.gametest.SableVoidFitGameTests;
 import dimblend.experience.gametest.CopycatObsidianHardnessGameTests;
 import dimblend.experience.gametest.DeployerIcePlacementGameTests;
+import dimblend.experience.gametest.DollStockKeeperGameTests;
 import dimblend.experience.gametest.FireHoseDropGameTests;
 import dimblend.experience.gametest.LimitedWaterGameTests;
 import dimblend.experience.gametest.LootMapFilterGameTests;
@@ -146,6 +147,9 @@ public class DimBlend {
             event.register(KineticUnloadedShareGameTests.class);
             event.register(CdgKineticOverloadGameTests.class);
             event.register(TrainHornGameTests.class);
+            // 玩偶售货员：目标类来自 Create，Doll 只按注册名访问，缺 Doll 时各用例自己
+            // SKIP 并打 WARN（不是不注册），所以只按 Create 门控。
+            event.register(DollStockKeeperGameTests.class);
         }
         if (ModList.get().isLoaded("create_connected")) {
             event.register(LinkedTransmitterGameTests.class);
