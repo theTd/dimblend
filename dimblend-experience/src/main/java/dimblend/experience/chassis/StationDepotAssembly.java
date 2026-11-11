@@ -327,6 +327,7 @@ public final class StationDepotAssembly {
         dimblend.experience.compat.sable.SablePlotRelight.relight(level, car);
         SubLevelContainer.getContainer(level)
                 .addForceLoadTicket(car, SubLevelLoadingTicketType.COMMAND_FORCED, Unit.INSTANCE);
+        ChassisAssemblyRegistration.register(level, car, site.blueprint, centre);
         site.assembled = true;
         site.carId = car.getUniqueId();
         site.placed.clear();

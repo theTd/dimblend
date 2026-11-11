@@ -11,7 +11,7 @@
 - 站场侧线底盘与出生点动力底盘（2026-11-02 起）：外观用车厢底盘图纸，装配时以 `driveEnds=true` 配置转向架——两个 ±17 车架驱动强度 32.0，牵引力与动力底盘相同。打印出的车厢底盘仍全部 0.0，不受影响。只影响之后新建的底盘，已有底盘不自动替换。
 - 场地检查为X±24、Y±1、Z±3，包含边界，共49×3×7格。忽略起点驾驶台和轨道，其余世界方块必须为空气；Sable实际方块的投影也不能占入。使用已有 `VoidFitVoxelizer` 的旋转保守覆盖口径。
 - 不合规驾驶台破坏并掉落；全服在线玩家收到快捷栏上方消息“需要放置在宽轨上”或“附近不空旷 不安全”。合规时广播“右键选择底盘类型”。
-- 右键归属（2026-11-10，阶段1）：主手空手或 Create 扳手**普通右键**打开选择页；潜行一律放行（扳手拆卸仍归 Create）；副手永不触发；其他物品放行。适用条件（驾驶台、`dimblend:rotating`、天然主线、8 格内、玩家可交互）不满足时不取消事件，避免吞点击；服务端只有真正建立会话后才取消。
+- 右键归属（2026-11-10，阶段1）：主手空手或 Create 扳手**普通右键**打开选择页；潜行一律放行（扳手拆卸仍归 Create）；副手永不触发；其他物品放行。适用条件（驾驶台、`dimblend:rotating`、天然主线、8 格内、玩家可交互）不满足时不取消事件，避免吞点击；服务端只有真正建立会话后才取消（2026-11-11 复核：物品→触发器映射收进 `ChassisInteraction.menuTrigger`，避免映射散落在事件体里被改成“非空即触发”而吞掉放置/使用）。
 - 客户端适用条件（2026-11-10，C4）：不猜 `TrackBlock`；用服务器推送的当前 band lane + band size 反推与服务端 `CorridorRails` 相同的 per-delegate 轨道 id。只有**驾驶台与玩家同一 band region**且 lane 已知时才取消；跨 region、`unknown` 或未同步时返回 false（不取消，服务端决定），避免用过期 lane 吞掉一个本应放行的放置。
 - 右键打开两种选项。第一次点击后提示“该操作不可逆 请谨慎考虑 稍候”、选项禁用5秒，再显示“再次点击 确认打印”。可随时退出；重开重新选择、重新计时。服务端验证会话、距离、冷静期及场地；多人重复确认只成功一次。
 - 性能优先：每6 tick铺一排，约13.5秒完成，伴随捡物品音效；每tick施工预算约2ms，最多8处同时施工。服务器卡顿可延长工期。只组装图纸中的方块，不收集轨道或周围建筑；整车通过Sable持久强制加载。
@@ -166,6 +166,49 @@
 - 不构建、不进游戏、不新增工具。
 - 正式高度锁仍等 `hold` 实机证据；probe 未过不接生产 tick。
 
+### 2026-11-11 固定高度生产路径：旧阻塞记录（同日已按新口径实现，见文末“生产轨锁”）
+
+> 以下 1–6 是“高度锁 + 探针”旧口径的阻塞记录。新口径改为“锁 Y/Z 平移与全部旋转、仅留
+> 世界 X 平移”，由文末的 `ChassisRailLock` 接入生产；旧记录保留为证据缺口/历史，不代表
+> 当前仍未实现。
+
+用户已选定“固定高度平面轨道”概念，但当时**没有**接入生产高度约束，也没有加任何
+per-tick teleport。原因不是工作量，而是当前证据不足以写出一个不会误伤用户列车的锁。
+逐条列阻塞项，供下一轮决策；这些是“缺什么证据”，不是“实现难度”：
+
+1. **`hold` 探针在本机从未运行过。** 现有记录只有静态审查：`qa/nine-fixes-20261110.md` §14.2
+   明确“车架正式固定高度：未实现……没有生产 tick 接锁、没有每 tick teleport、没有脱轨/拆解释放”；
+   `qa/live-nine-fixes-20261110.md` §World anchor acceptance 记录的是“Stage 1 hold preserves its
+   starting Y and tilt”，即只说明了**没有实测**、并且说明即使拿到采样也只能证明 ground-joint
+   行为，不能证明标称高度或水平化甲板。`docs` 里 `hold` 的验收门（本文件“待 probe 的设计门”）
+   全部仍为未打勾状态。没有这一组读数，`LINEAR_Y + ANGULAR_X/Z` 的关节帧方向是推的，不是测的。
+2. **frame2 的局部基 `B` 未确认。** 设计写的是“标准世界装配路径 pose 默认朝向为单位阵，故
+   `B=I`”，但同一段自己也标注“该默认值需首次编译/探针确认，不能猜”。这是整个水平锁唯一
+   的坐标前提：猜错就是把一辆本来水平的车按住一个固定倾角。探针的 `dump` 必须先给出装配
+   瞬间的 `logicalPose.orientation` 读数。
+3. **标称 deck `TRACK_Y+2=66` 未与实测对齐。** 66 是从 `OakTrackCorridor.TRACK_Y=64` 与蓝图
+   顶面推出来的；`docs` 的设计门第 2 条要求实测偏差先解释，否则不得改用沉车 Y。目前既没有
+   实测 deck 高度，也没有偏差解释，锁的目标高度就没有可信值。
+4. **生命周期释放没有可依赖的“脱轨事件”。** Simurail 没有 derail 事件（本文件“解除/脱轨”
+   段），只能轮询 `isDerailed()`；而 `SubLevelRemovalReason` 只有 `UNLOADED`/`REMOVED`，
+   两者无法区分“玩家拆解”和“引擎因 mass 无效移除”。在没有实测顺序的前提下写释放钩子，
+   最坏情况是把一次卸载当成拆解、删掉用户车的身份与高度校准。
+5. **锁与既有轮对锁的叠加未验证。** `PhysicsBogeyAxleLockMixin` 已经锁住每个轮轴的
+   `LINEAR_Y/LINEAR_Z`（`SimurailBogeyLockRules` 的 captive half-width）。再叠一个整车
+   `LINEAR_Y` 世界锚，在同一自由度上有两个硬约束；谁先解、过弯时会不会互相顶，只有实机
+   能回答。`docs` 的冻结边界也明确“不改 Simurail 轮对约束与现有 mixin”。
+6. **“载重/视觉支撑”没有可核对的需求数值。** 本仓库与 docs 里找不到该条需求的载荷、
+   下沉量或外观目标（grep `载重 / 承重 / 视觉支撑 / 下沉` 均无相关条目），只有用户口述的
+   “改善载重/视觉支撑”。在不改 train mass / traction / stress / braking / drive 的前提下，
+   能动的只剩“高度与姿态由谁决定”这一项，而那正是上面 1–5 的锁。没有目标值就无法判定
+   做完没有，写出来的常量就是猜的。
+
+因此本轮的处置是：**保持生产路径不变**，不改 `mass/drive/stress/brake`、不加 teleport、
+不建 joint；把上面的门留在原地。等 `hold` 在测试存档跑出 `verticalError`、pitch/roll 漂移、
+`logicalPose.orientation` 与实测 deck 四组读数后，再按“已核源码事实”一节的公式接
+`ChassisNominal` + `ChassisIdentityService`。在那之前，任何“每 tick 把车 teleport 回 66”
+的补丁都只会把用户列车压进轨道里，属于**已知有害**，不做。
+
 ## 局部验证
 
 ```text
@@ -181,10 +224,70 @@ gradlew.bat :dimblend-experience:runGameTestServer -PwithChassis -PchassisModsDi
 2026-11-10 阶段1/C4/阶段2纯数据新增（**尚未编译、未运行**）：
 
 - JUnit：`ChassisInteractionTest`（主手/潜行/副手/物品/适用条件组合）、`ChassisPoseTest`（YXZ 欧拉分解、只保留偏航的关节帧、车体局部帧、plot→world 锚点）、`ChassisLaneRuleTest`（lane→轨道 id 与服务端 profile 一致）、`ChassisSkeletonTest`（四朝向、上装忽略、W/I 布局、缺骨架/多转向架拒绝）、`ChassisRegistryTest`（显式标称高度、脱轨/卸载保留、真拆解删除、NBT 往返、坏条目跳过）。
-- GameTest：`ChassisInteractionGameTests`（空手/普通扳手开菜单；潜行/副手/其他物品/够不到/无天然主线全部放行）、`ChassisWorldAnchorGameTests`（单方块 Sable 子层级上建 `hold` 探针，采样后按时销毁且 `isValid()` 为 false；空目标不建 joint）。
+- GameTest：`ChassisInteractionGameTests`（空手/普通扳手开菜单；潜行/副手/其他物品/够不到/无天然主线全部放行；2026-11-11 增补：可放置方块与可用物品必须走原版路径且不开会话、副手持扳手也不开菜单）、`ChassisWorldAnchorGameTests`（单方块 Sable 子层级上建 `hold` 探针，采样后按时销毁且 `isValid()` 为 false；空目标不建 joint）。
 - 实机：在测试存档进入 `dimblend:rotating`，对指定车架执行 `/dbx chassis probe start <uuid> 10 hold`，再用 `dump` 取漂移/高度/轮 pivot 记录。**未执行前不得把正式锁接入生产 tick。**
 - 2026-11-11 COM 修正（**尚未编译、未运行**）：`ChassisPoseTest.anchorSubtractsLargeNonZeroPlotCenterOfMassLikeNativeJoint` 覆盖 raw y128.5 / COM y128.0 / bodyY65 的非零 COM；probe start/sample 统一用 `position + R*(raw-COM)`，COM 无效 fail closed；Report/Sample 记录 COM。该修正只修诊断锚点，不证明 deck 66，也不改正式 frame2。
 
 独立复核共3轮：首轮全量发现原料复合语义及验证覆盖问题；第2轮原agent增量发现嵌套标签展开遗漏及夹具限制；第3轮原agent增量验证全部关闭，通过，无误判排除。标签问题最终通过延后至真实标签绑定后求值解决，删除了标签JSON改写。
 
 验证边界：没有打开客户端检查选择页面的实际画面；没有实际重启游戏进程验证中途施工继续，仅验证保存数据往返和实际服务端保存。
+
+## 生产轨锁（2026-11-11 实现，未实机验证）
+
+用户新口径：`dimblend:rotating` 的标准车架列车，车轮必须始终压在轨上，不得抬升、下沉、
+脱轨或横向漂移；整台已装配刚体只允许沿世界 X 平移。即锁 `LINEAR_Y`、`LINEAR_Z` 与
+`ANGULAR_X/Y/Z`，只留 `LINEAR_X`。归档证据：轨道块 y=64、标称 deck≈66、主线水平沿 X；
+归档分析为 6 个已连接子层级 + 1 台站场车厢。
+
+### 实现
+
+- `chassis/ChassisRailLockRules`（纯规则）：自由度集合、0°/180° X 对齐目标、创建/保持
+  窗口、稳定计数、轨道状态判定。单测不加载 Sable/Rapier。
+- `compat/sable/ChassisRailLock`：登记扫描 + `SubLevelObserver` + Rapier
+  `bodyA == null` 的世界 generic joint。每 `CHECK_INTERVAL_TICKS=10` tick 扫一次登记表；
+  连续 `STABLE_CHECKS=3` 次资格通过才建约束。已建约束每 tick 复核。
+- `chassis/ChassisAssemblyRegistration`：`ChassisConstruction.assemble` 与
+  `StationDepotAssembly.assemble` 成功后写 `ChassisRegistry`，标称高度取
+  `anchorBlockY + 1`（标准装配 65 -> 66），不读当前沉车 pos。已有登记不覆盖。
+- `ChassisEvents`：rotating 维度 tick 调用 `ChassisRailLock.tick`；
+  `ServerStoppedEvent` 与 `LevelEvent.Unload` 释放。
+- `ChassisProbeCommand`：register/calibrate/unregister 触发 request/release；
+  `/dbx chassis registry` 追加 `lock=LOCKED|STABILIZING(n/3)|UNLOCKED`。
+
+### 约束口径
+
+- 关节锚点 `pos2` = plot 中心块中心再 +`(0, 0.5, 0)`（deck 顶面）；`pos1` 的世界 Y =
+  登记标称高度（标准 66），世界 Z = 中心下方 XO 轨道块中心，世界 X = 当前 deck X（自由轴，
+  不产生初始误差）。
+- `orientation1` = 目标 yaw（0° 或 180°）的绕 Y 世界帧，`orientation2` = 单位帧；
+  锁定后 `R_body = R_y(targetYaw)`，pitch/roll 归零、yaw 固定。
+- 只认 `dimblend:rotating` + `ChassisRegistry` 里 `POWER/CARRIAGE` 的 UUID；reward
+  wagon、未登记车体、非标准转向架集合不进入。
+- 资格：必要转向架 `W/I` 的 plot 块位置必须与登记蓝图精确一致（POWER 6 个、CARRIAGE
+  2 个），全部 `getOptions().enabled`、`hasTrack()` 且 `!isDerailed()`；中心与所有已加载转向架下方必须是
+  `TrackShape.XO` 且 `!HAS_BE`（排除隐藏 bezier/道岔），轨道块 Y = 标称 - 2；
+  高度误差 ≤1.0、横向误差 ≤0.6、yaw/pitch/roll ≤10° 才建锁；保持窗口 1.0 / 0.75 / 15°。
+- 释放：脱轨、轨道离开 XO、误差超出保持窗口、句柄失效、子层级 `UNLOADED/REMOVED`、
+  注销登记、维度卸载/关服。释放只销毁 joint，不改质量、驱动、应力、制动。
+- 不每 tick teleport、不改 pose、不碰 SimuRail `PhysicsBogeyAxle`/轮轨 joint、不改
+  `PhysicsBogeyAxleLockMixin`。曲线/道岔/坡道/非 X 轨道/90° 朝向会保持未锁定或释放，
+  保留 SimuRail 原有行为。
+
+### 未验证 / 已知边界
+
+- **未实机**：没有在测试存档建约束后观察 6+1 编组的 joint 漂移、轮 pivot 高度、deck 66
+  对齐、过轨缝/道岔释放与重锁；也没有确认与 SimuRail 轮对 captive 锁叠加时的求解稳定性。
+- **Sable 物理 recovery**：`SubLevelPhysicsSystem.recoverSubLevel` 会 remove/re-add body，
+  Rapier 侧 joint 被静默移除，而 Sable 的 `isValid()`（只查自己的 joint_set）仍为 true。
+  当前没有每 tick 读 joint 约束力的安全查询；靠“车体误差超出保持窗口 -> 释放 -> 下一轮稳定
+  检查重锁”做有界自愈，不是瞬间重锚。极端情况下最多先漂 1 格/15° 再拉回。
+- COM 变化不会重建关节局部锚点；货载长期变化可能带来小的高度偏差。
+- 旧车必须先有登记：新装配自动登记；归档里的 6+1 若从未登记，需要
+  `/dbx chassis register <uuid> <POWER|CARRIAGE> 66`（或对应实际标称高度）才会进入。
+- 本路径没有新增 GameTest；纯规则测试覆盖 DOF/资格/窗口/生命周期判定，Sable/Rapier
+  路径需另起非生产 GameTest 或实机。
+
+### 本轮验证
+
+`:dimblend-experience:test`：89 个 suite、**567 tests / 0 failures / 0 errors / 0 skipped**，
+其中新增 `ChassisRailLockRulesTest` 13 项。未运行 GameTest、未启动客户端、未部署 jar。

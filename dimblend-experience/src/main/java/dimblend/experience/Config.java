@@ -137,12 +137,26 @@ public final class Config {
 
     public static final ModConfigSpec.BooleanValue ALTERNATOR_OVERSTRESS_LATCH = BUILDER
             .comment("D 板块 D8：CCA 交流发电机过载解列锁存——kinetic 网络过载且被驱动中时"
-                    + "本机应力需求强制归零并锁定（网络即时解负），播 motor_overstress 音效"
-                    + "（每 20 tick、音量 0.5）与 enchanted_hit 粒子（每 tick×5）；锁存期"
-                    + "FE 产出也锁 0（2026-10-15 拍板；只锁产出、不锁输出，buffer 存量继续"
-                    + "流出直至放空）；理论转速与锁存时不同（含停机归零）即恢复"
-                    + "（2026-10-15 拍板，原\"归零才恢复\"作废）。")
+                    + "本机应力需求强制归零并锁定（网络即时解负），只播 enchanted_hit 粒子"
+                    + "（每 tick×5）；2026-11-11 起交流发电机不再播过载音效（马达 D7 / 蒸汽 H1 /"
+                    + "柴油机 B4 不受影响）；锁存期 FE 产出也锁 0（2026-10-15 拍板；只锁产出、"
+                    + "不锁输出，buffer 存量继续流出直至放空）；理论转速与锁存时不同"
+                    + "（含停机归零）即恢复（2026-10-15 拍板，原\"归零才恢复\"作废）。")
             .define("alternatorOverstressLatch", true);
+
+    /**
+     * D9 交流发电机内部储能上限（2026-11-11 用户需求）。CCA 的
+     * {@code generator_capacity} 默认 5000 FE，本键把它抬到 500000（500K）。
+     * 只影响内部 buffer 大小，不改编入网需求、产能率与最大输出（
+     * {@code generator_max_output} 仍独立）。
+     */
+    public static final ModConfigSpec.IntValue ALTERNATOR_CAPACITY_FE = BUILDER
+            .comment("D 板块 D9：CCA 交流发电机内部储能上限（FE，默认 500000 = 500K，"
+                    + "范围 1-2147483647；设为 5000 恢复 CCA 原生 generator_capacity 量级）。"
+                    + "生效机制：容量在 BE 构造器（InternalEnergyStorage）定型——新放置 /"
+                    + "区块重进生效；read 读档只回填存量、不重设容量，存量按新上限钳定。"
+                    + "只改内部 buffer，不改编入网应力需求、FE/t 产能率与最大输出。需要 CCA 在场")
+            .defineInRange("alternatorCapacityFe", 500_000, 1, Integer.MAX_VALUE);
 
     public static final ModConfigSpec.BooleanValue SIMURAIL_PROTECT = BUILDER
             .comment("E 板块：Simurail 自带方块防爆防拆，仅创造模式可拆改；生存模式可右键打开物理转向架设置，不能用扳手拆卸。"

@@ -69,6 +69,21 @@ public final class ChassisInteractionGameTests {
         ChassisEvents.onUse(stone);
         helper.assertTrue(!stone.isCanceled(), "other items pass through");
 
+        // A placeable block is the case that desyncs if it is swallowed: the client predicts the
+        // placement, the server cancels it, and the block flickers. It must take the vanilla path.
+        reply.set(null);
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.OAK_PLANKS));
+        PlayerInteractEvent.RightClickBlock planks = click(player, center, InteractionHand.MAIN_HAND);
+        ChassisEvents.onUse(planks);
+        helper.assertTrue(!planks.isCanceled(), "a placeable block still reaches normal placement");
+        helper.assertTrue(reply.get() == null, "a placeable block must not open a chassis session");
+
+        // A consumable/usable item is the second item-hook path; same requirement.
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.APPLE));
+        PlayerInteractEvent.RightClickBlock apple = click(player, center, InteractionHand.MAIN_HAND);
+        ChassisEvents.onUse(apple);
+        helper.assertTrue(!apple.isCanceled(), "a usable item still reaches its own use path");
+
         player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
         player.setShiftKeyDown(true);
         PlayerInteractEvent.RightClickBlock sneakEmpty = click(player, center, InteractionHand.MAIN_HAND);
@@ -88,6 +103,18 @@ public final class ChassisInteractionGameTests {
         PlayerInteractEvent.RightClickBlock wrenchSneak = click(player, center, InteractionHand.MAIN_HAND);
         ChassisEvents.onUse(wrenchSneak);
         helper.assertTrue(!wrenchSneak.isCanceled(), "sneaking with the wrench passes for disassembly");
+
+        // The off hand must not trigger even while the main hand holds a trigger item: vanilla
+        // offers the off hand after the main hand, so a menu there would fire twice per click.
+        player.setShiftKeyDown(false);
+        player.setItemInHand(InteractionHand.OFF_HAND, new ItemStack(AllItems.WRENCH.get()));
+        player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+        reply.set(null);
+        PlayerInteractEvent.RightClickBlock offhandWrench = click(player, center, InteractionHand.OFF_HAND);
+        ChassisEvents.onUse(offhandWrench);
+        helper.assertTrue(!offhandWrench.isCanceled() && reply.get() == null,
+                "the off hand never opens the menu, even with a wrench");
+        player.setItemInHand(InteractionHand.OFF_HAND, ItemStack.EMPTY);
 
         player.setShiftKeyDown(false);
         player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);

@@ -1,0 +1,30 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "create"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "create_connected"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "eternal_starlight"
+    }
+  ],
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    { "item": "create:andesite_casing" },
+    { "item": "create:shaft" },
+    { "item": "create:iron_sheet" },
+    { "item": "create:electron_tube" },
+    { "item": "eternal_starlight:deepsilver_ingot" },
+    { "item": "eternal_starlight:deepsilver_ingot" }
+  ],
+  "result": {
+    "count": 1,
+    "id": "create_connected:overstress_clutch"
+  }
+}

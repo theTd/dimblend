@@ -33,7 +33,12 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         }
         // Sable 的 vanilla 子层级区块网格需要补 Sodium 的动画贴图活跃标记；Sable 缺席时
         // 目标类不存在，mixin 不应用（Sodium 自身的动画剔除也就不影响任何子层级）。
-        if (mixinClassName.endsWith(".client.SableSubLevelSpriteAnimationMixin")) {
+        // 同一门控的两个粒子 mixin：绘制时按 renderPose 对齐被 Sable 子层级追踪的粒子
+        // （渲染坐标口的 Particle mixin 与注入 ParticleEngine#render 的 mixin 必须同进同退，
+        // 否则后者会拿不到 RenderPoseShiftable）。
+        if (mixinClassName.endsWith(".client.SableSubLevelSpriteAnimationMixin")
+                || mixinClassName.endsWith(".client.SableParticleRenderPoseMixin")
+                || mixinClassName.endsWith(".client.SableParticleEngineRenderPoseMixin")) {
             return isLoaded("sable");
         }
         if (mixinClassName.endsWith(".compat.connected.KineticBatteryLifecycleMixin")
@@ -67,6 +72,7 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.endsWith(".compat.cca.ElectricMotorMixin")
                 || mixinClassName.endsWith(".compat.cca.ElectricMotorSoundClientMixin")
                 || mixinClassName.endsWith(".compat.cca.AlternatorIdleDrainMixin")
+                || mixinClassName.endsWith(".compat.cca.AlternatorCapacityMixin")
                 || mixinClassName.endsWith(".compat.cca.AlternatorOverstressLatchMixin")
                 || mixinClassName.endsWith(".compat.cca.ElectricMotorGoggleMixin")
                 // 目标是 Create 的 GeneratingKineticBlockEntity，但行为仅对 CCA 电动马达

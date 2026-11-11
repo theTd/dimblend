@@ -35,6 +35,8 @@ public final class SableAnimationDiagnostics {
 
     /** 采样总开关，默认关闭。 */
     static final boolean ENABLED = Boolean.getBoolean("dimblend.sable.animation.diag");
+    /** 粒子位姿校正采样开关，默认关闭；与贴图采样互不影响。 */
+    static final boolean PARTICLE_ENABLED = Boolean.getBoolean("dimblend.sable.particle.diag");
     private static final Logger LOGGER = LoggerFactory.getLogger("dimblend_experience/sable-animation-diag");
     /** 采样最短间隔（毫秒）：全局共享，2 秒最多一行。 */
     private static final long SECTION_SAMPLE_INTERVAL_MS = 2_000L;
@@ -42,8 +44,28 @@ public final class SableAnimationDiagnostics {
     private static final int MAX_STATE_SAMPLES = 24;
 
     private static long lastSectionLogAt;
+    private static long lastParticleLogAt;
     private static int sectionsLogged;
     private static int statesLogged;
+
+    /**
+     * 记录一次「粒子按渲染位姿平移」采样：与区块采样同一 2 秒全局限频，默认关闭时直接返回。
+     *
+     * @param corrected 本帧被平移的粒子数
+     * @param maxShift  本帧最大位移（格）——移动载具上的偏差就是这个量级
+     */
+    public static void particleShift(int corrected, double maxShift) {
+        if (!PARTICLE_ENABLED) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastParticleLogAt < SECTION_SAMPLE_INTERVAL_MS) {
+            return;
+        }
+        lastParticleLogAt = now;
+        LOGGER.info("[sable-particle] 按渲染位姿平移 {} 颗粒子，最大位移 {} 格",
+                corrected, String.format(Locale.ROOT, "%.4f", maxShift));
+    }
 
     static void generation(long epoch) {
         if (!ENABLED) {

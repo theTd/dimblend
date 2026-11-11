@@ -26,7 +26,9 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
  * <p>探针只把字符串交给 {@link ChassisWorldAnchorProbe}，本类不 import 任何 Sable / Simurail
  * 类型，这样未装 Sable 的实例也能安全加载命令注册类；真正的探针类只在
  * {@link #sableAndSimurail()} 通过后才触达。登记命令只写
- * {@link ChassisRegistryData} 的纯数据，不建 constraint、不改质量/驱动。</p>
+ * {@link ChassisRegistryData} 的纯数据；已登记的 rotating 标准车架由
+ * {@link ChassisRailLock} 在稳定检查后自动建生产轨锁（Y/Z + 全部旋转锁定，仅 X 平移），
+ * 登记/校准/注销会触发它的请求或释放，不改质量/驱动/应力/制动。</p>
  */
 @EventBusSubscriber(modid = DimBlend.MODID)
 public final class ChassisProbeCommand {
@@ -148,8 +150,11 @@ public final class ChassisProbeCommand {
             return 0;
         }
         data.setDirty();
+        ChassisEvents.railLockRelease(level, id, "registered");
+        ChassisEvents.railLockRequest(level, id);
         source.sendSuccess(() -> Component.literal("已登记 " + id + " blueprint=" + blueprint
-                + " nominalHeight=" + nominalHeight + "（仅身份数据，未启用高度约束）"), false);
+                + " nominalHeight=" + nominalHeight
+                + "（rotating 标准车架将在连续稳定检查后自动启用轨锁：Y/Z + 全部旋转锁定，仅 X 平移）"), false);
         return 1;
     }
 
@@ -174,8 +179,9 @@ public final class ChassisProbeCommand {
             return 0;
         }
         data.setDirty();
+        ChassisEvents.railLockRelease(level, id, "unregistered");
         source.sendSuccess(() -> Component.literal("已删除登记 " + id
-                + "（仅真拆解使用；脱轨/卸载不应删身份）"), false);
+                + "（已释放轨锁；仅真拆解使用；脱轨/卸载不应删身份）"), false);
         return 1;
     }
 
@@ -201,8 +207,9 @@ public final class ChassisProbeCommand {
             return 0;
         }
         data.setDirty();
+        ChassisEvents.railLockRelease(level, id, "calibrated");
         source.sendSuccess(() -> Component.literal("已校准 " + id + " nominalHeight=" + nominalHeight
-                + "（仅身份数据，未启用高度约束）"), false);
+                + "（旧轨锁已释放；下一轮稳定检查会按新标称高度重建）"), false);
         return 1;
     }
 
@@ -223,7 +230,8 @@ public final class ChassisProbeCommand {
         for (int index = 0; index < limit; index++) {
             var entry = entries.get(index);
             source.sendSuccess(() -> Component.literal("- " + entry.id() + " " + entry.blueprint()
-                    + " h=" + entry.nominalHeight() + " " + entry.lifecycle()), false);
+                    + " h=" + entry.nominalHeight() + " " + entry.lifecycle()
+                    + " lock=" + ChassisEvents.railLockStatus(level, entry.id())), false);
         }
         if (entries.size() > limit) {
             source.sendSuccess(() -> Component.literal("（仅显示前 " + limit + " 条）"), false);

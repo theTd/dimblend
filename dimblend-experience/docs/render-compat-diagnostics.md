@@ -11,7 +11,26 @@
 
 ### 现象（用户报告，未归因）
 载具（Sable 子层级）上的熔炉/篝火火焰只在特定视角位置动；在车上看、下车看都一样，
-而地面同一种火正常。**冷启动/首次进入时是否停顿、视角相关性从何而来，均未取证。**
+而地面同一种火正常。
+
+### 成因链（2026-11-11 追加取证：Sodium 0.8.13 + 实例 sable 2.0.5_cui-modded）
+1. **谁在拦截动画**：Sodium 的 `SpriteContents$Ticker#tick` 在
+   `animateOnlyVisibleTextures` 为真、且该贴图**本刻未被标活**时取消推进
+   （sodium jar 内层 `mixin/features/textures/animations/tracking/SpriteContentsTickerMixin#preTick`，
+   javap 实读 `SodiumOptions$PerformanceSettings.animateOnlyVisibleTextures`、`sodium$isActive` 与
+   `CallbackInfo.cancel`），`postTick` 每刻无条件把标记清回 false。实例
+   `config/sodium-options.json` 中该开关为 **true**。
+2. **谁把贴图标活**：`RenderSectionManager#tickVisibleRenders` 只遍历**上一帧可见区块**的
+   `ChunkRenderList`（javap 实读 `SortedRenderLists.iterator` →
+   `ChunkRenderList.sectionsWithSpritesIterator` → `SpriteUtil.markSpriteActive`）。
+   贴图是**全局**的：一张贴图只要被任一可见的地形区块用到，它这一帧就是活的。
+3. **车为什么例外**：Sable 的子层级网格不在 Sodium 的区块网格里
+   （`SubLevelRenderer.SelectedRenderer.SODIUM_REACHAROUND` → `VanillaChunkedSubLevelRenderData`），
+   它的贴图不在 Sodium 的 render list 中。于是只有车厢自己用某张动画贴图时，它永远不被标活；
+   一旦视野里出现同贴图的地面方块（火/岩浆/熔炉正面），整张贴图一起复活——这就是「随视角」的来源。
+   与之相符的现场：本批实机日志 `latest.log:23947` 只有一行 `[sable-anim] 贴图代次推进 epoch=1`
+   （说明 `renderChunkedSubLevel` 确实被调到），但整场没有任何 `computed`/采样行，
+   即该场没有可扫描到动画贴图的子层级区块。
 
 ### 已证实的代码缺陷（源码取证）
 1. Sodium 开了 `performance.animate_only_visible_textures` 后，只推进被
@@ -32,6 +51,8 @@
    本实现因此改用「图集贴图实例代次」这一独立信号整体作废，而不是依赖 `compiled` 身份变化。
 
 ### 修法
+（下述缓存代次修复解决的是「重载后仍标旧贴图」；上节成因链对应的补标记主体是
+`SableSubLevelSpriteAnimationMixin`，目标方法/字段已对实例 jar 逐项 javap 核对存在。）
 - 新增纯 helper `compat/sable/SableAnimationSpriteCache`：按**引用**记账，提供
   `invalidate()`（清空 + 代次 +1）、`retain(live)`（清掉已释放的区块）、`isPending(key)`
   以及**完整性感知**的 `getPartial`。
@@ -76,6 +97,7 @@
 
 | 开关 | 默认 | 作用 |
 |---|---|---|
+| `-Ddimblend.sable.particle.diag=true` | 关 | 子层级粒子渲染位姿校正的采样：全局 2 秒最多一行，记录本帧被平移的粒子数与本帧最大位移（格）。默认关闭时不进方法。 |
 | `-Ddimblend.sable.animation.diag=true` | 关 | 子层级动画补标记的采样：**全局 2 秒最多一行**（不分区块、不按刻配额，没有每刻条数上限）；记录区块 origin、`compiled` 身份、两级代次、贴图名、贴图实例身份、**当前图集同名贴图实例身份**、`is_current`、`mark_call`、`active` 回读。状态级另有 24 条上限；重载代次推进单独一行。 |
 
 采样只读公开信息（`System.identityHashCode`、`sprite.contents().name()`、
@@ -101,31 +123,68 @@
 
 ## 3. 未做（避免假修复）
 
-### 3.1 石磨粒子（kaleidoscopecookery 1.4.1）——仅方案，未写 instrumentation
-已查证路径：`MillstoneBlockEntity#tick` 发两处 `sendParticles`（`BLOCK` 与 `ITEM` 各一次），
-`p = atBottomCenter + (0, 1, 1).yRot(rotation)`，`count=5`，散布 `0.1`，`speed=0.05`。
-Sable 侧链路已核对一致（距离 mixin + `ParticleEngineMixin.add` TAIL →
-`ParticleExtension.initialKickOut`，`ParticleMixin:134-165` 做旧/新位置与法线速度变换并跟随），
-**因此不得在 `sendParticles` 处再转一次坐标**。
+### 3.1 石磨粒子（kaleidoscopecookery 1.4.1）——已定位到 renderPose 阶段并修复
 
-实测方案（待实机跑，先建复现再谈修）：
-1. 地面磨：静止、rotation 0/90，各看一次 `BLOCK` 与 `ITEM` 粒子落点；
-2. 同一磨放上载具（rotation 0/90 各一次），同样静止观察；
-3. 载具直行、弯道各一次。
+**三段链路（均为源码/字节码取证）**
+1. **生成中心（服务端，plot 坐标）**：`MillstoneBlockEntity#tick`（CFR 反编译自实例
+   `[森罗物语：厨房] kaleidoscopecookery-1.4.1-neoforge+mc1.21.1.jar`）第 246–260 行：
+   `center = Vec3.atBottomCenterOf(getBlockPos())`，
+   `particlePos = new Vec3(0,1,1).yRot(rot) + center`，
+   `serverLevel.sendParticles(BLOCK|ITEM, …, 5, 0.1,0.1,0.1, 0.05)`。
+2. **Sable 换算（客户端）**：`ServerLevelMixin` 只把距离判定改成
+   `distanceSquaredWithSubLevels`，发给客户端的仍是 plot 坐标；`ParticleEngineMixin#add`
+   （`@Inject(method="add", at=TAIL)`，实例 jar javap 实读）调
+   `ParticleExtension#sable$initialKickOut`，后者用 `subLevel.logicalPose()` 做 plot→world
+   （`ParticleMixin.java:142`；javap 常量池实读 `SubLevel.logicalPose:()LPose3d;`）。
+   **没有**任何二次换算，所以不得在 `sendParticles` 处再转坐标（那样会整团泄漏到 plot）。
+3. **绘制（render pose）**：子层级网格用 `subLevel.renderPose()`
+   （`VanillaChunkedSubLevelRenderData.java:287`），即
+   `lastPose.lerp(logicalPose, partialTick)`（`ClientSubLevel.java:313–329`）。
 
-每一步记录：粒子是否出现、出现在磨口还是错位、错位方向、是否随车移动。
-**只有现场证明具体偏差后才加诊断或修改**；本轮不预写 instrumentation，也不做未证实修正。
+**已证实的偏差阶段＝第 3 段**：粒子被钉在**tick 末**位姿，网格却在 tick 内插值。
+移动/转向中的载具上，整团粒子相对模型前移 `(1-partialTick)` 个 tick 的位移，并随帧抖动；
+静止载具 `lastPose == logicalPose`（位移 0），地面方块没有子层级位姿（正常）。
+这与「地面正常、装配车上偏、静止车看不出」的口径一致；第 1、2 段无缺陷，不改。
 
-### 3.2 Loot Journal 图标缺失——仅方案，未写 instrumentation
-现场情况未知：直播里的实例不是装了这个 mod 的实例，实际安装的是
-`mods/loot_journal-neoforge-1.21.1-6.2.2.jar` + `fragmentum 5.4.0`，**版本与 config 未核对**，
-也还没有现场复现。已查证（临时反编译 `%TEMP%/codex-loot-journal-20261110/decompiled`）：
-`elementOrder` 默认 `COUNT 4px / NAME 4px / ICON 4px / TOTAL`，缺 `ICON` 时只剩文字；
-图标路径是 `IconToken` → `SimpleIcon` → `ItemPickupEvent.renderIcon` → `GuiGraphics.renderFakeItem`。
+**修法（本轮）**
+- `compat/sable/SubLevelParticleRenderPose`：`logicalPose⁻¹(当前世界坐标) → renderPose(pt)` 求差值；
+- `mixin/client/SableParticleEngineRenderPoseMixin`：`ParticleEngine#render` HEAD 平移、RETURN 还原
+  被 Sable 子层级追踪的粒子（`ParticleExtension#sable$getTrackingSubLevel()` 非空），
+  只动绘制坐标，模拟位置/速度/包围盒不变；
+- `mixin/client/SableParticleRenderPoseMixin`：给 `Particle` 加渲染坐标读写口
+  （`x/y/z` 与 `xo/yo/zo` 都是 `protected`，`Particle.java:24–29`）。
+- 诊断：`-Ddimblend.sable.particle.diag=true` 时每 2 秒一行
+  `[sable-particle] 按渲染位姿平移 N 颗粒子，最大位移 x.xxxx 格`——静止车应≈0，行驶车是偏差量级。
 
-因此下一步只有取证：确认现场 config 的 `elementOrder`、记录那次 `renderIcon` 调用的
-非空 stack / alpha / depth / scissor，**且不改 GL 状态**；诊断 soft-gate 在 mod 存在且开关打开时。
-**不改用户配置，不按猜测修 depth**。需要共享注册时先报父。
+**验证状态**：手工 `javac -proc:none` 预检通过（见 §4）；**Gradle 与实机都未跑**。
+实机判据：静止车最大位移≈0；行驶/转弯时粒子不再相对磨盘前移或抖动；
+未被追踪的地面粒子行为不变。
+
+### 3.2 Loot Journal 图标缺失——现场证据已核，仍无法复现（不改产品代码）
+**安装与配置事实（2026-11-11 复核，推翻「缺 ICON」的猜测）**
+- 实例装的是 `mods/loot_journal-neoforge-1.21.1-6.2.2.jar`；配置在
+  `config/obscuria/loot_journal-client.toml`（不是 `config/loot_journal*.toml`），
+  第 44 行 `elementOrder = "COUNT 4px NAME 4px ICON 4px TOTAL"`，**ICON 在位**；
+  `scale=1.0`、`activeTheme="Classic"`、`enableLootJournal/showItemPickups=true`。
+- 主题 Classic 的图标是 `{"type":"simple","padding_left":6,...}`
+  （`assets/loot_journal/pickups/styles/classic/common.json`）；并且 `PickupStyle.DEFAULT`
+  也用 `SimpleIcon.DEFAULT`，所以**主题解析失败也不会只剩文字**。
+- 事件栈：`LootJournalHelper.java:54` 用 `itemEntity.getItem().copyWithCount(packet.getAmount())`，
+  不是被拾取流程 shrink 掉的同一个 stack；`ItemPickupEvent#renderIcon` →
+  `GuiGraphics#renderFakeItem(stack,-8,-8)`（vanilla `GuiGraphics.java:792–797`，`isEmpty()` 才跳过）。
+- 上次实机 `logs/latest.log` 里没有 `loot_journal` 的资源加载报错或异常行。
+
+**结论**：按代码与配置，ICON 应当被绘制；「图标消失」只可能来自绘制期状态
+（shader color alpha / depth / scissor / pose）或模型解析，而这三者本轮**没有任何现场证据**。
+
+**阻塞（准确）**：没有能证明 HUD 的截图。桥的 `screenshot` 取主渲染目标、发生在
+`gui.render` 之前，`E:\misc\TrainTripWorld\screenshots\nine_loot_*.png` 三张都只有世界没有 HUD，
+所以「文字在、图标不在」既未复现也未排除。
+
+**下一步（需要一次有效实机，需新增共享注册，未在本轮擅自加）**：在
+`dev.obscuria.lootjournal.client.events.ItemPickupEvent#renderIcon` 的 HEAD 软门控采样一次：
+stack 是否为空、`RenderSystem.getShaderColor()` 的 alpha、`GL_DEPTH_TEST`/`GL_BLEND`/`GL_SCISSOR_TEST`
+状态、当前 pose 的 z，以及 `guiScale`。**不改用户配置、不按猜测改 depth**。
 
 ### 3.3 明确不做
 - 坐标源：Sable `RenderSection` origin 是 plot 全局存储坐标，父 `ClientLevel` 被
@@ -134,6 +193,16 @@ Sable 侧链路已核对一致（距离 mixin + `ParticleEngineMixin.add` TAIL �
 
 ## 4. 编译与注册状态
 
+- **2026-11-11（石磨粒子修复）**：新增 `RenderPoseShiftable`、`SubLevelParticleRenderPose`、
+  `SableParticleRenderPoseMixin`、`SableParticleEngineRenderPoseMixin` 四个文件，并把后两者登记进
+  `dimblend_experience.mixins.json` 的 `client`、在 `DimBlendMixinPlugin` 里与既有
+  `SableSubLevelSpriteAnimationMixin` 同门控（`isLoaded("sable")`）。
+  手工 `javac -proc:none`（JDK 21；classpath = 主检查点 `neoforge-21.1.249-merged.jar` + 实例 sable jar
+  + `sable-companion` jar + sponge-mixin + joml + fastutil + slf4j + 本 worktree 已编译 classes）
+  **exit 0**。**Gradle 未跑**：wrapper 需要写 `C:\Users\cui\.gradle`，本会话沙箱只允许写工作区，
+  报 `FileNotFoundException: ...gradle-9.2.1-bin.zip.lck (Access is denied)`。
+  因此本批**没有** `:dimblend-experience:test` 数字，也**没有**实机验证；mixin 应用正确性按仓库纪律
+  需要进游戏把「载具上的粒子」路径走一遍才算验证完。
 - 本轮**未运行 Gradle、未进游戏**（无 token）。全模块编译/正式测试与实机由整合 owner 串行执行。
 - 手工 `javac` 预检（仅用主检查点 `E:/misc/dimblend/build/moddev/artifacts` 里的 NeoForge/MC
   jar，无 Gradle）：四个 `compat/sable` 类**通过**，仅剩 `@Deprecated` API 警告与

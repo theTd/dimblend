@@ -439,6 +439,22 @@ public final class RecipeEditRules {
                 .slots(Set.of(2, 8), RecipeIngredient.item("voidscape:machine_core"))
                 .build());
 
+        // —— 3.21 Create Connected 过载离合器加重（2026-11-11 批次） ——
+        // 需求：过载离合器的无序合成再加 2 个深银锭（eternal_starlight:deepsilver_ingot）。
+        // 上游配方 create_connected:crafting/kinetics/overstress_clutch 是 crafting_shapeless
+        // （4 个材料：安山机壳 + 传动杆 + 铁板 + 电子管），且整条配方被
+        // create_connected:feature_enabled 条件包住（tag=create_connected:overstress_clutch，
+        // FeatureEnabledCondition 字节码核实：ICondition#test 直接 FeatureToggle.isEnabled）。
+        // 无序合成没有"槽位"概念，ShapedGridEditor 只处理 ShapedRecipe，所以：
+        //   ① 按配方 ID 删掉上游那条（feature 关闭时它本来就不加载，属防御性规则）；
+        //   ② 由随包配方 dimblend_craft:overstress_clutch_from_deepsilver 提供
+        //      6 材料版本（原 4 个 + 深银锭 ×2），带 create / create_connected /
+        //      eternal_starlight 三条 mod_loaded 条件——三个来源缺一则整条不加载，
+        //      不会出现"要深银锭但深银锭不存在"的死配方，也不会与上游原配方并存。
+        edits.add(new RecipeEdit.DeleteByRecipeId("过载离合器原配方（改由随包配方加重深银锭）",
+                Set.of(ResourceLocation.parse("create_connected:crafting/kinetics/overstress_clutch")),
+                true));
+
         // —— 3.20 EnderStorage 标准合成（2026-11-11 批次） ——
         // 两个配方都是 codechicken.enderstorage.recipe.CreateRecipe（extends ShapedRecipe），
         // 配方类型 enderstorage:create_recipe，pattern 均为 BWB/OCO/BPB，材料写在 JSON 的

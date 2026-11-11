@@ -64,6 +64,30 @@ public final class AlternatorOverstressLatch {
         return currentSpeed != latchedSpeed;
     }
 
+    /** 与 D5 同一扣减量：每 tick 250 FE（= 每秒 5000 FE，扣到 0 为止）。 */
+    public static final int STASH_DRAIN_PER_TICK = 250;
+
+    /**
+     * 存量是否本 tick 应流失（2026-11-11 用户需求「过载与零转速期间都扣存量」）。
+     *
+     * <p>两条路径共用同一扣减点 {@code AlternatorIdleDrainMixin}（每 tick 250 FE、
+     * 扣到 0 为止），因此这里只回答"算不算本 tick 不产电"：</p>
+     * <ul>
+     *   <li>{@code latched} —— 过载解列锁存期：{@code getEnergyProductionRate} 已被
+     *       压 0（见 {@code AlternatorOverstressLatchMixin}），但此时本机应力需求也是 0，
+     *       网络往往不再判本机过载，{@code getSpeed()} 会回到理论转速——D5 原本的
+     *       产能门因此为真、存量不扣。锁存必须显式并入流失判据，否则"过载期存量不减"。</li>
+     *   <li>{@code !producing} —— 零转速（含停机、过载冻结读数、最低转速门未满足），
+     *       即 D5 原口径，本方法不改其行为。</li>
+     * </ul>
+     *
+     * <p><b>不重复扣减</b>：锁存期一律只走这一条路径，锁存 mixin 自己<b>不</b>扣存量，
+     * 所以 250 FE/t 在任何组合下都只发生一次。</p>
+     */
+    public static boolean drainsStoredEnergy(boolean latched, boolean producing) {
+        return latched || !producing;
+    }
+
     private AlternatorOverstressLatch() {
     }
 }

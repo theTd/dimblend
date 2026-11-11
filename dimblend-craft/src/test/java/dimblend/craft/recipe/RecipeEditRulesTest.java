@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -429,6 +430,87 @@ class RecipeEditRulesTest {
                 }
             }
         }
+    }
+
+    // —— 2026-11-11 过载离合器加重深银锭 ——
+
+    private static final ResourceLocation CC_OVERSTRESS_CLUTCH =
+            ResourceLocation.parse("create_connected:overstress_clutch");
+    private static final ResourceLocation DEEPSILVER_INGOT =
+            ResourceLocation.parse("eternal_starlight:deepsilver_ingot");
+
+    /**
+     * 需求（2026-11-11）：过载离合器的无序合成再加 2 个深银锭。
+     *
+     * <p>无序合成没有槽位，只能整条重写；上游配方被
+     * {@code create_connected:feature_enabled} 条件包住，随包配方因此自带三条
+     * {@code neoforge:mod_loaded}——Create / Create Connected / Eternal Starlight
+     * 缺一则整条不加载，不会留下"要深银锭却没有深银锭"的死配方。</p>
+     */
+    @Test
+    void overstressClutchReplacementAddsTwoDeepSilverIngots() throws Exception {
+        JsonObject recipe = packResource(
+                "data/dimblend_craft/recipe/overstress_clutch_from_deepsilver.json");
+        assertEquals("minecraft:crafting_shapeless", recipe.get("type").getAsString(),
+                "上游 overstress_clutch 是无序合成，替换配方必须同为 shapeless，"
+                        + "否则材料会被当成图案解析");
+
+        JsonArray ingredients = recipe.getAsJsonArray("ingredients");
+        assertEquals(6, ingredients.size(),
+                "原配方 4 个材料 + 深银锭 ×2 = 6；数量不对说明加重没落到配方里");
+        assertEquals(2, countItem(ingredients, DEEPSILVER_INGOT.toString()),
+                "深银锭必须恰好 2 个");
+        for (String original : List.of("create:andesite_casing", "create:shaft",
+                "create:iron_sheet", "create:electron_tube")) {
+            assertEquals(1, countItem(ingredients, original),
+                    "上游材料 " + original + " 必须保留且只出现一次");
+        }
+
+        JsonObject result = recipe.getAsJsonObject("result");
+        assertEquals(CC_OVERSTRESS_CLUTCH.toString(), result.get("id").getAsString(),
+                "产物必须是 create_connected:overstress_clutch");
+        assertEquals(1, result.get("count").getAsInt(), "产量沿用上游 1");
+
+        // 三个 mod_loaded 条件缺一不可：任何一个来源缺席时整条配方都不该加载。
+        Set<String> requiredMods = new HashSet<>();
+        for (JsonElement condition : recipe.getAsJsonArray("neoforge:conditions")) {
+            JsonObject object = condition.getAsJsonObject();
+            if ("neoforge:mod_loaded".equals(object.get("type").getAsString())) {
+                requiredMods.add(object.get("modid").getAsString());
+            }
+        }
+        assertEquals(Set.of("create", "create_connected", "eternal_starlight"), requiredMods,
+                "随包替换配方必须同时要求 Create、Create Connected 与永恒星光，实际 " + requiredMods);
+    }
+
+    /**
+     * 原配方必须被删掉，否则游戏里会同时存在两条产物相同的无序合成，
+     * 配方书与自动合成会按遍历序随机命中其中一条（材料要求时有时无）。
+     */
+    @Test
+    void upstreamOverstressClutchRecipeIsRemovedSoOnlyOneRemains() {
+        RecipeEdit.DeleteByRecipeId rule = deleteRuleByLabel("过载离合器原配方（改由随包配方加重深银锭）");
+        assertNotNull(rule, "缺少删除 create_connected 原过载离合器配方的规则");
+        assertEquals(Set.of(ResourceLocation.parse("create_connected:crafting/kinetics/overstress_clutch")),
+                rule.recipeIds(), "只能删上游那一条配方，实际 " + rule.recipeIds());
+        assertTrue(rule.defensive(),
+                "该配方被 create_connected:feature_enabled 条件包住，feature 关闭时不加载，"
+                        + "未命中属预期，必须标防御性（否则日志刷假 WARN）");
+    }
+
+    /** 无序合成的材料计数（按 item 字段精确匹配）。 */
+    private static int countItem(JsonArray ingredients, String item) {
+        int found = 0;
+        for (JsonElement element : ingredients) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonElement value = element.getAsJsonObject().get("item");
+            if (value != null && item.equals(value.getAsString())) {
+                found++;
+            }
+        }
+        return found;
     }
 
     // —— 2026-11-11 EnderStorage 标准合成 ——

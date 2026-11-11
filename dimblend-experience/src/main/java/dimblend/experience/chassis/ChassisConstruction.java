@@ -102,6 +102,7 @@ public final class ChassisConstruction {
         // chassis renders and reloads fully black (see SablePlotRelight).
         dimblend.experience.compat.sable.SablePlotRelight.relight(level, car);
         SubLevelContainer.getContainer(level).addForceLoadTicket(car, SubLevelLoadingTicketType.COMMAND_FORCED, Unit.INSTANCE);
+        ChassisAssemblyRegistration.register(level, car, build.blueprint, center);
         finish(level, data, build);
     }
 

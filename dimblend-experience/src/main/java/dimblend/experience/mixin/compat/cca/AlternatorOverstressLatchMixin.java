@@ -24,8 +24,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * 机理见 {@link AlternatorOverstressLatch} 类注释）
  * → 置锁存、{@code updateStressFor(self, 0)} 即时清零网络账本中本机需求（同时触发
  * updateStress→sync，过载当 tick 解除）、{@code sendData()} 同步客户端、当 tick 即播
- * 粒子/音效（复用 D7 {@link MotorOverstressLatch#tickEffects}：每 tick 中心
- * enchanted_hit×5，每 20 tick motor_overstress 音量 0.5）。</p>
+ * 粒子（{@link MotorOverstressLatch#tickParticles}：每 tick 中心 enchanted_hit×5、
+ * delta 全 0、speed 0.5）。<b>2026-11-11 用户需求：交流发电机过载不再播音效</b>
+ * （原复用 D7 {@code tickEffects} 每 20 tick 播 motor_overstress 音量 0.5 作废）；
+ * 马达 D7 / 蒸汽 H1 / 柴油机 B4 的音效不受影响，仍走 {@code tickEffects}。</p>
  *
  * <p>锁存期：{@code calculateStressApplied} 钩子在 RETURN 把读数压 0——网络
  * split/merge 重 {@code add()} 等重缓存路径仍得 0，锁不被拓扑变化顶掉；客户端经
@@ -33,19 +35,23 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * Mth.equal 早退）。FE 产出同样锁 0（2026-10-15 拍板，原"锁存期照常空转产 FE"
  * 口径作废）：tick 内产能率 {@code getEnergyProductionRate} 调用点压 0
  * （{@code internalProduceEnergy(0)} 照走、等于不产；只锁产出、不锁输出——buffer
- * 存量（默认 5000 FE）继续经六面输出 loop 流出直至放空（约 1 tick），属拍板语义）；
- * 护目镜产能行经同签名 MEV 同压 0（客户端锁存字段经同步包回写，显示与实际一致）。
- * D5 漏电门（产能门 {@code |getSpeed|>0 && isSpeedRequirementFulfilled()} 的取反）
- * 不受影响——锁存期转速非零、门仍为真，不会并发漏电（交互已评估，见 spec D8）。</p>
+ * 存量继续经六面输出 loop 流出）；护目镜产能行经同签名 MEV 同压 0（客户端锁存字段
+ * 经同步包回写，显示与实际一致）。</p>
+ *
+ * <p><b>锁存期存量流失（2026-11-11 用户需求「过载期间扣存量」）</b>：锁存本身不扣
+ * FE，扣减统一由 {@code AlternatorIdleDrainMixin} 每 tick 250 FE 执行——锁存时应力
+ * 需求归零、本机往往已不再判过载，{@code getSpeed()} 回到理论转速使 D5 的产能门为真，
+ * 故流失判据显式并入锁存标志（{@link AlternatorOverstressLatch#drainsStoredEnergy}）。
+ * 该路径唯一，任何组合下 250 FE/t 只扣一次；开关 {@code alternatorIdleDrain} 关闭时
+ * 与 D5 一并失效（存量不再流失），锁存本身不受影响。</p>
  *
  * <p>退出（2026-10-15 拍板改口径，原"理论转速归零"作废）：理论转速与进入时记录值
  * （{@code dimblend$latchedSpeed}）不同即解锁——精确比较、不加阈值，停机归零天然满足
  * （记录值必非零），为旧判据超集；过载冻结不动 speed 字段，不会误判。解锁→清锁存、
  * {@code updateStressFor} 恢复真实 impact（转速 0 下账本不变、无 sync 抖动）、
- * sendData。开关关闭同样清锁存恢复。再次满足进入判据即重锁（重录记录值、重播进入
- * 音效/粒子、latchAge 归零）——柴油机 B3 波动造成的频繁解锁→重锁为拍板接受项
- * （锁存音效粒子本就常播提醒玩家处理，见 spec D8）。纯内存不写磁盘 NBT，
- * 区块卸载/重进按新进入重判。</p>
+ * sendData。开关关闭同样清锁存恢复。再次满足进入判据即重锁（重录记录值、重新开播
+ * 粒子）——柴油机 B3 波动造成的频繁解锁→重锁为拍板接受项（锁存粒子本就常播提醒
+ * 玩家处理，见 spec D8）。纯内存不写磁盘 NBT，区块卸载/重进按新进入重判。</p>
  */
 @Mixin(AlternatorBlockEntity.class)
 public abstract class AlternatorOverstressLatchMixin implements AlternatorOverstressLatchAccess {
@@ -60,10 +66,6 @@ public abstract class AlternatorOverstressLatchMixin implements AlternatorOverst
      */
     @Unique
     private float dimblend$latchedSpeed;
-
-    /** D8 锁存持续 tick 数（粒子每 tick，音效在 age%20==0 时播，含进入当 tick）。 */
-    @Unique
-    private int dimblend$latchAge;
 
     @Inject(method = "tick()V", at = @At("HEAD"))
     private void dimblend$driveOverstressLatch(CallbackInfo ci) {
@@ -80,8 +82,7 @@ public abstract class AlternatorOverstressLatchMixin implements AlternatorOverst
                 dimblend$clearLatchAndRestore(self);
                 return;
             }
-            MotorOverstressLatch.tickEffects(serverLevel, self.getBlockPos(), dimblend$latchAge);
-            dimblend$latchAge++;
+            MotorOverstressLatch.tickParticles(serverLevel, self.getBlockPos());
             return;
         }
         if (self.hasNetwork() && AlternatorOverstressLatch.shouldEnter(
@@ -89,11 +90,9 @@ public abstract class AlternatorOverstressLatchMixin implements AlternatorOverst
                 self.getOrCreateNetwork().members.containsKey(self))) {
             dimblend$overstressLatched = true;
             dimblend$latchedSpeed = self.getTheoreticalSpeed();
-            dimblend$latchAge = 0;
             self.getOrCreateNetwork().updateStressFor(self, 0.0F);
             self.sendData();
-            MotorOverstressLatch.tickEffects(serverLevel, self.getBlockPos(), dimblend$latchAge);
-            dimblend$latchAge++;
+            MotorOverstressLatch.tickParticles(serverLevel, self.getBlockPos());
         }
     }
 
@@ -150,7 +149,6 @@ public abstract class AlternatorOverstressLatchMixin implements AlternatorOverst
             return;
         }
         dimblend$overstressLatched = false;
-        dimblend$latchAge = 0;
         if (self.hasNetwork()) {
             self.getOrCreateNetwork().updateStressFor(self, self.calculateStressApplied());
         }

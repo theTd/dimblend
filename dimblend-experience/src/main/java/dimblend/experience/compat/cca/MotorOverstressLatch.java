@@ -19,6 +19,10 @@ import net.minecraft.sounds.SoundSource;
  * （count=5、delta=0、speed=0.5），每 20 tick 播一次 motor_overstress（音量 0.5，
  * 与 D4 叠加共存）。退出：过载恢复或 active=false（FE 耗尽断电）任一即清锁存。</p>
  *
+ * <p><b>2026-11-11 效果拆分</b>：{@link #tickEffects} 保留给马达（音效 + 粒子），
+ * 交流发电机改用 {@link #tickParticles}（只粒子）——交流发电机过载不再播
+ * {@code motor_overstress}，粒子照旧；本类自身仍是马达的判据 helper，马达行为不变。</p>
+ *
  * <p>客户端显示（护目镜×2）不读锁存标志：该标志纯服务端内存，不进同步包；
  * 客户端用已同步状态派生等价判据（过载 + |面板|&gt;64 + 理论转速非零，
  * 见 {@code ElectricMotorGoggleMixin}）——overStressed 经 Network 标签同步、
@@ -61,17 +65,32 @@ public final class MotorOverstressLatch {
                 && theoreticalSpeed != 0.0F;
     }
 
-    /** 锁存期副作用：粒子每 tick；音效在 latchAge%20==0（含进入当 tick）时播。 */
+    /**
+     * 锁存期副作用（马达 D7 口径）：粒子每 tick；音效在 latchAge%20==0（含进入当 tick）时播。
+     */
     public static void tickEffects(ServerLevel level, BlockPos pos, int latchAgeTicks) {
-        double x = pos.getX() + 0.5D;
-        double y = pos.getY() + 0.5D;
-        double z = pos.getZ() + 0.5D;
-        level.sendParticles(ParticleTypes.ENCHANTED_HIT, x, y, z,
-                PARTICLE_COUNT, 0.0D, 0.0D, 0.0D, PARTICLE_SPEED);
+        tickParticles(level, pos);
         if (latchAgeTicks % SOUND_INTERVAL_TICKS == 0) {
-            level.playSound(null, x, y, z,
-                    ModSounds.ELECTRIC_MOTOR_OVERSTRESS.get(), SoundSource.BLOCKS, SOUND_VOLUME, 1.0F);
+            playOverstressSound(level, pos);
         }
+    }
+
+    /**
+     * 只有粒子、没有音效（交流发电机 D8 口径，2026-11-11 用户需求「去掉过载音、保留粒子」）。
+     *
+     * <p>粒子参数与马达完全相同（{@code enchanted_hit} count=5、delta 全 0、speed 0.5、
+     * 方块中心），只是不调 {@link ModSounds#ELECTRIC_MOTOR_OVERSTRESS}——发电机的过载
+     * 提示改由粒子和护目镜承担。</p>
+     */
+    public static void tickParticles(ServerLevel level, BlockPos pos) {
+        level.sendParticles(ParticleTypes.ENCHANTED_HIT, pos.getX() + 0.5D, pos.getY() + 0.5D,
+                pos.getZ() + 0.5D, PARTICLE_COUNT, 0.0D, 0.0D, 0.0D, PARTICLE_SPEED);
+    }
+
+    /** 单次过载音（音量 0.5）：马达 D7 每秒一次；交流发电机不再使用。 */
+    private static void playOverstressSound(ServerLevel level, BlockPos pos) {
+        level.playSound(null, pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D,
+                ModSounds.ELECTRIC_MOTOR_OVERSTRESS.get(), SoundSource.BLOCKS, SOUND_VOLUME, 1.0F);
     }
 
     private MotorOverstressLatch() {
