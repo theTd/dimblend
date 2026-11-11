@@ -283,5 +283,6 @@
 	"item.dimblend_experience.supplement.wrench": "On a coupler: temporarily uncouple once in a safe region",
 	"item.dimblend_experience.supplement.levitite_bucket": "Effectively lightens trains without adding drag",
 	"item.dimblend_experience.supplement.doll": "It would also make a capable stock keeper",
-	"dimblend_experience.display_source.traction_efficiency": "Traction Efficiency"
+	"dimblend_experience.display_source.traction_efficiency": "Traction Efficiency",
+	"item.dimblend_experience.create_door_pairing": "Right-click again while holding the same door to make a centered double door"
 }

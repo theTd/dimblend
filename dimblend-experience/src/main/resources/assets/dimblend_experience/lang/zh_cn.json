@@ -283,5 +283,6 @@
 	"item.dimblend_experience.supplement.wrench": "对车钩使用时：可在安全区域临时解除车钩一次",
 	"item.dimblend_experience.supplement.levitite_bucket": "用于列车时 可有效减重 且不产生阻力",
 	"item.dimblend_experience.supplement.doll": "它也会是称职的仓库管理员",
-	"dimblend_experience.display_source.traction_efficiency": "牵引效率"
+	"dimblend_experience.display_source.traction_efficiency": "牵引效率",
+	"item.dimblend_experience.create_door_pairing": "手持再次右键可变为单格对开"
 }

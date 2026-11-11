@@ -37,6 +37,7 @@ import dimblend.experience.gametest.ItemDrainNetherEvaporationGameTests;
 import dimblend.experience.gametest.ItemDrainNetherEvaporationSableGameTests;
 import dimblend.experience.gametest.KineticComponentScanGameTests;
 import dimblend.experience.gametest.KineticUnloadedShareGameTests;
+import dimblend.experience.gametest.SlidingDoorPairingGameTests;
 import dimblend.experience.gametest.TrainHornCcaGameTests;
 import dimblend.experience.gametest.TrainHornCdgGameTests;
 import dimblend.experience.gametest.TrainHornGameTests;
@@ -109,6 +110,10 @@ public class DimBlend {
         if (ModList.get().isLoaded("create")) {
             modEventBus.addListener(ItemDrainPipeRefill::registerCapabilities);
             dimblend.experience.compat.dolls.DollKeeperSeats.register(modEventBus);
+            // Create sliding-door pairing is registered only after the optional mod is present;
+            // the compat classes therefore never load in a Create-free installation.
+            dimblend.experience.compat.create.SlidingDoorPairingInteraction.register();
+            dimblend.experience.compat.create.SlidingDoorPairingTooltip.register();
         }
 
         // 探索规则都在服务端执行，走 SERVER 配置
@@ -162,6 +167,7 @@ public class DimBlend {
             }
             event.register(KineticComponentScanGameTests.class);
             event.register(KineticUnloadedShareGameTests.class);
+            event.register(SlidingDoorPairingGameTests.class);
             event.register(CdgKineticOverloadGameTests.class);
             event.register(TrainHornGameTests.class);
             // 玩偶售货员：目标类来自 Create，Doll 只按注册名访问，缺 Doll 时各用例自己
