@@ -244,4 +244,58 @@ class SableAnimationSpriteCacheTest {
         assertEquals(1, source.calls.get());
         assertEquals(0, cache.epoch());
     }
+
+    @Test
+    void singleBlockEntryIsDroppedWhenTheResourceGenerationAdvances() {
+        // 单方块子层级（VanillaSingleSubLevelRenderData）只有一个方块，缓存里最多一条：
+        // 键是方块位置、stamp 是 BlockState 实例。资源重载时代次推进必须把这一条也作废，
+        // 否则重载后仍会去标记已经 close 的旧 TextureAtlasSprite 实例。
+        SableAnimationSpriteCache<Object, int[]> cache = new SableAnimationSpriteCache<>(EMPTY);
+        Source source = new Source();
+        Object pos = new Object();
+        Object state = new Object();
+
+        int[] beforeReload = cache.getPartial(pos, state,
+                k -> SableAnimationSpriteCache.Computed.complete(source.compute(k)));
+        assertSame(beforeReload, cache.getPartial(pos, state,
+                k -> SableAnimationSpriteCache.Computed.complete(source.compute(k))), "同一位置+状态不应重算");
+        assertEquals(1, cache.cachedCount(), "单方块缓存只留一条");
+
+        long epochBefore = cache.epoch();
+        cache.invalidate(); // 探针贴图实例变了 => 代次推进
+
+        int[] afterReload = cache.getPartial(pos, state,
+                k -> SableAnimationSpriteCache.Computed.complete(source.compute(k)));
+        assertNotSame(beforeReload, afterReload, "重载后单方块条目必须重算");
+        assertEquals(2, source.calls.get());
+        assertEquals(1, cache.cachedCount(), "重算后仍然只有一条");
+        assertEquals(epochBefore + 1, cache.epoch(), "代次必须可观测地推进");
+    }
+
+    @Test
+    void singleBlockEntryIsRecomputedWhenTheBlockOrStateChanges() {
+        // 方块位置换实例（plot 移动）或方块状态换实例（拆/放方块）都必须立即重算，
+        // 且旧位置条目要被 retain 清掉——否则单方块载具会在缓存里堆历史位置。
+        SableAnimationSpriteCache<Object, int[]> cache = new SableAnimationSpriteCache<>(EMPTY);
+        Source source = new Source();
+        Object pos = new Object();
+        Object otherPos = new Object();
+        Object state = new Object();
+        Object otherState = new Object();
+
+        int[] first = cache.get(pos, state, source);
+        assertEquals(1, cache.cachedCount());
+
+        int[] afterStateChange = cache.get(pos, otherState, source);
+        assertNotSame(first, afterStateChange, "状态换实例必须重算");
+        assertEquals(1, cache.cachedCount(), "同一位置只保留一条");
+
+        int[] afterMove = cache.get(otherPos, otherState, source);
+        assertNotSame(afterStateChange, afterMove, "位置变了必须重算");
+        assertEquals(2, cache.cachedCount(), "移动后新旧位置各一条，等待 retain 清理");
+
+        cache.retain(List.of(otherPos));
+        assertEquals(1, cache.cachedCount(), "retain 只留当前方块位置");
+        assertEquals(3, source.calls.get(), "位置+状态各变一次，共算三次");
+    }
 }

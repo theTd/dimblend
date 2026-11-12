@@ -1,41 +1,55 @@
 package dimblend.experience.compat.simurail;
 
+import com.crystaelix.simurail.content.bogey.PhysicsBogeyBlock;
+import com.crystaelix.simurail.content.bogey.PhysicsBogeyMenu;
 import dimblend.experience.Config;
 import dimblend.experience.DimBlend;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.common.Tags;
 import net.neoforged.neoforge.common.util.TriState;
-import net.neoforged.neoforge.event.level.ExplosionEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
+import net.neoforged.neoforge.event.level.ExplosionEvent;
 
 /**
- * E1 Simurail 自带方块保护（用户拍板口径：Simurail 自带方块防爆防拆，
- * 仅创造模式可拆改；生存模式可以打开物理转向架的原生设置界面）。
+ * E1 Simurail 自带方块保护与物理转向架交互规则（DECISIONS.md #1）。
  *
  * <p><b>覆盖面（如实）</b>：玩家破坏（BreakEvent）/挖掘（LeftClickBlock）/交互
  * （RightClickBlock）/爆炸（Detonate）——四处理器全部覆盖且经复核闭环核证。
- * <b>机器/非玩家破坏是已知接受风险</b>：NeoForge 21.1 的 BreakEvent 仅由
- * ServerPlayerGameMode 经 fireBlockBreak 触发（契约非空 Player），Create 静态
- * 钻头/锯、机械臂、滚压机、凋灵等 null-player 路径不触发任何事件。已用
- * Create 的 {@code create:non_breakable} 方块标签数据包补强关闭最大旁路面
- * （钻头/锯/机械臂两类破坏均消费该 tag，见
- * {@code data/create/tags/block/non_breakable.json}）；滚压机/部署器工具挖掘/
- * 凋灵残余旁路在案接受。若需全覆盖需 mixin BlockHelper.destroyBlockAs（重）。</p>
+ * 取消服务端交互或破坏时同步刷新 {@code ServerPlayer.inventoryMenu.sendAllDataToRemote()}，
+ * 防止客户端预测扣减方块后栈数量失步。</p>
  *
- * <p><b>方块清单</b>（运行 jar 0.0.0-a 注册表，两方块；CenteredGangwayJoint
- * 为未注册死类——见 SimurailBlocksHolder 注释）。</p>
- *
- * <p><b>放置路径不拦</b>（口径在案）：Simurail 方块无生存配方且不可被生存
- * 获得（本防护使其无掉落），放置风险趋零。</p>
+ * <p><b>物理转向架右键口径</b>：无论生存或创造、站立或潜行，仅空手或扳手
+ * （{@code AllItems.WRENCH} 或 {@code #c:tools/wrench}）打开 {@code PhysicsBogeyMenu}；
+ * 扳手永不旋转或拆卸转向架（连创造模式潜行扳手也只开菜单）；其余任何手持物品均跳过菜单走正常
+ * {@code stack.useOn} 放置/使用逻辑。</p>
  */
 @EventBusSubscriber(modid = DimBlend.MODID)
 public final class SimurailBlockGuard {
+
+    /**
+     * Tracks a third-party {@code #c:tools/wrench} right-click on a bogey across
+     * {@code EventPriority.HIGH}, where Create's {@code WrenchEventHandler} unconditionally cancels
+     * the event with {@code InteractionResult.PASS} even when {@code onWrenched}/{@code onSneakWrenched}
+     * returned {@code PASS}.
+     */
+    private static final ThreadLocal<PlayerInteractEvent.RightClickBlock> THIRD_PARTY_BOGEY_WRENCH_EVENT =
+            new ThreadLocal<>();
 
     @SubscribeEvent
     public static void onBreak(BlockEvent.BreakEvent event) {
@@ -48,6 +62,7 @@ public final class SimurailBlockGuard {
         Player player = event.getPlayer();
         if (player == null || !player.isCreative()) {
             event.setCanceled(true);
+            resyncInventory(player);
         }
     }
 
@@ -62,41 +77,60 @@ public final class SimurailBlockGuard {
         }
     }
 
-    @SubscribeEvent
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
-        if (!Config.SIMURAIL_PROTECT.get() || event.getEntity().isCreative()) {
-            return;
-        }
+        THIRD_PARTY_BOGEY_WRENCH_EVENT.remove();
         BlockState state = event.getLevel().getBlockState(event.getPos());
         if (!isSimurailBlock(state)) {
             return;
         }
         Player player = event.getEntity();
+        boolean creative = player.isCreative();
         boolean survival = player instanceof ServerPlayer serverPlayer
                 ? serverPlayer.gameMode.getGameModeForPlayer() == GameType.SURVIVAL
-                : !player.isSpectator() && player.getAbilities().mayBuild;
-        if (!survival) {
-            event.setCanceled(true);
-            return;
-        }
-        // 2026-11-03: the user wants the wrench charge usable in survival. A Create wrench on a
-        // coupler therefore reaches the vanilla path, where AutomaticCouplerWrenchMixin toggles the
-        // charge and returns before any type change. Everything else keeps its old answer.
-        SimurailSurvivalInteraction.Decision decision = SimurailSurvivalInteraction.decide(
+                : !creative && !player.isSpectator() && player.getAbilities().mayBuild;
+        ItemStack stack = event.getItemStack();
+        boolean holdingCreateWrench = isCreateWrench(stack);
+        boolean holdingBogeyWrench = holdingCreateWrench || (!stack.isEmpty() && stack.is(Tags.Items.TOOLS_WRENCH));
+
+        SimurailSurvivalInteraction.Decision decision = SimurailSurvivalInteraction.decideRightClick(
+                Config.SIMURAIL_PROTECT.get(),
+                creative,
+                survival,
                 SimurailBlocksHolder.isBogey(state),
                 SimurailBlocksHolder.isCoupler(state),
-                event.getItemStack().is(com.simibubi.create.AllItems.WRENCH),
+                holdingBogeyWrench,
+                holdingCreateWrench,
                 Config.ALLOW_SURVIVAL_COUPLER_INTERACTION.get());
         switch (decision) {
             case ALLOW -> {
-                // Fall through to the vanilla interaction.
+                // Fall through to vanilla block/item interaction.
             }
-            case PASS_BLOCK_ONLY -> {
-                // Let Simurail's block interaction open its own menu, but keep item hooks
-                // disabled: in particular, sneak-wrenching must not pick up the bogey.
+            case FORCE_BOGEY_MENU -> {
+                event.setUseBlock(TriState.TRUE);
                 event.setUseItem(TriState.FALSE);
+                if (!holdingCreateWrench) {
+                    THIRD_PARTY_BOGEY_WRENCH_EVENT.set(event);
+                }
             }
-            case DENY -> event.setCanceled(true);
+            case DENY -> {
+                event.setCanceled(true);
+                resyncInventory(player);
+            }
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.NORMAL, receiveCanceled = true)
+    public static void restoreBogeyWrenchAfterCreateHandler(PlayerInteractEvent.RightClickBlock event) {
+        PlayerInteractEvent.RightClickBlock tracked = THIRD_PARTY_BOGEY_WRENCH_EVENT.get();
+        if (tracked != event) {
+            return;
+        }
+        THIRD_PARTY_BOGEY_WRENCH_EVENT.remove();
+        if (event.isCanceled() && event.getCancellationResult() == InteractionResult.PASS) {
+            event.setCanceled(false);
+            event.setUseBlock(TriState.TRUE);
+            event.setUseItem(TriState.FALSE);
         }
     }
 
@@ -108,11 +142,62 @@ public final class SimurailBlockGuard {
         event.getAffectedBlocks().removeIf(pos -> isSimurailBlock(event.getLevel().getBlockState(pos)));
     }
 
+    /**
+     * Mixin target helper for {@code PhysicsBogeyBlock#useItemOn}. Parameter uses vanilla
+     * {@link Block} so {@code @EventBusSubscriber} method-descriptor scanning never resolves
+     * Simurail classes when Simurail is absent.
+     */
+    public static ItemInteractionResult onBogeyUseItemOn(Block block, ItemStack stack, BlockState state,
+            Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hitResult) {
+        boolean opensMenu = SimurailSurvivalInteraction.bogeyOpensMenu(
+                hand == InteractionHand.MAIN_HAND,
+                player.getMainHandItem().isEmpty(),
+                player.getOffhandItem().isEmpty(),
+                isBogeyWrench(stack));
+        if (opensMenu) {
+            if (level.isClientSide()) {
+                return ItemInteractionResult.SUCCESS;
+            }
+            BogeyMenuOpener.open(block, level, pos, player);
+            return ItemInteractionResult.SUCCESS;
+        }
+        return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+    }
+
+    public static boolean isBogeyWrench(ItemStack stack) {
+        return !stack.isEmpty() && (isCreateWrench(stack) || stack.is(Tags.Items.TOOLS_WRENCH));
+    }
+
+    private static boolean isCreateWrench(ItemStack stack) {
+        return !stack.isEmpty() && ModList.get().isLoaded("create") && CreateWrenchHolder.isWrench(stack);
+    }
+
+    private static void resyncInventory(Player player) {
+        if (player instanceof ServerPlayer serverPlayer) {
+            serverPlayer.inventoryMenu.sendAllDataToRemote();
+        }
+    }
+
     private static boolean isSimurailBlock(BlockState state) {
         if (!ModList.get().isLoaded("simurail")) {
             return false;
         }
         return SimurailBlocksHolder.isSimurailBlock(state);
+    }
+
+    private static final class CreateWrenchHolder {
+        static boolean isWrench(ItemStack stack) {
+            return com.simibubi.create.AllItems.WRENCH.isIn(stack);
+        }
+    }
+
+    private static final class BogeyMenuOpener {
+        static void open(Block block, Level level, BlockPos pos, Player player) {
+            if (block instanceof PhysicsBogeyBlock bogeyBlock) {
+                bogeyBlock.withBlockEntityDo(level, pos,
+                        be -> player.openMenu(be, buf -> PhysicsBogeyMenu.prepare(buf, be, player.isSecondaryUseActive())));
+            }
+        }
     }
 
     private SimurailBlockGuard() {

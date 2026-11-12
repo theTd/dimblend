@@ -5,6 +5,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.concurrent.atomic.AtomicLong;
 
+import net.minecraft.client.renderer.texture.SpriteContents;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,7 +65,8 @@ public final class SodiumSpriteAnimationBridge {
             // 回读句柄是诊断专用，缺席不影响补标记主路径。
             Class<?> extension = Class.forName("net.caffeinemc.mods.sodium.client.render.texture.SpriteContentsExtension");
             isActive = MethodHandles.publicLookup()
-                    .findVirtual(extension, "sodium$isActive", MethodType.methodType(boolean.class));
+                    .findVirtual(extension, "sodium$isActive", MethodType.methodType(boolean.class))
+                    .asType(MethodType.methodType(boolean.class, SpriteContents.class));
         } catch (ReflectiveOperationException | LinkageError | RuntimeException ignored) {
             isActive = null;
         }
