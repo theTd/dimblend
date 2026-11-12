@@ -1,140 +1,214 @@
 package dimblend.experience.compat.create;
 
-import com.simibubi.create.AllItems;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import com.simibubi.create.content.equipment.wrench.IWrenchable;
+import com.simibubi.create.content.equipment.wrench.WrenchItem;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.common.util.TriState;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
+import net.neoforged.neoforge.event.level.BlockDropsEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
-import net.neoforged.neoforge.event.level.ExplosionEvent;
 
-/** Server side interaction and removal hooks for the optional Create door pairing. */
+/**
+ * Server-safe interaction, wrench, and drop hooks for Create single-cell paired sliding doors.
+ */
 public final class SlidingDoorPairingInteraction {
+    private static final TagKey<Item> WRENCHES = TagKey.create(
+            Registries.ITEM, ResourceLocation.fromNamespaceAndPath("c", "tools/wrench"));
+
     private SlidingDoorPairingInteraction() {
     }
 
     public static void register() {
-        // Run before Create's HIGH-priority wrench listener. The receiveCanceled flag also
-        // prevents a later listener from rotating/removing the second half independently.
-        NeoForge.EVENT_BUS.addListener(EventPriority.HIGHEST, true,
-                PlayerInteractEvent.RightClickBlock.class, SlidingDoorPairingInteraction::onRightClick);
-        NeoForge.EVENT_BUS.addListener(SlidingDoorPairingInteraction::onBreak);
-        NeoForge.EVENT_BUS.addListener(SlidingDoorPairingInteraction::onExplosion);
+        NeoForge.EVENT_BUS.addListener(
+                EventPriority.HIGH, false,
+                PlayerInteractEvent.RightClickBlock.class,
+                SlidingDoorPairingInteraction::onRightClick);
+        NeoForge.EVENT_BUS.addListener(
+                EventPriority.HIGH, false,
+                BlockDropsEvent.class,
+                SlidingDoorPairingInteraction::onBlockDrops);
+    }
+
+    public static boolean isWrench(ItemStack stack) {
+        return !stack.isEmpty() && (stack.getItem() instanceof WrenchItem || stack.is(WRENCHES));
     }
 
     private static void onRightClick(PlayerInteractEvent.RightClickBlock event) {
         Level level = event.getLevel();
+        BlockPos pos = event.getPos();
+        BlockState state = level.getBlockState(pos);
+        if (!SlidingDoorPairing.isTargetDoor(state)) {
+            return;
+        }
+
         Player player = event.getEntity();
-        BlockState state = level.getBlockState(event.getPos());
+        if (player == null || player.isShiftKeyDown()) {
+            return;
+        }
 
-        if (player.isShiftKeyDown() && event.getItemStack().is(AllItems.WRENCH)
-                && SlidingDoorPairing.isSupported(state)
-                && isPaired(level, event.getPos(), state)) {
-            cancel(event, level);
-            if (level instanceof ServerLevel server) {
-                removePairWithDrops(server, event.getPos(), state, player);
+        ItemStack stack = event.getItemStack();
+
+        // Disable normal (non-sneaking) wrench on all 4 target doors (single & paired),
+        // including preventing empty off-hand fallthrough when main hand holds a wrench.
+        if (isWrench(stack)
+                || (event.getHand() == InteractionHand.OFF_HAND && isWrench(player.getMainHandItem()))) {
+            event.setUseItem(TriState.FALSE);
+            event.setUseBlock(TriState.FALSE);
+            event.setCanceled(true);
+            event.setCancellationResult(InteractionResult.PASS);
+            return;
+        }
+
+        if (!SlidingDoorPairing.isSameDoorItem(state, stack)) {
+            return;
+        }
+
+        // Already paired: toggle open/closed cleanly without consuming an item or placing a block.
+        if (SlidingDoorPairing.isPaired(state)) {
+            InteractionResult toggleResult = state.useWithoutItem(level, player, event.getHitVec());
+            event.setUseItem(TriState.FALSE);
+            event.setUseBlock(TriState.FALSE);
+            event.setCanceled(true);
+            event.setCancellationResult(
+                    toggleResult.consumesAction()
+                            ? toggleResult
+                            : InteractionResult.sidedSuccess(level.isClientSide));
+            return;
+        }
+
+        // Unpaired target door + same door item: upgrade in place to PAIRED=true.
+        if (!SlidingDoorPairing.canPair(level, pos, stack)) {
+            return;
+        }
+
+        BlockPos lower = SlidingDoorPairing.lowerPos(pos, state);
+        if (level.isClientSide) {
+            if (level.getBlockEntity(lower) instanceof SlidingDoorAnimationAccess animAccess) {
+                animAccess.dimblend$setAnimationValue(state.getValue(DoorBlock.OPEN) ? 1.0f : 0.0f);
             }
-            return;
-        }
-
-        if (!SlidingDoorPairing.canPair(level, event.getPos(), event.getItemStack())) {
-            return;
-        }
-        cancel(event, level);
-        if (level instanceof ServerLevel server && SlidingDoorPairing.pair(server, event.getPos(), event.getItemStack())
-                && !player.getAbilities().instabuild) {
-            event.getItemStack().shrink(1);
-        }
-    }
-
-    private static void onBreak(BlockEvent.BreakEvent event) {
-        if (!(event.getLevel() instanceof ServerLevel server)) {
-            return;
-        }
-        BlockState state = event.getState();
-        if (!SlidingDoorPairing.isSupported(state) || !isPaired(server, event.getPos(), state)) {
-            return;
-        }
-        // Take over the whole paired door so an upper-half break also produces exactly two
-        // item drops and never leaves an isolated half behind.
-        removePairWithDrops(server, event.getPos(), state, event.getPlayer());
-        event.setCanceled(true);
-    }
-
-    private static void onExplosion(ExplosionEvent.Detonate event) {
-        if (!(event.getLevel() instanceof ServerLevel level)) {
-            return;
-        }
-        Set<BlockPos> additions = new HashSet<>();
-        for (BlockPos pos : List.copyOf(event.getAffectedBlocks())) {
-            BlockState state = level.getBlockState(pos);
-            if (!SlidingDoorPairing.isSupported(state) || !isPaired(level, pos, state)) {
-                continue;
-            }
-            BlockPos lower = SlidingDoorPairing.lowerPos(pos, state);
-            BlockPos other = SlidingDoorPairing.partnerLowerPos(lower, level.getBlockState(lower));
-            additions.add(other);
-            additions.add(other.above());
-        }
-        event.getAffectedBlocks().addAll(additions);
-    }
-
-    private static boolean isPaired(Level level, BlockPos clicked, BlockState state) {
-        BlockPos lower = SlidingDoorPairing.lowerPos(clicked, state);
-        BlockState lowerState = level.getBlockState(lower);
-        return SlidingDoorPairing.isSupported(lowerState)
-                && SlidingDoorPairing.isAlreadyPaired(level, lower, lowerState);
-    }
-
-    private static void removePairWithDrops(ServerLevel level, BlockPos clicked, BlockState clickedState, Player player) {
-        BlockPos lower = SlidingDoorPairing.lowerPos(clicked, clickedState);
-        BlockState source = level.getBlockState(lower);
-        if (!SlidingDoorPairing.isSupported(source)) {
-            return;
-        }
-        BlockPos other = SlidingDoorPairing.partnerLowerPos(lower, source);
-        BlockState otherState = level.getBlockState(other);
-        if (!otherState.is(source.getBlock())) {
-            return;
-        }
-
-        if (!player.isCreative()) {
-            ItemStack tool = player.getMainHandItem();
-            Block.getDrops(source, level, lower, null, player, tool)
-                    .forEach(stack -> player.getInventory().placeItemBackInInventory(stack));
-            Block.getDrops(otherState, level, other, null, player, tool)
-                    .forEach(stack -> player.getInventory().placeItemBackInInventory(stack));
-        }
-
-        int flags = Block.UPDATE_CLIENTS | Block.UPDATE_NEIGHBORS | Block.UPDATE_IMMEDIATE;
-        clearDoor(level, lower, flags);
-        clearDoor(level, other, flags);
-    }
-
-    private static void clearDoor(ServerLevel level, BlockPos lower, int flags) {
-        BlockState lowerState = level.getBlockState(lower);
-        if (SlidingDoorPairing.isSupported(lowerState)) {
-            level.setBlock(lower, Blocks.AIR.defaultBlockState(), flags);
-            if (level.getBlockState(lower.above()).is(lowerState.getBlock())) {
-                level.setBlock(lower.above(), Blocks.AIR.defaultBlockState(), flags);
+        } else if (level instanceof ServerLevel serverLevel) {
+            if (SlidingDoorPairing.pair(serverLevel, pos)) {
+                if (!player.getAbilities().instabuild) {
+                    stack.shrink(1);
+                }
+                SoundType soundType = state.getSoundType(serverLevel, pos, player);
+                serverLevel.playSound(
+                        null,
+                        pos,
+                        soundType.getPlaceSound(),
+                        SoundSource.BLOCKS,
+                        (soundType.getVolume() + 1.0f) * 0.5f,
+                        soundType.getPitch() * 0.8f);
             }
         }
-    }
 
-    private static void cancel(PlayerInteractEvent.RightClickBlock event, Level level) {
+        event.setUseItem(TriState.FALSE);
+        event.setUseBlock(TriState.FALSE);
         event.setCanceled(true);
         event.setCancellationResult(InteractionResult.sidedSuccess(level.isClientSide));
+    }
+
+    /**
+     * Ensures harvesting either {@code LOWER} or {@code UPPER} of a paired door in Survival
+     * (or explosion / direct {@code destroyBlock(..., true)}) drops 2 doors instead of 1.
+     */
+    private static void onBlockDrops(BlockDropsEvent event) {
+        BlockState state = event.getState();
+        if (!SlidingDoorPairing.isPaired(state)) {
+            return;
+        }
+        if (!state.hasProperty(DoorBlock.HALF) || state.getValue(DoorBlock.HALF) != DoubleBlockHalf.LOWER) {
+            return;
+        }
+
+        Item doorItem = state.getBlock().asItem();
+        int existingCount = 0;
+        for (ItemEntity drop : event.getDrops()) {
+            if (drop.getItem().is(doorItem)) {
+                existingCount += drop.getItem().getCount();
+            }
+        }
+        if (existingCount <= 0 || existingCount >= 2) {
+            return;
+        }
+
+        ServerLevel level = event.getLevel();
+        BlockPos pos = event.getPos();
+        ItemEntity extra = new ItemEntity(
+                level,
+                pos.getX() + 0.5,
+                pos.getY() + 0.5,
+                pos.getZ() + 0.5,
+                new ItemStack(doorItem, 2 - existingCount));
+        extra.setDefaultPickUpDelay();
+        event.getDrops().add(extra);
+    }
+
+    /**
+     * Dismantles a paired door via sneak-wrench, removing both halves cleanly without duplicate
+     * neighbor-shape drop triggers and returning 2 door items.
+     */
+    public static InteractionResult onSneakWrenchedPaired(BlockState state, UseOnContext context) {
+        Level world = context.getLevel();
+        BlockPos pos = context.getClickedPos();
+        Player player = context.getPlayer();
+
+        if (!(world instanceof ServerLevel serverLevel)) {
+            return InteractionResult.SUCCESS;
+        }
+
+        BlockEvent.BreakEvent breakEvent = new BlockEvent.BreakEvent(world, pos, world.getBlockState(pos), player);
+        NeoForge.EVENT_BUS.post(breakEvent);
+        if (breakEvent.isCanceled()) {
+            return InteractionResult.SUCCESS;
+        }
+
+        BlockPos lowerPos = SlidingDoorPairing.lowerPos(pos, state);
+        BlockPos upperPos = lowerPos.above();
+
+        if (serverLevel.getBlockState(upperPos).is(state.getBlock())) {
+            serverLevel.setBlock(
+                    upperPos,
+                    serverLevel.getFluidState(upperPos).createLegacyBlock(),
+                    Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE | Block.UPDATE_SUPPRESS_DROPS);
+        }
+
+        state.spawnAfterBreak(serverLevel, lowerPos, ItemStack.EMPTY, true);
+        if (serverLevel.getBlockState(lowerPos).is(state.getBlock())) {
+            serverLevel.destroyBlock(lowerPos, false, player);
+        }
+        serverLevel.updateNeighborsAt(upperPos, state.getBlock());
+
+        Item doorItem = state.getBlock().asItem();
+        if (player != null) {
+            if (!player.isCreative()) {
+                player.getInventory().placeItemBackInInventory(new ItemStack(doorItem, 2));
+            }
+        } else {
+            Block.popResource(serverLevel, lowerPos, new ItemStack(doorItem, 2));
+        }
+
+        IWrenchable.playRemoveSound(serverLevel, pos);
+        return InteractionResult.SUCCESS;
     }
 }

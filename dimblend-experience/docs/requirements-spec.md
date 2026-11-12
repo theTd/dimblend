@@ -1740,3 +1740,53 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
 - R5 底盘转向架参数（`standard-train-chassis.md`）、R7 出生点箱子（已随 R6 暂缓撤回）、R10 列车门/活板门豁免
   （`dimblend-craft/docs/配方修改需求.md`）、R13 细雪桶空桶（§15 N 板块外的 fluid 兼容）、R15 黄铜二改
   （craft 文档）、R16 远行提示与 R18 刷怪笼（§12 A12 与小节行内已改）。
+
+## 18. 2026-11-12 批次（转向架交互与 Y=66 平面锁、直播兼容三项、Create 单格对开门）
+
+> 用户定稿记录见 `docs/DECISIONS.md`（源自 `dimblend-batch-confirm-20261112-decisions.json`，共 9 项拍板）。
+
+### 18.1 转向架交互收敛与放置同步（`bogey-interaction`）
+
+- 口径：对 `simurail:physics_bogey`（含正置与 `INVERTED`），**仅**「主副手皆空」或「手持扳手（`create:wrench` / `#c:tools/wrench`）」右键打开 `PhysicsBogeyMenu`（站立与潜行一致、生存与创造一致）。**连创造模式的潜行+扳手也禁用拆除**，普通扳手也绝不触发 `onWrenched` 旋转——扳手在转向架上永远只开菜单。
+- 其余手持物品（砖块、半砖、伪装块、传动杆、转向连接器、线轴等，站立或潜行、主手或副手）：一律绕过 `PhysicsBogeyMenu`，走原版/模组 `stack.useOn` 放置或目标物品交互；若主手为不可放置普通物品（如木棍）且副手为空，也不会穿透回退去开菜单。
+- 同步修复：凡 `RightClickBlock` 被拦截取消的路径，服务端对 `ServerPlayer` 调用 `inventoryMenu.sendAllDataToRemote()` 强制下发槽位快照，消除客户端预测扣减造成的假少/错位。
+- 实现：`SimurailBlockGuard`、`SimurailSurvivalInteraction`、`mixin/compat/simurail/PhysicsBogeyInteractionMixin`。
+- 验证：`SimurailSurvivalInteractionTest` 单测 + `SimurailBogeyInteractionGameTests` GameTest + TrainTripWorld 实机（空手开菜单、创造潜行+扳手只开菜单不拆不转、生存手持 16 砖块右键顶面放块且双端同为 15、手持木棍空副手不开菜单、空主手+副手 8 石砖放块且双端同为 7）。
+
+### 18.2 旋转维度车架 Y=66 硬平面锁（`bogey-support-mode`）
+
+- 口径：在 `dimblend:rotating` 内，刚体轴锁统一固定为锁定 `{LINEAR_Y, ANGULAR_X, ANGULAR_Z}`、放开 `{LINEAR_X, LINEAR_Z, ANGULAR_Y}`，将车底甲板高度钉在 `Y = 66.0`（已登记底盘取 `entry.nominalHeight()`，未登记但含 `simurail:physics_bogey` 的组装车体按 `plotDeck = (plotCenter.x, bogeyPlotY + 1.0, plotCenter.z)` 钉在 `66.0`），彻底消除车轮穿轨与整车下沉，同时在直轨、道岔、贝塞尔弯道与 `ZO` 侧线上自由平移/偏航转向。
+- 物理边界：不修改 `RigidBodyHandle` 的 `MassData`（列车质量、加减速与牵引力曲线完全保持原值）；移除对未实装类 `RailJointLocks` 的全部引用，兼容线上 `simurail-1.21.1-0.0.0-a+ecd2dd3.jar`（`dimblend/libs/` 已同步对齐该运行 jar）。
+- 实现：`ChassisRailLock`、`ChassisRailLockRules`。
+- 验证：`ChassisRailLockRulesTest` 单测 + `-PwithChassis` 旋转维度 GameTest 20/20 全绿 + TrainTripWorld 实机（施加 `dv=(3.5,-5.0,0)` 与 `dw=(0.3,0,-0.3)` 跑 15 tick：`delta_x=+3.658`、`delta_y=0.0`、`pitch=0.0°`、`roll=0.0°`、`MassData` 前后恒为 `114.5`，车轮紧贴轨面不穿轨）。
+
+### 18.3 Loot Journal 拾取图标与 ImmediatelyFast HUD 批处理兼容（`loot-journal-icon`）
+
+- 根因：整合包开启 `ImmediatelyFast` `hud_batching: true` 时，`GuiGraphics#bufferSource` 被替换为批处理缓冲源，Loot Journal `PickupComponent#render` 内嵌的物品图标绘制与 HUD 批处理提交序及 `GL_DEPTH_TEST`/混合状态冲突，导致文字显示而图标丢失。
+- 修法：`LootJournalPickupRenderMixin` 包裹 `dev.obscuria.lootjournal.client.renderer.PickupComponent#render`，进入前经 `LootJournalHudCompat` 先 `flush` 当前 HUD 批次并将 `GuiGraphics`（`GuiGraphicsBufferSourceAccessor`）临时切回原版 `Minecraft.getInstance().renderBuffers().bufferSource()`，退出时在 `finally` 内冲刷并对称恢复原 `bufferSource`、`GL_DEPTH_TEST`、shader color 与 blend 状态，保持全局 `hud_batching: true` 不降级。
+- 验证：TrainTripWorld 实机开启 `hud_batching: true` 连续拾取钻石/扳手/黄铜门，右下角 Loot Journal 条目图标全部正常绘制，帧末 `GL_DEPTH_TEST` 状态恢复为 `false`。
+
+### 18.4 Sable 子层级粒子位姿对齐（`millstone-particle-target`）
+
+- 根因：① NeoForge `21.1.249` 的 `LevelRenderer#renderLevel` 直接调用 NeoForge 5 参数重载 `ParticleEngine#render(LightTexture, Camera, float, Frustum, Predicate)`，原版 3 参数重载在运行期从未被调用；② 新生成的子层级追踪粒子在 `Tick 0` 尚未经过 `Particle#tick`，`xo == x == logicalPose(p0)`，比 `renderPose(0)` 超前一整 tick；而 `Tick 1+` 粒子的 `xo` 在 `lastPose`、`x` 在 `logicalPose`，旧世界空间平移算法导致反向滞后。
+- 修法：`SableParticleEngineRenderPoseMixin` 挂入 5 参数 `ParticleEngine#render`，配合 `SableParticleRenderPoseMixin` 记录粒子在当前追踪子层级下是否已 tick 过；`SubLevelParticleRenderPose#computeRenderPosition` 把 `(xo,yo,zo)` 按 `prevPose`（`Tick 0` 取 `logicalPose`，`Tick 1+` 取 `lastPose`）逆变换回 plot 局部空间、`(x,y,z)` 按 `logicalPose` 逆变换回局部空间，局部线性插值后再用 `ClientSubLevel#renderPose(partialTick)` 正变换到世界坐标，绘制完毕后在 `finally` 还原粒子字段。按用户拍板不改动森罗物语 `kaleidoscope_cookery:millstone`。
+- 验证：`SubLevelParticleRenderPoseTest` 几何单测 + TrainTripWorld 实机子层级 `Tick 0` / `Tick 1+` 实测误差 `0.0`（`< 1e-5`）及组装子层级石磨研磨小麦实机验证。
+
+### 18.5 Sable 子层级动画贴图补齐（`animated-blocks-scope`）
+
+- 修法：在 `SubLevelAnimatedSprites`、`SableSingleBlockSpriteAnimationMixin` 与 `SodiumSpriteAnimationBridge` 中补齐 Sodium `animate_only_visible_textures = true` 下的全部 4 条缺口：
+  1. **流动流体与模组流体**：改按 `FluidTags.WATER` / `FluidTags.LAVA` 标记 `ModelBakery.WATER_FLOW` / `LAVA_FLOW`，并读取 `IClientFluidTypeExtensions` 的 `still`/`flowing` 贴图与粒子图标；
+  2. **`ModelData` 方块实体（Copycats+ 伪装块等）**：对 `hasBlockEntity()` 方块按 `ModelDataManager` / `BlockEntity#getModelData()` 走 NeoForge 5 参数 `BakedModel#getQuads`（逐 `RenderType` 扫描），结果不污染按 `BlockState` 共享的 `STATE_SPRITES` 缓存；
+  3. **单方块子层级**：`SableSingleBlockSpriteAnimationMixin` 挂入 `VanillaSingleSubLevelRenderData`，按 `(pos, BlockState, ModelData)` 引用跟踪失效并每刻补标；
+  4. **资源重载（`F3+T`）刷新**：双探针（`LAVA_FLOW` + `missingno`）检测 `TextureAtlasSprite` 实例换代并推进 `RELOAD_GENERATION`，同步作废全局状态缓存、区块缓存与单方块缓存。
+  5. **回读句柄签名修正**：`SodiumSpriteAnimationBridge` 的 `SpriteContentsExtension#sodium$isActive` `MethodHandle` 经 `.asType(MethodType.methodType(boolean.class, SpriteContents.class))` 适配编译期 `invokeExact(sprite.contents())` 描述符，消除诊断回读的 `WrongMethodTypeException`。
+- 验证：`SableAnimationSpriteCacheTest` 单测 + TrainTripWorld 实机组装多格流水/岩浆块子层级与单格岩浆块子层级，实测 `water_flow_active_during_sublevel_render = true`、`mark_failure_count = 0`、`query_failure_count = 0`。
+
+### 18.6 Create 四种滑动门/折叠门单格对开（`door-*`）
+
+- 生效范围：`create:andesite_door`、`create:brass_door`、`create:copper_door`、`create:train_door`（排除 `create:framed_glass_door`）。
+- 配对与几何（方案 A）：已摆出的未配对目标门，玩家手持同种门对其右键时取消默认放块，生存消耗 1 个（创造不消耗），上下两半同步置 `dimblend_paired=true`（逻辑仍占原 1 格 `[0, 1]`，左右邻格保持空气）。渲染器 `SlidingDoorPairedRenderer`（`SlidingDoorRendererMixin`）在关闭与开合动画全过程绘制左右镜像双扇并按原门 `hinge` 方向整体平移 `±0.5` 格（左合页补右扇并左移 `0.5` 格，右合页补左扇并右移 `0.5` 格），视觉居中跨 `[-0.5, +1.5]`（折叠门与平移门两套动画均支持）。
+- 碰撞、拾取与开合：关闭态 `getShape` / `getCollisionShape` 为平移后的 2 格宽盒 `[-0.5, +1.5]`；打开态 `getCollisionShape` 返回 `Shapes.empty()`（清空物理阻挡），`getShape` 保留两侧外移门扇选框；客户端 `GameRendererDoorOverhangMixin` + `SlidingDoorOverhangPick` / `SlidingDoorSableOverhangPick` 在地面与 Sable 子层级上补齐越出本逻辑格 `[0,1]` 部分的准星拾取与交互。
+- 扳手、红石、掉落与提示：四种目标门全面禁用非潜行扳手旋转（单门与对开门一致），保留潜行+扳手拆除；红石充能开关门行为与单门完全一致；工具破坏与潜行+扳手拆除对开门均掉落 2 个同种门——其中 `RailwayCasingRecovery` 对 `dimblend_paired=true` 的 `create:train_door` 在 `dimblend:rotating` 任意 `Z`（含 `|Z| > 32`）均保持掉 2 个列车门，仅未配对单扇列车门在 `|Z| > 32` 继续回收为 1 个 `create:railway_casing`；`SlidingDoorPairingTooltip` 为四种门物品悬浮提示追加灰字 `item.dimblend_experience.create_door_pairing`（`zh_cn`：“手持再次右键可变为单格对开”）。
+- 条件加载：`DimBlendMixinPlugin` 使用 `MixinService.getService().getBytecodeProvider().getClassNode(name, false)` 做字节码级存在性探测，避免在 mixin 配置期触发 `Class.forName` 过早类加载。
+- 验证：`SlidingDoorPairingTest` 单测 + `SlidingDoorPairingGameTests` / `RailwayCasingRecoveryGameTests` GameTest + TrainTripWorld 实机全链路验收（四种门提示、配对扣 1 门、闭合无中缝双扇截图、越界射线 `X=24.75` 点击开门、开门空碰撞、普通扳手禁用、红石开闭、闭合/外扇潜行扳手拆回 2 门、`Z=35` 对开列车门掉 2 门 vs 单扇列车门掉 1 机壳）。

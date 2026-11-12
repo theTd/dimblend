@@ -1,9 +1,6 @@
 package dimblend.experience.compat.sable;
 
 import com.crystaelix.simurail.content.bogey.PhysicsBogeyBlockEntity;
-import com.crystaelix.simurail.api.physics.RailJointLocks;
-import com.simibubi.create.content.trains.track.TrackBlock;
-import com.simibubi.create.content.trains.track.TrackShape;
 import dev.ryanhcode.sable.api.physics.PhysicsPipeline;
 import dev.ryanhcode.sable.api.physics.constraint.ConstraintJointAxis;
 import dev.ryanhcode.sable.api.physics.constraint.GenericConstraintConfiguration;
@@ -37,8 +34,8 @@ import java.util.Set;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Quaterniond;
 import org.joml.Quaterniondc;
 import org.joml.Vector3d;
@@ -46,33 +43,20 @@ import org.joml.Vector3dc;
 import org.slf4j.Logger;
 
 /**
- * {@code dimblend:rotating} 已登记标准车架的生产世界轨锁。
+ * {@code dimblend:rotating} 车架世界平面锁（{@code DECISIONS.md} #2，Option B）。
  *
- * <p><b>作用。</b>对每台已登记、蓝图标准、必要转向架完整且挂轨的车体，在 Sable/Rapier
- * 里建一个 {@code bodyA == null} 的世界 generic joint：锁 {@code LINEAR_Y}、
- * {@code LINEAR_Z}、{@code ANGULAR_X/Y/Z}，只留 {@code LINEAR_X}。车体因此只能沿世界 X
- * 平移，不能抬升、下沉、横向漂移、俯仰、横滚或偏航。</p>
+ * <p><b>作用。</b>对 {@code dimblend:rotating} 内所有已挂轨且未脱轨的车体（含已登记标准车架，以及未登记但装有启用
+ * {@link PhysicsBogeyBlockEntity} 的 {@link ServerSubLevel}），在 Sable/Rapier 中建立一个
+ * {@code bodyA == null} 的世界 generic joint：锁 {@code LINEAR_Y}、{@code ANGULAR_X}、
+ * {@code ANGULAR_Z}，保留 {@code LINEAR_X}、{@code LINEAR_Z}、{@code ANGULAR_Y} 自由。车体因此锁死标称甲板高度
+ * （标准 {@code Y=66.0}）与零俯仰/零横滚，同时可正常通过直线、道岔、贝塞尔曲线与侧线并自由偏航。</p>
  *
- * <p><b>坐标。</b>关节锚点取 plot 中心块上方的 deck 顶面：
- * {@code plotCenter.getCenter() + (0, 0.5, 0)}。标准装配把世界锚点块（y=65）映射到
- * plot 中心，deck 顶面因此是 plot y+0.5；世界 Y 用登记里的标称高度（新装配
- * {@code anchorY+1}，例如 66），世界 Z 用中心下方 XO 轨道块的中心（例如 z+0.5）。
- * 关节帧取目标朝向的绕 Y 世界帧，车体局部帧为单位帧，所以 pitch/roll 归零、yaw
- * 固定为 0° 或 180°。</p>
- *
- * <p><b>为什么不会每 tick teleport。</b>只调用
- * {@code PhysicsPipeline#addConstraint} 建一次约束；没有任何 {@code teleport}、没有
- * 每 tick 改 pose、没有改质量/驱动/应力/制动，也没有改 SimuRail 的轮轨 joint。</p>
- *
- * <p><b>生命周期。</b>登记扫描：每 {@link ChassisRailLockRules#CHECK_INTERVAL_TICKS} tick
- * 看一次登记表，连续 {@link ChassisRailLockRules#STABLE_CHECKS} 次资格通过才建约束。
- * 已建约束每 tick 复核，脱轨、轨道不再是直线 X、误差超出保持窗口、句柄失效、目标
- * 卸载或移除时立即释放。{@link SubLevelObserver} 在 {@code UNLOADED}/{@code REMOVED}
- * 时释放；重载后由登记扫描恢复。服务器停止/维度卸载清空。</p>
- *
- * <p><b>边界。</b>只认 {@link ChassisRegistry} 里的 POWER/CARRIAGE 身份；reward wagon
- * 和未登记车体不会进入。曲线、道岔、坡道、Y/Z 轨道以及 90° 朝向会因轨道不是 XO 或
- * yaw 误差过大而保持未锁定/释放，不改动 SimuRail 原有行为。</p>
+ * <p><b>坐标与重锚。</b>已登记标准车架取 {@code (plotCenter.x, plotCenter.y + 0.5, plotCenter.z)} 与
+ * {@code entry.nominalHeight()}；未登记车体取 {@code (plotCenter.x, bogeyPlotY + 1.0, plotCenter.z)}
+ * （其中 {@code bogeyPlotY = bogey.getBlockPos().getY()}，与标准锚点层 {@code cy + 1.0} 完全一致）与
+ * {@code 66.0}，且仅在运行期 {@code LevelState} 维护，不写入 {@link ChassisRegistryData}。
+ * 当水平移动超过 32 格或偏航变化超过 15° 时，调用 {@code GenericConstraintHandle#setFrame1} 原地刷新世界锚点与偏航帧；
+ * 不修改 {@code MassData}，也不做任何刚体瞬移。</p>
  */
 public final class ChassisRailLock {
     private static final Logger LOGGER = DimBlend.LOGGER;
@@ -190,16 +174,24 @@ public final class ChassisRailLock {
         return created;
     }
 
-    private record ActiveLock(UUID id, GenericConstraintHandle joint) {
+    private record ActiveLock(
+            UUID id,
+            GenericConstraintHandle joint,
+            Vector3d frameAnchor,
+            double frameYawDegrees) {
     }
 
-    private record TrackCheck(boolean loaded, boolean straight, BlockPos pos) {
-    }
-
-    private record Evaluation(ChassisRailLockRules.Context context, Vector3d worldAnchor,
-            Vector3d plotAnchor, Quaterniond targetOrientation, double targetYaw, String reason) {
+    private record Evaluation(
+            ChassisRailLockRules.Context context,
+            Vector3d worldDeck,
+            double nominalHeight,
+            Vector3d worldAnchor,
+            Vector3d plotAnchor,
+            Quaterniond yawFrame,
+            double yawDegrees,
+            String reason) {
         static Evaluation fail(String reason) {
-            return new Evaluation(null, null, null, null, 0.0, reason);
+            return new Evaluation(null, null, 0.0, null, null, null, 0.0, reason);
         }
     }
 
@@ -235,12 +227,11 @@ public final class ChassisRailLock {
                 return;
             }
             UUID id = server.getUniqueId();
-            if (registry().get(id) == null) {
-                return;
-            }
             // A re-added UUID must not keep a stale joint from the previous body.
             releaseInternal(id, "readded");
-            stable.put(id, 0);
+            if (registry().get(id) != null || hasEnabledBogey(server)) {
+                stable.put(id, 0);
+            }
         }
 
         @Override
@@ -251,7 +242,7 @@ public final class ChassisRailLock {
             UUID id = subLevel.getUniqueId();
             releaseInternal(id, reason.name().toLowerCase(Locale.ROOT));
             stable.remove(id);
-            if (reason == SubLevelRemovalReason.UNLOADED) {
+            if (reason == SubLevelRemovalReason.UNLOADED && registry().get(id) != null) {
                 markLifecycle(id, ChassisRegistry.Lifecycle.UNLOADED);
             }
         }
@@ -270,26 +261,27 @@ public final class ChassisRailLock {
         }
 
         private void verifyActive() {
+            ChassisRegistry registry = registry();
             for (Map.Entry<UUID, ActiveLock> entry : List.copyOf(active.entrySet())) {
                 UUID id = entry.getKey();
                 if (!active.containsKey(id)) {
                     continue;
                 }
                 ActiveLock lock = entry.getValue();
-                ChassisRegistry.Entry registered = registry().get(id);
-                if (registered == null) {
-                    releaseInternal(id, "unregistered");
-                    continue;
-                }
+                ChassisRegistry.Entry registered = registry.get(id);
                 ServerSubLevel sub = serverSubLevel(id);
                 if (sub == null) {
                     releaseInternal(id, "unloaded");
-                    markLifecycle(id, ChassisRegistry.Lifecycle.UNLOADED);
+                    if (registered != null) {
+                        markLifecycle(id, ChassisRegistry.Lifecycle.UNLOADED);
+                    }
                     continue;
                 }
                 if (!valid(lock.joint())) {
                     releaseInternal(id, "joint_lost");
-                    markLifecycle(id, ChassisRegistry.Lifecycle.REGISTERED);
+                    if (registered != null) {
+                        markLifecycle(id, ChassisRegistry.Lifecycle.REGISTERED);
+                    }
                     continue;
                 }
                 Evaluation evaluation;
@@ -297,7 +289,9 @@ public final class ChassisRailLock {
                     evaluation = evaluate(sub, registered);
                 } catch (RuntimeException failure) {
                     releaseInternal(id, "evaluate_failed");
-                    markLifecycle(id, ChassisRegistry.Lifecycle.REGISTERED);
+                    if (registered != null) {
+                        markLifecycle(id, ChassisRegistry.Lifecycle.REGISTERED);
+                    }
                     logFailure("evaluate", failure);
                     continue;
                 }
@@ -305,70 +299,126 @@ public final class ChassisRailLock {
                         || ChassisRailLockRules.verify(evaluation.context())
                                 != ChassisRailLockRules.Decision.HOLD) {
                     releaseInternal(id, evaluation.reason());
-                    boolean derailed = evaluation.context() != null && evaluation.context().derailed();
-                    markLifecycle(id, derailed ? ChassisRegistry.Lifecycle.DERAILED
-                            : ChassisRegistry.Lifecycle.REGISTERED);
+                    if (registered != null) {
+                        boolean derailed = evaluation.context() != null && evaluation.context().derailed();
+                        markLifecycle(id, derailed
+                                ? ChassisRegistry.Lifecycle.DERAILED
+                                : ChassisRegistry.Lifecycle.REGISTERED);
+                    }
+                    continue;
+                }
+                double dx = evaluation.worldDeck().x - lock.frameAnchor().x;
+                double dz = evaluation.worldDeck().z - lock.frameAnchor().z;
+                if (ChassisRailLockRules.needsFrameRefresh(
+                        dx, dz, evaluation.yawDegrees(), lock.frameYawDegrees())) {
+                    try {
+                        Vector3d refreshedAnchor = new Vector3d(
+                                evaluation.worldDeck().x,
+                                evaluation.nominalHeight(),
+                                evaluation.worldDeck().z);
+                        lock.joint().setFrame1(refreshedAnchor, evaluation.yawFrame());
+                        active.put(id, new ActiveLock(
+                                id, lock.joint(), refreshedAnchor, evaluation.yawDegrees()));
+                    } catch (RuntimeException failure) {
+                        releaseInternal(id, "refresh_frame_failed");
+                        if (registered != null) {
+                            markLifecycle(id, ChassisRegistry.Lifecycle.REGISTERED);
+                        }
+                        logFailure("refresh_frame", failure);
+                    }
                 }
             }
         }
 
         private void scan() {
             ChassisRegistry registry = registry();
-            Set<UUID> known = new HashSet<>();
+            Set<UUID> seen = new HashSet<>();
             for (ChassisRegistry.Entry entry : registry.entries()) {
-                known.add(entry.id());
-                if (active.containsKey(entry.id())
-                        || !ChassisRailLockRules.standardBlueprint(entry.blueprint())) {
+                UUID id = entry.id();
+                seen.add(id);
+                if (active.containsKey(id)) {
                     continue;
                 }
-                ServerSubLevel sub = serverSubLevel(entry.id());
+                ServerSubLevel sub = serverSubLevel(id);
                 if (sub == null) {
-                    stable.remove(entry.id());
+                    stable.remove(id);
                     continue;
                 }
-                Evaluation evaluation;
-                try {
-                    evaluation = evaluate(sub, entry);
-                } catch (RuntimeException failure) {
-                    stable.put(entry.id(), 0);
-                    logFailure("evaluate", failure);
-                    continue;
-                }
-                if (evaluation.context() == null
-                        || !ChassisRailLockRules.createEligible(evaluation.context())) {
-                    stable.put(entry.id(), 0);
-                    continue;
-                }
-                int checks = stable.merge(entry.id(), 1, Integer::sum);
-                if (checks < ChassisRailLockRules.STABLE_CHECKS) {
-                    continue;
-                }
-                stable.remove(entry.id());
-                create(entry, sub, evaluation);
+                scanCandidate(id, sub, entry);
             }
-            stable.keySet().removeIf(id -> !known.contains(id));
+            for (ServerSubLevel sub : container.getAllSubLevels()) {
+                if (sub == null || sub.isRemoved()) {
+                    continue;
+                }
+                UUID id = sub.getUniqueId();
+                if (!seen.add(id) || active.containsKey(id)) {
+                    continue;
+                }
+                if (!hasEnabledBogey(sub)) {
+                    stable.remove(id);
+                    continue;
+                }
+                scanCandidate(id, sub, null);
+            }
+            stable.keySet().removeIf(id -> !seen.contains(id));
         }
 
-        private void create(ChassisRegistry.Entry entry, ServerSubLevel sub, Evaluation evaluation) {
+        private void scanCandidate(
+                UUID id, ServerSubLevel sub, @Nullable ChassisRegistry.Entry entry) {
+            Evaluation evaluation;
+            try {
+                evaluation = evaluate(sub, entry);
+            } catch (RuntimeException failure) {
+                stable.put(id, 0);
+                logFailure("evaluate", failure);
+                return;
+            }
+            if (evaluation.context() == null
+                    || !ChassisRailLockRules.createEligible(evaluation.context())) {
+                stable.put(id, 0);
+                return;
+            }
+            int checks = stable.merge(id, 1, Integer::sum);
+            if (ChassisRailLockRules.decide(evaluation.context(), checks)
+                    != ChassisRailLockRules.Decision.CREATE) {
+                return;
+            }
+            stable.remove(id);
+            create(id, entry, sub, evaluation);
+        }
+
+        private void create(
+                UUID id,
+                @Nullable ChassisRegistry.Entry entry,
+                ServerSubLevel sub,
+                Evaluation evaluation) {
             try {
                 GenericConstraintHandle joint = pipeline().addConstraint(null, sub,
-                        new GenericConstraintConfiguration(evaluation.worldAnchor(),
-                                evaluation.plotAnchor(), evaluation.targetOrientation(), IDENTITY,
+                        new GenericConstraintConfiguration(
+                                evaluation.worldAnchor(),
+                                evaluation.plotAnchor(),
+                                evaluation.yawFrame(),
+                                IDENTITY,
                                 LOCKED_AXES));
                 if (joint == null || !joint.isValid()) {
-                    logFailure("create_invalid_" + entry.id(), null);
+                    logFailure("create_invalid_" + id, null);
                     return;
                 }
-                active.put(entry.id(), new ActiveLock(entry.id(), joint));
-                // SimuRail's axle rail joints are rebuilt with the hard axis set while this
-                // body lock is active. Registration is UUID-only and leaves all other vehicles
-                // on their normal suspension/curve behavior.
-                RailJointLocks.register(entry.id());
-                markLifecycle(entry.id(), ChassisRegistry.Lifecycle.ACTIVE);
-                LOGGER.info("[chassis-lock] locked {} blueprint={} deckY={} railZ={} yaw={} "
-                                + "axes=LINEAR_X free, LINEAR_Y/Z + ANGULAR_X/Y/Z locked",
-                        entry.id(), entry.blueprint(), evaluation.worldAnchor().y,
-                        evaluation.worldAnchor().z, evaluation.targetYaw());
+                active.put(id, new ActiveLock(
+                        id,
+                        joint,
+                        new Vector3d(evaluation.worldAnchor()),
+                        evaluation.yawDegrees()));
+                if (entry != null) {
+                    markLifecycle(id, ChassisRegistry.Lifecycle.ACTIVE);
+                }
+                LOGGER.info("[chassis-lock] locked {} blueprint={} deckY={} nominalY={} yaw={} "
+                                + "axes=LINEAR_X/Z + ANGULAR_Y free, LINEAR_Y + ANGULAR_X/Z locked",
+                        id,
+                        entry != null ? entry.blueprint() : "UNREGISTERED",
+                        evaluation.worldDeck().y,
+                        evaluation.nominalHeight(),
+                        evaluation.yawDegrees());
             } catch (RuntimeException failure) {
                 logFailure("create", failure);
             }
@@ -379,7 +429,6 @@ public final class ChassisRailLock {
             if (lock == null) {
                 return;
             }
-            RailJointLocks.unregister(id);
             removeJoint(lock.joint(), id);
             LOGGER.debug("[chassis-lock] released {} ({})", id, reason);
         }
@@ -387,7 +436,6 @@ public final class ChassisRailLock {
         private void releaseAll(String reason) {
             retired = true;
             for (ActiveLock lock : List.copyOf(active.values())) {
-                RailJointLocks.unregister(lock.id());
                 removeJoint(lock.joint(), lock.id());
             }
             active.clear();
@@ -441,12 +489,9 @@ public final class ChassisRailLock {
             }
         }
 
-        private Evaluation evaluate(ServerSubLevel sub, ChassisRegistry.Entry entry) {
+        private Evaluation evaluate(ServerSubLevel sub, @Nullable ChassisRegistry.Entry entry) {
             if (sub == null || sub.isRemoved()) {
                 return Evaluation.fail("removed");
-            }
-            if (!ChassisRailLockRules.standardBlueprint(entry.blueprint())) {
-                return Evaluation.fail("nonstandard_blueprint");
             }
 
             Pose3d pose;
@@ -467,90 +512,133 @@ public final class ChassisRailLock {
                 return Evaluation.fail("invalid_com");
             }
 
-            Vec3 plotCenter = sub.getPlot().getCenterBlock().getCenter();
-            Vector3d plotDeck = new Vector3d(plotCenter.x, plotCenter.y + 0.5, plotCenter.z);
+            BlockPos plotCenterBlock = sub.getPlot().getCenterBlock();
+            Vec3 plotCenter = plotCenterBlock.getCenter();
+            double nominalHeight;
+            Vector3d plotDeck;
+            Set<BlockPos> bogeyPositions;
+            int expectedCount;
+            int tracked = 0;
+            boolean derailed = false;
+            boolean bogeyLayoutValid = true;
+
+            if (entry != null && ChassisRailLockRules.standardBlueprint(entry.blueprint())) {
+                nominalHeight = entry.nominalHeight();
+                // plotCenter.y == plotCenterBlock.getY() + 0.5, so plotCenter.y + 0.5 == cy + 1.0.
+                plotDeck = new Vector3d(plotCenter.x, plotCenter.y + 0.5, plotCenter.z);
+                Set<BlockPos> expected = expectedBogeys(entry.blueprint(), plotCenterBlock);
+                Set<BlockPos> actual = new HashSet<>();
+                boolean allEnabled = true;
+                for (var actor : sub.getPlot().getBlockEntityActors()) {
+                    if (!(actor instanceof PhysicsBogeyBlockEntity bogey)) {
+                        continue;
+                    }
+                    actual.add(bogey.getBlockPos().immutable());
+                    if (bogey.hasTrack()) {
+                        tracked++;
+                    }
+                    if (bogey.isDerailed()) {
+                        derailed = true;
+                    }
+                    if (!bogey.getOptions().enabled) {
+                        allEnabled = false;
+                    }
+                }
+                bogeyLayoutValid = !expected.isEmpty() && actual.equals(expected) && allEnabled;
+                bogeyPositions = expected;
+                expectedCount = expected.size();
+            } else {
+                nominalHeight = entry != null
+                        ? entry.nominalHeight()
+                        : ChassisRailLockRules.DEFAULT_NOMINAL_DECK_HEIGHT;
+                Set<BlockPos> enabledPositions = new HashSet<>();
+                Integer bogeyPlotY = null;
+                boolean consistentY = true;
+                for (var actor : sub.getPlot().getBlockEntityActors()) {
+                    if (!(actor instanceof PhysicsBogeyBlockEntity bogey)
+                            || !bogey.getOptions().enabled) {
+                        continue;
+                    }
+                    BlockPos pos = bogey.getBlockPos().immutable();
+                    enabledPositions.add(pos);
+                    if (bogeyPlotY == null) {
+                        bogeyPlotY = pos.getY();
+                    } else if (bogeyPlotY != pos.getY()) {
+                        consistentY = false;
+                    }
+                    if (bogey.hasTrack()) {
+                        tracked++;
+                    }
+                    if (bogey.isDerailed()) {
+                        derailed = true;
+                    }
+                }
+                if (enabledPositions.isEmpty()) {
+                    return Evaluation.fail("no_enabled_bogeys");
+                }
+                if (!consistentY) {
+                    return Evaluation.fail("inconsistent_bogey_y");
+                }
+                bogeyPositions = enabledPositions;
+                expectedCount = enabledPositions.size();
+                // bogeyPlotY is integer BlockPos#getY(), so bogeyPlotY + 1.0 matches plotCenter.y + 0.5.
+                plotDeck = new Vector3d(plotCenter.x, bogeyPlotY + 1.0, plotCenter.z);
+            }
+
             Vector3d worldDeck = ChassisPose.anchor(pose.orientation(), plotDeck, com,
                     pose.position(), new Vector3d());
             ChassisPose.Angles angles = ChassisPose.angles(pose.orientation());
-            double targetYaw = ChassisRailLockRules.nearestXAlignedYaw(angles.yawDegrees());
-            double yawError = ChassisRailLockRules.yawErrorDegrees(angles.yawDegrees());
 
-            Set<BlockPos> expected = expectedBogeys(entry.blueprint(),
-                    sub.getPlot().getCenterBlock());
-            Set<BlockPos> actual = new HashSet<>();
-            int tracked = 0;
-            boolean derailed = false;
-            boolean bogeysEnabled = true;
-            for (var actor : sub.getPlot().getBlockEntityActors()) {
-                if (!(actor instanceof PhysicsBogeyBlockEntity bogey)) {
-                    continue;
-                }
-                actual.add(bogey.getBlockPos().immutable());
-                if (bogey.hasTrack()) {
-                    tracked++;
-                }
-                if (bogey.isDerailed()) {
-                    derailed = true;
-                }
-                if (!bogey.getOptions().enabled) {
-                    // A disabled bogey drops its rail joint; the car is no longer a
-                    // standard all-wheels-on-rail chassis and must not get the body lock.
-                    bogeysEnabled = false;
-                }
-            }
-            boolean standardBogeys = !expected.isEmpty() && actual.equals(expected) && bogeysEnabled;
-            int expectedCount = expected.size();
-
-            double railY = entry.nominalHeight() - 2.0;
-            TrackCheck centerTrack = checkTrack(level, worldDeck.x, railY, worldDeck.z);
-            boolean allBogeysLoaded = true;
-            boolean allLoadedBogeysStraight = true;
-            for (BlockPos plotPos : expected) {
+            double railY = nominalHeight - 2.0;
+            boolean centerChunkReady = chunkReady(
+                    level, BlockPos.containing(worldDeck.x, railY, worldDeck.z));
+            boolean bogeyChunksReady = true;
+            for (BlockPos plotPos : bogeyPositions) {
                 Vector3d point = ChassisPose.anchor(pose.orientation(), blockCenter(plotPos), com,
                         pose.position(), new Vector3d());
-                TrackCheck check = checkTrack(level, point.x, railY, point.z);
-                if (!check.loaded()) {
-                    allBogeysLoaded = false;
-                } else if (!check.straight()) {
-                    allLoadedBogeysStraight = false;
+                if (!chunkReady(level, BlockPos.containing(point.x, railY, point.z))) {
+                    bogeyChunksReady = false;
+                    break;
                 }
             }
 
-            boolean railKnown = centerTrack.loaded() && centerTrack.straight();
-            double railZ = railKnown ? centerTrack.pos().getZ() + 0.5 : worldDeck.z;
-            double lateralError = railKnown ? worldDeck.z - railZ : 0.0;
+            int effectiveTracked = bogeyLayoutValid ? tracked : 0;
             ChassisRailLockRules.TrackState track = new ChassisRailLockRules.TrackState(
-                    centerTrack.loaded(), centerTrack.straight(), allBogeysLoaded,
-                    allLoadedBogeysStraight);
+                    centerChunkReady, bogeyChunksReady);
             ChassisRailLockRules.Context context = new ChassisRailLockRules.Context(
-                    true, true, true, true, true, standardBogeys, expectedCount, tracked,
-                    derailed, track, worldDeck.y, entry.nominalHeight(), lateralError, yawError,
-                    Math.abs(angles.pitchDegrees()), Math.abs(angles.rollDegrees()));
+                    ChassisEvents.inDimension(level),
+                    true,
+                    true,
+                    expectedCount,
+                    effectiveTracked,
+                    derailed,
+                    track,
+                    worldDeck.y,
+                    nominalHeight,
+                    angles.pitchDegrees(),
+                    angles.rollDegrees());
 
-            if (!standardBogeys) {
-                return new Evaluation(context, null, null, null, targetYaw, "nonstandard_bogeys");
+            if (!bogeyLayoutValid) {
+                return new Evaluation(context, worldDeck, nominalHeight, null, null, null,
+                        angles.yawDegrees(), "nonstandard_bogeys");
             }
             if (tracked != expectedCount) {
-                return new Evaluation(context, null, null, null, targetYaw, "bogey_off_track");
+                return new Evaluation(context, worldDeck, nominalHeight, null, null, null,
+                        angles.yawDegrees(), "bogey_off_track");
             }
             if (derailed) {
-                return new Evaluation(context, null, null, null, targetYaw, "derailed");
+                return new Evaluation(context, worldDeck, nominalHeight, null, null, null,
+                        angles.yawDegrees(), "derailed");
             }
-            if (!centerTrack.loaded()) {
-                return new Evaluation(context, null, null, null, targetYaw, "track_unloaded");
-            }
-            if (!centerTrack.straight()) {
-                return new Evaluation(context, null, null, null, targetYaw, "track_not_xo");
-            }
-            if (!track.createReady()) {
-                return new Evaluation(context, null, null, null, targetYaw, "bogey_track_not_xo");
+            if (!track.chunksReady()) {
+                return new Evaluation(context, worldDeck, nominalHeight, null, null, null,
+                        angles.yawDegrees(), "chunk_not_ready");
             }
 
-            Vector3d worldAnchor = new Vector3d(worldDeck.x, entry.nominalHeight(), railZ);
-            Quaterniond targetOrientation = new Quaterniond()
-                    .rotationY(Math.toRadians(targetYaw));
-            return new Evaluation(context, worldAnchor, plotDeck, targetOrientation, targetYaw,
-                    "ok");
+            Vector3d worldAnchor = new Vector3d(worldDeck.x, nominalHeight, worldDeck.z);
+            Quaterniond yawFrame = ChassisPose.yawFrame(pose.orientation());
+            return new Evaluation(context, worldDeck, nominalHeight, worldAnchor, plotDeck,
+                    yawFrame, angles.yawDegrees(), "ok");
         }
 
         private Set<BlockPos> expectedBogeys(ChassisBlueprint blueprint, BlockPos center) {
@@ -563,18 +651,17 @@ public final class ChassisRailLock {
             return expected;
         }
 
-        private TrackCheck checkTrack(ServerLevel level, double x, double y, double z) {
-            BlockPos pos = BlockPos.containing(x, y, z);
-            if (!level.isLoaded(pos)) {
-                return new TrackCheck(false, false, pos);
+        private static boolean hasEnabledBogey(ServerSubLevel sub) {
+            for (var actor : sub.getPlot().getBlockEntityActors()) {
+                if (actor instanceof PhysicsBogeyBlockEntity bogey && bogey.getOptions().enabled) {
+                    return true;
+                }
             }
-            BlockState state = level.getBlockState(pos);
-            // A hidden bezier curve / track switch keeps HAS_BE=true even when the block
-            // shape looks straight; such a block must not be treated as a straight X rail.
-            boolean straight = state.getBlock() instanceof TrackBlock
-                    && state.getValue(TrackBlock.SHAPE) == TrackShape.XO
-                    && !state.getValue(TrackBlock.HAS_BE);
-            return new TrackCheck(true, straight, pos);
+            return false;
+        }
+
+        private static boolean chunkReady(ServerLevel level, BlockPos pos) {
+            return level.getChunkSource().getChunkNow(pos.getX() >> 4, pos.getZ() >> 4) != null;
         }
 
         private ServerSubLevel serverSubLevel(UUID id) {

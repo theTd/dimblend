@@ -8,21 +8,24 @@ import dimblend.experience.chassis.ChassisRailLockRules.Axis;
 import dimblend.experience.chassis.ChassisRailLockRules.Context;
 import dimblend.experience.chassis.ChassisRailLockRules.Decision;
 import dimblend.experience.chassis.ChassisRailLockRules.TrackState;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class ChassisRailLockRulesTest {
     @Test
-    void lockedAxesAreExactlyWorldXFree() {
-        assertEquals(5, ChassisRailLockRules.lockedAxes().size());
-        assertTrue(ChassisRailLockRules.onlyWorldXFree());
+    void lockedAxesKeepHorizontalPlaneAndYawFree() {
+        assertEquals(3, ChassisRailLockRules.lockedAxes().size());
+        assertTrue(ChassisRailLockRules.horizontalAndYawFree());
+        assertTrue(ChassisRailLockRules.lockedAxes().containsAll(
+                Set.of(Axis.LINEAR_Y, Axis.ANGULAR_X, Axis.ANGULAR_Z)));
         assertFalse(ChassisRailLockRules.lockedAxes().contains(Axis.LINEAR_X));
-        assertTrue(ChassisRailLockRules.lockedAxes().containsAll(java.util.Set.of(
-                Axis.LINEAR_Y, Axis.LINEAR_Z, Axis.ANGULAR_X, Axis.ANGULAR_Y, Axis.ANGULAR_Z)));
+        assertFalse(ChassisRailLockRules.lockedAxes().contains(Axis.LINEAR_Z));
+        assertFalse(ChassisRailLockRules.lockedAxes().contains(Axis.ANGULAR_Y));
     }
 
     @Test
     void nominalDeckMatchesRailEvidence() {
-        // Rail block y=64, control/anchor block y=65, deck top y=66.
+        assertEquals(66.0, ChassisRailLockRules.DEFAULT_NOMINAL_DECK_HEIGHT);
         assertEquals(66.0, ChassisRailLockRules.nominalDeckHeight(65));
         assertEquals(10.0, ChassisRailLockRules.nominalDeckHeight(9));
     }
@@ -32,16 +35,12 @@ class ChassisRailLockRulesTest {
         assertTrue(ChassisRailLockRules.standardBlueprint(ChassisBlueprint.POWER));
         assertTrue(ChassisRailLockRules.standardBlueprint(ChassisBlueprint.CARRIAGE));
         assertEquals(2, ChassisBlueprint.values().length);
-    }
-
-    @Test
-    void standardBlueprintsCarrySixAndTwoBogeys() {
         assertEquals(6, bogeyCount(ChassisBlueprint.POWER));
         assertEquals(2, bogeyCount(ChassisBlueprint.CARRIAGE));
     }
 
     @Test
-    void stableStandardCarIsCreatedOnlyAfterThreeChecks() {
+    void stableCarIsCreatedOnlyAfterThreeChecks() {
         Context context = good();
         assertTrue(ChassisRailLockRules.createEligible(context));
         assertEquals(Decision.WAIT, ChassisRailLockRules.decide(context, 0));
@@ -52,50 +51,46 @@ class ChassisRailLockRulesTest {
     }
 
     @Test
-    void createRejectsEveryNonStandardIdentityFlag() {
-        assertFalse(ChassisRailLockRules.createEligible(new Builder().registered(false).build()));
-        assertFalse(ChassisRailLockRules.createEligible(new Builder().standardBlueprint(false).build()));
-        assertFalse(ChassisRailLockRules.createEligible(new Builder().rotatingDimension(false).build()));
-        assertFalse(ChassisRailLockRules.createEligible(new Builder().loaded(false).build()));
-        assertFalse(ChassisRailLockRules.createEligible(new Builder().bodyValid(false).build()));
-        assertFalse(ChassisRailLockRules.createEligible(new Builder().standardBogeys(false).build()));
-        assertFalse(ChassisRailLockRules.createEligible(new Builder().expectedBogeys(0).build()));
-        assertFalse(ChassisRailLockRules.createEligible(new Builder().trackedBogeys(5).build()));
-        assertFalse(ChassisRailLockRules.createEligible(new Builder().derailed(true).build()));
+    void singleBogeyCurvesSwitchesSidingsAndArbitraryYawAreEligible() {
+        // Unregistered / custom 1-bogey or multi-bogey cars on switches, curves, ZO sidings,
+        // and any yaw angle are eligible as long as all enabled bogeys have track and chunks ready.
+        Context singleBogey = new Builder().expectedBogeys(1).trackedBogeys(1).build();
+        assertTrue(ChassisRailLockRules.createEligible(singleBogey));
+        assertTrue(ChassisRailLockRules.holdEligible(singleBogey));
+        assertEquals(Decision.HOLD, ChassisRailLockRules.verify(singleBogey));
     }
 
     @Test
-    void createNeedsAllLoadedBogeyTracksStraightX() {
-        assertTrue(new TrackState(true, true, true, true).createReady());
-        assertFalse(new TrackState(false, true, true, true).createReady());
-        assertFalse(new TrackState(true, false, true, true).createReady());
-        assertFalse(new TrackState(true, true, false, true).createReady());
-        assertFalse(new TrackState(true, true, true, false).createReady());
+    void createAndHoldRejectBaseIneligibility() {
+        assertFalse(ChassisRailLockRules.createEligible(null));
+        assertFalse(ChassisRailLockRules.holdEligible(null));
+        assertFalse(ChassisRailLockRules.createEligible(new Builder().rotatingDimension(false).build()));
+        assertFalse(ChassisRailLockRules.createEligible(new Builder().loaded(false).build()));
+        assertFalse(ChassisRailLockRules.createEligible(new Builder().bodyValid(false).build()));
+        assertFalse(ChassisRailLockRules.createEligible(new Builder().expectedBogeys(0).trackedBogeys(0).build()));
+        assertFalse(ChassisRailLockRules.createEligible(new Builder().trackedBogeys(5).build()));
+        assertFalse(ChassisRailLockRules.createEligible(new Builder().derailed(true).build()));
         assertFalse(ChassisRailLockRules.createEligible(
-                new Builder().track(new TrackState(false, false, true, true)).build()));
+                new Builder().track(new TrackState(false, true)).build()));
         assertFalse(ChassisRailLockRules.createEligible(
-                new Builder().track(new TrackState(true, false, true, true)).build()));
-        assertFalse(ChassisRailLockRules.createEligible(
-                new Builder().track(new TrackState(true, true, false, true)).build()));
-        assertFalse(ChassisRailLockRules.createEligible(
-                new Builder().track(new TrackState(true, true, true, false)).build()));
+                new Builder().track(new TrackState(true, false)).build()));
+        assertEquals(Decision.RELEASE, ChassisRailLockRules.verify(
+                new Builder().track(new TrackState(true, false)).build()));
+        assertEquals(Decision.RELEASE, ChassisRailLockRules.verify(
+                new Builder().derailed(true).build()));
     }
 
     @Test
     void createWindowIsInclusiveAtItsBoundaries() {
         assertTrue(ChassisRailLockRules.createEligible(new Builder().deckY(67.0).build()));
+        assertTrue(ChassisRailLockRules.createEligible(new Builder().deckY(65.0).build()));
         assertFalse(ChassisRailLockRules.createEligible(
                 new Builder().deckY(Math.nextUp(67.0)).build()));
         assertFalse(ChassisRailLockRules.createEligible(
                 new Builder().deckY(Math.nextDown(65.0)).build()));
+
         assertTrue(ChassisRailLockRules.createEligible(
-                new Builder().lateralError(0.6).build()));
-        assertFalse(ChassisRailLockRules.createEligible(
-                new Builder().lateralError(Math.nextUp(0.6)).build()));
-        assertTrue(ChassisRailLockRules.createEligible(
-                new Builder().yawErrorDegrees(10.0).pitchDegrees(10.0).rollDegrees(-10.0).build()));
-        assertFalse(ChassisRailLockRules.createEligible(
-                new Builder().yawErrorDegrees(Math.nextUp(10.0)).build()));
+                new Builder().pitchDegrees(10.0).rollDegrees(-10.0).build()));
         assertFalse(ChassisRailLockRules.createEligible(
                 new Builder().pitchDegrees(Math.nextUp(10.0)).build()));
         assertFalse(ChassisRailLockRules.createEligible(
@@ -103,90 +98,66 @@ class ChassisRailLockRulesTest {
     }
 
     @Test
-    void nonFiniteFactsFailClosed() {
-        assertFalse(ChassisRailLockRules.createEligible(new Builder().deckY(Double.NaN).build()));
-        assertFalse(ChassisRailLockRules.createEligible(new Builder().nominalY(Double.NaN).build()));
-        assertFalse(ChassisRailLockRules.createEligible(
-                new Builder().lateralError(Double.POSITIVE_INFINITY).build()));
-        assertFalse(ChassisRailLockRules.createEligible(
-                new Builder().yawErrorDegrees(Double.NaN).build()));
-        assertFalse(ChassisRailLockRules.createEligible(
-                new Builder().pitchDegrees(Double.NEGATIVE_INFINITY).build()));
-        assertFalse(ChassisRailLockRules.createEligible(new Builder().rollDegrees(Double.NaN).build()));
-        assertFalse(ChassisRailLockRules.holdEligible(new Builder().deckY(Double.NaN).build()));
-    }
-
-    @Test
-    void missingTrackStateFailsClosed() {
-        Context context = new Builder().track(null).build();
-        assertFalse(context.baseEligible());
-        assertFalse(ChassisRailLockRules.createEligible(context));
-        assertFalse(ChassisRailLockRules.holdEligible(context));
-        assertEquals(Decision.WAIT, ChassisRailLockRules.decide(context, 99));
-    }
-
-    @Test
-    void holdToleratesUnloadedTrackButNotLoadedWrongTrack() {
-        assertTrue(new TrackState(false, false, true, true).holdOk());
-        assertTrue(new TrackState(true, true, true, true).holdOk());
-        assertFalse(new TrackState(true, false, true, true).holdOk());
-        assertFalse(new TrackState(true, true, true, false).holdOk());
+    void holdWindowUsesOnePointFiveVerticalAndFifteenDegreeLimits() {
+        assertTrue(ChassisRailLockRules.holdEligible(new Builder().deckY(67.5).build()));
+        assertTrue(ChassisRailLockRules.holdEligible(new Builder().deckY(64.5).build()));
+        assertFalse(ChassisRailLockRules.holdEligible(
+                new Builder().deckY(Math.nextUp(67.5)).build()));
+        assertFalse(ChassisRailLockRules.holdEligible(
+                new Builder().deckY(Math.nextDown(64.5)).build()));
 
         assertTrue(ChassisRailLockRules.holdEligible(
-                new Builder().track(new TrackState(false, false, true, true)).build()));
-        assertFalse(ChassisRailLockRules.holdEligible(
-                new Builder().track(new TrackState(true, false, true, true)).build()));
-        assertFalse(ChassisRailLockRules.holdEligible(
-                new Builder().track(new TrackState(true, true, true, false)).build()));
-    }
-
-    @Test
-    void holdWindowUsesItsOwnWiderLimits() {
-        assertTrue(ChassisRailLockRules.holdEligible(new Builder().deckY(67.0).build()));
-        assertFalse(ChassisRailLockRules.holdEligible(
-                new Builder().deckY(Math.nextUp(67.0)).build()));
-        assertFalse(ChassisRailLockRules.holdEligible(
-                new Builder().deckY(Math.nextDown(65.0)).build()));
-        assertTrue(ChassisRailLockRules.holdEligible(
-                new Builder().lateralError(0.75).build()));
-        assertFalse(ChassisRailLockRules.holdEligible(
-                new Builder().lateralError(Math.nextUp(0.75)).build()));
-        assertTrue(ChassisRailLockRules.holdEligible(
-                new Builder().yawErrorDegrees(15.0).pitchDegrees(-15.0).rollDegrees(15.0).build()));
-        assertFalse(ChassisRailLockRules.holdEligible(
-                new Builder().yawErrorDegrees(Math.nextUp(15.0)).build()));
+                new Builder().pitchDegrees(-15.0).rollDegrees(15.0).build()));
         assertFalse(ChassisRailLockRules.holdEligible(
                 new Builder().pitchDegrees(Math.nextUp(15.0)).build()));
         assertFalse(ChassisRailLockRules.holdEligible(
                 new Builder().rollDegrees(-Math.nextUp(15.0)).build()));
         assertEquals(Decision.HOLD, ChassisRailLockRules.verify(good()));
-        assertEquals(Decision.RELEASE, ChassisRailLockRules.verify(
-                new Builder().derailed(true).build()));
-        assertEquals(Decision.RELEASE, ChassisRailLockRules.verify(
-                new Builder().track(new TrackState(true, false, true, true)).build()));
     }
 
     @Test
-    void xAlignedYawTargetsOnlyZeroOrOneEighty() {
-        assertEquals(0.0, ChassisRailLockRules.nearestXAlignedYaw(0.0));
-        assertEquals(0.0, ChassisRailLockRules.nearestXAlignedYaw(5.0));
-        assertEquals(0.0, ChassisRailLockRules.nearestXAlignedYaw(-5.0));
-        assertEquals(0.0, ChassisRailLockRules.nearestXAlignedYaw(90.0));
-        assertEquals(180.0, ChassisRailLockRules.nearestXAlignedYaw(91.0));
-        assertEquals(180.0, ChassisRailLockRules.nearestXAlignedYaw(179.0));
-        assertEquals(180.0, ChassisRailLockRules.nearestXAlignedYaw(-179.0));
-        assertEquals(180.0, ChassisRailLockRules.nearestXAlignedYaw(180.0));
+    void nonFiniteFactsAndMissingTrackStateFailClosed() {
+        assertFalse(ChassisRailLockRules.createEligible(new Builder().deckY(Double.NaN).build()));
+        assertFalse(ChassisRailLockRules.createEligible(new Builder().nominalY(Double.NaN).build()));
+        assertFalse(ChassisRailLockRules.createEligible(
+                new Builder().pitchDegrees(Double.NEGATIVE_INFINITY).build()));
+        assertFalse(ChassisRailLockRules.createEligible(new Builder().rollDegrees(Double.NaN).build()));
+        assertFalse(ChassisRailLockRules.holdEligible(new Builder().deckY(Double.NaN).build()));
 
-        assertEquals(-1.0, ChassisRailLockRules.yawErrorDegrees(179.0));
-        assertEquals(1.0, ChassisRailLockRules.yawErrorDegrees(-179.0));
-        assertEquals(90.0, ChassisRailLockRules.yawErrorDegrees(90.0));
-        assertEquals(-90.0, ChassisRailLockRules.yawErrorDegrees(-90.0));
+        Context missingTrack = new Builder().track(null).build();
+        assertFalse(missingTrack.baseEligible());
+        assertFalse(ChassisRailLockRules.createEligible(missingTrack));
+        assertFalse(ChassisRailLockRules.holdEligible(missingTrack));
+        assertEquals(Decision.WAIT, ChassisRailLockRules.decide(missingTrack, 99));
+    }
+
+    @Test
+    void frameRefreshChecksThirtyTwoBlockDriftAndFifteenDegreeNormalizedYaw() {
         assertEquals(180.0, ChassisRailLockRules.normalizeDegrees(180.0));
         assertEquals(180.0, ChassisRailLockRules.normalizeDegrees(-180.0));
         assertEquals(180.0, ChassisRailLockRules.normalizeDegrees(540.0));
+        assertEquals(10.0, ChassisRailLockRules.normalizeDegrees(-350.0), 1.0E-9);
 
-        assertFalse(ChassisRailLockRules.createEligible(
-                new Builder().yawErrorDegrees(ChassisRailLockRules.yawErrorDegrees(45.0)).build()));
+        // Horizontal drift boundary: 32.0 blocks inclusive does not refresh; > 32.0 refreshes.
+        assertFalse(ChassisRailLockRules.needsFrameRefresh(32.0, 0.0, 0.0, 0.0));
+        assertFalse(ChassisRailLockRules.needsFrameRefresh(0.0, -32.0, 45.0, 45.0));
+        assertTrue(ChassisRailLockRules.needsFrameRefresh(Math.nextUp(32.0), 0.0, 0.0, 0.0));
+        assertFalse(ChassisRailLockRules.needsFrameRefresh(22.0, 22.0, 0.0, 0.0));
+        assertTrue(ChassisRailLockRules.needsFrameRefresh(23.0, 23.0, 0.0, 0.0));
+
+        // Yaw delta boundary: 15.0 degrees inclusive does not refresh; > 15.0 refreshes.
+        assertFalse(ChassisRailLockRules.needsFrameRefresh(0.0, 0.0, 15.0, 0.0));
+        assertFalse(ChassisRailLockRules.needsFrameRefresh(0.0, 0.0, -15.0, 0.0));
+        assertTrue(ChassisRailLockRules.needsFrameRefresh(0.0, 0.0, Math.nextUp(15.0), 0.0));
+        assertTrue(ChassisRailLockRules.needsFrameRefresh(0.0, 0.0, -Math.nextUp(15.0), 0.0));
+
+        // +/-180 degree seam wraparound.
+        assertFalse(ChassisRailLockRules.needsFrameRefresh(0.0, 0.0, -175.0, 175.0));
+        assertTrue(ChassisRailLockRules.needsFrameRefresh(0.0, 0.0, -170.0, 170.0));
+
+        // Non-finite inputs fail closed without triggering setFrame1 with NaN.
+        assertFalse(ChassisRailLockRules.needsFrameRefresh(Double.NaN, 0.0, 0.0, 0.0));
+        assertFalse(ChassisRailLockRules.needsFrameRefresh(0.0, 0.0, Double.NaN, 0.0));
     }
 
     private static Context good() {
@@ -200,32 +171,17 @@ class ChassisRailLockRulesTest {
     }
 
     private static final class Builder {
-        boolean registered = true;
-        boolean standardBlueprint = true;
         boolean rotatingDimension = true;
         boolean loaded = true;
         boolean bodyValid = true;
-        boolean standardBogeys = true;
         int expectedBogeys = 6;
         int trackedBogeys = 6;
         boolean derailed;
-        TrackState track = new TrackState(true, true, true, true);
+        TrackState track = new TrackState(true, true);
         double deckY = 66.0;
         double nominalY = 66.0;
-        double lateralError;
-        double yawErrorDegrees;
         double pitchDegrees;
         double rollDegrees;
-
-        Builder registered(boolean value) {
-            registered = value;
-            return this;
-        }
-
-        Builder standardBlueprint(boolean value) {
-            standardBlueprint = value;
-            return this;
-        }
 
         Builder rotatingDimension(boolean value) {
             rotatingDimension = value;
@@ -239,11 +195,6 @@ class ChassisRailLockRulesTest {
 
         Builder bodyValid(boolean value) {
             bodyValid = value;
-            return this;
-        }
-
-        Builder standardBogeys(boolean value) {
-            standardBogeys = value;
             return this;
         }
 
@@ -277,16 +228,6 @@ class ChassisRailLockRulesTest {
             return this;
         }
 
-        Builder lateralError(double value) {
-            lateralError = value;
-            return this;
-        }
-
-        Builder yawErrorDegrees(double value) {
-            yawErrorDegrees = value;
-            return this;
-        }
-
         Builder pitchDegrees(double value) {
             pitchDegrees = value;
             return this;
@@ -298,9 +239,18 @@ class ChassisRailLockRulesTest {
         }
 
         Context build() {
-            return new Context(registered, standardBlueprint, rotatingDimension, loaded, bodyValid,
-                    standardBogeys, expectedBogeys, trackedBogeys, derailed, track, deckY, nominalY,
-                    lateralError, yawErrorDegrees, pitchDegrees, rollDegrees);
+            return new Context(
+                    rotatingDimension,
+                    loaded,
+                    bodyValid,
+                    expectedBogeys,
+                    trackedBogeys,
+                    derailed,
+                    track,
+                    deckY,
+                    nominalY,
+                    pitchDegrees,
+                    rollDegrees);
         }
     }
 }

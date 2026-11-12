@@ -37,9 +37,14 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         // （渲染坐标口的 Particle mixin 与注入 ParticleEngine#render 的 mixin 必须同进同退，
         // 否则后者会拿不到 RenderPoseShiftable）。
         if (mixinClassName.endsWith(".client.SableSubLevelSpriteAnimationMixin")
+                || mixinClassName.endsWith(".client.SableSingleBlockSpriteAnimationMixin")
                 || mixinClassName.endsWith(".client.SableParticleRenderPoseMixin")
                 || mixinClassName.endsWith(".client.SableParticleEngineRenderPoseMixin")) {
             return isLoaded("sable");
+        }
+        if (mixinClassName.endsWith(".compat.lootjournal.LootJournalPickupRenderMixin")) {
+            return isLoaded("loot_journal")
+                    && classPresent("dev.obscuria.lootjournal.client.renderer.PickupComponent");
         }
         if (mixinClassName.endsWith(".compat.connected.KineticBatteryLifecycleMixin")
                 || mixinClassName.endsWith(".compat.connected.LinkHandlerEventHitMixin")
@@ -91,7 +96,8 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
             return isLoaded("cold_sweat") && classPresent("dev.ryanhcode.sable.util.SubLevelRainColumn");
         }
         // simurail 硬性依赖 sable（mods.toml required），在场性蕴含 sable 在场
-        if (mixinClassName.endsWith(".compat.simurail.PhysicsBogeyBrakeSoundMixin")
+        if (mixinClassName.endsWith(".compat.simurail.PhysicsBogeyInteractionMixin")
+                || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyBrakeSoundMixin")
                 || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyBrakeSignalCapMixin")
                 || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyDeadmanBrakeMixin")
                 || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyDeadmanStressMixin")
@@ -130,6 +136,10 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".compat.create.KineticUnloadedShareMixin")
                 || mixinClassName.endsWith(".compat.create.KineticNetworkLedgerTraceMixin")
                 || mixinClassName.endsWith(".compat.create.SteamEngineOverloadMixin")
+                || mixinClassName.endsWith(".compat.create.SlidingDoorBlockMixin")
+                || mixinClassName.endsWith(".compat.create.SlidingDoorBlockEntityMixin")
+                || mixinClassName.endsWith(".compat.create.SlidingDoorRendererMixin")
+                || mixinClassName.endsWith(".compat.create.GameRendererDoorOverhangMixin")
                 || mixinClassName.endsWith(".compat.create.WhistleHornBlockMixin")
                 || mixinClassName.endsWith(".compat.create.WhistleHornBlockEntityMixin")
                 || mixinClassName.endsWith(".compat.create.WhistleHornClientMixin")) {
@@ -153,11 +163,16 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         return net.neoforged.fml.loading.FMLLoader.getLoadingModList().getModFileById(modId) != null;
     }
 
-    /** 目标类是否真的存在；用于在"模组在场但版本不对"时跳过 mixin 而不是启动即崩。 */
+    /**
+     * 目标类字节码是否真的存在；用于在"模组在场但版本不对"时跳过 mixin 而不是启动即崩。
+     * 严禁用 {@code Class.forName}（会在 {@code shouldApplyMixin} 阶段提前把目标类定义进
+     * {@code TransformingClassLoader}，触发 {@code MixinTargetAlreadyLoadedException}）。
+     */
     private static boolean classPresent(String className) {
         try {
-            Class.forName(className, false, DimBlendMixinPlugin.class.getClassLoader());
-            return true;
+            return org.spongepowered.asm.service.MixinService.getService()
+                    .getBytecodeProvider()
+                    .getClassNode(className, false) != null;
         } catch (Throwable t) {
             return false;
         }

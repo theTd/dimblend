@@ -4,6 +4,7 @@ import com.simibubi.create.AllBlocks;
 import com.simibubi.create.content.equipment.wrench.WrenchItem;
 import dimblend.experience.Config;
 import dimblend.experience.DimBlend;
+import dimblend.experience.compat.create.SlidingDoorPairing;
 import dimblend.experience.compat.sable.SableWorldPosition;
 import dimblend.experience.exploration.RotatingDimension;
 import net.minecraft.core.BlockPos;
@@ -37,6 +38,9 @@ public final class RailwayCasingRecovery {
     public static boolean applies(Level level, BlockPos pos, BlockState state) {
         if (!ModList.get().isLoaded("create") || !Config.isLoaded()
                 || !RotatingDimension.is(level) || !state.is(RECOVERABLE)) return false;
+        // A paired sliding door owns its own 2-door dismantle rule; railway casing recovery must not
+        // hijack its sneak-wrench or replace its drops with a casing.
+        if (SlidingDoorPairing.isPaired(state)) return false;
         // Plot coordinates are storage addresses, not the vehicle's visible world position.
         return Math.abs((long) SableWorldPosition.projectBlock(level, pos).getZ()) > 32;
     }

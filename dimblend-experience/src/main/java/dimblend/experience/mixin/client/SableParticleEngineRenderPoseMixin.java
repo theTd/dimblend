@@ -2,39 +2,36 @@ package dimblend.experience.mixin.client;
 
 import java.util.Map;
 import java.util.Queue;
+import java.util.function.Predicate;
 
-import dev.ryanhcode.sable.mixinterface.particle.ParticleExtension;
-import dev.ryanhcode.sable.sublevel.ClientSubLevel;
-import dev.ryanhcode.sable.sublevel.SubLevel;
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dimblend.experience.compat.sable.RenderPoseShiftable;
 import dimblend.experience.compat.sable.SableAnimationDiagnostics;
-import dimblend.experience.compat.sable.SubLevelParticleRenderPose;
-import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.Camera;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleEngine;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.culling.Frustum;
 import org.joml.Vector3d;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * 把「被 Sable 子层级追踪的粒子」在绘制时对齐到子层级网格的渲染位姿。
  *
- * <p>根因见 {@link SubLevelParticleRenderPose}：Sable 生成粒子时用 {@code logicalPose}（tick 位姿）
- * 换算世界坐标，而网格用 {@code renderPose(partialTick)} 绘制，移动/转向中的载具上整团粒子相对
- * 模型前移最多一个 tick 的位移，且随 partialTick 每帧抖动。这里在 {@code ParticleEngine#render}
- * 前后临时平移这些粒子的绘制坐标，还原后模拟状态不变。</p>
+ * <p>根因见 {@link dimblend.experience.compat.sable.SubLevelParticleRenderPose}：tick 0 的粒子整团
+ * 比 {@code renderPose(pt)} 早一个 tick，tick 1+ 的旧实现又会把粒子反向推一个
+ * {@code (1 - pt)} 的列车位移。这里在 {@code ParticleEngine#render} 前后改写/还原这些粒子的绘制
+ * 坐标，模拟状态（速度、包围盒、局部锚点）全程不变。</p>
  *
- * <p>只处理 {@code ParticleExtension#sable$getTrackingSubLevel()} 非空的粒子；地面粒子、未被
- * 子层级追踪的粒子完全不受影响。静止载具两姿态相等，位移为 0，不会进入平移分支。</p>
+ * <p>整段包在 {@code @WrapMethod} 的 try/finally 里：即便 {@code render} 中途抛异常（粒子
+ * {@code render} 抛错会被包装成 {@code ReportedException} 重抛），也一定把每一颗被改写的粒子逐位
+ * 还原，绝不让位移留在粒子身上影响下一帧。</p>
  */
 @Mixin(ParticleEngine.class)
 public abstract class SableParticleEngineRenderPoseMixin {
@@ -46,57 +43,62 @@ public abstract class SableParticleEngineRenderPoseMixin {
     @Unique
     private final ObjectArrayList<Particle> dimblend$shiftedParticles = new ObjectArrayList<>();
     @Unique
-    private final DoubleArrayList dimblend$shiftAmounts = new DoubleArrayList();
+    private final Vector3d dimblend$beforePos = new Vector3d();
     @Unique
-    private final Vector3d dimblend$shift = new Vector3d();
+    private final Vector3d dimblend$afterPos = new Vector3d();
 
-    @Inject(method = "render", at = @At("HEAD"), require = 1, allow = 1)
-    private void dimblend$alignSubLevelParticles(LightTexture lightTexture, Camera camera, float partialTick,
-            CallbackInfo ci) {
+    @WrapMethod(
+            method = "render(Lnet/minecraft/client/renderer/LightTexture;Lnet/minecraft/client/Camera;FLnet/minecraft/client/renderer/culling/Frustum;Ljava/util/function/Predicate;)V",
+            require = 1,
+            allow = 1)
+    private void dimblend$renderWithSubLevelPose(
+            LightTexture lightTexture,
+            Camera camera,
+            float partialTick,
+            Frustum frustum,
+            Predicate<ParticleRenderType> renderTypePredicate,
+            Operation<Void> original) {
+        this.dimblend$alignSubLevelParticles(partialTick, renderTypePredicate);
+        try {
+            original.call(lightTexture, camera, partialTick, frustum, renderTypePredicate);
+        } finally {
+            this.dimblend$restoreSubLevelParticles();
+        }
+    }
+
+    @Unique
+    private void dimblend$alignSubLevelParticles(
+            float partialTick, Predicate<ParticleRenderType> renderTypePredicate) {
         this.dimblend$shiftedParticles.clear();
-        this.dimblend$shiftAmounts.clear();
         double maxShift = 0.0;
-        for (Queue<Particle> queue : this.particles.values()) {
-            for (Particle particle : queue) {
-                if (!(particle instanceof ParticleExtension extension)) {
-                    continue;
-                }
-                SubLevel tracked = extension.sable$getTrackingSubLevel();
-                if (!(tracked instanceof ClientSubLevel subLevel) || tracked.isRemoved()) {
-                    continue;
-                }
+        for (Map.Entry<ParticleRenderType, Queue<Particle>> entry : this.particles.entrySet()) {
+            if (renderTypePredicate != null && !renderTypePredicate.test(entry.getKey())) {
+                continue;
+            }
+            for (Particle particle : entry.getValue()) {
                 if (!(particle instanceof RenderPoseShiftable shiftable)) {
                     continue;
                 }
-                if (!SubLevelParticleRenderPose.shiftFor(shiftable, subLevel, partialTick, this.dimblend$shift)) {
+                shiftable.dimblend$readRenderPos(this.dimblend$beforePos);
+                if (!shiftable.dimblend$applyRenderPose(partialTick)) {
                     continue;
                 }
-                double dx = this.dimblend$shift.x;
-                double dy = this.dimblend$shift.y;
-                double dz = this.dimblend$shift.z;
-                shiftable.dimblend$shiftRenderPos(dx, dy, dz);
+                shiftable.dimblend$readRenderPos(this.dimblend$afterPos);
+                maxShift = Math.max(maxShift, this.dimblend$beforePos.distance(this.dimblend$afterPos));
                 this.dimblend$shiftedParticles.add(particle);
-                this.dimblend$shiftAmounts.add(dx);
-                this.dimblend$shiftAmounts.add(dy);
-                this.dimblend$shiftAmounts.add(dz);
-                maxShift = Math.max(maxShift, this.dimblend$shift.length());
             }
         }
+        // 采样本身有 2 秒全局限频；这里只避免关诊断时进方法。
         if (!this.dimblend$shiftedParticles.isEmpty()) {
             SableAnimationDiagnostics.particleShift(this.dimblend$shiftedParticles.size(), maxShift);
         }
     }
 
-    @Inject(method = "render", at = @At("RETURN"), require = 1, allow = 1)
-    private void dimblend$restoreSubLevelParticles(LightTexture lightTexture, Camera camera, float partialTick,
-            CallbackInfo ci) {
-        for (int i = 0, amount = 0; i < this.dimblend$shiftedParticles.size(); i++, amount += 3) {
-            ((RenderPoseShiftable) this.dimblend$shiftedParticles.get(i)).dimblend$shiftRenderPos(
-                    -this.dimblend$shiftAmounts.getDouble(amount),
-                    -this.dimblend$shiftAmounts.getDouble(amount + 1),
-                    -this.dimblend$shiftAmounts.getDouble(amount + 2));
+    @Unique
+    private void dimblend$restoreSubLevelParticles() {
+        for (int i = 0; i < this.dimblend$shiftedParticles.size(); i++) {
+            ((RenderPoseShiftable) this.dimblend$shiftedParticles.get(i)).dimblend$restoreRenderPose();
         }
         this.dimblend$shiftedParticles.clear();
-        this.dimblend$shiftAmounts.clear();
     }
 }
