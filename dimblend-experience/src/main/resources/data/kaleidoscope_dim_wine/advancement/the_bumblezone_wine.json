@@ -1,0 +1,135 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "kaleidoscope_dim_wine"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "the_bumblezone"
+    }
+  ],
+  "parent": "kaleidoscope_dim_wine:the_bumblezone_sugar_water_bucket",
+  "criteria": {
+    "has_beeswax_honey_wine": {
+      "conditions": {
+        "items": [
+          {
+            "items": "kaleidoscope_dim_wine:beeswax_honey_wine"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_fanta": {
+      "conditions": {
+        "items": [
+          {
+            "items": "kaleidoscope_dim_wine:fanta"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_honeythorn_mead": {
+      "conditions": {
+        "items": [
+          {
+            "items": "kaleidoscope_dim_wine:honeythorn_mead"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_pepsi": {
+      "conditions": {
+        "items": [
+          {
+            "items": "kaleidoscope_dim_wine:pepsi"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_pollen_nectar": {
+      "conditions": {
+        "items": [
+          {
+            "items": "kaleidoscope_dim_wine:pollen_nectar"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_royal_honey_brew": {
+      "conditions": {
+        "items": [
+          {
+            "items": "kaleidoscope_dim_wine:royal_honey_brew"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_sprite": {
+      "conditions": {
+        "items": [
+          {
+            "items": "kaleidoscope_dim_wine:sprite"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_sweet_crystal_honey": {
+      "conditions": {
+        "items": [
+          {
+            "items": "kaleidoscope_dim_wine:sweet_crystal_honey"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    }
+  },
+  "display": {
+    "description": {
+      "translate": "advancements.kaleidoscope_dim_wine.the_bumblezone_wine.desc"
+    },
+    "frame": "challenge",
+    "icon": {
+      "count": 1,
+      "id": "kaleidoscope_dim_wine:sprite"
+    },
+    "title": {
+      "translate": "advancements.kaleidoscope_dim_wine.the_bumblezone_wine.title"
+    }
+  },
+  "requirements": [
+    [
+      "has_sprite"
+    ],
+    [
+      "has_pepsi"
+    ],
+    [
+      "has_fanta"
+    ],
+    [
+      "has_pollen_nectar"
+    ],
+    [
+      "has_honeythorn_mead"
+    ],
+    [
+      "has_beeswax_honey_wine"
+    ],
+    [
+      "has_sweet_crystal_honey"
+    ],
+    [
+      "has_royal_honey_brew"
+    ]
+  ],
+  "sends_telemetry_event": true
+}

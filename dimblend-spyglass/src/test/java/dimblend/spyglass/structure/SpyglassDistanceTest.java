@@ -51,9 +51,9 @@ class SpyglassDistanceTest {
     }
 
     @Test
-    void rangeIsFixedAtOneHundredTwentyEightToTenTwentyFourBlocks() {
-        assertFalse(SpyglassDistance.inRange(127.9));
-        assertTrue(SpyglassDistance.inRange(128.0));
+    void rangeIsFixedAtSixtyFourToTenTwentyFourBlocks() {
+        assertFalse(SpyglassDistance.inRange(63.9));
+        assertTrue(SpyglassDistance.inRange(64.0));
         assertTrue(SpyglassDistance.inRange(1024.0));
         assertFalse(SpyglassDistance.inRange(1024.1));
     }
@@ -62,8 +62,8 @@ class SpyglassDistanceTest {
     void snapshotRangeIsPaddedOnBothEnds() {
         double pad = 48.0;
 
-        assertTrue(SpyglassDistance.inSnapshotRange(128.0 - pad, pad));
-        assertFalse(SpyglassDistance.inSnapshotRange(128.0 - pad - 0.01, pad));
+        assertTrue(SpyglassDistance.inSnapshotRange(64.0 - pad, pad));
+        assertFalse(SpyglassDistance.inSnapshotRange(64.0 - pad - 0.01, pad));
         assertTrue(SpyglassDistance.inSnapshotRange(1024.0 + pad, pad));
         assertFalse(SpyglassDistance.inSnapshotRange(1024.0 + pad + 0.01, pad));
         assertThrows(IllegalArgumentException.class,

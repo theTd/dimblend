@@ -96,13 +96,13 @@ class StructureSelectionTest {
         StructureSelection.Entry entry = entry(VILLAGE, 3, 4, 300.0, 0.0, false);
 
         StructureSelection.toggle(entry);
-        StructureSelection.pruneOutOfRange(300.0 + 128.0, 0.0, true);
-        assertTrue(StructureSelection.isSelected(entry.key()), "128 is inside the ring");
+        StructureSelection.pruneOutOfRange(300.0 + 64.0, 0.0, true);
+        assertTrue(StructureSelection.isSelected(entry.key()), "64 is inside the ring");
 
         StructureSelection.pruneOutOfRange(300.0 + 1024.0, 0.0, true);
         assertTrue(StructureSelection.isSelected(entry.key()), "1024 is inside the ring");
 
-        StructureSelection.pruneOutOfRange(300.0 + 127.999, 0.0, true);
+        StructureSelection.pruneOutOfRange(300.0 + 63.999, 0.0, true);
         assertNull(StructureSelection.current(), "inside the inner edge clears");
 
         StructureSelection.toggle(entry);

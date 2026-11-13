@@ -73,9 +73,10 @@ public class DimBlend {
         // 探索限制板块的数据附件（远行诅咒层级、村民职业记录等）
         ExplorationAttachments.ATTACHMENTS.register(modEventBus);
 
-        // B 板块：CDG 发动机运行态附件，仅 CDG 在场时注册
+        // B 板块：CDG 发动机运行态附件与新生成区块油田折算记录，仅 CDG 在场时注册
         if (ModList.get().isLoaded("createdieselgenerators")) {
             CdgAttachments.ATTACHMENTS.register(modEventBus);
+            dimblend.experience.compat.cdg.CdgNewOilChunksSavedData.register();
         }
         if (ModList.get().isLoaded("yet_another_thirst")) {
             modEventBus.addListener(dimblend.experience.compat.yat.ThirstFilterBalance::setup);

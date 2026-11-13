@@ -1,0 +1,47 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "voidscape"
+    }
+  ],
+  "parent": "voidscape:gear",
+  "criteria": {
+    "pawn": {
+      "conditions": {
+        "entity": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "voidscape:corrupted_pawn",
+              "location": {
+                "biomes": "#dimblend_experience:orig_dim/voidscape"
+              }
+            }
+          }
+        ]
+      },
+      "trigger": "minecraft:player_killed_entity"
+    }
+  },
+  "display": {
+    "description": {
+      "translate": "advancement.voidscape.psychosis.desc"
+    },
+    "frame": "challenge",
+    "icon": {
+      "count": 1,
+      "id": "voidscape:tendril"
+    },
+    "title": {
+      "translate": "advancement.voidscape.psychosis"
+    }
+  },
+  "requirements": [
+    [
+      "pawn"
+    ]
+  ],
+  "sends_telemetry_event": true
+}

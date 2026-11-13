@@ -1,0 +1,114 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "kaleidoscope_dim_wine"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "the_bumblezone"
+    }
+  ],
+  "parent": "kaleidoscope_dim_wine:the_bumblezone_enter",
+  "criteria": {
+    "has_calming_essence": {
+      "conditions": {
+        "items": [
+          {
+            "items": "the_bumblezone:essence_calming"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_continuity_essence": {
+      "conditions": {
+        "items": [
+          {
+            "items": "the_bumblezone:essence_continuity"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_knowing_essence": {
+      "conditions": {
+        "items": [
+          {
+            "items": "the_bumblezone:essence_knowing"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_life_essence": {
+      "conditions": {
+        "items": [
+          {
+            "items": "the_bumblezone:essence_life"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_radiance_essence": {
+      "conditions": {
+        "items": [
+          {
+            "items": "the_bumblezone:essence_radiance"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_raging_essence": {
+      "conditions": {
+        "items": [
+          {
+            "items": "the_bumblezone:essence_raging"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    }
+  },
+  "display": {
+    "description": {
+      "translate": "advancements.kaleidoscope_dim_wine.the_bumblezone_mead_essence.desc"
+    },
+    "frame": "challenge",
+    "icon": {
+      "count": 1,
+      "id": "kaleidoscope_dim_wine:mead_essence"
+    },
+    "title": {
+      "translate": "advancements.kaleidoscope_dim_wine.the_bumblezone_mead_essence.title"
+    }
+  },
+  "requirements": [
+    [
+      "has_raging_essence"
+    ],
+    [
+      "has_knowing_essence"
+    ],
+    [
+      "has_calming_essence"
+    ],
+    [
+      "has_life_essence"
+    ],
+    [
+      "has_radiance_essence"
+    ],
+    [
+      "has_continuity_essence"
+    ]
+  ],
+  "rewards": {
+    "loot": [
+      "kaleidoscope_dim_wine:advancements/mead_essence"
+    ]
+  },
+  "sends_telemetry_event": true
+}

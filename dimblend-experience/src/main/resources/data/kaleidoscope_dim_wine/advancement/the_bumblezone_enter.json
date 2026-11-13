@@ -1,0 +1,39 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "kaleidoscope_dim_wine"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "the_bumblezone"
+    }
+  ],
+  "parent": "kaleidoscope_dim_wine:root",
+  "criteria": {
+    "has_the_bumblezone_enter": {
+      "conditions": {
+        "to": "the_bumblezone:the_bumblezone"
+      },
+      "trigger": "minecraft:changed_dimension"
+    }
+  },
+  "display": {
+    "description": {
+      "translate": "advancements.kaleidoscope_dim_wine.the_bumblezone_enter.desc"
+    },
+    "icon": {
+      "count": 1,
+      "id": "minecraft:honeycomb"
+    },
+    "title": {
+      "translate": "advancements.kaleidoscope_dim_wine.the_bumblezone_enter.title"
+    }
+  },
+  "requirements": [
+    [
+      "has_the_bumblezone_enter"
+    ]
+  ],
+  "sends_telemetry_event": true
+}

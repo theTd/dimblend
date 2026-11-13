@@ -22,9 +22,9 @@ class SpyglassSnapshotLimiterTest {
     void filtersByThePaddedRingAndSortsByDistance() {
         StructureOutline near = outlineAt(300, 0, 1);
         StructureOutline farther = outlineAt(700, 0, 1);
-        // The snapshot keeps the padded ring: inner 128 - 48 = 80, outer 1024 + 48 = 1072.
-        StructureOutline atPaddedInner = outlineAt(80, 0, 1);
-        StructureOutline belowPaddedInner = outlineAt(79, 0, 1);
+        // The snapshot keeps the padded ring: inner 64 - 48 = 16, outer 1024 + 48 = 1072.
+        StructureOutline atPaddedInner = outlineAt(16, 0, 1);
+        StructureOutline belowPaddedInner = outlineAt(15, 0, 1);
         StructureOutline beyondPadding = outlineAt(1080, 0, 1);
 
         SpyglassSnapshotLimiter.LimitResult result = SpyglassSnapshotLimiter.limit(
@@ -37,7 +37,7 @@ class SpyglassSnapshotLimiterTest {
 
     @Test
     void keepsALongStructureWhoseCenterIsInRange() {
-        // A 400-block-long building: its center is 200 blocks away, inside [128, 1024].
+        // A 400-block-long building: its center is 200 blocks away, inside [64, 1024].
         StructureOutline longHouse = StructureOutline.of(
                 KEY, List.of(new OutlineBox(0, 0, 0, 399, 10, 10)));
 

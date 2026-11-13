@@ -10,7 +10,7 @@ package dimblend.spyglass.structure;
  */
 public final class SpyglassDistance {
     /** Structures closer than this (union-bounds center) are not shown. */
-    public static final double MIN_BLOCKS = 128.0;
+    public static final double MIN_BLOCKS = 64.0;
     /** Structures whose union-bounds center is farther than this are not shown. */
     public static final double MAX_BLOCKS = 1024.0;
 
@@ -27,13 +27,13 @@ public final class SpyglassDistance {
         return Math.hypot(playerX - bounds.centerX(), playerZ - bounds.centerZ());
     }
 
-    /** Exact per-frame range checked by the client: center distance in {@code [128, 1024]}. */
+    /** Exact per-frame range checked by the client: center distance in {@code [64, 1024]}. */
     public static boolean inRange(double centerDistance) {
         return centerDistance >= MIN_BLOCKS && centerDistance <= MAX_BLOCKS;
     }
 
     /**
-     * Padded range the server keeps in the snapshot: {@code [128 - pad, 1024 + pad]}. The client
+     * Padded range the server keeps in the snapshot: {@code [64 - pad, 1024 + pad]}. The client
      * re-filters against its live position, so the pad only has to cover the server's movement
      * refresh threshold.
      */

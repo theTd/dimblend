@@ -17,7 +17,7 @@ import org.jetbrains.annotations.Nullable;
  *
  * <p>An entry stores the union bounds' <b>top-centre anchor</b> and its horizontal centre at
  * selection time. That saved world position is what the marker is projected from and what the
- * {@code [128, 1024]} ring is measured against, so a momentarily empty snapshot, a pan, a FOV
+ * {@code [64, 1024]} ring is measured against, so a momentarily empty snapshot, a pan, a FOV
  * change or a mark hidden by the overlap rule can never be mistaken for "the structure is gone".
  * The server-provided union bounds are stable, so the anchor does not drift.
  *

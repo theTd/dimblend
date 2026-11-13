@@ -1,0 +1,14 @@
+{
+  "replace": false,
+  "values": [
+    "#minecraft:is_overworld",
+    {
+      "id": "atmospheric:hot_springs",
+      "required": false
+    },
+    {
+      "id": "terralith:deep_warm_ocean",
+      "required": false
+    }
+  ]
+}

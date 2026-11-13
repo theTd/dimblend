@@ -1,0 +1,43 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "kaleidoscope_dim_wine"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "the_bumblezone"
+    }
+  ],
+  "parent": "kaleidoscope_dim_wine:the_bumblezone_enter",
+  "criteria": {
+    "has_rangers_satchel": {
+      "conditions": {
+        "items": [
+          {
+            "items": "kaleidoscope_dim_wine:carbocretin_powder"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    }
+  },
+  "display": {
+    "description": {
+      "translate": "advancements.kaleidoscope_dim_wine.the_bumblezone_carbocretin_powder.desc"
+    },
+    "icon": {
+      "count": 1,
+      "id": "kaleidoscope_dim_wine:carbocretin_powder"
+    },
+    "title": {
+      "translate": "advancements.kaleidoscope_dim_wine.the_bumblezone_carbocretin_powder.title"
+    }
+  },
+  "requirements": [
+    [
+      "has_rangers_satchel"
+    ]
+  ],
+  "sends_telemetry_event": true
+}

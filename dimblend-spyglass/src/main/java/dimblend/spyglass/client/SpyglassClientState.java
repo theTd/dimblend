@@ -22,7 +22,7 @@ import net.neoforged.neoforge.event.level.LevelEvent;
  * padded ring (see {@link dimblend.spyglass.structure.SpyglassDistance#inSnapshotRange}); this class
  * filters it down to the exact display range around the player's <b>live</b> position on every frame.
  *
- * <p>The display ring is fixed at 128–1024 blocks. {@link SpyglassRevealState} still gates drawing:
+ * <p>The display ring is fixed at 64–1024 blocks. {@link SpyglassRevealState} still gates drawing:
  * while no terrain fog pass has run yet, or the camera is underwater/in lava/blind, the ring is
  * empty and nothing is drawn.
  */

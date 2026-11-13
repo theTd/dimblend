@@ -1,0 +1,41 @@
+{
+  "replace": false,
+  "values": [
+    {
+      "id": "voidscape:aether",
+      "required": false
+    },
+    {
+      "id": "voidscape:antispires",
+      "required": false
+    },
+    {
+      "id": "voidscape:end",
+      "required": false
+    },
+    {
+      "id": "voidscape:nether",
+      "required": false
+    },
+    {
+      "id": "voidscape:null",
+      "required": false
+    },
+    {
+      "id": "voidscape:overworld",
+      "required": false
+    },
+    {
+      "id": "voidscape:thunder_forest",
+      "required": false
+    },
+    {
+      "id": "voidscape:thunderspires",
+      "required": false
+    },
+    {
+      "id": "voidscape:void",
+      "required": false
+    }
+  ]
+}
