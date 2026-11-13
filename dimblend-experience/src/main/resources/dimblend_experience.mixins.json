@@ -29,6 +29,7 @@
 		"IcePlacementBanMixin",
 		"ChunkMapVoidFitStripMixin",
 		"StructureVoidBlockPassthroughMixin",
+		"compat.sable.SableVoidFitBlockChangeMixin",
 		"BuriedTreasureShellMarkerMixin",
 		"ExplorationMapFunctionBanMixin",
 		"LootItemAccessor",

@@ -16,6 +16,12 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
  * 保存剥离：区块序列化前把拟合放置的 structure_void 临时剥成空气，序列化完成后还原。
  * 效果等价于"空位从不落盘"，且不做任何 NBT bit 手术。
  *
+ * <p>同时扫描 {@link VoidFitTracker#targetCellsOfChunk} 与
+ * {@link VoidFitTracker#materializedCellsOfChunk}：前者覆盖当前投影目标格，后者覆盖
+ * 因拆除预算截断或载具消失续拆而尚留在世界里的尾迹空位（无须把历史尾迹反向塞回
+ * {@code targetCells}）。第一遍剥成空气后，第二遍遇到重叠格因已非 {@code STRUCTURE_VOID}
+ * 自然跳过，不会重复加入还原列表。</p>
+ *
  * <p>直写 {@link LevelChunkSection#setBlockState}（绕开 {@code LevelChunk} 包装）的前提：
  * structure_void 不遮光（不触发光照重算）、无方块实体。注意 WORLD_SURFACE 系 heightmap
  * 的谓词是"非空气"（{@code Heightmap.NOT_AIR}，Heightmap.java:25/140），放置时空位已计入
@@ -28,7 +34,7 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
 public final class VoidFitStrip {
 
     /**
-     * 把本区块内 tracker 记录的、当前确为 structure_void 的格子剥成空气。
+     * 把本区块内 tracker 记录的（目标格或已物化待拆格）、当前确为 structure_void 的格子剥成空气。
      *
      * @return 实际被剥掉的格（供 {@link #restoreFittedVoids} 还原）；未剥任何格时返回空表
      */
@@ -41,12 +47,27 @@ public final class VoidFitStrip {
             return LongList.of();
         }
         ChunkPos chunkPos = chunk.getPos();
-        LongSet cells = tracker.targetCellsOfChunk(chunkPos);
-        if (cells == null || cells.isEmpty()) {
+        LongSet targetCells = tracker.targetCellsOfChunk(chunkPos);
+        LongSet materializedCells = tracker.materializedCellsOfChunk(chunkPos);
+        boolean hasTarget = targetCells != null && !targetCells.isEmpty();
+        boolean hasMaterialized = materializedCells != null && !materializedCells.isEmpty();
+        if (!hasTarget && !hasMaterialized) {
             return LongList.of();
         }
         LongArrayList stripped = new LongArrayList();
         LevelChunkSection[] sections = chunk.getSections();
+        if (hasTarget) {
+            stripCells(level, sections, targetCells, stripped);
+        }
+        if (hasMaterialized) {
+            stripCells(level, sections, materializedCells, stripped);
+        }
+        return stripped;
+    }
+
+    private static void stripCells(ServerLevel level, LevelChunkSection[] sections,
+            LongSet cells, LongArrayList stripped) {
+        BlockState air = Blocks.AIR.defaultBlockState();
         LongIterator it = cells.iterator();
         while (it.hasNext()) {
             long cell = it.nextLong();
@@ -59,11 +80,10 @@ public final class VoidFitStrip {
             }
             LevelChunkSection section = sections[index];
             if (section.getBlockState(x & 15, y & 15, z & 15).is(Blocks.STRUCTURE_VOID)) {
-                section.setBlockState(x & 15, y & 15, z & 15, Blocks.AIR.defaultBlockState());
+                section.setBlockState(x & 15, y & 15, z & 15, air);
                 stripped.add(cell);
             }
         }
-        return stripped;
     }
 
     /** 还原 {@link #stripFittedVoids} 剥掉的格（原样写回 structure_void）。 */

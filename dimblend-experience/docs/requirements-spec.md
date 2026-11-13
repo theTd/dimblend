@@ -865,9 +865,14 @@
 - 空 target 重试（2026-10-11）：refit 后 target 为空（plot 懒加载未就位）则留
   retry 下轮续试（静置载具不再触发位姿 refit，否则最长等一个自愈周期才拟合）；
   连续 20 轮仍空（限高外/病态）熔断退回自愈节拍，防挤占预算
-- 实现：`SableVoidFit`（4Hz 扫描、2 载具/轮预算、位姿阈值、20 周期自愈）
-  → `VoidFitVoxelizer`/`VoidFitTracker`/`VoidFitApplier`/`VoidFitStrip`
-  + `ChunkMapVoidFitStripMixin`；GameTest 8 条。投影 AABB 仅 Y 受世界高度钳制，
+- 实现：`SableVoidFit`（4Hz 扫描、2 载具/轮预算、`LinkedHashSet` FIFO 重试轮转、位姿阈值、20 周期自愈；常规预算重试不开启逐格世界核验）
+  → `VoidFitVoxelizer`/`VoidFitTracker`/`VoidFitRetryQueue`/`VoidFitApplier`/`VoidFitStrip`/`VoidFitPhysicsFilter`
+  + `ChunkMapVoidFitStripMixin` + `SableVoidFitBlockChangeMixin`；GameTest 10 条。
+  放置预算（`PLACE_BUDGET=1024`）与拆除预算（`REMOVE_BUDGET=2048`）相互独立，未拆完的尾迹空位由
+  `VoidFitTracker#materializedCellsOfChunk` 独立覆盖保存剥离、不再反向并入 `targetCells`（杜绝高速行驶下
+  尾迹饥饿与多车厢过继死锁）；世界区块内无流体空气与 `structure_void` 互转短路 `SableCommonEvents#handleBlockChange`
+  的 7 次 Rapier JNI 调用（水/熔岩浮力碰撞体与 plot 区块变更原样保留），干燥尾迹拆除省掉 `UPDATE_NEIGHBORS`
+  （六邻格含流体时保留邻接通知供回流），区块读取统一走非阻塞 `getChunkNow`。投影 AABB 仅 Y 受世界高度钳制，
   X/Z 不做 Y 上限裁剪（2026-10-24 修复远正 Z>319 时 z0>z1 导致整列 target 为空；
   `VoidFitVoxelizerTest` 锁远 Z 覆盖与 Y 钳制）
 - 开关 `sableStructureVoidFit`（默认开）+ `sableVoidFitRefitTicks`（默认 5）
@@ -1183,6 +1188,7 @@
 | IcePlacementBanMixin | 原版 BlockItem#place（冰/浮冰/蓝冰放置拦截） | G3 | 无条件（原版目标） |
 | ChunkMapVoidFitStripMixin | 原版 ChunkMap#save（拟合空位序列化前剥成空气再还原，不落盘） | G3 配套 | 无条件（原版目标） |
 | StructureVoidBlockPassthroughMixin | 原版 StructureVoidBlock#getShape（rotating 内掏空，交互射线穿透拟合空位） | G3 配套 | 无条件（原版目标） |
+| compat.sable.SableVoidFitBlockChangeMixin | SableCommonEvents#handleBlockChange（世界区块无流体空气↔structure_void 互转 HEAD 短路，省掉 7 次 Rapier JNI 调用） | G3 配套 | sable 在场且 SableCommonEvents 类存在 |
 | compat.dimblend.WarpGateBlockMixin | dimblend 折跃门（字符串目标） | G4 | dimblend 在场 |
 | compat.fluid.GutterOutletBiomeProjectionMixin | Create: Fluid 集水器 BE（`handlePrecipitationCollection` 内 `getBiome`/`getPrecipitationAt` 的位置参数 WrapOperation，经 `SableWorldPosition.projectBlock` 投影到世界坐标） | Sable 结构群系投影 | fluid 在场 |
 | compat.fluid.SmartGutterOutletBiomeProjectionMixin | Create: Fluid 智能集水器 BE（同上，目标方法 `handlePrecipitationCollectionFiltered`） | Sable 结构群系投影 | fluid 在场 |

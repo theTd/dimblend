@@ -35,8 +35,8 @@ import org.joml.Vector3dc;
  * <ul>
  * <li>每 {@code Config#SABLE_VOID_FIT_REFIT_TICKS} tick 扫描一次（默认 5，即 4Hz）；</li>
  * <li>单次扫描最多 refit {@code Config#SABLE_VOID_FIT_SCAN_BUDGET} 个载具（默认 2），
- *     候选按 重试优先 → 新载具 → 位姿超阈值 → 自愈到期 排序，超出预算的留到下轮
- *     （round-robin 由重试集合承载）；</li>
+ *     候选按 重试优先（FIFO 轮转）→ 新载具 → 位姿超阈值 → 自愈到期 排序，超出预算的
+ *     留到下轮（round-robin 由 {@code LinkedHashSet} 重试队列承载）；</li>
  * <li>位姿阈值：平移 {@value #TRANSLATION_THRESHOLD} 格或旋转约
  *     {@value #ROTATION_THRESHOLD_DEG}° 才触发重算，静止载具每轮只有 O(载具数) 次
  *     位姿比较；</li>
@@ -67,7 +67,7 @@ public final class SableVoidFit {
     private static final double ROTATION_DOT_MIN =
             Math.cos(Math.toRadians(ROTATION_THRESHOLD_DEG));
 
-    /** 上次 refit 因预算未写完、下轮必须重试的载具（按维度）。 */
+    /** 上次 refit 因预算未写完、下轮必须重试的载具（按维度，FIFO 轮转）。 */
     private static final Map<ResourceKey<Level>, Set<UUID>> RETRY = new HashMap<>();
 
     /** 区块加载补放的待消化区块（按维度，ChunkPos.toLong，FIFO）。 */
@@ -112,10 +112,10 @@ public final class SableVoidFit {
         Set<UUID> retry = RETRY.computeIfAbsent(level.dimension(), key -> new LinkedHashSet<>());
 
         List<ServerSubLevel> current = container.getAllSubLevels();
-        Set<UUID> alive = new HashSet<>();
+        Map<UUID, ServerSubLevel> aliveById = new HashMap<>(current.size());
         for (ServerSubLevel subLevel : current) {
             if (!subLevel.isRemoved()) {
-                alive.add(subLevel.getUniqueId());
+                aliveById.put(subLevel.getUniqueId(), subLevel);
             }
         }
         // 载具消失（拆除/跨维度/驶出）：按 materialized 拆掉已写入的空位。
@@ -123,7 +123,7 @@ public final class SableVoidFit {
         // removeAll 受写入预算限制，拆不完的条目保留在 tracker，下轮扫描自然续拆
         List<UUID> gone = new ArrayList<>();
         for (UUID id : tracker.vehicles().keySet()) {
-            if (!alive.contains(id)) {
+            if (!aliveById.containsKey(id)) {
                 gone.add(id);
             }
         }
@@ -132,24 +132,31 @@ public final class SableVoidFit {
             retry.remove(id);
         }
         // 已在 retry 里但已从世界消失的 id 清掉（deferred 的新载具在下次扫描前被拆的情形）
-        retry.removeIf(id -> !alive.contains(id));
+        retry.removeIf(id -> !aliveById.containsKey(id));
 
         int vehicleBudget = Config.SABLE_VOID_FIT_SCAN_BUDGET.get();
+        Set<UUID> processed = new HashSet<>();
         List<ServerSubLevel> deferred = new ArrayList<>();
-        // 重试集合优先；refit 对无条目载具自动建账，retry 里的新载具不会空烧预算
-        if (!retry.isEmpty()) {
-            for (ServerSubLevel subLevel : current) {
-                if (retry.contains(subLevel.getUniqueId()) && vehicleBudget > 0) {
-                    vehicleBudget--;
-                    if (VoidFitApplier.refit(level, tracker, subLevel, true)) {
-                        requeueIfTargetMissing(tracker, retry, subLevel.getUniqueId());
-                    }
+        // 重试集合优先（按 LinkedHashSet FIFO 出队，未写完排回队尾，避免编组列车尾部车厢饥饿）；
+        // 常规预算重试不再强制开启逐格世界核验，只有自愈倒计时归零时才传 verify=true。
+        if (!retry.isEmpty() && vehicleBudget > 0) {
+            List<VoidFitRetryQueue.RetryCandidate> dueRetries =
+                    VoidFitRetryQueue.pollCandidates(tracker, retry, vehicleBudget);
+            for (VoidFitRetryQueue.RetryCandidate candidate : dueRetries) {
+                ServerSubLevel subLevel = aliveById.get(candidate.id());
+                if (subLevel == null) {
+                    continue;
                 }
+                vehicleBudget--;
+                processed.add(candidate.id());
+                boolean complete = VoidFitApplier.refit(level, tracker, subLevel, candidate.verifyDue());
+                VoidFitRetryQueue.finishCandidate(
+                        tracker, retry, candidate.id(), complete, EMPTY_TARGET_RETRY_LIMIT);
             }
         }
         for (ServerSubLevel subLevel : current) {
             UUID id = subLevel.getUniqueId();
-            if (subLevel.isRemoved() || retry.contains(id)) {
+            if (subLevel.isRemoved() || processed.contains(id) || retry.contains(id)) {
                 continue;
             }
             VoidFitTracker.VehicleFit fit = tracker.vehicles().get(id);
@@ -167,7 +174,7 @@ public final class SableVoidFit {
                 retry.add(id);
                 continue;
             }
-            requeueIfTargetMissing(tracker, retry, id);
+            VoidFitRetryQueue.requeueIfTargetMissing(tracker, retry, id, EMPTY_TARGET_RETRY_LIMIT);
         }
         // 超预算的候选下轮优先（与位姿阈值无关）
         for (ServerSubLevel subLevel : deferred) {
@@ -193,33 +200,6 @@ public final class SableVoidFit {
                 }
             }
             pending.addAll(requeue);
-        }
-    }
-
-    /**
-     * refit 完成后的空 target 处置：空 target = plot 区块尚未就位的信号（组装/跨区后
-     * plot 懒加载）——静置载具位姿不再变化、自愈要等 20 扫描，期间水可灌入，故留在
-     * retry 里下轮无条件重试（两个循环共用本判定，retry 消化循环一轮出队的缺口在
-     * 此补齐）。保险丝：连续 {@link #EMPTY_TARGET_RETRY_LIMIT} 轮仍空（投影整体在
-     * 限高外 / plot 病态）则退回自愈节拍，避免少数病态载具经 retry 优先权挤占全部
-     * 预算；空载具由 Sable 自行移除、alive 检测自然清出队列。
-     */
-    private static void requeueIfTargetMissing(VoidFitTracker tracker, Set<UUID> retry, UUID id) {
-        VoidFitTracker.VehicleFit fit = tracker.vehicles().get(id);
-        if (fit == null) {
-            retry.remove(id);
-            return;
-        }
-        if (!fit.targetCells.isEmpty()) {
-            fit.emptyRetries = 0;
-            retry.remove(id);
-            return;
-        }
-        if (++fit.emptyRetries < EMPTY_TARGET_RETRY_LIMIT) {
-            retry.add(id);
-        } else {
-            fit.emptyRetries = 0;
-            retry.remove(id);
         }
     }
 
