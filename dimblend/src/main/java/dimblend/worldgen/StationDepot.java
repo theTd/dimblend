@@ -2,10 +2,10 @@ package dimblend.worldgen;
 
 import com.simibubi.create.content.trains.track.TrackBlock;
 import com.simibubi.create.content.trains.track.TrackShape;
-import java.util.List;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Block;
@@ -51,14 +51,23 @@ public final class StationDepot {
     }
 
     /**
-     * Writes this chunk's share of every depot it touches. Called from the
-     * decoration pass of the chunk itself, after the corridor and the boundary wall.
+     * Writes this chunk's share of every depot it touches. Called both from {@code FEATURES}
+     * decoration and again at {@code INITIALIZE_LIGHT} head after the entire 3x3 {@code FEATURES}
+     * neighborhood has finished so neighbor features can never leave biome decorations behind.
      */
     public static void place(WorldGenLevel level, ChunkAccess chunk) {
         ChunkGenerator generator = level.getLevel().getChunkSource().getGenerator();
         if (!(generator instanceof RotatingChunkGenerator rotating)) {
             return;
         }
+        place(level.registryAccess(), rotating, chunk);
+    }
+
+    /**
+     * RegistryAccess-backed entry point usable during chunk steps before or outside a
+     * {@link net.minecraft.world.level.WorldGenLevel} wrapper (specifically at {@code INITIALIZE_LIGHT} head).
+     */
+    public static void place(RegistryAccess access, RotatingChunkGenerator rotating, ChunkAccess chunk) {
         BandLayout layout = rotating.layoutOrNull();
         if (layout == null) {
             return;
@@ -77,14 +86,64 @@ public final class StationDepot {
             if (!StationDepotGeometry.buildsDepot(boundary, bandSize, region -> layout.laneName(layout.delegate(region)))) {
                 continue;
             }
-            writeChunkShare(level, chunk, boundary, minX, maxX, minZ, maxZ);
+            writeChunkShare(access, chunk, boundary, rotating.hasStarterDepot(), minX, maxX, minZ, maxZ);
         }
     }
 
+    /**
+     * Re-applies {@link #place} on already-loaded 3x3 neighbor chunks after this chunk's
+     * {@code FEATURES} pass finishes, matching {@link OakTrackCorridor#placeLoadedVaultNeighbors}
+     * across the wider {@code |z| <= 15} depot footprint.
+     */
+    public static void placeLoadedDepotNeighbors(WorldGenLevel level, ChunkPos origin) {
+        ChunkGenerator generator = level.getLevel().getChunkSource().getGenerator();
+        if (!(generator instanceof RotatingChunkGenerator rotating)) {
+            return;
+        }
+        RegistryAccess access = level.registryAccess();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) {
+                    continue;
+                }
+                int nx = origin.x + dx;
+                int nz = origin.z + dz;
+                int minZ = nz * 16;
+                int maxZ = minZ + 15;
+                if (!StationDepotGeometry.depotIntersectsChunkZ(minZ, maxZ) || !level.hasChunk(nx, nz)) {
+                    continue;
+                }
+                place(access, rotating, level.getChunk(nx, nz));
+            }
+        }
+    }
+
+    /**
+     * True when a tree/fungus-like feature origin falls inside any depot's carved footprint
+     * ({@code |z| <= 15}) where post-decoration carving would sever its trunk.
+     */
+    public static boolean blocksTreeLikeOrigin(WorldGenLevel level, BlockPos origin) {
+        ChunkGenerator generator = level.getLevel().getChunkSource().getGenerator();
+        if (!(generator instanceof RotatingChunkGenerator rotating)) {
+            return false;
+        }
+        BandLayout layout = rotating.layoutOrNull();
+        if (layout == null) {
+            return false;
+        }
+        return StationDepotGeometry.blocksTreeLikeOrigin(
+                origin.getX(),
+                origin.getY() - OakTrackCorridor.TRACK_Y,
+                origin.getZ(),
+                rotating.bandSize(),
+                region -> layout.laneName(layout.delegate(region)));
+    }
+
     private static void writeChunkShare(
-            WorldGenLevel level,
+            RegistryAccess access,
             ChunkAccess chunk,
             int boundaryX,
+            boolean starterDepot,
             int minX,
             int maxX,
             int minZ,
@@ -92,8 +151,8 @@ public final class StationDepot {
     ) {
         BlockState cobble = Blocks.COBBLESTONE.defaultBlockState();
         BlockState brick = Blocks.STONE_BRICKS.defaultBlockState();
-        Block lantern = block(level, ResourceLocation.withDefaultNamespace("lantern"));
-        Block track = block(level, CorridorTrackProfile.SURFACE.trackId());
+        Block lantern = block(access, ResourceLocation.withDefaultNamespace("lantern"));
+        BlockState dryTrack = dryTrackState(block(access, CorridorTrackProfile.SURFACE.trackId()));
 
         int carveFromX = Math.max(minX, StationDepotGeometry.minBlockX(boundaryX));
         int carveToX = Math.min(maxX, StationDepotGeometry.maxBlockX(boundaryX));
@@ -101,7 +160,7 @@ public final class StationDepot {
         int carveToZ = Math.min(maxZ, StationDepotGeometry.PLATFORM_HALF_WIDTH);
         for (int x = carveFromX; x <= carveToX; x++) {
             for (int z = carveFromZ; z <= carveToZ; z++) {
-                clearColumn(chunk, x, z);
+                clearColumn(chunk, dryTrack, starterDepot, x, z);
             }
         }
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
@@ -115,38 +174,119 @@ public final class StationDepot {
                 case BRICK -> brick;
                 case PILLAR -> brick;
                 case BUFFER -> brick;
-                case TRACK_XO -> track.defaultBlockState()
-                        .setValue(TrackBlock.SHAPE, TrackShape.XO)
-                        .setValue(TrackBlock.HAS_BE, false);
+                case TRACK_XO -> dryTrack;
                 case LANTERN -> lantern.defaultBlockState();
             };
-            chunk.setBlockState(cursor.set(cell.x(), y, cell.z()), state, false);
+            setDepotCell(chunk, cursor, cell.x(), y, cell.z(), state);
         }
     }
 
     /**
      * Empties the depot's chamber for one column so terrain and features cannot
-     * leave blocks floating inside it. The deck layer is filled by the cell list;
-     * here everything from the ceiling down to one below the deck becomes air.
+     * leave blocks or orphan block entities floating inside it. Also removes unsupported
+     * upward-growing stalks immediately above the carved ceiling.
      */
-    private static void clearColumn(ChunkAccess chunk, int x, int z) {
+    private static void clearColumn(
+            ChunkAccess chunk,
+            BlockState dryTrack,
+            boolean starterDepot,
+            int x,
+            int z
+    ) {
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
         for (int dy = StationDepotGeometry.DECK_DY; dy <= StationDepotGeometry.CAVERN_APEX_DY; dy++) {
             int y = OakTrackCorridor.TRACK_Y + dy;
+            if (starterDepot && StarterDepot.ownsCell(x, y, z)) {
+                continue;
+            }
             if (dy == 0 && z == OakTrackCorridor.CORRIDOR_Z) {
-                // The main line's rail is owned by OakTrackCorridor and the fit-out.
+                if (starterDepot && StarterDepot.removesTrack(x)) {
+                    setDepotCell(chunk, cursor, x, y, z, Blocks.AIR.defaultBlockState());
+                } else {
+                    ensureDryMainLineTrack(chunk, cursor, x, y, z, dryTrack);
+                }
                 continue;
             }
             BlockState current = chunk.getBlockState(cursor.set(x, y, z));
             if (current.is(Blocks.BEDROCK)) {
                 continue;
             }
-            chunk.setBlockState(cursor, Blocks.AIR.defaultBlockState(), false);
+            setDepotCell(chunk, cursor, x, y, z, Blocks.AIR.defaultBlockState());
+        }
+        int ceilingStartY = OakTrackCorridor.TRACK_Y + StationDepotGeometry.CAVERN_APEX_DY + 1;
+        int maxY = chunk.getMaxBuildHeight() - 1;
+        for (int y = ceilingStartY; y <= maxY; y++) {
+            BlockState above = chunk.getBlockState(cursor.set(x, y, z));
+            if (!isUpwardSupportedFlora(above)) {
+                break;
+            }
+            setDepotCell(chunk, cursor, x, y, z, Blocks.AIR.defaultBlockState());
         }
     }
 
-    private static Block block(WorldGenLevel level, ResourceLocation id) {
-        Block block = level.registryAccess().registryOrThrow(Registries.BLOCK).get(id);
+    private static void ensureDryMainLineTrack(
+            ChunkAccess chunk,
+            BlockPos.MutableBlockPos cursor,
+            int x,
+            int y,
+            int z,
+            BlockState dryTrack
+    ) {
+        BlockState current = chunk.getBlockState(cursor.set(x, y, z));
+        if (current.is(Blocks.BEDROCK)) {
+            return;
+        }
+        if (current.getBlock() == dryTrack.getBlock()) {
+            if (current.hasProperty(TrackBlock.WATERLOGGED) && current.getValue(TrackBlock.WATERLOGGED)) {
+                setDepotCell(chunk, cursor, x, y, z, current.setValue(TrackBlock.WATERLOGGED, false));
+            }
+            return;
+        }
+        setDepotCell(chunk, cursor, x, y, z, dryTrack);
+    }
+
+    private static BlockState dryTrackState(Block track) {
+        BlockState state = track.defaultBlockState()
+                .setValue(TrackBlock.SHAPE, TrackShape.XO)
+                .setValue(TrackBlock.HAS_BE, false);
+        if (state.hasProperty(TrackBlock.WATERLOGGED)) {
+            state = state.setValue(TrackBlock.WATERLOGGED, false);
+        }
+        return state;
+    }
+
+    private static void setDepotCell(
+            ChunkAccess chunk,
+            BlockPos.MutableBlockPos cursor,
+            int x,
+            int y,
+            int z,
+            BlockState next
+    ) {
+        cursor.set(x, y, z);
+        BlockState current = chunk.getBlockState(cursor);
+        if (current.hasBlockEntity() || chunk.getBlockEntityNbt(cursor) != null) {
+            chunk.removeBlockEntity(cursor.immutable());
+        }
+        chunk.setBlockState(cursor, next, false);
+    }
+
+    private static boolean isUpwardSupportedFlora(BlockState state) {
+        return state.is(Blocks.BAMBOO)
+                || state.is(Blocks.BAMBOO_SAPLING)
+                || state.is(Blocks.SUGAR_CANE)
+                || state.is(Blocks.CACTUS)
+                || state.is(Blocks.KELP)
+                || state.is(Blocks.KELP_PLANT)
+                || state.is(Blocks.TWISTING_VINES)
+                || state.is(Blocks.TWISTING_VINES_PLANT)
+                || state.is(Blocks.BIG_DRIPLEAF)
+                || state.is(Blocks.BIG_DRIPLEAF_STEM)
+                || state.is(Blocks.SMALL_DRIPLEAF);
+    }
+
+    private static Block block(RegistryAccess access, ResourceLocation id) {
+        Block block = access.registryOrThrow(Registries.BLOCK).get(id);
         if (block == null) {
             throw new IllegalStateException("missing required block " + id);
         }

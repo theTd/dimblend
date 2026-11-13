@@ -1,5 +1,10 @@
 package dimblend.experience.compat.simurail;
 
+import java.util.function.BooleanSupplier;
+import java.util.function.DoubleSupplier;
+import java.util.function.IntUnaryOperator;
+import org.jetbrains.annotations.Nullable;
+
 /**
  * E8 车架随机横向力的纯函数（{@code DECISIONS.md} {@code train-lateral-shake-mode = sway_plus_micro_roll}）。
  *
@@ -9,7 +14,7 @@ package dimblend.experience.compat.simurail;
  *
  * <p>标准 {@code CARRIAGE} / {@code POWER} 外侧转向架默认 {@code allowLateralOffset = false}
  * （{@code pivotJoint} 横向自由度锁死为 {@code [0, 0]}），配合 {@code ChassisRailLock} 锁死横滚后，
- * 刚体在水平横向与侧倾上零自由度，且重型车厢（数万至数十万 kg）远重于原始 {@code 1200 pN} 量级。
+ * 刚体在水平横向与侧倾上零自由度，且重型车厢（数万至数十万 kg）远重于原始 {@code 200 pN} 量级。
  * 因此在开启横向抖动时（用户拍板「水平微晃 + 限幅 ±2.5° 轻微侧倾」）：
  * <ol>
  *   <li>为 {@code !allowLateralOffset} 的挂轨转向架放开 {@code ±SWAY_LIMIT_METERS} 的水平蛇行游隙，
@@ -18,13 +23,15 @@ package dimblend.experience.compat.simurail;
  *       临时放开纵向翻滚轴至 {@code ±MAX_MICRO_ROLL_DEGREES}（{@code ±2.5°}）并挂载弹簧阻尼回中电机，
  *       脉冲结束后重新收紧回 {@code [0°, 0°]} 硬锁（静止偏载不歪斜）；</li>
  *   <li>将横向激振力与横滚激振力矩分别按转向架法向等效质量与车体横滚转动惯量归一化，
- *       使轻重编组获得一致的「轻微晃动 + 车体轻颤侧倾」体感，且仍受 {@code trainShakeForcePn} 线性调节。</li>
+ *       使轻重编组获得一致的「轻微晃动 + 车体轻颤侧倾」体感，且仍受 {@code trainLateralShakeForcePn} 线性调节；</li>
+ *   <li>每次抽签以每个 Sable 结构（{@code ServerSubLevel}）为单位统一计时，仅随机挑选该结构上一个
+ *       高速启用车架抽取 {@link #shouldTrigger}，不再逐车架独立抽签叠加。</li>
  * </ol>
  */
 public final class TrainLateralForceMath {
 
     /** 横向力默认基准大小（pN）。 */
-    public static final double FORCE_PN = 1200.0D;
+    public static final double FORCE_PN = 200.0D;
     /** 单次横向力持续时长（游戏 tick）。 */
     public static final int PUSH_DURATION_TICKS = 10;
     /** 默认判定间隔：2 秒，运行时取 Config.TRAIN_SHAKE_INTERVAL_SECONDS。 */
@@ -34,7 +41,7 @@ public final class TrainLateralForceMath {
 
     /** 锁横向转向架在开启抖动时放开的水平横向游隙上限（米，约 2 像素宽，零脱轨/擦站台风险）。 */
     public static final double SWAY_LIMIT_METERS = 0.12D;
-    /** 基准转向架法向等效质量（kg）：默认 1200 pN 对应 3.0 m/s² 水平激振加速度（峰值约 8~9 cm）。 */
+    /** 基准转向架法向等效质量（kg）：默认 200 pN 对应 0.5 m/s² 水平激振加速度。 */
     public static final double REFERENCE_NORMAL_MASS_KG = 400.0D;
     /** 水平蛇行回中弹簧固有角频率（rad/s）。 */
     public static final double SWAY_SPRING_OMEGA = 6.0D;
@@ -47,7 +54,7 @@ public final class TrainLateralForceMath {
     public static final double MAX_MICRO_ROLL_DEGREES = 2.5D;
     /** 横向抖动微侧倾最大弧度上限（{@code ±2.5°}）。 */
     public static final double MAX_MICRO_ROLL_RADIANS = Math.toRadians(MAX_MICRO_ROLL_DEGREES);
-    /** 基准纵向横滚转动惯量（kg·m²）：默认 1200 pN 对应单转向架 2.4 rad/s² 角加速度。 */
+    /** 基准纵向横滚转动惯量（kg·m²）：默认 200 pN 对应单转向架 0.4 rad/s² 角加速度。 */
     public static final double REFERENCE_ROLL_MOMENT_KG_M2 = 500.0D;
     /** 极轻小型测试车体的横滚转动惯量下限（kg·m²），防止除零或过小值。 */
     public static final double MIN_ROLL_MOMENT_KG_M2 = 50.0D;
@@ -198,6 +205,83 @@ public final class TrainLateralForceMath {
 
     public static int intervalTicks(double seconds) {
         return seconds <= 0.0D ? 0 : Math.max(1, (int) Math.round(seconds * 20.0D));
+    }
+
+    /** 每个 Sable 结构在服务端主线程上的抽签倒计时状态。 */
+    public static final class SubLevelDrawState {
+        private int countdown = -1;
+        private int lastInterval = -1;
+
+        public int countdown() {
+            return countdown;
+        }
+
+        public void reset() {
+            countdown = -1;
+        }
+    }
+
+    /** 单个 Sable 结构的单次抽签命中结果（选中候选车架下标与施力方向）。 */
+    public record DrawOutcome(int candidateIndex, double sign) {
+    }
+
+    /**
+     * 推进一步单个 Sable 结构的随机晃动倒计时：每隔 {@code intervalTicks}，
+     * 仅从所有处于高速（{@link TrainSpeedGateMath#isFast}）状态的启用车架中
+     * 均等随机挑选 1 个，并仅对该车架做一次 {@link #shouldTrigger} 抽取。
+     *
+     * @return 本 tick 触发施力时返回选中的车架下标与方向；未到抽签时间、无高速车架或未抽中返回 {@code null}
+     */
+    public static @Nullable DrawOutcome stepSubLevelDraw(
+            SubLevelDrawState state,
+            int intervalTicks,
+            double[] candidateSpeeds,
+            IntUnaryOperator indexSelector,
+            DoubleSupplier rollSupplier,
+            BooleanSupplier positiveSignSupplier) {
+        if (intervalTicks != state.lastInterval) {
+            state.countdown = -1;
+            state.lastInterval = intervalTicks;
+        }
+        if (intervalTicks <= 0 || candidateSpeeds.length == 0) {
+            state.countdown = -1;
+            return null;
+        }
+        int fastCount = 0;
+        for (double speed : candidateSpeeds) {
+            if (TrainSpeedGateMath.isFast(speed)) {
+                fastCount++;
+            }
+        }
+        if (fastCount == 0) {
+            state.countdown = -1;
+            return null;
+        }
+        if (state.countdown < 0) {
+            state.countdown = intervalTicks;
+        }
+        if (--state.countdown > 0) {
+            return null;
+        }
+        state.countdown = intervalTicks;
+
+        int fastPick = Math.floorMod(indexSelector.applyAsInt(fastCount), fastCount);
+        int chosenIndex = -1;
+        int seenFast = 0;
+        for (int i = 0; i < candidateSpeeds.length; i++) {
+            if (TrainSpeedGateMath.isFast(candidateSpeeds[i])) {
+                if (seenFast == fastPick) {
+                    chosenIndex = i;
+                    break;
+                }
+                seenFast++;
+            }
+        }
+        if (chosenIndex < 0 || !shouldTrigger(candidateSpeeds[chosenIndex], rollSupplier.getAsDouble())) {
+            return null;
+        }
+        double sign = positiveSignSupplier.getAsBoolean() ? 1.0D : -1.0D;
+        return new DrawOutcome(chosenIndex, sign);
     }
 
     private TrainLateralForceMath() {

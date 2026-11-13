@@ -21,10 +21,17 @@ class TuningOptionTest {
     @Test
     void forceRejectsFractionsAndOutOfRangeValues() {
         var option = TuningOption.SHAKE_FORCE;
+        assertEquals(200.0D, option.defaultValue());
+        assertEquals(200, Config.TRAIN_SHAKE_FORCE_PN.getDefault());
+        assertEquals(0.0D, option.minimum());
+        assertEquals(2000.0D, option.maximum());
         assertTrue(option.isValid(0.0D));
-        assertTrue(option.isValid(10000.0D));
-        assertFalse(option.isValid(1200.1D));
-        assertFalse(option.isValid(10001.0D));
+        assertTrue(option.isValid(200.0D));
+        assertTrue(option.isValid(2000.0D));
+        assertFalse(option.isValid(-1.0D));
+        assertFalse(option.isValid(200.1D));
+        assertFalse(option.isValid(2001.0D));
+        assertFalse(option.isValid(10000.0D));
     }
 
     @Test

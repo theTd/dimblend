@@ -86,6 +86,7 @@ public class DimBlend {
         if (ModList.get().isLoaded("simurail")) {
             TrainForceGroups.FORCE_GROUPS.register(modEventBus);
             dimblend.experience.compat.simurail.TrainDeadmanBrake.register();
+            dimblend.experience.compat.simurail.TrainLateralShakeScheduler.register();
         }
         if (ModList.get().isLoaded("create") && ModList.get().isLoaded("simurail")) {
             dimblend.experience.compat.simurail.TractionDisplaySources.register(modEventBus);

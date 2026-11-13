@@ -478,6 +478,18 @@ public final class RecipeEditRules {
                 .setJson("key.B", "{\"item\": \"minecraft:blaze_powder\"}")
                 .build());
 
+        // —— 3.21 哨戒动力臂（2026-11-13 追加） ——
+        // 原无序合成：动力臂 x1 + 精密构件 x1 -> 哨戒动力臂 x1；追加 电子管 x1 + 深渊之心 x1。
+        // 反向拆解配方 sentrymechanicalarm:mechanical_arm_from_sentry 不动。
+        edits.add(modifyFields("哨戒动力臂", "sentrymechanicalarm:sentry_mechanical_arm")
+                .setJson("ingredients", "["
+                        + "{\"item\": \"create:mechanical_arm\"},"
+                        + "{\"item\": \"create:precision_mechanism\"},"
+                        + "{\"item\": \"create:electron_tube\"},"
+                        + "{\"item\": \"deeperdarker:heart_of_the_deep\"}"
+                        + "]")
+                .build());
+
         return edits.build();
     }
 

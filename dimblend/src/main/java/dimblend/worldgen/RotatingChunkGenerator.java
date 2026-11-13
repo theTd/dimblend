@@ -162,7 +162,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
         return layout;
     }
 
-    private synchronized void ensureRuntime(RegistryAccess access) {
+    public synchronized void ensureRuntime(RegistryAccess access) {
         RuntimeState current = this.runtime;
         if (current == null) {
             throw new IllegalStateException("dimblend world seed is not set");
@@ -603,6 +603,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
         // Surface/surface boundaries get the R6 station depot. It never touches a
         // walled boundary column, so the wall/gate written above stays intact.
         StationDepot.place(level, chunk);
+        StationDepot.placeLoadedDepotNeighbors(level, chunk.getPos());
     }
 
     @Override
