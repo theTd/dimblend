@@ -451,8 +451,8 @@ public final class ChassisWorldAnchorGameTests {
         double prevInterval = Config.TRAIN_SHAKE_INTERVAL_SECONDS.get();
         int prevForce = Config.TRAIN_SHAKE_FORCE_PN.get();
         Config.TRAIN_LATERAL_FORCE.set(true);
-        Config.TRAIN_SHAKE_INTERVAL_SECONDS.set(2.0D);
-        Config.TRAIN_SHAKE_FORCE_PN.set(1200);
+        Config.TRAIN_SHAKE_INTERVAL_SECONDS.set(1.0D);
+        Config.TRAIN_SHAKE_FORCE_PN.set(100);
 
         ServerLevel level = rotating(helper);
         for (int cx = 48; cx <= 52; cx++) {

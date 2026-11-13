@@ -32,11 +32,12 @@ class TrainLateralForceMathTest {
     }
 
     @Test
-    void intervalSupportsDisabledValueAndTenthsOfSeconds() {
+    void intervalSupportsRangeBoundariesAndTenthsOfSeconds() {
         assertEquals(0, TrainLateralForceMath.intervalTicks(0.0D));
-        assertEquals(2, TrainLateralForceMath.intervalTicks(0.1D));
-        assertEquals(40, TrainLateralForceMath.intervalTicks(2.0D));
-        assertEquals(1200, TrainLateralForceMath.intervalTicks(60.0D));
+        assertEquals(4, TrainLateralForceMath.intervalTicks(0.2D));
+        assertEquals(20, TrainLateralForceMath.INTERVAL_TICKS);
+        assertEquals(20, TrainLateralForceMath.intervalTicks(1.0D));
+        assertEquals(640, TrainLateralForceMath.intervalTicks(32.0D));
     }
 
     @Test
@@ -97,15 +98,15 @@ class TrainLateralForceMathTest {
 
     @Test
     void totalImpulseOverPushIsIndependentOfSubsteps() {
-        // 默认 200 pN，持续 10 tick = 0.5 秒，总冲量 200 × 0.5 = 100，与每 tick 物理子步数无关
-        assertEquals(200.0D, TrainLateralForceMath.FORCE_PN, 1.0E-9);
+        // 默认 100 pN，持续 10 tick = 0.5 秒，总冲量 100 × 0.5 = 50，与每 tick 物理子步数无关
+        assertEquals(100.0D, TrainLateralForceMath.FORCE_PN, 1.0E-9);
         for (int substeps : new int[] {1, 2, 4}) {
             double step = 0.05D / substeps;
             double total = 0.0D;
             for (int i = 0; i < TrainLateralForceMath.PUSH_DURATION_TICKS * substeps; i++) {
                 total += TrainLateralForceMath.impulsePerStep(step);
             }
-            assertEquals(100.0D, total, 1.0E-6);
+            assertEquals(50.0D, total, 1.0E-6);
         }
     }
 

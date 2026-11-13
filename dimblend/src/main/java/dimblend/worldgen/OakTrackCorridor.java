@@ -120,7 +120,7 @@ public final class OakTrackCorridor {
             clearVaultColumn(chunk, cursor, x, vaultMinZ, vaultMaxZ, trackBlock, maxDy, carveBedrock,
                     rotating.hasStarterDepot(), live);
             stabilizeVaultCeiling(chunk, cursor, x, vaultMinZ, vaultMaxZ, maxDy, live);
-            // 地基（路基）：材质与半宽都由 lane 档案给出，下界是 3 格黑石，其余沿用旧值。
+            // 地基（路基）：材质与宽度都由 lane 档案给出——7 格圆石、3 格黑石、1 格虚空石/深板岩。
             // 材质走方块注册表解析，和轨道方块同一条路径（档案里存 id，不存 Block 常量）。
             if (profile.hasFoundation()) {
                 writeFoundation(foundationBlock(access, foundationBlocks, profile), profile.foundationHalfWidth(),
@@ -142,20 +142,18 @@ public final class OakTrackCorridor {
      * Resolves (and caches per carve call) the track block of one lane profile.
      * All variants are base Steam 'n' Rails blocks — no optional-mod gates — so
      * a missing id is a hard misconfiguration, same as the previous single
-     * TRACK_ID requirement.
+     * TRACK_ID requirement. {@code Registries.BLOCK} is a {@code DefaultedRegistry}:
+     * {@code get()} hands back {@code Blocks.AIR} for an unknown id, so the
+     * lookup goes through {@code getOptional()} to make the miss observable.
      */
     private static Block trackBlock(
             RegistryAccess access,
             Map<CorridorTrackProfile, Block> cache,
             CorridorTrackProfile profile
     ) {
-        return cache.computeIfAbsent(profile, p -> {
-            Block block = access.registryOrThrow(Registries.BLOCK).get(p.trackId());
-            if (block == null) {
-                throw new IllegalStateException("missing required block " + p.trackId());
-            }
-            return block;
-        });
+        return cache.computeIfAbsent(profile, p -> access.registryOrThrow(Registries.BLOCK)
+                .getOptional(p.trackId())
+                .orElseThrow(() -> new IllegalStateException("missing required block " + p.trackId())));
     }
 
     private static Block foundationBlock(
@@ -163,13 +161,9 @@ public final class OakTrackCorridor {
             Map<CorridorTrackProfile, Block> cache,
             CorridorTrackProfile profile
     ) {
-        return cache.computeIfAbsent(profile, p -> {
-            Block block = access.registryOrThrow(Registries.BLOCK).get(p.foundationBlockId());
-            if (block == null) {
-                throw new IllegalStateException("missing required block " + p.foundationBlockId());
-            }
-            return block;
-        });
+        return cache.computeIfAbsent(profile, p -> access.registryOrThrow(Registries.BLOCK)
+                .getOptional(p.foundationBlockId())
+                .orElseThrow(() -> new IllegalStateException("missing required block " + p.foundationBlockId())));
     }
 
     private static void writeFoundation(
@@ -182,7 +176,8 @@ public final class OakTrackCorridor {
             int maxZ,
             @javax.annotation.Nullable ServerLevel live
     ) {
-        if (halfWidth <= 0) {
+        if (halfWidth < 0) {
+            // 半宽 −1 = 该 lane 无地基；0 是合法的 1 格宽（只写 z = CORRIDOR_Z）。
             return;
         }
         int zMin = Math.max(minZ, CORRIDOR_Z - halfWidth);

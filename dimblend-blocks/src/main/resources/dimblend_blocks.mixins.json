@@ -5,6 +5,7 @@
 	"minVersion": "0.8",
 	"plugin": "dimblend.blocks.mixin.DimBlendBlocksMixinPlugin",
 	"mixins": [
+		"BucketItemLavaQuenchMixin",
 		"BlockPropertiesAccessor",
 		"compat.copycats.CopycatsObsidianHardnessMixin",
 		"compat.create.CreateCopycatObsidianHardnessMixin"

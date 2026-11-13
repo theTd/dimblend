@@ -31,11 +31,11 @@ import org.jetbrains.annotations.Nullable;
 public final class TrainLateralForceMath {
 
     /** 横向力默认基准大小（pN）。 */
-    public static final double FORCE_PN = 200.0D;
+    public static final double FORCE_PN = 100.0D;
     /** 单次横向力持续时长（游戏 tick）。 */
     public static final int PUSH_DURATION_TICKS = 10;
-    /** 默认判定间隔：2 秒，运行时取 Config.TRAIN_SHAKE_INTERVAL_SECONDS。 */
-    public static final int INTERVAL_TICKS = 40;
+    /** 默认判定间隔：1.0 秒，运行时取 Config.TRAIN_SHAKE_INTERVAL_SECONDS。 */
+    public static final int INTERVAL_TICKS = 20;
     /** 概率 = 速度 / 20，达到此速度即 100%。 */
     public static final double FULL_CHANCE_SPEED = 20.0D;
 

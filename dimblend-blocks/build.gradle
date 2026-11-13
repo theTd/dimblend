@@ -133,7 +133,19 @@ dependencies {
     if (project.hasProperty('withCopycats')) {
         localRuntime "maven.modrinth:copycats:3.0.4+mc.1.21.1-neoforge"
     }
+
+    // 水桶浇岩浆的 5x5 判定表自检单测（纯 Java，BlockPos 来自 main 的编译类路径）。
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+}
+
+// 判定表引用 Minecraft 的 BlockPos，MDG 只把它加到 main 的类路径上。
+sourceSets.test.compileClasspath += sourceSets.main.compileClasspath
+sourceSets.test.runtimeClasspath += sourceSets.main.compileClasspath
 
 // This block of code expands all declared replace properties in the specified resource targets.
 // A missing property will result in an error. Properties are expanded using ${} Groovy notation.

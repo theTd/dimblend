@@ -34,6 +34,7 @@ import net.minecraft.world.level.chunk.storage.IOWorker;
 import net.minecraft.world.level.entity.EntityPersistentStorage;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.event.entity.EntityTravelToDimensionEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
@@ -67,6 +68,7 @@ public final class RegionPurgeController {
     /** Header-only files are recreated by far reads ({@code /locate}, maps); swept outside the budget. */
     private static final int HEADER_ONLY_PER_SCAN = 64;
     private static final long FAILURE_BACKOFF_TICKS = 20L * 60L * 5L;
+    private static final int FORCE_LOAD_FOLLOWUP_TICKS = 100;
 
     public record Snapshot(
             boolean enabled,
@@ -111,6 +113,8 @@ public final class RegionPurgeController {
     }
 
     private final RegionPurgePlanner planner = new RegionPurgePlanner();
+    @Nullable
+    private final SablePurgeBridge sablePurge = ModList.get().isLoaded("sable") ? new RegionSablePurger() : null;
     private final LongOpenHashSet inFlight = new LongOpenHashSet();
     /** Region key to the tick before which a failed delete is not retried. */
     private final Long2LongOpenHashMap retryAfter = new Long2LongOpenHashMap();
@@ -119,6 +123,9 @@ public final class RegionPurgeController {
     /** A scan's region-file listing runs off-thread; set until its finishScan lands. */
     private boolean scanInFlight;
     private int ticksUntilScan;
+    private int followUpScanTicks;
+    @Nullable
+    private OptionalInt followUpKeepChunkX;
     private String lastState = "not scanned";
     private int lastRegionsOnDisk;
     private int lastBusyRegions;
@@ -146,7 +153,18 @@ public final class RegionPurgeController {
     public void onServerTick(ServerTickEvent.Post event) {
         if (!RegionPurgeConfig.ENABLED.get()) {
             this.planner.clear();
+            if (this.sablePurge != null) {
+                this.sablePurge.clear();
+            }
+            this.followUpScanTicks = 0;
+            this.followUpKeepChunkX = null;
             this.lastState = "disabled";
+            return;
+        }
+        if (this.followUpScanTicks > 0 && --this.followUpScanTicks == 0) {
+            OptionalInt extra = this.followUpKeepChunkX != null ? this.followUpKeepChunkX : OptionalInt.empty();
+            this.followUpKeepChunkX = null;
+            this.scan(event.getServer(), 0L, FORCE_SCAN_LIMIT, extra, false);
             return;
         }
         if (--this.ticksUntilScan > 0) {
@@ -154,17 +172,22 @@ public final class RegionPurgeController {
         }
         this.ticksUntilScan = RegionPurgeConfig.SCAN_INTERVAL_SECONDS.get() * 20;
         this.scan(event.getServer(), RegionPurgeConfig.IDLE_SECONDS.get() * 20L,
-                RegionPurgeConfig.MAX_REGIONS_PER_SCAN.get(), OptionalInt.empty());
+                RegionPurgeConfig.MAX_REGIONS_PER_SCAN.get(), OptionalInt.empty(), false);
     }
 
     @SubscribeEvent
     public void onServerStopping(ServerStoppingEvent event) {
         this.epoch++;
         this.planner.clear();
+        if (this.sablePurge != null) {
+            this.sablePurge.clear();
+        }
         this.inFlight.clear();
         this.retryAfter.clear();
         this.scanInFlight = false;
         this.ticksUntilScan = 0;
+        this.followUpScanTicks = 0;
+        this.followUpKeepChunkX = null;
         this.lastState = "not scanned";
         this.lastRegionsOnDisk = 0;
         this.lastBusyRegions = 0;
@@ -200,7 +223,7 @@ public final class RegionPurgeController {
         if (!RegionPurgeConfig.ENABLED.get()) {
             return -1;
         }
-        return this.scan(server, 0L, FORCE_SCAN_LIMIT, extraKeepChunkX);
+        return this.scan(server, 0L, FORCE_SCAN_LIMIT, extraKeepChunkX, true);
     }
 
     public Snapshot snapshot(MinecraftServer server) {
@@ -235,7 +258,12 @@ public final class RegionPurgeController {
      *
      * @return always 0: the submitted count is only known when the scan lands (logged there)
      */
-    private int scan(MinecraftServer server, long idleTicks, int limit, OptionalInt extraKeepChunkX) {
+    private int scan(
+            MinecraftServer server,
+            long idleTicks,
+            int limit,
+            OptionalInt extraKeepChunkX,
+            boolean allowFollowUpScan) {
         ServerLevel level = server.getLevel(DimBlendRegistries.ROTATING_LEVEL);
         if (level == null) {
             this.lastState = "no rotating level";
@@ -243,6 +271,11 @@ public final class RegionPurgeController {
         }
         if (level.noSave()) {
             this.planner.clear();
+            if (this.sablePurge != null) {
+                this.sablePurge.clear();
+            }
+            this.followUpScanTicks = 0;
+            this.followUpKeepChunkX = null;
             this.lastState = "paused by save-off";
             return 0;
         }
@@ -273,7 +306,7 @@ public final class RegionPurgeController {
             Store errorStore = failedStore;
             IOException error = failure;
             server.execute(() -> this.finishScan(server, submittedEpoch, level, stores, largestFile,
-                    errorStore, error, idleTicks, limit, extraKeepChunkX));
+                    errorStore, error, idleTicks, limit, extraKeepChunkX, allowFollowUpScan));
         });
         return 0;
     }
@@ -281,7 +314,7 @@ public final class RegionPurgeController {
     /** Server-thread scan completion: re-reads every live input, then plans and submits deletions. */
     private void finishScan(MinecraftServer server, int submittedEpoch, ServerLevel level, List<Store> stores,
             Long2LongOpenHashMap largestFile, @Nullable Store failedStore, @Nullable IOException failure,
-            long idleTicks, int limit, OptionalInt extraKeepChunkX) {
+            long idleTicks, int limit, OptionalInt extraKeepChunkX, boolean allowFollowUpScan) {
         this.scanInFlight = false;
         if (submittedEpoch != this.epoch) {
             return;
@@ -292,11 +325,17 @@ public final class RegionPurgeController {
             return;
         }
         if (!RegionPurgeConfig.ENABLED.get()) {
+            if (this.sablePurge != null) {
+                this.sablePurge.clear();
+            }
             this.lastState = "disabled";
             return;
         }
         if (level.noSave()) {
             this.planner.clear();
+            if (this.sablePurge != null) {
+                this.sablePurge.clear();
+            }
             this.lastState = "paused by save-off";
             return;
         }
@@ -308,6 +347,9 @@ public final class RegionPurgeController {
         this.lastBusyRegions = busy.size();
         if (centers.length == 0) {
             this.planner.clear();
+            if (this.sablePurge != null) {
+                this.sablePurge.clear();
+            }
             this.lastState = "no keep center";
             return;
         }
@@ -315,6 +357,19 @@ public final class RegionPurgeController {
         this.retryAfter.long2LongEntrySet().removeIf(
                 entry -> entry.getLongValue() <= now || !largestFile.containsKey(entry.getLongKey()));
         int keep = effectiveKeepChunks(server);
+        if (this.sablePurge != null) {
+            int unticketed = this.sablePurge.releaseRemoteForceLoads(
+                    level,
+                    centers,
+                    keep,
+                    now,
+                    idleTicks,
+                    key -> inSablePlotGrid(level, key));
+            if (allowFollowUpScan && idleTicks == 0L && unticketed > 0) {
+                this.followUpScanTicks = FORCE_LOAD_FOLLOWUP_TICKS;
+                this.followUpKeepChunkX = extraKeepChunkX;
+            }
+        }
         LongPredicate eligible = key -> !busy.contains(key)
                 && !this.inFlight.contains(key)
                 && !this.retryAfter.containsKey(key)
@@ -326,6 +381,7 @@ public final class RegionPurgeController {
         for (Long2LongMap.Entry entry : largestFile.long2LongEntrySet()) {
             (entry.getLongValue() > HEADER_ONLY_BYTES ? withChunks : headerOnly).add(entry.getLongKey());
         }
+        LongOpenHashSet remainingTerrainRegions = new LongOpenHashSet(largestFile.keySet());
         long[] ready = this.planner.plan(
                 withChunks,
                 eligible,
@@ -335,7 +391,7 @@ public final class RegionPurgeController {
                 limit
         );
         for (long key : ready) {
-            this.purge(server, level, stores, key, false);
+            this.purge(server, level, stores, key, false, remainingTerrainRegions);
         }
         int swept = 0;
         for (long key : headerOnly) {
@@ -343,7 +399,7 @@ public final class RegionPurgeController {
                 break;
             }
             if (eligible.test(key)) {
-                this.purge(server, level, stores, key, true);
+                this.purge(server, level, stores, key, true, remainingTerrainRegions);
                 swept++;
             }
         }
@@ -353,11 +409,27 @@ public final class RegionPurgeController {
         }
     }
 
-    private void purge(MinecraftServer server, ServerLevel level, List<Store> stores, long key, boolean headerOnly) {
+    private void purge(
+            MinecraftServer server,
+            ServerLevel level,
+            List<Store> stores,
+            long key,
+            boolean headerOnly,
+            LongSet remainingTerrainRegions) {
         int regionX = RegionPurgePlanner.keyX(key);
         int regionZ = RegionPurgePlanner.keyZ(key);
+        remainingTerrainRegions.remove(key);
         // Same tick as the busy check, before any IO task: nothing can load the region in between.
         RegionMemoryPruner.Pruned pruned = RegionMemoryPruner.prune(level, regionX, regionZ);
+        int purgedSables = this.sablePurge != null
+                ? this.sablePurge.purgeRegion(
+                        level,
+                        regionX,
+                        regionZ,
+                        remainingTerrainRegions,
+                        workerOf(stores, "entities"),
+                        workerOf(stores, "poi"))
+                : 0;
         DimBlend.pregen().forgetRegion(regionX, regionZ);
         this.inFlight.add(key);
         int submittedEpoch = this.epoch;
@@ -366,7 +438,8 @@ public final class RegionPurgeController {
             futures.add(RegionFileDeleter.delete(store.worker(), regionX, regionZ));
         }
         CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).whenComplete((ignored, error) ->
-                server.execute(() -> this.onDeleted(server, submittedEpoch, key, headerOnly, stores, futures, pruned)));
+                server.execute(() -> this.onDeleted(
+                        server, submittedEpoch, key, headerOnly, stores, futures, pruned, purgedSables)));
     }
 
     private void onDeleted(
@@ -376,7 +449,8 @@ public final class RegionPurgeController {
             boolean headerOnly,
             List<Store> stores,
             List<CompletableFuture<RegionFileDeleter.Result>> futures,
-            RegionMemoryPruner.Pruned pruned
+            RegionMemoryPruner.Pruned pruned,
+            int purgedSables
     ) {
         if (submittedEpoch != this.epoch) {
             return;
@@ -426,9 +500,19 @@ public final class RegionPurgeController {
             this.planner.forget(key);
             this.lastRegion = region;
             this.lastBytes = bytes;
-            LOGGER.info("dimblend purge: deleted {} ({} files,{}; memo poi={} structure={})",
-                    region, files, detail, pruned.poiSections(), pruned.structureChunks());
+            LOGGER.info("dimblend purge: deleted {} ({} files,{}; memo poi={} structure={} sables={})",
+                    region, files, detail, pruned.poiSections(), pruned.structureChunks(), purgedSables);
         }
+    }
+
+    @Nullable
+    private static IOWorker workerOf(List<Store> stores, String name) {
+        for (Store store : stores) {
+            if (name.equals(store.name())) {
+                return store.worker();
+            }
+        }
+        return null;
     }
 
     private static void recordIfInRotating(ServerPlayer player) {

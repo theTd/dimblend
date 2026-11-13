@@ -17,11 +17,21 @@ ModDevGradle 2.0.147 / Gradle 9.2.1，与 `dimblend`、`dimblend-craft`、
   分派：创造=原版旋转+潜行拆卸不掉落、生存=裸件互转禁拆；乌木齿轮+黑铁杆识别色与原版区分）。
   仅在 Create 在场时激活。
 
+- L 板块·水桶浇岩浆（无外部依赖，常驻）——手持满水桶
+  （`minecraft:water_bucket`、`#c:buckets/water` 标签桶、或内容流体为水的 `BucketItem`，
+  排除生物桶）右键岩浆：命中格与同 Y 层水平 5x5 范围内的源岩浆固化黑曜石、流动岩浆固化
+  易碎石头，外环原样；<strong>任何路径都不放水</strong>（视线命中岩浆即取消
+  `RightClickBlock`/`RightClickItem`，另有 `BucketItem#emptyContents` mixin 兜底直接调用的
+  与「点干燥面递归到岩浆格」的路径）。生存/冒险扣掉桶内水（回空桶，优先物品自定义合成
+  剩余物），创造保留满水桶。先查 `getChunkNow` 再读方块状态，未加载区块不触碰。
+
 ## 常用命令
 
 | 命令（仓库根执行） | 说明 |
 | --- | --- |
 | `./gradlew :dimblend-blocks:build` | 构建并输出 jar 到 `dimblend-blocks/build/libs/` |
+| `./gradlew :dimblend-blocks:test` | 跑纯逻辑单测（`WaterBucketLavaQuenchMathTest`） |
+| `./gradlew :dimblend-blocks:runGameTestServer` | 跑 GameTest（含 `WaterBucketLavaQuenchGameTest`） |
 | `./gradlew :dimblend-blocks:runClient` | 启动开发客户端 |
 | `./gradlew :dimblend-blocks:runServer` | 启动开发服务端 |
 | `./gradlew :dimblend-blocks:runData` | 运行数据生成，输出到 `dimblend-blocks/src/generated/resources/` |
@@ -33,7 +43,12 @@ ModDevGradle 2.0.147 / Gradle 9.2.1，与 `dimblend`、`dimblend-craft`、
   - `compat/create/` — K 板块创造传动件注册（`CreativeKinetics`，仅 Create 在场）
   - `api/` — 对兄弟 mod 开放的唯一入口（`CreativeCopycatHiding` 隐藏查询）
   - `client/` — 客户端渲染（`CreativeCopycatClient` 模型装饰/幽灵渲染，`CreativeKineticsClient` 传动件 visual）
-  - `mixin/` — C0 硬度统一（`DimBlendBlocksMixinPlugin` 按 copycats/create 在场性过滤）
+  - `fragile/` — 易碎石头家族（`FragileStones` / 流体结果重定向 `FragileFluidResults`）+ 水桶浇岩浆
+    （`WaterBucketLavaQuench` 事件层、`WaterBucketLavaQuenchMath` 纯判定表）
+  - `mixin/` — C0 硬度统一（`DimBlendBlocksMixinPlugin` 按 copycats/create 在场性过滤）+
+    水桶浇岩浆兜底（`BucketItemLavaQuenchMixin`，原版目标，无条件应用）
+  - `gametest/` — GameTest（`WaterBucketLavaQuenchGameTest` 常驻；`CreativeCopycatHidingGameTest` 仅 copycats 在场）
+- `src/test/java/` — 纯逻辑单测（不吃游戏引导）
 - `src/main/resources/` — 资源（assets / data）
 - `src/main/templates/` — `neoforge.mods.toml` 模板，属性由 `gradle.properties` 展开注入
 - `src/generated/resources/` — datagen 输出

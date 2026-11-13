@@ -646,11 +646,11 @@
   验证：编译及无人值守/速度门槛局部单测；用户已确认此前距离刹车实测正确；新的信号等级变化整列解除、他列隔离与粒子同步待实机验证。
   连接语义仅覆盖 Sable 同车厢及 Simurail 自动车钩；其他模组的连接器不自动视为同列。
 - E8 车架随机横向力（2026-09-24 新条目，2026-11-13 规则修订，全维度，服务端）：按 Sable 结构（`ServerSubLevel`）统一计时——
-  结构内存在 |visualSpeed| &gt; 4 m/s 的启用车架期间，每隔固定 2 秒（40 tick）从该结构所有 &gt;4 m/s 启用车架中仅随机挑选 **1 个** 车架抽取一次，以
-  min(选中车架速度/20, 1) 的概率触发；触发后仅对该选中车架施力（默认 200 pN，范围 0–2000 pN，键名 `trainLateralShakeForcePn`），方向为车架局部
-  `getLateral()`（水平、垂直车架朝向），左右随机，持续 10 tick（0.5 秒，默认总冲量 100 pN·s）。
+  结构内存在 |visualSpeed| &gt; 4 m/s 的启用车架期间，每隔固定 1.0 秒（20 tick，可调 0.2–32.0 秒，键名 `trainShakeDrawIntervalSeconds`）从该结构所有 &gt;4 m/s 启用车架中仅随机挑选 **1 个** 车架抽取一次，以
+  min(选中车架速度/20, 1) 的概率触发；触发后仅对该选中车架施力（默认 100 pN，范围 0–1000 pN，键名 `trainAdditionalLateralForcePn`），方向为车架局部
+  `getLateral()`（水平、垂直车架朝向），左右随机，持续 10 tick（0.5 秒，默认总冲量 50 pN·s）。
   作用点为选中车架方块中心（plot 局部坐标，偏离质心，带出摇摆/侧倾）。计时在服务端主线程 `TrainLateralShakeScheduler` 推进，
-  结构内无 &gt;4 m/s 车架即清空计时、再次超速重新开始固定 2 秒计时；进行中的 10 tick 不因降速中断，且触发/持续期间在服务端主线程通知 `ChassisRailLock.notifyLateralShakePulse`。
+  结构内无 &gt;4 m/s 车架即清空计时、再次超速重新开始固定 1.0 秒计时；进行中的 10 tick 不因降速中断，且触发/持续期间在服务端主线程通知 `ChassisRailLock.notifyLateralShakePulse`。
   施力在 `sable$physicsTick` 每物理子步按质量归一化冲量记入本模组 sable 力分组
   `dimblend_experience:lateral_force`（`QueuedForceGroup.applyAndRecordPointForce`，plot 局部点 +
   局部冲量，螺旋桨/simurail 牵引同型；sable 同子步统一 applyQueuedForces），Simulated 力示意图
@@ -1855,7 +1855,7 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
 
 - 根因：`ChassisBlueprint` 将车厢两端转向架设为 `allowOffset = false`（`pivotJoint` `LINEAR_Z` 锁死 `[0, 0]`，34 米间距双点锁死连带卡死偏航角 `ANGULAR_Y`），而 §18.2 `ChassisRailLock` 又将世界关节翻滚轴 `ANGULAR_X` 写入初始硬锁集，致使刚体在横向与侧倾上零自由度；同时重型车厢（`40,000–300,000 kg`）的质量与转动惯量远超原始 `1200 pN` 常数，位移不足 `1 mm`。
 - 修法（`TrainLateralForceMath` + `PhysicsBogeyLateralForceMixin` + `ChassisRailLock` + `ChassisRailLockRules`，用户覆写拍板「水平微晃 + 限幅 `±2.5°` 轻微侧倾」）：
-  1. **水平微晃（`±0.12 m`）**：当 `trainLateralForce` 启用且 `trainShakeForcePn > 0` 时，对 `!options.allowLateralOffset` 的挂轨转向架将 `pivotJoint` `ConstraintJointAxis.LINEAR_Z` 游隙放宽至 `[-0.12, +0.12]` 米（对关闭 `allowYawOffset`/`allowPitchOffset` 的转向架同步放开 `ANGULAR_X` 至 `±2.5°`），并在 `updateForces` 中施加按 `normalMass` 缩放的水平弹簧阻尼回正力（`ω = 6.0 rad/s, ζ = 0.65`）。
+  1. **水平微晃（`±0.12 m`）**：当 `trainLateralForce` 启用且 `trainAdditionalLateralForcePn > 0` 时，对 `!options.allowLateralOffset` 的挂轨转向架将 `pivotJoint` `ConstraintJointAxis.LINEAR_Z` 游隙放宽至 `[-0.12, +0.12]` 米（对关闭 `allowYawOffset`/`allowPitchOffset` 的转向架同步放开 `ANGULAR_X` 至 `±2.5°`），并在 `updateForces` 中施加按 `normalMass` 缩放的水平弹簧阻尼回正力（`ω = 6.0 rad/s, ζ = 0.65`）。
   2. **动态 `±2.5°` 限幅微侧倾（严守 `Y=66` 与车头零俯仰）**：由于 Rapier 求解器内 `locked_axes` 优先级高于 `limit_axes`/`motor_axes`（`joint_velocity_constraint.rs:141-143`），`ChassisRailLock` 对单纵轴车体（X 向或经 `Ry(-π/2)` 对齐的 Z 向车体）将永久硬锁轴收敛为 `{LINEAR_Y, ANGULAR_Z}`，而将纵向翻滚轴 `ANGULAR_X` 在平时设为 `[0.0, 0.0]` 硬限位 + 归零电机（静止或单侧偏载时严守 `0.00°` 不歪斜）；仅在 `notifyLateralShakePulse` 触发后的 `40 tick` 窗口（`10 tick` 施力 + `30 tick` 阻尼回正）内动态放开至 `[-2.5°, +2.5°]` 并挂上弹簧阻尼电机（`stiffness = 36.0, damping = 8.4`），弯道偏航刷新阈值同步收紧至 `3.0°` 消除 yaw-roll 交叉耦合。
-  3. **质量与转动惯量双归一化**：水平冲量按 `normalMass / 400.0` 缩放，纵向侧倾扭矩冲量按 `(rollMoment / 500.0) / sqrt(bogeyCount)` 缩放（继续线性响应 `/dbx` 面板的 `trainShakeForcePn` 与 `trainShakeIntervalSeconds`），并分别由 `canPushFurther`（`0.12 m`）与 `canRollFurther`（`2.5°`）防止达到限位后继续同向猛顶。
+  3. **质量与转动惯量双归一化**：水平冲量按 `normalMass / 400.0` 缩放，纵向侧倾扭矩冲量按 `(rollMoment / 500.0) / sqrt(bogeyCount)` 缩放（继续线性响应 `/dbx` 面板的 `trainAdditionalLateralForcePn` 与 `trainShakeDrawIntervalSeconds`），并分别由 `canPushFurther`（`0.12 m`）与 `canRollFurther`（`2.5°`）防止达到限位后继续同向猛顶。
 - 验证：`TrainLateralForceMathTest` 8 项与 `ChassisRailLockRulesTest` 9 项纯函数单测通过，新增 `ChassisWorldAnchorGameTests#microRollPulseAllowsCappedTwoPointFiveDegreeRollAndResettlesFlatAtDeck66` GameTest；待整合包实机乘车验证。

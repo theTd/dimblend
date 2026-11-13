@@ -33,8 +33,8 @@
    待卸载（`pendingUnloads`）、任何 ticket（强加载、Sable、Create 及其它模组的票据全部涵盖）、
    实体加载状态（`chunkLoadStatuses`）、待卸载实体（`chunksToUnload`）或实体区段
    （实体可在未加载区块建区段，autosave 会回写）都视为忙。
-3. **不在 Sable plot grid 内**：Sable 子世界方块所在的远端网格不是地形，永不删除。
-   `sublevels/*.slvlr` 与 Sable 数据文件本身从不触碰。
+3. **不在 Sable plot grid 内**：Sable 子世界方块所在的远端网格不是地形，其 `.mca` 永不按地形删除。
+   但坐标（`pose.position`）落在被删地形区域内的 Sable 子世界数据会在删区时一并清理（见第七节）。
 4. **存档未关闭**：`/save-off` 期间暂停清除，保证备份看到一致的世界。
 
 满足条件的区域按"离最近保留中心最远"优先，每次扫描最多删 `maxRegionsPerScan` 个。
@@ -93,6 +93,23 @@ vanilla 会以 CREATE 方式重新打开，留下 0 字节空文件；由上面�
 - Create 轨道图（`create_tracks.dat`）不随区块删除修剪：走廊轨道重新生成后与图中已有边一致，
   `CreateTrackGraphCompat` 会识别为已在图中；玩家自建轨道/车站/信号被删后会在图中残留。
 - 布局算法变更后重新生成的区域会按新布局生成，与未删除的旧区域之间出现接缝（同 README 说明）。
-- 只增长、但仍正确、且有上限或体量很小的：Sable `sublevels/` 中已删区域的持有记录（停放的子世界
-  回来时落在原样重新生成的地形上）、`IOWorker.regionCacheForBlender`（上限 1024）、
+- 只增长、但仍正确、且有上限或体量很小的：`IOWorker.regionCacheForBlender`（上限 1024）、
   `CreateTrackGraphCompat.pendingStitch`（上限 4096）。
+
+## 七、Sable 子世界联动清理（`RegionSablePurger`）
+
+当加载了 Sable（`ModList.get().isLoaded("sable")`）时，清理规则与已锁定的三项口径如下：
+
+- [x] **无人强加载 Sable 一并清理**（`force_loaded_sable = purge_unmanned_forced`）：
+  每次扫描期前在服务端主线程检查带强加载票据的 Sable 挂接链。若整条链所有区块均已超出有效保留距离、
+  不含任何玩家（旁观模式及超出子世界包围盒 ±32m 的陈旧 `trackingSubLevel` 不视作占用）、不触及 `inSablePlotGrid`、且区块上没有任何非 Sable/非瞬态（忽略 `SUB_LEVEL_LOADED` / `UNKNOWN` / `POST_TELEPORT`，拦截 `/forceload` 等持久化）票据，则开始累计连续满足时长；
+  连续达到 `idleSeconds` 后摘除其强加载票据（`/dimblend purge now` 时 `idleTicks = 0` 当场摘票，并在有摘票时自动于约 5 秒后追加一次扫描收走卸载后的区域）。
+- [x] **按质心 `pose.position` 唯一归属区域、挂接链原子删除**（`coord_region_rule = pose_center`）：
+  按各节质心世界坐标 `(floor(pose.x) >> 9, floor(pose.z) >> 9)` 归属对应 `r.X.Z`。为保持 `SubLevelHoldingChunk` 依赖链一致性，
+  同一 `loading_dependencies` 挂接链中的所有子世界原子判定：仅当链内至少一节质心位于当前待删区域 `r.X.Z`（或所有成员所在地形 `.mca` 均已不在盘上）且链内所有其他成员所在 `r.X.Z.mca` 也均已不在盘上时，才整链一并删除。
+- [x] **删除奖励车厢不重置已生成记录**（`regenerated_site_reset = keep_reward_recorded`）：
+  仅派发 `SableSubLevelsPurgedEvent` 供 `dimblend-experience` 清除被删实体的 `ChassisRegistryData` 身份登记；
+  `RewardWagonSites` 保持原记录，防止「箱留 1 件 → 跑远删区 → 折返重刷满箱」的刷物资路径（车站预置车厢仍由其自身 `verifyCar` 按需补齐）。
+- [x] **存储与 plot 占格同步收回**：
+  删除 `SubLevelHoldingChunk` 指针与 `.slvls`/`.s` 数据，清零 `SubLevelContainer.getOccupancy()` 占格位并标脏，
+  将指向被删 sub-level 的 `SubLevelTrackingPointSavedData` 转回世界坐标占位点，清空 plot 对应区块的 vanilla `entities/` 与 `poi/`（及 POI 内存节缓存）以防 plot 复用时出现幽灵实体/POI，并在 `SubLevelStorage.flush()` 后删除已空的 `.slvlr` / `.slvls` 文件（检查目标文件存在才读取，避免空读触发 CREATE 生成 4 KiB 空文件）。

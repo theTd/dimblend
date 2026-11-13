@@ -94,4 +94,24 @@ public final class RegionMemoryPruner {
         }
         return new Pruned(poiRemoved, structuresRemoved);
     }
+
+    /** Clears POI memory caches for one chunk (used when deleting a Sable plot's vanilla chunks). */
+    static void prunePlotChunkPoi(ServerLevel level, ChunkPos chunkPos) {
+        PoiManager poi = level.getPoiManager();
+        SectionStorageAccessor poiStorage = (SectionStorageAccessor) poi;
+        PoiManagerAccessor poiAccess = (PoiManagerAccessor) poi;
+        Long2ObjectMap<Optional<?>> poiSections = poiStorage.dimblend$getStorage();
+        LongLinkedOpenHashSet poiDirty = poiStorage.dimblend$getDirty();
+        poiAccess.dimblend$getLoadedChunks().remove(chunkPos.toLong());
+        int minSection = level.getMinSection();
+        int maxSection = level.getMaxSection();
+        for (int sectionY = minSection; sectionY < maxSection; sectionY++) {
+            long section = SectionPos.asLong(chunkPos.x, sectionY, chunkPos.z);
+            poiDirty.remove(section);
+            poiSections.remove(section);
+            if (poi.sectionsToVillage(SectionPos.of(section)) <= PoiManager.MAX_VILLAGE_DISTANCE) {
+                poiAccess.dimblend$onSectionLoad(section);
+            }
+        }
+    }
 }

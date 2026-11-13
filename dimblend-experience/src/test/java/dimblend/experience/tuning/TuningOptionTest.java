@@ -8,12 +8,17 @@ import org.junit.jupiter.api.Test;
 
 class TuningOptionTest {
     @Test
-    void intervalAllowsDisabledValueAndTenthsOnly() {
+    void intervalAllowsTenthsWithinRangeAndMirrorsConfig() {
         var option = TuningOption.SHAKE_INTERVAL;
-        for (double valid : new double[] {0.0D, 0.1D, 2.0D, 59.9D, 60.0D}) {
+        assertEquals(1.0D, option.defaultValue());
+        assertEquals(1.0D, Config.TRAIN_SHAKE_INTERVAL_SECONDS.getDefault());
+        assertEquals(0.2D, option.minimum());
+        assertEquals(32.0D, option.maximum());
+        assertEquals(0.1D, option.step());
+        for (double valid : new double[] {0.2D, 0.3D, 1.0D, 31.9D, 32.0D}) {
             assertTrue(option.isValid(valid));
         }
-        for (double invalid : new double[] {-0.1D, 0.01D, 1.0E-10D, 2.05D, 60.1D}) {
+        for (double invalid : new double[] {-0.1D, 0.0D, 0.1D, 0.25D, 1.05D, 32.1D, 60.0D}) {
             assertFalse(option.isValid(invalid));
         }
     }
@@ -21,17 +26,17 @@ class TuningOptionTest {
     @Test
     void forceRejectsFractionsAndOutOfRangeValues() {
         var option = TuningOption.SHAKE_FORCE;
-        assertEquals(200.0D, option.defaultValue());
-        assertEquals(200, Config.TRAIN_SHAKE_FORCE_PN.getDefault());
+        assertEquals(100.0D, option.defaultValue());
+        assertEquals(100, Config.TRAIN_SHAKE_FORCE_PN.getDefault());
         assertEquals(0.0D, option.minimum());
-        assertEquals(2000.0D, option.maximum());
+        assertEquals(1000.0D, option.maximum());
         assertTrue(option.isValid(0.0D));
-        assertTrue(option.isValid(200.0D));
-        assertTrue(option.isValid(2000.0D));
+        assertTrue(option.isValid(100.0D));
+        assertTrue(option.isValid(1000.0D));
         assertFalse(option.isValid(-1.0D));
-        assertFalse(option.isValid(200.1D));
-        assertFalse(option.isValid(2001.0D));
-        assertFalse(option.isValid(10000.0D));
+        assertFalse(option.isValid(100.5D));
+        assertFalse(option.isValid(1001.0D));
+        assertFalse(option.isValid(2000.0D));
     }
 
     @Test
@@ -294,8 +299,8 @@ class TuningOptionTest {
 
     @Test
     void formattingKeepsDeclaredPrecisionAndUsesDecimalPoint() {
-        assertEquals("2.0", TuningOption.SHAKE_INTERVAL.format(2.0D));
-        assertEquals("1200", TuningOption.SHAKE_FORCE.format(1200.0D));
+        assertEquals("1.0", TuningOption.SHAKE_INTERVAL.format(1.0D));
+        assertEquals("100", TuningOption.SHAKE_FORCE.format(100.0D));
         assertEquals("0.50", TuningOption.SOILING_MULTIPLIER.format(0.5D));
         assertEquals("1.00", TuningOption.EXP_CLEAR_RATIO.format(1.0D));
     }
