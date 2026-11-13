@@ -613,6 +613,36 @@ public final class SableVoidFitGameTests {
         helper.succeed();
     }
 
+    /**
+     * 回归：世界区块无流体 {@code air ⇄ structure_void} 互转必须由
+     * {@code SableVoidFitBlockChangeMixin} 在 {@code SableCommonEvents#handleBlockChange}
+     * 入口短路；越界 {@code y = -9999} 下短路路径不碰区块 section，而含流体（水）转换必须
+     * 穿透到原方法从而抛出 {@link IndexOutOfBoundsException}。
+     */
+    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_block_change_mixin", timeoutTicks = 100)
+    public static void worldAirVoidTransitionShortCircuitsSableBlockChangeAtHead(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        net.minecraft.world.level.chunk.LevelChunk worldChunk = level.getChunkAt(helper.absolutePos(BlockPos.ZERO));
+        dev.ryanhcode.sable.SableCommonEvents.handleBlockChange(
+                level, worldChunk, 0, -9999, 0,
+                Blocks.AIR.defaultBlockState(), Blocks.STRUCTURE_VOID.defaultBlockState());
+        dev.ryanhcode.sable.SableCommonEvents.handleBlockChange(
+                level, worldChunk, 0, -9999, 0,
+                Blocks.STRUCTURE_VOID.defaultBlockState(), Blocks.AIR.defaultBlockState());
+
+        boolean fluidPassedThrough = false;
+        try {
+            dev.ryanhcode.sable.SableCommonEvents.handleBlockChange(
+                    level, worldChunk, 0, -9999, 0,
+                    Blocks.WATER.defaultBlockState(), Blocks.STRUCTURE_VOID.defaultBlockState());
+        } catch (IndexOutOfBoundsException expected) {
+            fluidPassedThrough = true;
+        }
+        helper.assertTrue(fluidPassedThrough,
+                "water -> structure_void must not be short-circuited and must reach section lookup");
+        helper.succeed();
+    }
+
     private SableVoidFitGameTests() {
     }
 }

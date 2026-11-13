@@ -98,7 +98,7 @@ public final class StationDepotAssemblyData extends SavedData {
         }
     }
 
-    boolean switchFitted(BlockPos machine) {
+    public boolean switchFitted(BlockPos machine) {
         return switchesFitted.contains(machine.asLong());
     }
 
@@ -165,7 +165,7 @@ public final class StationDepotAssemblyData extends SavedData {
         return created;
     }
 
-    static StationDepotAssemblyData load(CompoundTag tag) {
+    public static StationDepotAssemblyData load(CompoundTag tag) {
         StationDepotAssemblyData data = new StationDepotAssemblyData();
         ListTag list = tag.getList("sites", Tag.TAG_COMPOUND);
         for (int i = 0; i < list.size(); i++) {

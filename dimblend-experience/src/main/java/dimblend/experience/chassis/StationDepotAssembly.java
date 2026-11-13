@@ -4,6 +4,7 @@ import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.ticket.SubLevelLoadingTicketType;
 import dev.ryanhcode.sable.companion.math.BoundingBox3i;
+import dimblend.api.StationDepotCurves;
 import dimblend.api.StationDepotSites;
 import dimblend.experience.Config;
 import dimblend.experience.DimBlend;
@@ -103,12 +104,56 @@ public final class StationDepotAssembly {
      * reported as done. See {@link StationDepotSwitch} for why the machine stands beside
      * the rails rather than above them, and why it works this junction.
      */
+    @FunctionalInterface
+    interface ChunkReady {
+        boolean isLoaded(int chunkX, int chunkZ);
+    }
+
+    /**
+     * Non-blocking check that every chunk touched by {@link #fitCurves} and
+     * {@link StationDepotSwitch#fit} (including 1-block neighbor updates) is already at
+     * {@code ChunkStatus.FULL} in memory, so background site rotation never forces a
+     * synchronous chunk load on a faraway unloaded depot.
+     */
+    static boolean junctionChunksLoaded(int boundaryX, ChunkReady chunkReady) {
+        int minX = boundaryX + StationDepotCurves.CURVE_START_DX - 1;
+        int maxX = boundaryX + StationDepotCurves.NEGATIVE_MERGE_DX + 2;
+        int minZ = -StationDepotSites.SIDING_DZ - 1;
+        int maxZ = StationDepotSites.SIDING_DZ + 1;
+        for (int cx = minX >> 4; cx <= maxX >> 4; cx++) {
+            for (int cz = minZ >> 4; cz <= maxZ >> 4; cz++) {
+                if (!chunkReady.isLoaded(cx, cz)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    static boolean blockAndNeighborsLoaded(BlockPos pos, ChunkReady chunkReady) {
+        for (int cx = (pos.getX() - 1) >> 4; cx <= (pos.getX() + 1) >> 4; cx++) {
+            for (int cz = (pos.getZ() - 1) >> 4; cz <= (pos.getZ() + 1) >> 4; cz++) {
+                if (!chunkReady.isLoaded(cx, cz)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static boolean isChunkLoadedNow(ServerLevel level, int chunkX, int chunkZ) {
+        return level.getChunkSource().getChunkNow(chunkX, chunkZ) != null;
+    }
+
     private static void fitJunctionSwitch(ServerLevel level, StationDepotAssemblyData data,
             StationDepotAssemblyData.Site site) {
         if (!StationDepotAssemblyData.carriesJunction(site.center)) {
             return;
         }
         int boundaryX = site.center.getX();
+        if (!junctionChunksLoaded(boundaryX, (cx, cz) -> isChunkLoadedNow(level, cx, cz))) {
+            return;
+        }
         if (!StationDepotAssemblyData.fitsSwitch()) {
             fitCurves(level, data, boundaryX);
             return;
@@ -175,6 +220,9 @@ public final class StationDepotAssembly {
             if (!isMachineOf(boundaryX, stale)) {
                 continue;
             }
+            if (!blockAndNeighborsLoaded(stale, (cx, cz) -> isChunkLoadedNow(level, cx, cz))) {
+                continue;
+            }
             if (level.getBlockState(stale).is(switchBlock)) {
                 level.setBlock(stale, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
                 DimBlend.LOGGER.info("Station depot switch: retired the machine at {} (it now works {})",
@@ -201,7 +249,7 @@ public final class StationDepotAssembly {
      */
     private static boolean fitCurves(ServerLevel level, StationDepotAssemblyData data, int boundaryX) {
         boolean allDone = true;
-        for (var curve : dimblend.api.StationDepotCurves.all(boundaryX)) {
+        for (var curve : StationDepotCurves.all(boundaryX)) {
             BlockPos key = new BlockPos(curve.fromX(), StationDepotSites.CHASSIS_Y - 1, curve.fromZ());
             if (data.curveAttached(key)) {
                 continue;
@@ -226,15 +274,29 @@ public final class StationDepotAssembly {
 
     private static boolean advance(ServerLevel level, StationDepotAssemblyData data,
             StationDepotAssemblyData.Site site) {
-        if (site.built || site.assembled) {
-            // Nothing left to decide about a site that already started: the budget gates the
-            // FIRST block only, so a half-built site always finishes.
-            return advanceNow(level, site);
-        }
-        if (StationDepotAssemblyData.carriesJunction(site.center) && !carriageBudgetAllows(level, data, site)) {
+        if (site.assembled || site.attempts >= StationDepotAssemblyRule.MAX_ATTEMPTS) {
             return false;
         }
-        return advanceNow(level, site);
+        boolean loaded = ChassisSite.loaded(level, site.center);
+        double distanceSq = nearestPlayerDistanceSq(level, site.center);
+        boolean present = loaded && site.built && anyBlueprintBlockPresent(level, site);
+        var step = StationDepotAssemblyRule.step(site.built, site.assembled, site.attempts, present,
+                loaded, distanceSq);
+        return switch (step) {
+            case IDLE -> false;
+            case GIVE_UP -> {
+                site.assembled = true;
+                yield true;
+            }
+            case BUILD -> {
+                if (StationDepotAssemblyData.carriesJunction(site.center)
+                        && !carriageBudgetAllows(level, data, site)) {
+                    yield false;
+                }
+                yield build(level, site);
+            }
+            case ASSEMBLE -> assemble(level, site);
+        };
     }
 
     /**
@@ -262,23 +324,6 @@ public final class StationDepotAssembly {
                     site.center, existing, limit);
         }
         return false;
-    }
-
-    private static boolean advanceNow(ServerLevel level, StationDepotAssemblyData.Site site) {
-        boolean loaded = ChassisSite.loaded(level, site.center);
-        double distanceSq = nearestPlayerDistanceSq(level, site.center);
-        boolean present = site.built && anyBlueprintBlockPresent(level, site);
-        var step = StationDepotAssemblyRule.step(site.built, site.assembled, site.attempts, present,
-                loaded, distanceSq);
-        return switch (step) {
-            case IDLE -> false;
-            case GIVE_UP -> {
-                site.assembled = true;
-                yield true;
-            }
-            case BUILD -> build(level, site);
-            case ASSEMBLE -> assemble(level, site);
-        };
     }
 
     private static boolean build(ServerLevel level, StationDepotAssemblyData.Site site) {

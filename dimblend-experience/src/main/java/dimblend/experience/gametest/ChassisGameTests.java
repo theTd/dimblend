@@ -236,4 +236,79 @@ public final class ChassisGameTests {
         ChassisEvents.onPlace(new net.neoforged.neoforge.event.level.BlockEvent.EntityPlaceEvent(snapshot,
                 level.getBlockState(pos.below()), player));
     }
+
+    @GameTest(
+            template = "empty",
+            templateNamespace = "dimblend_chassis",
+            batch = "depot_unloaded_no_sync_load",
+            timeoutTicks = 100)
+    public static void unloadedDepotSitesNeverForceSyncChunkLoads(GameTestHelper helper) {
+        ServerLevel level = rotating(helper);
+        final int fittedBoundary = 20480;
+        final int halfBuiltBoundary = 24576;
+        BlockPos fittedCenter = dimblend.experience.chassis.StationDepotAssemblyData.sidingCenter(fittedBoundary);
+        BlockPos fittedMachine = dimblend.experience.chassis.StationDepotSwitch.machine(fittedBoundary);
+        BlockPos staleMachine = new BlockPos(fittedBoundary + 40,
+                dimblend.api.StationDepotSites.CHASSIS_Y - 1, 7);
+        BlockPos halfBuiltCenter = dimblend.experience.chassis.StationDepotAssemblyData.sidingCenter(halfBuiltBoundary);
+
+        var chunkSource = level.getChunkSource();
+        helper.assertTrue(chunkSource.getChunkNow(fittedMachine.getX() >> 4, fittedMachine.getZ() >> 4) == null,
+                "precondition: fitted depot switch chunk must not be loaded");
+        helper.assertTrue(chunkSource.getChunkNow(staleMachine.getX() >> 4, staleMachine.getZ() >> 4) == null,
+                "precondition: stale switch chunk must not be loaded");
+        helper.assertTrue(chunkSource.getChunkNow(halfBuiltCenter.getX() >> 4, halfBuiltCenter.getZ() >> 4) == null,
+                "precondition: half-built depot center chunk must not be loaded");
+
+        net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
+        net.minecraft.nbt.ListTag sitesTag = new net.minecraft.nbt.ListTag();
+
+        net.minecraft.nbt.CompoundTag fittedEntry = new net.minecraft.nbt.CompoundTag();
+        fittedEntry.putLong("center", fittedCenter.asLong());
+        fittedEntry.putString("kind", dimblend.experience.chassis.ChassisBlueprint.CARRIAGE.name());
+        fittedEntry.putBoolean("built", true);
+        fittedEntry.putBoolean("assembled", true);
+        fittedEntry.putInt("attempts", 0);
+        sitesTag.add(fittedEntry);
+
+        net.minecraft.nbt.CompoundTag halfBuiltEntry = new net.minecraft.nbt.CompoundTag();
+        halfBuiltEntry.putLong("center", halfBuiltCenter.asLong());
+        halfBuiltEntry.putString("kind", dimblend.experience.chassis.ChassisBlueprint.CARRIAGE.name());
+        halfBuiltEntry.putBoolean("built", true);
+        halfBuiltEntry.putBoolean("assembled", false);
+        halfBuiltEntry.putInt("attempts", 0);
+        sitesTag.add(halfBuiltEntry);
+
+        tag.put("sites", sitesTag);
+        var curves = dimblend.api.StationDepotCurves.all(fittedBoundary);
+        long[] curveKeys = new long[curves.size()];
+        for (int i = 0; i < curves.size(); i++) {
+            var curve = curves.get(i);
+            curveKeys[i] = new BlockPos(curve.fromX(), dimblend.api.StationDepotSites.CHASSIS_Y - 1, curve.fromZ())
+                    .asLong();
+        }
+        tag.putLongArray("curves", curveKeys);
+        tag.putLongArray("switchMachines", new long[] {fittedMachine.asLong()});
+        tag.putLongArray("switchMachinesReported", new long[] {staleMachine.asLong()});
+
+        level.getDataStorage().set("dimblend_station_depot_assembly",
+                dimblend.experience.chassis.StationDepotAssemblyData.load(tag));
+        try {
+            for (int tick = 0; tick < 3; tick++) {
+                dimblend.experience.chassis.StationDepotAssembly.tick(level);
+            }
+            helper.assertTrue(chunkSource.getChunkNow(fittedMachine.getX() >> 4, fittedMachine.getZ() >> 4) == null,
+                    "ticking unloaded fitted depot must never force sync chunk load at switch machine");
+            helper.assertTrue(chunkSource.getChunkNow(staleMachine.getX() >> 4, staleMachine.getZ() >> 4) == null,
+                    "ticking unloaded fitted depot must never force sync chunk load at stale switch");
+            helper.assertTrue(chunkSource.getChunkNow(halfBuiltCenter.getX() >> 4, halfBuiltCenter.getZ() >> 4) == null,
+                    "ticking unloaded half-built depot must never force sync chunk load at center");
+            helper.assertTrue(dimblend.experience.chassis.StationDepotAssemblyData.get(level).switchFitted(fittedMachine),
+                    "fitted switch record must remain intact when chunks are unloaded");
+        } finally {
+            level.getDataStorage().set("dimblend_station_depot_assembly",
+                    dimblend.experience.chassis.StationDepotAssemblyData.load(new net.minecraft.nbt.CompoundTag()));
+        }
+        helper.succeed();
+    }
 }
