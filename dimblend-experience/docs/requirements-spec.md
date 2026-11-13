@@ -867,7 +867,7 @@
   连续 20 轮仍空（限高外/病态）熔断退回自愈节拍，防挤占预算
 - 实现：`SableVoidFit`（4Hz 扫描、2 载具/轮预算、`LinkedHashSet` FIFO 重试轮转、位姿阈值、20 周期自愈；常规预算重试不开启逐格世界核验）
   → `VoidFitVoxelizer`/`VoidFitTracker`/`VoidFitRetryQueue`/`VoidFitApplier`/`VoidFitStrip`/`VoidFitPhysicsFilter`
-  + `ChunkMapVoidFitStripMixin` + `SableVoidFitBlockChangeMixin`；GameTest 10 条。
+  + `ChunkMapVoidFitStripMixin` + `SableVoidFitBlockChangeMixin`；GameTest 11 条。
   放置预算（`PLACE_BUDGET=1024`）与拆除预算（`REMOVE_BUDGET=2048`）相互独立，未拆完的尾迹空位由
   `VoidFitTracker#materializedCellsOfChunk` 独立覆盖保存剥离、不再反向并入 `targetCells`（杜绝高速行驶下
   尾迹饥饿与多车厢过继死锁）；世界区块内无流体空气与 `structure_void` 互转短路 `SableCommonEvents#handleBlockChange`

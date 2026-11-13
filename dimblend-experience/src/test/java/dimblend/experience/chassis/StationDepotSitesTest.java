@@ -159,4 +159,43 @@ class StationDepotSitesTest {
         assertEquals(false, StationDepotSites.buildsDepot(0, 2048, lanes), "X=0 keeps the starter depot");
         assertEquals(false, StationDepotSites.buildsDepot(4096, 2048, lanes), "surface/underground is walled");
     }
+
+    @Test
+    void junctionChunksLoadedCoversFullCurveAndSwitchSpanBeyondChassisSiteLoaded() {
+        // When only ChassisSite.loaded chunks (center +-24, z = 7..13) are loaded,
+        // the switch chunk at (B + 43) >> 4 = 130 and the negative siding at cz = -1 are NOT covered.
+        StationDepotAssembly.ChunkReady chassisOnly = (cx, cz) ->
+                cx >= ((B - 24) >> 4) && cx <= ((B + 24) >> 4) && cz == 0;
+        assertFalse(StationDepotAssembly.junctionChunksLoaded(B, chassisOnly),
+                "junction chunks extend into cx=130 and cz=-1, beyond ChassisSite.loaded");
+
+        int minX = B + StationDepotCurves.CURVE_START_DX - 1;
+        int maxX = B + StationDepotCurves.NEGATIVE_MERGE_DX + 2;
+        int minZ = -StationDepotSites.SIDING_DZ - 1;
+        int maxZ = StationDepotSites.SIDING_DZ + 1;
+        StationDepotAssembly.ChunkReady allJunction = (cx, cz) ->
+                cx >= (minX >> 4) && cx <= (maxX >> 4) && cz >= (minZ >> 4) && cz <= (maxZ >> 4);
+        assertTrue(StationDepotAssembly.junctionChunksLoaded(B, allJunction),
+                "all curve and switch chunks (including 1-block neighbor margin) loaded returns true");
+
+        // Missing curve start chunk
+        assertFalse(StationDepotAssembly.junctionChunksLoaded(B,
+                (cx, cz) -> allJunction.isLoaded(cx, cz) && !(cx == ((B + StationDepotCurves.CURVE_START_DX) >> 4) && cz == 0)));
+        // Missing negative siding chunk (cz = -1)
+        assertFalse(StationDepotAssembly.junctionChunksLoaded(B,
+                (cx, cz) -> allJunction.isLoaded(cx, cz) && cz != -1));
+        // Missing east neighbor chunk of NEGATIVE_MERGE_DX
+        assertFalse(StationDepotAssembly.junctionChunksLoaded(B,
+                (cx, cz) -> allJunction.isLoaded(cx, cz) && !(cx == (maxX >> 4) && cz == 0)));
+    }
+
+    @Test
+    void blockAndNeighborsLoadedChecksOneBlockBorderAcrossChunkBoundaries() {
+        BlockPos chunkEdge = new BlockPos(16, 64, 0); // cx = 1, x - 1 = 15 (cx = 0)
+        assertTrue(StationDepotAssembly.blockAndNeighborsLoaded(chunkEdge, (cx, cz) -> true));
+        assertFalse(StationDepotAssembly.blockAndNeighborsLoaded(chunkEdge, (cx, cz) -> cx != 0),
+                "missing left neighbor chunk cx=0 at chunk edge must return false");
+        assertFalse(StationDepotAssembly.blockAndNeighborsLoaded(chunkEdge, (cx, cz) -> cx != 1),
+                "missing block's own chunk cx=1 must return false");
+    }
 }

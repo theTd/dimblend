@@ -178,18 +178,33 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
     }
 
     /**
-     * 目标类字节码是否真的存在；用于在"模组在场但版本不对"时跳过 mixin 而不是启动即崩。
-     * 严禁用 {@code Class.forName}（会在 {@code shouldApplyMixin} 阶段提前把目标类定义进
-     * {@code TransformingClassLoader}，触发 {@code MixinTargetAlreadyLoadedException}）。
+     * 目标类字节码资源是否真的存在；用于在"模组在场但版本不对"时跳过 mixin 而不是启动即崩。
+     *
+     * <p>严禁用 {@code Class.forName}（会在 {@code shouldApplyMixin} 阶段提前把目标类定义进
+     * {@code TransformingClassLoader}，触发 {@code MixinTargetAlreadyLoadedException}），也严禁用
+     * {@code IBytecodeProvider#getClassNode} 的 {@code runTransformers=false} 重载
+     * （ModLauncher 的 {@code MixinLaunchPluginLegacy#getClassNode} 在不跑转换器时
+     * 无条件抛 {@code IllegalArgumentException}，导致门控恒返回 {@code false}）。
+     * 改走 {@code ClassLoader#getResource} 直接经 {@code ModuleClassLoader} 查 {@code .class}
+     * 条目，不加载类、不跑转换器。</p>
      */
-    private static boolean classPresent(String className) {
-        try {
-            return org.spongepowered.asm.service.MixinService.getService()
-                    .getBytecodeProvider()
-                    .getClassNode(className, false) != null;
-        } catch (Throwable t) {
+    public static boolean classPresent(String className) {
+        if (className == null || className.isEmpty()) {
             return false;
         }
+        ClassLoader contextLoader = Thread.currentThread().getContextClassLoader();
+        if (classPresent(className, contextLoader)) {
+            return true;
+        }
+        ClassLoader pluginLoader = DimBlendMixinPlugin.class.getClassLoader();
+        return pluginLoader != contextLoader && classPresent(className, pluginLoader);
+    }
+
+    public static boolean classPresent(String className, ClassLoader loader) {
+        if (className == null || className.isEmpty() || loader == null) {
+            return false;
+        }
+        return loader.getResource(className.replace('.', '/') + ".class") != null;
     }
 
     @Override

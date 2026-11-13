@@ -3,6 +3,10 @@ package dimblend.experience.compat.sable;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dimblend.experience.mixin.DimBlendMixinPlugin;
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -70,6 +74,8 @@ class VoidFitPhysicsFilterTest {
                 "DimBlendMixinPlugin must gate SableVoidFitBlockChangeMixin");
         assertTrue(pluginSrc.contains("classPresent(\"dev.ryanhcode.sable.SableCommonEvents\")"),
                 "DimBlendMixinPlugin must verify SableCommonEvents bytecode presence without Class.forName");
+        assertFalse(pluginSrc.contains("getClassNode("),
+                "ModLauncher throws IllegalArgumentException on untransformed getClassNode(name, false)");
 
         Path mixinFile = moduleRoot.resolve(
                 "src/main/java/dimblend/experience/mixin/compat/sable/SableVoidFitBlockChangeMixin.java");
@@ -79,5 +85,41 @@ class VoidFitPhysicsFilterTest {
                 "must only short-circuit non-plot world chunks; plot chunks still need heatmap/bbox updates");
         assertTrue(mixinSrc.contains("require = 1") && mixinSrc.contains("allow = 1"),
                 "injector must pin require = 1, allow = 1");
+    }
+
+    @Test
+    void classPresentFindsExistingClassesWithoutLoadingOrTransforming() {
+        assertTrue(DimBlendMixinPlugin.classPresent("dev.ryanhcode.sable.SableCommonEvents"),
+                "existing Sable class must be detected during mixin gating");
+        assertTrue(DimBlendMixinPlugin.classPresent("dev.ryanhcode.sable.util.SubLevelRainColumn"),
+                "existing SubLevelRainColumn class must be detected during mixin gating");
+        assertTrue(DimBlendMixinPlugin.classPresent("com.momosoftworks.coldsweat.util.world.WorldHelper"),
+                "existing Cold Sweat WorldHelper class must be detected during mixin gating");
+        assertFalse(DimBlendMixinPlugin.classPresent("dev.ryanhcode.sable.NonExistentClass"),
+                "missing class must return false");
+        assertFalse(DimBlendMixinPlugin.classPresent(""));
+        assertFalse(DimBlendMixinPlugin.classPresent(null));
+
+        ClassLoader probeOnlyLoader = new ClassLoader(null) {
+            @Override
+            protected Class<?> loadClass(String name, boolean resolve) {
+                throw new AssertionError("classPresent must never load or define class " + name);
+            }
+
+            @Override
+            public URL getResource(String name) {
+                if ("fake/OptionalTarget.class".equals(name)) {
+                    try {
+                        return URI.create("file:/fake/OptionalTarget.class").toURL();
+                    } catch (MalformedURLException e) {
+                        throw new AssertionError(e);
+                    }
+                }
+                return null;
+            }
+        };
+        assertTrue(DimBlendMixinPlugin.classPresent("fake.OptionalTarget", probeOnlyLoader),
+                "classPresent must resolve .class resource via ClassLoader without loading");
+        assertFalse(DimBlendMixinPlugin.classPresent("fake.MissingTarget", probeOnlyLoader));
     }
 }
