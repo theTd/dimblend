@@ -93,7 +93,7 @@
 
 ### 下界（Nether）
 
-- [x] 生成轨道：**黑石宽轨**，3 格宽黑石路基（`CorridorTrackProfile.NETHER` = `minecraft:blackstone` + 半宽 1，写在 Y=63、z −1..+1；2026-11-02 用户口径，此前为「无路基」）
+- [x] 生成轨道：**黑石宽轨**，3 格宽黑石路基（`CorridorTrackProfile.NETHER` = `minecraft:blackstone` + 宽度 3（半宽 1），写在 Y=63、z −1..+1；2026-11-02 用户口径，此前为「无路基」）
 - [x] 时间锁定 18000
 - [x] 天空套用下界 Effects（`ClientBandLane.netherSky()` → `NetherEffects`：`SkyType.NONE` / 浓雾 / constantAmbientLight；与地下相同）
 - [x] 天气锁定晴
@@ -117,7 +117,7 @@
 
 ### 星光（Eternal Starlight）
 
-- [x] 生成轨道：**标准宽轨**，取消路基（`CorridorTrackProfile.STARLIGHT`）
+- [x] 生成轨道：**标准宽轨**，1 格宽路基（`CorridorTrackProfile.STARLIGHT` = `eternal_starlight:polished_voidstone` + 宽度 1，只写 Y=63、z=0 一格；2026-11-02 用户口径，此前为「无路基」，仅影响新生成区块）
 - [x] 时间锁定 14000（取「时间锁定」备选；只管昼夜读数，不管天体位置）
 - [x] 天气锁定晴
 - [x] 恢复星光天空（`RotatingDimensionEffects`：相机所在群系属于 eternal_starlight 时委托 `ESSkyRenderer`——死星/自定义星场/`SkyType.NONE`/云高 160；ES 天空把死星钉在 12500，与 14000 时间锁解耦）
@@ -125,7 +125,7 @@
 
 ### 深暗（Deeper & Darker Otherside）
 
-- [x] 生成轨道：**标准宽轨**，无路基（`CorridorTrackProfile.OTHERSIDE`）
+- [x] 生成轨道：**标准宽轨**，1 格宽路基（`CorridorTrackProfile.OTHERSIDE` = `minecraft:polished_deepslate` + 宽度 1，只写 Y=63、z=0 一格；2026-11-02 用户口径，此前为「无路基」，仅影响新生成区块）
 - [x] 时间锁定 18000
 - [x] 天空套用末地天空盒（与末地相同：`ClientBandLane.endSky()` → `SkyType.END` / `end_sky.png`；地下/下界已改走 `netherSky`）
 - [x] 天气锁定晴

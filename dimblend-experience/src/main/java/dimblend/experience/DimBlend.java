@@ -97,6 +97,9 @@ public class DimBlend {
             dimblend.experience.compat.sable.SableVoidFit.register();
             // G6：岩浆熔毁 Sable 结构方块（同门控同款惰性解析）
             dimblend.experience.compat.sable.SableLavaMelt.register();
+            if (ModList.get().isLoaded("dimblend")) {
+                dimblend.experience.compat.sable.SableRegionPurgeCompat.register();
+            }
         }
 
         // G11 观察者烈焰人：方块/BE/交互都复用 Create 的加热器外形与烈焰人渲染，且只存在于 Sable 载具上，

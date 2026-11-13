@@ -15,6 +15,7 @@ import dimblend.blocks.compat.copycats.CreativeCopycats;
 import dimblend.blocks.compat.create.CreativeKinetics;
 import dimblend.blocks.fragile.FragileStones;
 import dimblend.blocks.gametest.CreativeCopycatHidingGameTest;
+import dimblend.blocks.gametest.WaterBucketLavaQuenchGameTest;
 import dimblend.blocks.treasure.ShellMarker;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
@@ -63,6 +64,9 @@ public class DimBlendBlocks {
     }
 
     private static void onRegisterGameTests(RegisterGameTestsEvent event) {
+        // 水桶浇岩浆：只依赖原版与自有方块，常驻注册
+        event.register(WaterBucketLavaQuenchGameTest.class);
+
         // C5 隐藏 GameTest：类内硬引用 CreativeCopycats（Copycats+ 类型），
         // 仅 copycats 在场（dev 下 -PwithCopycats）时注册
         if (ModList.get().isLoaded("copycats")) {

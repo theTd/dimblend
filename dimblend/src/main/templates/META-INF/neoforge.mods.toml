@@ -59,6 +59,12 @@ config="${mod_id}.mixins.json"
 [[mixins]]
 config="${mod_id}.simurail.mixins.json"
 
+# Sable (sub-level storage & ticket) accessors for region purge co-deletion:
+# separate config with required=false and SableMixinPlugin so dimblend boots cleanly
+# even when Sable is absent.
+[[mixins]]
+config="${mod_id}.sable.mixins.json"
+
 # The [[accessTransformers]] block allows you to declare where your AT file is.
 # If this block is omitted, a fallback attempt will be made to load an AT from META-INF/accesstransformer.cfg
 #[[accessTransformers]]

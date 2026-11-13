@@ -4,8 +4,8 @@ import java.util.Locale;
 
 /** Wire identifiers and validation are shared by the panel and server. */
 public enum TuningOption {
-    SHAKE_INTERVAL("shake_interval", 2.0D, 60.0D, 1, "simurail"),
-    SHAKE_FORCE("shake_force", 200.0D, 2000.0D, 0, "simurail"),
+    SHAKE_INTERVAL("shake_interval", 1.0D, 0.2D, 32.0D, 1, "simurail", Section.MAIN),
+    SHAKE_FORCE("shake_force", 100.0D, 1000.0D, 0, "simurail"),
     BRAKE_SIGNAL_CAP("brake_signal_cap", 1.0D, 1.0D, 15.0D, 0, "simurail", Section.MAIN),
     BRAKE_SOUND_SPEED_THRESHOLD("brake_sound_speed_threshold", 2.0D, 0.0D, 64.0D, 1, "simurail", Section.MAIN),
     DEADMAN_RADIUS("deadman_radius", 32.0D, 8.0D, 128.0D, 0, "simurail", Section.MAIN),

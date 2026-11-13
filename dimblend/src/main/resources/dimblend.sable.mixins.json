@@ -1,0 +1,16 @@
+{
+  "required": false,
+  "package": "dimblend.mixin",
+  "plugin": "dimblend.mixin.sable.SableMixinPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "minVersion": "0.8",
+  "mixins": [
+    "sable.ServerSubLevelContainerAccessor",
+    "sable.SubLevelHoldingChunkMapAccessor",
+    "sable.SubLevelHoldingChunkAccessor",
+    "sable.SubLevelStorageAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

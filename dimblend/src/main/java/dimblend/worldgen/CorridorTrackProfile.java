@@ -8,18 +8,21 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
  * docs/generation-rules.md "三、分纬度规则":
  *
  * <ul>
- *   <li>地表 / 地下：桦木 / 深色橡木宽轨，有路基</li>
+ *   <li>地表 / 地下：桦木 / 深色橡木宽轨，有 7 格宽路基</li>
  *   <li>下界：黑石宽轨，有黑石地基（3 格宽）</li>
  *   <li>末地：幻纱宽轨，无路基</li>
- *   <li>暮色：标准宽轨，有路基；星光 / 深暗：标准宽轨，无路基</li>
+ *   <li>暮色：标准宽轨，有 7 格宽路基；星光：标准宽轨，1 格宽虚空石地基；深暗：标准宽轨，1 格宽磨制深板岩地基</li>
  *   <li>天域 / 深渊：无枕木宽轨，无路基</li>
  * </ul>
  *
- * <p>The foundation is a per-lane pair of plain values — material id and
- * half-width — and not a per-material flag: the standard-gauge andesite track
- * carries a cobblestone foundation in Twilight bands but none in
- * Starlight/Otherside bands. A half-width of {@code 0} is the single way to say
- * "no foundation"; there is no second boolean that could disagree with it.
+ * <p>The foundation is a per-lane pair of plain values — material id and total
+ * width — and not a per-material flag: the standard-gauge andesite track
+ * carries a 7-wide cobblestone foundation in Twilight bands, a single-block
+ * voidstone/deepslate row in Starlight/Otherside bands, and none in the modded
+ * fallback. A width of {@code 0} is the single way to say "no foundation";
+ * there is no second boolean that could disagree with it, and
+ * {@link #foundationHalfWidth()} derives −1 from it so the corridor writer can
+ * keep using an inclusive half-width.
  * Unknown modded lanes fall back to the standard track without a foundation.
  *
  * <p>Roadbed material used to be hardcoded to cobblestone in
@@ -38,25 +41,28 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
  * agrees with the layout, the boundary walls and the time lock.
  */
 public enum CorridorTrackProfile {
-    SURFACE(wide("track_birch_wide"), vanilla("cobblestone"), 3),
-    UNDERGROUND(wide("track_dark_oak_wide"), vanilla("cobblestone"), 3),
-    NETHER(wide("track_blackstone_wide"), vanilla("blackstone"), 1),
+    SURFACE(wide("track_birch_wide"), vanilla("cobblestone"), 7),
+    UNDERGROUND(wide("track_dark_oak_wide"), vanilla("cobblestone"), 7),
+    NETHER(wide("track_blackstone_wide"), vanilla("blackstone"), 3),
     END(wide("track_phantom_wide"), vanilla("cobblestone"), 0),
-    TWILIGHT(wide("track_create_andesite_wide"), vanilla("cobblestone"), 3),
-    STARLIGHT(wide("track_create_andesite_wide"), vanilla("cobblestone"), 0),
-    OTHERSIDE(wide("track_create_andesite_wide"), vanilla("cobblestone"), 0),
+    TWILIGHT(wide("track_create_andesite_wide"), vanilla("cobblestone"), 7),
+    STARLIGHT(wide("track_create_andesite_wide"), mod("eternal_starlight", "polished_voidstone"), 1),
+    OTHERSIDE(wide("track_create_andesite_wide"), vanilla("polished_deepslate"), 1),
     AETHER(wide("track_tieless_wide"), vanilla("cobblestone"), 0),
     VOIDSCAPE(wide("track_tieless_wide"), vanilla("cobblestone"), 0),
     MOD(wide("track_create_andesite_wide"), vanilla("cobblestone"), 0);
 
     private final ResourceLocation trackId;
     private final ResourceLocation foundationBlockId;
-    private final int foundationHalfWidth;
+    private final int foundationWidth;
 
-    CorridorTrackProfile(ResourceLocation trackId, ResourceLocation foundationBlockId, int foundationHalfWidth) {
+    CorridorTrackProfile(ResourceLocation trackId, ResourceLocation foundationBlockId, int foundationWidth) {
+        if (foundationWidth < 0 || (foundationWidth > 0 && (foundationWidth & 1) == 0)) {
+            throw new IllegalArgumentException("Invalid foundationWidth: " + foundationWidth);
+        }
         this.trackId = trackId;
         this.foundationBlockId = foundationBlockId;
-        this.foundationHalfWidth = foundationHalfWidth;
+        this.foundationWidth = foundationWidth;
     }
 
     public ResourceLocation trackId() {
@@ -65,7 +71,7 @@ public enum CorridorTrackProfile {
 
     /**
      * Block id written in the lane's foundation row (one block below the track).
-     * Never null: a lane without a foundation is expressed by a half-width of 0.
+     * Never null: a lane without a foundation is expressed by a width of 0.
      * Resolve it through the block registry — see the class note on why this is
      * an id and not a {@code Block}.
      */
@@ -74,19 +80,27 @@ public enum CorridorTrackProfile {
     }
 
     /**
+     * Total width in the Z axis of the foundation row: 0 (no foundation) or an
+     * odd positive count of blocks centred on {@link OakTrackCorridor#CORRIDOR_Z}.
+     * Nether = 3 → z −1..+1; Starlight/Otherside = 1 → z 0..0; the lanes that
+     * already had a cobblestone roadbed keep 7 → half-width 3.
+     */
+    public int foundationWidth() {
+        return this.foundationWidth;
+    }
+
+    /**
      * Inclusive half-width in the Z axis of the foundation row, so the row is
-     * {@code 2 * halfWidth + 1} blocks wide. 0 means this lane writes no
-     * foundation at all (it previously carried {@code hasRoadbed() == false}).
-     * Nether = 1 → 3 blocks wide (z −1..+1); the lanes that already had a
-     * cobblestone roadbed keep 3 → 7 blocks wide.
+     * {@code 2 * halfWidth + 1 == foundationWidth()} blocks wide. −1 is the
+     * single way to say "no foundation"; 0 means a 1-block-wide row.
      */
     public int foundationHalfWidth() {
-        return this.foundationHalfWidth;
+        return this.foundationWidth == 0 ? -1 : (this.foundationWidth - 1) / 2;
     }
 
     /** True when the lane writes a foundation row under the track at all. */
     public boolean hasFoundation() {
-        return this.foundationHalfWidth > 0;
+        return this.foundationWidth > 0;
     }
 
     /** Wide-gauge track id inside the railways (Steam 'n' Rails) namespace. */
@@ -97,6 +111,11 @@ public enum CorridorTrackProfile {
     /** Foundation material id inside the vanilla namespace. */
     private static ResourceLocation vanilla(String path) {
         return ResourceLocation.withDefaultNamespace(path);
+    }
+
+    /** Foundation material id inside an optional mod's namespace. */
+    private static ResourceLocation mod(String namespace, String path) {
+        return ResourceLocation.fromNamespaceAndPath(namespace, path);
     }
 
     /**
