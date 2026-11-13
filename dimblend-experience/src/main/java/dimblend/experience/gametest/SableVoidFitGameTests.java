@@ -14,6 +14,7 @@ import dimblend.experience.Config;
 import dimblend.experience.compat.sable.VoidFitStrip;
 import dimblend.experience.compat.sable.VoidFitTracker;
 import it.unimi.dsi.fastutil.longs.LongList;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
@@ -336,57 +337,62 @@ public final class SableVoidFitGameTests {
                 helper.assertTrue(level.getBlockState(cell).is(Blocks.STRUCTURE_VOID),
                         "restore must put the structure_void back");
 
-                ListTag sections = savedChunk.getList("sections", ListTag.TAG_COMPOUND);
-                for (int i = 0; i < sections.size(); i++) {
-                    CompoundTag sectionTag = sections.getCompound(i);
-                    CompoundTag blockStates = sectionTag.getCompound("block_states");
-                    if (blockStates.isEmpty()) {
-                        continue;
-                    }
-                    ListTag palette = blockStates.getList("palette", ListTag.TAG_COMPOUND);
-                    int voidIndex = -1;
-                    for (int p = 0; p < palette.size(); p++) {
-                        if ("minecraft:structure_void".equals(palette.getCompound(p).getString("Name"))) {
-                            voidIndex = p;
-                            break;
-                        }
-                    }
-                    if (voidIndex < 0) {
-                        continue;
-                    }
-                    // 解码 packed data 定位引用空位的格子（LSB 紧排，index 不跨 long）
-                    int bits = Math.max(4, 32 - Integer.numberOfLeadingZeros(palette.size() - 1));
-                    long[] data = blockStates.getLongArray("data");
-                    int perLong = 64 / bits;
-                    int mask = (1 << bits) - 1;
-                    StringBuilder leaked = new StringBuilder();
-                    List<BlockPos> leakedCells = new ArrayList<>();
-                    int sectionY = sectionTag.getByte("Y");
-                    for (int w = 0; w < data.length; w++) {
-                        for (int k = 0; k < perLong; k++) {
-                            int index = w * perLong + k;
-                            if (index >= 4096) {
-                                break;
-                            }
-                            if (((data[w] >>> (k * bits)) & mask) == voidIndex) {
-                                BlockPos leakPos = new BlockPos(chunk.getPos().getMinBlockX() + (index & 15),
-                                        (sectionY << 4) + (index >> 8),
-                                        chunk.getPos().getMinBlockZ() + ((index >> 4) & 15));
-                                leaked.append(leakPos).append(' ');
-                                leakedCells.add(leakPos);
-                            }
-                        }
-                    }
-                    helper.assertTrue(leakedCells.isEmpty(),
-                            "saved chunk must not contain structure_void; leaked=" + leaked
-                                    + diagnose(level, leakedCells));
-                }
+                assertNoSavedStructureVoids(helper, level, chunk, savedChunk);
             } finally {
                 assembled.subLevel().markRemoved();
                 restore(saved);
             }
             helper.succeed();
         });
+    }
+
+    private static void assertNoSavedStructureVoids(GameTestHelper helper, ServerLevel level,
+            ChunkAccess chunk, CompoundTag savedChunk) {
+        ListTag sections = savedChunk.getList("sections", ListTag.TAG_COMPOUND);
+        for (int i = 0; i < sections.size(); i++) {
+            CompoundTag sectionTag = sections.getCompound(i);
+            CompoundTag blockStates = sectionTag.getCompound("block_states");
+            if (blockStates.isEmpty()) {
+                continue;
+            }
+            ListTag palette = blockStates.getList("palette", ListTag.TAG_COMPOUND);
+            int voidIndex = -1;
+            for (int p = 0; p < palette.size(); p++) {
+                if ("minecraft:structure_void".equals(palette.getCompound(p).getString("Name"))) {
+                    voidIndex = p;
+                    break;
+                }
+            }
+            if (voidIndex < 0) {
+                continue;
+            }
+            // 解码 packed data 定位引用空位的格子（LSB 紧排，index 不跨 long）
+            int bits = Math.max(4, 32 - Integer.numberOfLeadingZeros(palette.size() - 1));
+            long[] data = blockStates.getLongArray("data");
+            int perLong = 64 / bits;
+            int mask = (1 << bits) - 1;
+            StringBuilder leaked = new StringBuilder();
+            List<BlockPos> leakedCells = new ArrayList<>();
+            int sectionY = sectionTag.getByte("Y");
+            for (int w = 0; w < data.length; w++) {
+                for (int k = 0; k < perLong; k++) {
+                    int index = w * perLong + k;
+                    if (index >= 4096) {
+                        break;
+                    }
+                    if (((data[w] >>> (k * bits)) & mask) == voidIndex) {
+                        BlockPos leakPos = new BlockPos(chunk.getPos().getMinBlockX() + (index & 15),
+                                (sectionY << 4) + (index >> 8),
+                                chunk.getPos().getMinBlockZ() + ((index >> 4) & 15));
+                        leaked.append(leakPos).append(' ');
+                        leakedCells.add(leakPos);
+                    }
+                }
+            }
+            helper.assertTrue(leakedCells.isEmpty(),
+                    "saved chunk must not contain structure_void; leaked=" + leaked
+                            + diagnose(level, leakedCells));
+        }
     }
 
     /** 载具消失后已写入的空位被拆除，占据格回到空气。 */
@@ -520,6 +526,91 @@ public final class SableVoidFitGameTests {
             }
             helper.succeed();
         });
+    }
+
+    /**
+     * 拆除空位时邻接流体自然回流（条件邻接更新回归）：干燥格拆除省掉 {@code UPDATE_NEIGHBORS}，
+     * 但六邻格含水时必须保留邻接通知让水流入原空位格。
+     */
+    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_reflow", timeoutTicks = 24000)
+    public static void waterReflowsWhenAdjacentVoidRemoved(GameTestHelper helper) {
+        SavedConfig saved = enableRules();
+        ServerLevel level = helper.getLevel();
+        Assembled assembled = assemble(helper, VEHICLE_REL);
+        awaitFitted(helper, level, assembled, saved, () -> {
+            BlockPos cell = projectedCell(assembled);
+            BlockPos waterAt = firstNonVoid(level, cell, Direction.EAST, 6);
+            BlockPos boundaryVoid = waterAt.west();
+            helper.assertTrue(level.getBlockState(boundaryVoid).is(Blocks.STRUCTURE_VOID),
+                    "precondition: boundary cell west of water must be structure_void");
+            // 垫实底面，确保水向西侧水平回流而非只向下坠落
+            if (!level.getBlockState(waterAt.below()).blocksMotion()) {
+                level.setBlockAndUpdate(waterAt.below(), Blocks.STONE.defaultBlockState());
+            }
+            if (!level.getBlockState(boundaryVoid.below()).blocksMotion()) {
+                level.setBlockAndUpdate(boundaryVoid.below(), Blocks.STONE.defaultBlockState());
+            }
+            level.setBlockAndUpdate(waterAt, Blocks.WATER.defaultBlockState());
+            // 等水稳定停在空位壳外，再移除载具观察拆除后的回流
+            helper.runAfterDelay(10, () -> {
+                assembled.subLevel().markRemoved();
+                helper.runAfterDelay(SETTLE_TICKS + 10, () -> {
+                    try {
+                        helper.assertTrue(!level.getBlockState(boundaryVoid).is(Blocks.STRUCTURE_VOID),
+                                "boundary void must be removed after vehicle gone");
+                        helper.assertTrue(!level.getFluidState(boundaryVoid).isEmpty(),
+                                "adjacent water must reflow into vacated void cell via UPDATE_NEIGHBORS, but state was "
+                                        + level.getBlockState(boundaryVoid));
+                    } finally {
+                        level.setBlockAndUpdate(waterAt, Blocks.AIR.defaultBlockState());
+                        level.setBlockAndUpdate(boundaryVoid, Blocks.AIR.defaultBlockState());
+                        restore(saved);
+                    }
+                    helper.succeed();
+                });
+            });
+        });
+    }
+
+    /**
+     * 未拆完的尾迹空位（已离开 {@code targetCells}、仅留在 {@code materializedCells}）
+     * 在区块保存时仍被剥成空气不落盘，且无须反向污染 {@code targetCells}。
+     */
+    @GameTest(template = TEMPLATE, templateNamespace = NAMESPACE, batch = "sable_void_fit_wakesave", timeoutTicks = 200)
+    public static void unremovedWakeVoidsStrippedOnSaveWithoutPollutingTarget(GameTestHelper helper) {
+        SavedConfig saved = enableRules();
+        ServerLevel level = helper.getLevel();
+        BlockPos wakePos = helper.absolutePos(new BlockPos(1, 2, 1));
+        VoidFitTracker tracker = VoidFitTracker.of(level.dimension());
+        UUID id = UUID.randomUUID();
+        try {
+            level.setBlockAndUpdate(wakePos, Blocks.STRUCTURE_VOID.defaultBlockState());
+            VoidFitTracker.VehicleFit fit = new VoidFitTracker.VehicleFit();
+            tracker.vehicles().put(id, fit);
+            tracker.addMaterialized(id, wakePos.asLong());
+            tracker.setTargetCells(id, new LongOpenHashSet());
+
+            ChunkAccess chunk = level.getChunkAt(wakePos);
+            helper.assertTrue(tracker.targetCellsOfChunk(chunk.getPos()) == null,
+                    "wake chunk must not remain in targetCellsOfChunk");
+            LongList stripped = VoidFitStrip.stripFittedVoids(level, chunk);
+            helper.assertTrue(stripped.contains(wakePos.asLong()),
+                    "unremoved wake void must be stripped via materializedCellsOfChunk");
+            CompoundTag savedChunk;
+            try {
+                savedChunk = ChunkSerializer.write(level, chunk);
+            } finally {
+                VoidFitStrip.restoreFittedVoids(level, chunk, stripped);
+            }
+            helper.assertTrue(level.getBlockState(wakePos).is(Blocks.STRUCTURE_VOID),
+                    "restore must put wake structure_void back in memory for subsequent removal scan");
+            assertNoSavedStructureVoids(helper, level, chunk, savedChunk);
+        } finally {
+            tracker.removeVehicle(id);
+            level.setBlockAndUpdate(wakePos, Blocks.AIR.defaultBlockState());
+            restore(saved);
+        }
+        helper.succeed();
     }
 
     private SableVoidFitGameTests() {

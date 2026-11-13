@@ -49,6 +49,9 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".compat.create.CrushingWheelRotationIndicatorMixin")) {
             return isLoaded("create") && isLoaded("sable");
         }
+        if (mixinClassName.endsWith(".compat.sable.SableVoidFitBlockChangeMixin")) {
+            return isLoaded("sable") && classPresent("dev.ryanhcode.sable.SableCommonEvents");
+        }
         if (mixinClassName.endsWith(".compat.lootjournal.LootJournalPickupRenderMixin")) {
             return isLoaded("loot_journal")
                     && classPresent("dev.obscuria.lootjournal.client.renderer.PickupComponent");

@@ -30,6 +30,10 @@ public final class VoidscapeBand {
     public static final ResourceKey<Level> VOIDSCAPE_LEVEL = ResourceKey.create(
             Registries.DIMENSION, ResourceLocation.fromNamespaceAndPath("voidscape", "void"));
 
+    /**
+     * One deque per thread, kept for the thread's lifetime (matching {@link dimblend.time.ServerBandTime}:
+     * removing on empty caused a ThreadLocal miss and fresh ArrayDeque allocation on every spawn/player check).
+     */
     private static final ThreadLocal<ArrayDeque<BlockPos>> POSITION = ThreadLocal.withInitial(ArrayDeque::new);
     /** Pushed when {@link #enter} is a pairing no-op so {@link #exit} stays balanced. */
     private static final BlockPos SKIP = new BlockPos(Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE);
@@ -86,10 +90,12 @@ public final class VoidscapeBand {
     }
 
     public static void run(LevelAccessor level, BlockPos pos, Runnable action) {
-        call(level, pos, () -> {
+        enter(level, pos);
+        try {
             action.run();
-            return null;
-        });
+        } finally {
+            exit();
+        }
     }
 
     public static <T> T call(LevelAccessor level, BlockPos pos, Supplier<T> action) {
@@ -117,9 +123,6 @@ public final class VoidscapeBand {
         ArrayDeque<BlockPos> stack = POSITION.get();
         if (!stack.isEmpty()) {
             stack.pop();
-        }
-        if (stack.isEmpty()) {
-            POSITION.remove();
         }
     }
 
