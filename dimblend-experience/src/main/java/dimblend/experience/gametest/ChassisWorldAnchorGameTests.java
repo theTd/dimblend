@@ -17,6 +17,7 @@ import dev.ryanhcode.sable.api.sublevel.ticket.SubLevelLoadingTicketType;
 import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.companion.math.Pose3d;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
+import dimblend.experience.Config;
 import dimblend.experience.DimBlend;
 import dimblend.experience.chassis.ChassisEvents;
 import dimblend.experience.chassis.ChassisPose;
@@ -125,6 +126,8 @@ public final class ChassisWorldAnchorGameTests {
             timeoutTicks = 320)
     public static void unregisteredBogeyCarLocksDeckAt66RefreshesBeyond32BlocksAndKeepsMassData(
             GameTestHelper helper) {
+        boolean prevShake = Config.TRAIN_LATERAL_FORCE.get();
+        Config.TRAIN_LATERAL_FORCE.set(false);
         ServerLevel level = rotating(helper);
         // GameTestServer has 0 players in dimblend:rotating, so hold chunk force-tickets across
         // the test corridor (cleaned up before succeed) so ServerChunkCache#getChunkNow stays non-null.
@@ -213,6 +216,7 @@ public final class ChassisWorldAnchorGameTests {
                     initialMass,
                     initialCom,
                     initialInertia,
+                    prevShake,
                     10);
         });
     }
@@ -226,6 +230,7 @@ public final class ChassisWorldAnchorGameTests {
             double initialMass,
             Vector3d initialCom,
             org.joml.Matrix3d initialInertia,
+            boolean prevShake,
             int remainingSteps) {
         double sign = (remainingSteps % 2 == 0) ? 1.0 : -1.0;
         topUpCruiseAndLoad(car, 15.0, -6.0, 0.4 * sign, -0.4 * sign);
@@ -240,6 +245,7 @@ public final class ChassisWorldAnchorGameTests {
                         initialMass,
                         initialCom,
                         initialInertia,
+                        prevShake,
                         remainingSteps - 1);
                 return;
             }
@@ -266,6 +272,7 @@ public final class ChassisWorldAnchorGameTests {
                             && initialInertia.equals(car.getMassTracker().getInertiaTensor(), 1.0E-6),
                     "MassData must remain 100% untouched");
 
+            Config.TRAIN_LATERAL_FORCE.set(prevShake);
             ChassisRailLock.release(level, car.getUniqueId(), "gametest_cleanup");
             container.removeForceLoadTicket(
                     car, SubLevelLoadingTicketType.COMMAND_FORCED, Unit.INSTANCE);
@@ -427,6 +434,156 @@ public final class ChassisWorldAnchorGameTests {
                     container.removeForceLoadTicket(
                             car, SubLevelLoadingTicketType.COMMAND_FORCED, Unit.INSTANCE);
                     car.markRemoved();
+                    helper.runAfterDelay(5, helper::succeed);
+                });
+            });
+        });
+    }
+
+    @GameTest(
+            template = "empty",
+            templateNamespace = "dimblend_chassis",
+            batch = "chassis_world_anchor_micro_roll",
+            timeoutTicks = 260)
+    public static void microRollPulseAllowsCappedTwoPointFiveDegreeRollAndResettlesFlatAtDeck66(
+            GameTestHelper helper) {
+        boolean prevShake = Config.TRAIN_LATERAL_FORCE.get();
+        double prevInterval = Config.TRAIN_SHAKE_INTERVAL_SECONDS.get();
+        int prevForce = Config.TRAIN_SHAKE_FORCE_PN.get();
+        Config.TRAIN_LATERAL_FORCE.set(true);
+        Config.TRAIN_SHAKE_INTERVAL_SECONDS.set(2.0D);
+        Config.TRAIN_SHAKE_FORCE_PN.set(1200);
+
+        ServerLevel level = rotating(helper);
+        for (int cx = 48; cx <= 52; cx++) {
+            for (int cz = -1; cz <= 1; cz++) {
+                level.setChunkForced(cx, cz, true);
+                level.getChunk(cx, cz);
+            }
+        }
+        BlockState xoTrack = AllBlocks.TRACK.getDefaultState()
+                .setValue(TrackBlock.SHAPE, TrackShape.XO);
+        for (int x = 780; x <= 810; x++) {
+            for (int z = -2; z <= 2; z++) {
+                for (int y = 65; y <= 69; y++) {
+                    BlockPos clearPos = new BlockPos(x, y, z);
+                    if (!level.getBlockState(clearPos).isAir()) {
+                        level.setBlockAndUpdate(clearPos, Blocks.AIR.defaultBlockState());
+                    }
+                }
+            }
+            BlockPos railPos = new BlockPos(x, 64, 0);
+            if (!level.getBlockState(railPos).equals(xoTrack)) {
+                level.setBlockAndUpdate(railPos, xoTrack);
+            }
+            TrackPropagator.onRailAdded(level, railPos, level.getBlockState(railPos));
+        }
+
+        BlockPos rearBogey = new BlockPos(788, 65, 0);
+        BlockPos frontBogey = new BlockPos(794, 65, 0);
+        BlockPos topAnchor = new BlockPos(791, 66, 0);
+        BlockPos offCenterWeight = new BlockPos(791, 66, 1);
+        BlockState eastBogey = SimurailBlocks.PHYSICS_BOGEY.getDefaultState()
+                .setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.EAST);
+        level.setBlockAndUpdate(rearBogey, eastBogey);
+        level.setBlockAndUpdate(frontBogey, eastBogey);
+        java.util.ArrayList<BlockPos> cells = new java.util.ArrayList<>();
+        cells.add(rearBogey);
+        cells.add(frontBogey);
+        for (int x = 788; x <= 794; x++) {
+            BlockPos deckBlock = new BlockPos(x, 66, 0);
+            level.setBlockAndUpdate(deckBlock, Blocks.IRON_BLOCK.defaultBlockState());
+            cells.add(deckBlock);
+        }
+        level.setBlockAndUpdate(offCenterWeight, Blocks.IRON_BLOCK.defaultBlockState());
+        cells.add(offCenterWeight);
+
+        ServerSubLevel car = SubLevelAssemblyHelper.assembleBlocks(
+                level,
+                topAnchor,
+                cells,
+                new BoundingBox3i(788, 65, -1, 794, 66, 1));
+        helper.assertTrue(car != null, "micro-roll test car must assemble");
+
+        ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
+        container.addForceLoadTicket(car, SubLevelLoadingTicketType.COMMAND_FORCED, Unit.INSTANCE);
+        int bogeyPlotY = car.getPlot().getCenterBlock().getY() - 1;
+        Vec3 plotCenter = car.getPlot().getCenterBlock().getCenter();
+        Vector3d plotDeck = new Vector3d(plotCenter.x, bogeyPlotY + 1.0, plotCenter.z);
+
+        helper.runAfterDelay(50, () -> {
+            helper.assertTrue("LOCKED".equals(ChassisRailLock.status(level, car.getUniqueId())),
+                    "micro-roll test car must lock automatically, got "
+                            + ChassisRailLock.status(level, car.getUniqueId()));
+            helper.assertTrue(!ChassisRailLock.isMicroRollOpen(level, car.getUniqueId()),
+                    "idle parked car must keep micro-roll closed ([0, 0]) despite off-center weight");
+
+            PhysicsPipeline pipeline = container.physicsSystem().getPipeline();
+            Pose3d idlePose = pipeline.readPose(car, new Pose3d());
+            ChassisPose.Angles idleAngles = ChassisPose.angles(idlePose.orientation());
+            helper.assertTrue(Math.abs(idleAngles.pitchDegrees()) < 0.6
+                            && Math.abs(idleAngles.rollDegrees()) < 0.6,
+                    "idle parked car must stay flat (<0.6 deg) under off-center load, got "
+                            + idleAngles.pitchDegrees() + " / " + idleAngles.rollDegrees());
+
+            // Arm a lateral shake pulse and excite roll + nose-pitch + downward load simultaneously.
+            ChassisRailLock.notifyLateralShakePulse(car);
+            helper.assertTrue(ChassisRailLock.isMicroRollOpen(level, car.getUniqueId()),
+                    "notifyLateralShakePulse must open the +-2.5 deg micro-roll window");
+            RigidBodyHandle handle = RigidBodyHandle.of(car);
+            helper.assertTrue(handle != null && handle.isValid(), "rigid body handle must be valid");
+            handle.addLinearAndAngularVelocity(
+                    new Vector3d(0.0, -5.0, 0.0),
+                    new Vector3d(6.0, 0.0, -5.0));
+
+            helper.runAfterDelay(4, () -> {
+                Pose3d peakPose = pipeline.readPose(car, new Pose3d());
+                Vector3d peakCom = new Vector3d(car.getMassTracker().getCenterOfMass());
+                Vector3d peakDeck = ChassisPose.anchor(
+                        peakPose.orientation(), plotDeck, peakCom, peakPose.position(), new Vector3d());
+                ChassisPose.Angles peakAngles = ChassisPose.angles(peakPose.orientation());
+
+                // On X-built cars, ChassisPose.angles#pitchDegrees is X-axis longitudinal car roll
+                // while rollDegrees is Z-axis nose pitch.
+                double carRollDeg = Math.abs(peakAngles.pitchDegrees());
+                double nosePitchDeg = Math.abs(peakAngles.rollDegrees());
+                helper.assertTrue(carRollDeg > 0.6 && carRollDeg <= 3.1,
+                        "open micro-roll must visibly tilt (>0.6 deg) while capping near 2.5 deg, got "
+                                + peakAngles.pitchDegrees());
+                helper.assertTrue(nosePitchDeg < 0.8,
+                        "nose pitch (ANGULAR_Z) must remain hard-locked, got " + peakAngles.rollDegrees());
+                helper.assertTrue(Math.abs(peakDeck.y - 66.0) < 0.08,
+                        "deck Y must remain hard-locked at 66.0 during micro-roll, got " + peakDeck.y);
+
+                helper.runAfterDelay(50, () -> {
+                    Pose3d settledPose = pipeline.readPose(car, new Pose3d());
+                    Vector3d settledCom = new Vector3d(car.getMassTracker().getCenterOfMass());
+                    Vector3d settledDeck = ChassisPose.anchor(
+                            settledPose.orientation(), plotDeck, settledCom,
+                            settledPose.position(), new Vector3d());
+                    ChassisPose.Angles settledAngles = ChassisPose.angles(settledPose.orientation());
+
+                    helper.assertTrue(!ChassisRailLock.isMicroRollOpen(level, car.getUniqueId()),
+                            "micro-roll window must close back to [0, 0] after 40 ticks");
+                    helper.assertTrue(Math.abs(settledAngles.pitchDegrees()) < 0.6
+                                    && Math.abs(settledAngles.rollDegrees()) < 0.6,
+                            "car must resettle flat (<0.6 deg) once window closes, got "
+                                    + settledAngles.pitchDegrees() + " / " + settledAngles.rollDegrees());
+                    helper.assertTrue(Math.abs(settledDeck.y - 66.0) < 0.08,
+                            "settled deck Y must remain 66.0, got " + settledDeck.y);
+
+                    Config.TRAIN_LATERAL_FORCE.set(prevShake);
+                    Config.TRAIN_SHAKE_INTERVAL_SECONDS.set(prevInterval);
+                    Config.TRAIN_SHAKE_FORCE_PN.set(prevForce);
+                    ChassisRailLock.release(level, car.getUniqueId(), "gametest_cleanup");
+                    container.removeForceLoadTicket(
+                            car, SubLevelLoadingTicketType.COMMAND_FORCED, Unit.INSTANCE);
+                    car.markRemoved();
+                    for (int cx = 48; cx <= 52; cx++) {
+                        for (int cz = -1; cz <= 1; cz++) {
+                            level.setChunkForced(cx, cz, false);
+                        }
+                    }
                     helper.runAfterDelay(5, helper::succeed);
                 });
             });

@@ -10,7 +10,6 @@ import dimblend.DimBlendRegistries;
 import dimblend.api.WarpGateMotion;
 import dimblend.api.WarpGateParticles;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -25,7 +24,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -158,9 +156,8 @@ public final class WarpGateSableCrossing {
             }
             Vector3d velocity = handle.getLinearVelocity(new Vector3d());
             WarpGateMotion.Side side = sideFor(sub.getUniqueId(), box, slabX);
-            boolean crewAboard = crew.everySurvivalPlayerAboard(level);
-            boolean rides = crew.playerRides(level, sub);
-            WarpGateMotion.Action action = WarpGateMotion.decide(velocity.x, side, crewAboard, rides);
+            boolean anyAboard = crew.anyPlayerOnAnySubLevel(level);
+            WarpGateMotion.Action action = WarpGateMotion.decide(velocity.x, side, anyAboard);
 
             double deltaX = WarpGateMotion.deltaX(action, velocity.x);
             if (deltaX != 0.0) {
@@ -221,52 +218,27 @@ public final class WarpGateSableCrossing {
     }
 
     /**
-     * One tick's answer to two questions about the players, asked once.
-     *
-     * <p>Every sub-level in the dimension is swept every tick, so asking per sub-level would repeat
-     * the same player walk dozens of times. Both answers come from one walk, memoised for the sweep
-     * that asked for them.
+     * One tick's memoised answer to whether any player (any game mode) is on any Sable sub-level.
      */
     private static final class CrewGate {
-        private Boolean aboard;
-        private Set<UUID> ridden;
+        private Boolean anyAboard;
 
-        /**
-         * Whether every <b>survival-mode</b> player is standing on a Sable sub-level.
-         *
-         * <p>The supplement narrows the rule to survival players: creative and spectator players may
-         * leave the train without shutting the gate for everyone. A player in another dimension
-         * cannot be standing on the sub-level that is crossing this gate, so only this dimension's
-         * players are walked — counting the others would leave the gate shut whenever anyone is
-         * elsewhere.
-         */
-        boolean everySurvivalPlayerAboard(ServerLevel level) {
-            collect(level);
-            return aboard;
-        }
-
-        /** Whether a player in any game mode is riding this very sub-level. */
-        boolean playerRides(ServerLevel level, ServerSubLevel sub) {
-            collect(level);
-            return ridden.contains(sub.getUniqueId());
-        }
-
-        private void collect(ServerLevel level) {
-            if (aboard != null) {
-                return;
+        boolean anyPlayerOnAnySubLevel(ServerLevel level) {
+            if (anyAboard != null) {
+                return anyAboard;
             }
-            boolean all = true;
-            Set<UUID> ids = new HashSet<>();
-            for (ServerPlayer player : level.players()) {
-                var riding = SableCompanion.INSTANCE.getTrackingOrVehicleSubLevel(player);
-                if (riding != null) {
-                    ids.add(riding.getUniqueId());
-                } else if (player.gameMode.getGameModeForPlayer() == GameType.SURVIVAL) {
-                    all = false;
+            List<ServerPlayer> players = level.getServer() != null
+                    ? level.getServer().getPlayerList().getPlayers()
+                    : level.players();
+            boolean found = false;
+            for (ServerPlayer player : players) {
+                if (SableCompanion.INSTANCE.getTrackingOrVehicleSubLevel(player) != null) {
+                    found = true;
+                    break;
                 }
             }
-            aboard = all;
-            ridden = ids;
+            anyAboard = found;
+            return found;
         }
     }
 

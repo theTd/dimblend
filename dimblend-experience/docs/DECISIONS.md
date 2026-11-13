@@ -35,3 +35,24 @@ Recorded from `dimblend-batch-confirm-20261112-decisions.json` (9 locked decisio
 
 9. **`door-tooltip-location` [DEFAULT]**: **仅在四种门的物品栏悬浮提示（Tooltip）添加该描述行**
    - Adds `"手持再次右键可变为单格对开"` (`zh_cn`) / `"Right-click again with the same door in hand to form a single-block double door"` (`en_us`) to hover tooltips of the 4 target Create door items.
+
+---
+
+# DimBlend Experience — Seven-Fixes Batch Decisions (2026-11-13)
+
+Recorded from `dimblend-seven-fixes` (`generated: 2026-11-12T16:27:26.321Z`, 5 locked decisions: 4 defaults kept, 1 explicit user override).
+
+1. **`advancement-action-dims` [DEFAULT] (`include_action_6`)**: **连同带维度限制的动作类进度一并改写为群系判定**
+   - Converts all 15 pure dimension-entry advancements plus the 5 runtime-active dimension-gated action advancements (`aether:aether_sleep`, `twilightforest:twilight_hunter`, `voidscape:psychosis`, `minecraft:nether/ride_strider_in_overworld_lava`, `minecraft:nether/uneasy_alliance`) to `#dimblend_experience:orig_dim/<dim>` biome-tag checks while preserving original triggers and entity/vehicle/distance conditions (`ColdSweat`'s unloaded legacy `advancements/lava_sea.json` is left untouched to avoid orphan-parent errors).
+
+2. **`advancement-bumblezone` [DEFAULT] (`hide_if_mod_missing`)**: **为这 5 个蜜蜂支线补上模组存在条件自动隐藏**
+   - Adds `neoforge:mod_loaded` conditions for both `kaleidoscope_dim_wine` and `the_bumblezone` on `kaleidoscope_dim_wine:the_bumblezone_*` (5 nodes) so they stay hidden when `the_bumblezone` is absent and remain biome-mapped if later installed.
+
+3. **`cdg-oil-peak-and-scanner` [DEFAULT] (`finite_10pct_with_scanner`)**: **峰值区块折算为 10% 有限油田，并同步缩放新区块探测器阈值**
+   - Only chunks newly promoted to `FULL` (`ChunkEvent.Load#isNewChunk() == true`, tracked in `CdgNewOilChunksSavedData`) suppress `OIL_CHUNK_INFINITE_THRESHOLD` promotion to `Integer.MAX_VALUE`, scale positive finite oil reserves by `ceil(amount * 0.10)`, and scale `OilScannerItem` low/high thresholds by `0.10` on those new chunks; already-generated chunks keep 100% original CDG behavior.
+
+4. **`warpgate-push-and-hold` [DEFAULT] (`push_any_hold_when_zero`)**: **任意 1 人在任意 Sable 即全推；0 人在 Sable 时门内锁停防溜车**
+   - In `dimblend` (`WarpGateMotion` + `WarpGateSableCrossing`), whenever `playersOnAnySubLevel >= 1` (any game mode, any dimension, any Sable sublevel), every Sable sublevel entering the warp gate from `-X` (including unmanned coupled cars) is pushed `+X`; when `playersOnAnySubLevel == 0`, sublevels inside the gate hold still (`HOLD_STILL`) so unattended cars cannot drift away.
+
+5. **`train-lateral-shake-mode` [OVERRIDE] (`sway_plus_micro_roll`)**: **水平微晃 + 限幅 ±2.5° 轻微侧倾**
+   - Keeps `ChassisRailLock` hard-locking deck elevation (`Y = 66.0` / `entry.nominalHeight()`) and nose pitch (`ANGULAR_Z = 0°`), opens `±0.12 m` spring-centered horizontal sway (`LINEAR_Z`) on `!allowLateralOffset` bogeys, AND dynamically opens capped `±2.5°` (`ANGULAR_X`) spring-damped micro-roll during lateral shake pulses (`[0°, 0°]` dead-flat lock when parked/idle so off-center cargo never tilts idle cars), with inertia-normalized roll torque impulses alongside mass-normalized horizontal impulses.

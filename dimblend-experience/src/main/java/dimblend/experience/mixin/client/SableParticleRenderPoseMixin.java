@@ -1,9 +1,12 @@
 package dimblend.experience.mixin.client;
 
+import dev.ryanhcode.sable.api.particle.ParticleSubLevelKickable;
 import dev.ryanhcode.sable.mixinterface.particle.ParticleExtension;
 import dev.ryanhcode.sable.sublevel.SubLevel;
+import dimblend.experience.compat.sable.CrushingWheelParticleScope;
 import dimblend.experience.compat.sable.RenderPoseShiftable;
 import dimblend.experience.compat.sable.SubLevelParticleRenderPose;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import org.joml.Vector3d;
 import org.spongepowered.asm.mixin.Mixin;
@@ -30,7 +33,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * {@link #dimblend$restoreRenderPose} 再逐位还原——模拟位置、速度与包围盒全程不动。</p>
  */
 @Mixin(Particle.class)
-public abstract class SableParticleRenderPoseMixin implements RenderPoseShiftable {
+public abstract class SableParticleRenderPoseMixin implements RenderPoseShiftable, ParticleSubLevelKickable {
 
     // 仓库纪律：mixin 成员一律 private（@Shadow 只声明目标字段的存在，实际访问走目标类自身，
     // 可见性不必与 vanilla 的 protected 一致）。
@@ -71,6 +74,31 @@ public abstract class SableParticleRenderPoseMixin implements RenderPoseShiftabl
     private double dimblend$savedYo;
     @Unique
     private double dimblend$savedZo;
+    /** Sable 子层级粉碎轮内部生成的粒子：不与粉碎轮控制器碰撞盒互挤，也不因扩散超过 0.5 格脱钩。 */
+    @Unique
+    private boolean dimblend$crushingWheelParticle;
+
+    @Inject(
+            method = "<init>(Lnet/minecraft/client/multiplayer/ClientLevel;DDD)V",
+            at = @At("TAIL"),
+            require = 1,
+            allow = 1)
+    private void dimblend$markCrushingWheelParticle(
+            ClientLevel level, double x, double y, double z, CallbackInfo ci) {
+        if (CrushingWheelParticleScope.isActive()) {
+            this.dimblend$crushingWheelParticle = true;
+        }
+    }
+
+    @Override
+    public boolean sable$shouldCollideWithTrackingSubLevel() {
+        return !this.dimblend$crushingWheelParticle;
+    }
+
+    @Override
+    public boolean sable$shouldKickFromTracking() {
+        return !this.dimblend$crushingWheelParticle;
+    }
 
     @Inject(method = "tick", at = @At("TAIL"), require = 1, allow = 1)
     private void dimblend$trackSubLevelTick(CallbackInfo ci) {

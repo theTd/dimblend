@@ -38,6 +38,12 @@ public final class ChassisRailLockRules {
     public static final double FRAME_REFRESH_HORIZONTAL_DRIFT = 32.0;
     /** 触发 {@code setFrame1} 世界帧刷新的偏航角变化阈值（度）。 */
     public static final double FRAME_REFRESH_YAW_DEGREES = 15.0;
+    /** 横向抖动微侧倾打开期间的世界帧偏航刷新阈值（度），避免弯道上 yaw-roll 交叉耦合。 */
+    public static final double MICRO_ROLL_FRAME_REFRESH_YAW_DEGREES = 3.0;
+    /** 横向抖动允许的纵向微侧倾角上限（度，{@code DECISIONS.md} {@code sway_plus_micro_roll}）。 */
+    public static final double MAX_MICRO_ROLL_DEGREES = 2.5;
+    /** 横向抖动允许的纵向微侧倾角上限（弧度）。 */
+    public static final double MAX_MICRO_ROLL_RADIANS = Math.toRadians(MAX_MICRO_ROLL_DEGREES);
     /** 连续多少次资格检查通过才建约束。 */
     public static final int STABLE_CHECKS = 3;
     /** 资格扫描间隔（tick）；{@link #STABLE_CHECKS} 次约等于 30 tick。 */
@@ -115,8 +121,24 @@ public final class ChassisRailLockRules {
     private static final Set<Axis> LOCKED_AXES = Set.copyOf(EnumSet.of(
             Axis.LINEAR_Y, Axis.ANGULAR_X, Axis.ANGULAR_Z));
 
+    /**
+     * 支持横向抖动微侧倾的车体世界关节硬锁轴：垂向 {@code LINEAR_Y} 与车头俯仰轴 {@code ANGULAR_Z}
+     * 永久硬锁；纵向翻滚轴 {@code ANGULAR_X} 由关节限位动态控制（非抖动期 {@code [0, 0]} 硬锁，
+     * 抖动窗口内放开至 {@code ±MAX_MICRO_ROLL_RADIANS} 并由弹簧阻尼电机拉回水平）。
+     *
+     * <p>Rapier 的 {@code locked_axes} 在求解器内优先级高于 {@code limit_axes}/{@code motor_axes}
+     * （{@code joint_velocity_constraint.rs:141-143}），且 {@code setLimit} 不会清除已锁标志位，
+     * 因此 {@code ANGULAR_X} 必须通过 {@code [0, 0]} 限位实现硬锁，不能写入初始 {@code lockedAxes}。</p>
+     */
+    private static final Set<Axis> MICRO_ROLL_LOCKED_AXES = Set.copyOf(EnumSet.of(
+            Axis.LINEAR_Y, Axis.ANGULAR_Z));
+
     public static Set<Axis> lockedAxes() {
         return LOCKED_AXES;
+    }
+
+    public static Set<Axis> microRollLockedAxes() {
+        return MICRO_ROLL_LOCKED_AXES;
     }
 
     /** 锁垂向与俯仰/横滚，保留水平面平移（X/Z）与偏航（Y）自由。 */
@@ -161,6 +183,15 @@ public final class ChassisRailLockRules {
      */
     public static boolean needsFrameRefresh(
             double dx, double dz, double yawDegrees, double frameYawDegrees) {
+        return needsFrameRefresh(dx, dz, yawDegrees, frameYawDegrees, false);
+    }
+
+    public static boolean needsFrameRefresh(
+            double dx,
+            double dz,
+            double yawDegrees,
+            double frameYawDegrees,
+            boolean microRollOpen) {
         if (!Double.isFinite(dx) || !Double.isFinite(dz)
                 || !Double.isFinite(yawDegrees) || !Double.isFinite(frameYawDegrees)) {
             return false;
@@ -169,7 +200,10 @@ public final class ChassisRailLockRules {
         if (dx * dx + dz * dz > maxDriftSq) {
             return true;
         }
-        return Math.abs(normalizeDegrees(yawDegrees - frameYawDegrees)) > FRAME_REFRESH_YAW_DEGREES;
+        double maxYawDelta = microRollOpen
+                ? MICRO_ROLL_FRAME_REFRESH_YAW_DEGREES
+                : FRAME_REFRESH_YAW_DEGREES;
+        return Math.abs(normalizeDegrees(yawDegrees - frameYawDegrees)) > maxYawDelta;
     }
 
     public static boolean createEligible(Context context) {

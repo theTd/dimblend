@@ -1193,6 +1193,12 @@
 | LootPoolEntryContainerAccessor / CompositeEntryBaseAccessor | 原版条目条件、复合 children 读取 | A10 | 无条件（原版目标） |
 | BuriedTreasureShellMarkerMixin | 原版 BuriedTreasurePiece（postProcess 内 createChest 之后读 boundingBox 拿宝箱坐标，调 TreasureShellMarker.mark） | A11 | 无条件（原版目标） |
 | TreasureMapTradeMixin | 原版 VillagerTrades$TreasureMapForEmeralds（getOffer HEAD 返回 null，不跑结构搜索） | A13 | 无条件（原版目标，包私有嵌套类按 targets 指定） |
+| compat.cdg.OilChunksSavedDataMixin | CDG OilChunksSavedData（`getBaseOilAmount` / `getChunkOilAmount` 新区块抑制无限并按 10% 折算有限储量） | §19.3 | createdieselgenerators 在场 |
+| compat.cdg.OilScannerItemMixin | CDG OilScannerItem（`inventoryTick` 新区块同步按 10% 缩放高低储量判定阈值） | §19.3 | createdieselgenerators 在场 |
+| compat.create.DisplayLinkUnlimitedItemMixin | Create DisplayLinkBlockItem（`getMaxDistanceFromSelection` HEAD 返回 `Integer.MAX_VALUE`） | §19.4 | create 在场 |
+| compat.create.DisplayLinkUnlimitedTargetMixin | Create DisplayLinkBlockEntity（`getTargetPosition` HEAD 直接返回 `worldPosition.offset(targetOffset)`） | §19.4 | create 在场 |
+| client.SableCritParticleInitMixin | 原版 CritParticle（构造器内预跑 `tick()` 期间临时压空 `sable$trackingSubLevel`） | §19.1 | sable 在场（client 数组） |
+| compat.create.CrushingWheelControllerParticleMixin / CrushingWheelControllerBeParticleMixin / CrushingWheelKineticEffectParticleMixin / CrushingWheelRotationIndicatorMixin | Create 粉碎轮与粉碎轮控制器粒子发射入口（作用域标记 `CrushingWheelParticleScope`） | §19.1 | create + sable 双在场（client 数组） |
 
 事件处理器（非 mixin）：DeathRules（A1，LivingExperienceDropEvent + PlayerEvent.Clone）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainDeadmanSync（E7' 锁存状态进服/换维度补发；规则本体 `TrainDeadmanBrake` 在 Simurail 在场时显式注册维度 Post tick 与卸载/停服事件，mixin 仅采样）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、EnderStorageStructureGuard（G5）、ExplorationMapLootFilter（A10，LootTableLoadEvent 战利品表加载时把地图条目替换为纸条目）、PaperInsteadOfMapsLootModifier（A10 第三层，NeoForge 全局战利品修饰器，最终把地图堆换成 1 张纸）。
 
@@ -1790,3 +1796,60 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
 - 扳手、红石、掉落与提示：四种目标门全面禁用非潜行扳手旋转（单门与对开门一致），保留潜行+扳手拆除；红石充能开关门行为与单门完全一致；工具破坏与潜行+扳手拆除对开门均掉落 2 个同种门——其中 `RailwayCasingRecovery` 对 `dimblend_paired=true` 的 `create:train_door` 在 `dimblend:rotating` 任意 `Z`（含 `|Z| > 32`）均保持掉 2 个列车门，仅未配对单扇列车门在 `|Z| > 32` 继续回收为 1 个 `create:railway_casing`；`SlidingDoorPairingTooltip` 为四种门物品悬浮提示追加灰字 `item.dimblend_experience.create_door_pairing`（`zh_cn`：“手持再次右键可变为单格对开”）。
 - 条件加载：`DimBlendMixinPlugin` 使用 `MixinService.getService().getBytecodeProvider().getClassNode(name, false)` 做字节码级存在性探测，避免在 mixin 配置期触发 `Class.forName` 过早类加载。
 - 验证：`SlidingDoorPairingTest` 单测 + `SlidingDoorPairingGameTests` / `RailwayCasingRecoveryGameTests` GameTest + TrainTripWorld 实机全链路验收（四种门提示、配对扣 1 门、闭合无中缝双扇截图、越界射线 `X=24.75` 点击开门、开门空碰撞、普通扳手禁用、红石开闭、闭合/外扇潜行扳手拆回 2 门、`Z=35` 对开列车门掉 2 门 vs 单扇列车门掉 1 机壳）。
+
+## 19. 2026-11-12 第二批（粉碎轮粒子、特殊维度进度、CDG 原油、显示连接器、望远镜 64、折跃门推 Sable、列车横向抖动）
+
+> 5 项边界取舍已由用户经批量决策页 `dimblend-seven-fixes` 拍板定稿并记入 `docs/DECISIONS.md`（4 项保持默认，`train-lateral-shake-mode` 用户覆写选定 `sway_plus_micro_roll`「水平微晃 + 限幅 ±2.5° 轻微侧倾」）。
+
+### 19.1 Sable 子层级粉碎轮粒子防挤出与位姿对齐（仅粉碎轮）
+
+- 作用范围：严格限定在 Sable 子层级上的 `create:crushing_wheel`、`dndecor:*_crushing_wheel`（共用 `CrushingWheelBlockEntity` / `KineticBlockEntity`）与 `create:crushing_wheel_controller`；不触碰 Create 石磨与森罗物语石磨。
+- 三重根因与修法：
+  1. `CrushingWheelControllerBlock` 拥有 `16×13×16` 实体碰撞箱，而 Sable `ParticleMixin#sable$moveWithSubLevels` 无视 `Particle#hasPhysics` 强制用 `Entity.collideBoundingBox` 碰撞，将约 81% 的粉碎物品粒子挤出 `0.3–0.6` 格并越过 `>0.5` 格阈值触发 `sable$kickFromTracking()` 脱钩；通过 `CrushingWheelParticleScope` 标记粉碎轮四处发射入口，在 `Particle.<init>(ClientLevel,DDD)V` 内对标记粒子置 `dimblend$noSubLevelCollisionAndKick = true`，拦截 `sable$moveWithSubLevels` 的子层级盒碰撞与 `>0.5` 格脱钩（仍保留正常重力、阻力与 `SubLevelParticleRenderPose` 渲染位姿变换）。
+  2. `CritParticle` 构造器末尾提前调用一次 `this.tick()`，此时 `sable$initialKickOut()`（挂在构造器 `TAIL`）尚未把 `1.6×10^7` 的 plot 坐标投到世界空间，导致 `sable$moveWithSubLevels` 用帧间位姿差放大 plot 坐标；`SableCritParticleInitMixin` 用 `@WrapOperation` 在该预跑 `tick()` 期间临时压空 `sable$trackingSubLevel` 使其在纯局部 plot 空间完成热身步。
+  3. `RotationIndicatorParticle#tick` 每刻执行 `setPos(origin)` 写回 plot 坐标触发 `>0.5` 格脱钩，由粉碎轮 `RotationIndicatorParticleData` 作用域纳入 `CrushingWheelParticleScope` 一并豁免脱钩。
+- 验证：`CrushingWheelParticleScopeTest` 3 项单测通过；待整合包实机验证。
+
+### 19.2 特殊维度进度改为进入原维度任意生物群系解锁
+
+- 生物群系标签：在 `data/dimblend_experience/tags/worldgen/biome/orig_dim/` 下定义 `overworld`（含 `#minecraft:is_overworld` 及可选补漏 `atmospheric:hot_springs`、`terralith:deep_warm_ocean`）、`nether`（`#minecraft:is_nether`）、`end`（`#minecraft:is_end`）、`aether`（可选 `#aether:is_aether`）、`twilight_forest`（可选 `#twilightforest:in_twilight_forest` + `twilightforest:highlands_underground`）、`starlight`（22 个星光群系）、`otherside`（4 个幽冥群系）、`voidscape`（9 个虚空群系，含 `voidscape:aether`），所有模组条目均带 `"required": false`。
+- 数据包覆盖（共 25 份 JSON，非原版命名空间一律带 `neoforge:mod_loaded`）：
+  1. **15 个纯进入特殊维度进度**：统一改为 `minecraft:location` + `location.biomes = "#dimblend_experience:orig_dim/<dim>"`（`twilightforest:root` 保留 `make_portal` 或门条件，`aether:enter_aether` 保留战利品表奖励）。
+  2. **5 个运行期生效的带维度锁动作进度**（`aether:aether_sleep`、`twilightforest:twilight_hunter`、`voidscape:psychosis`、`minecraft:nether/ride_strider_in_overworld_lava`、`minecraft:nether/uneasy_alliance`）：完整保留原触发器与实体/载具/距离条件，仅把 `location.dimension` 替换为 `location.biomes`。注：`ColdSweat-2.4.2.jar` 中的 `data/cold_sweat/advancements/lava_sea.json` 位于 1.20 复数目录 `advancements/` 且使用旧版 `icon.item` 键，1.21.1 `ServerAdvancementManager` 原生未加载整棵 `cold_sweat` 进度树（父节点 `cold_sweat:huddle_close` 不在运行树中），故不单独写入 `advancement/lava_sea.json` 以免触发孤儿父节点 `ERROR`。
+  3. **5 个未安装模组的蜜蜂维度支线进度**（`kaleidoscope_dim_wine:the_bumblezone_*`）：补齐 `kaleidoscope_dim_wine` + `the_bumblezone` 双 `neoforge:mod_loaded` 条件自动隐藏。
+- 验证：`AdvancementDatapackOverrideTest` 3 项结构与条件完整性单测通过；待整合包进档实机验证。
+
+### 19.3 CDG 含油区块：新生成区域取消无限油田并按 10% 折算储量
+
+- 新旧区块分界：`CdgNewOilChunksSavedData`（维度 `SavedData` `"dimblend_experience_cdg_new_oil_chunks"`）监听服务端 `ChunkEvent.Load`，仅当 `event.isNewChunk() == true`（由 `ChunkStatusTasks` 从非 `ImposterProtoChunk` 晋升 `FULL`）时登记该 `ChunkPos`；从磁盘加载的既有区块不登记，100% 维持 CDG 原生储量与无限判定。
+- 储量与勘探仪缩放（`CdgOilBalance` + `OilChunksSavedDataMixin` + `OilScannerItemMixin`）：
+  1. 在 `OilChunksSavedData.getBaseOilAmount` 内（字节码核实 `OIL_CHUNK_INFINITE_THRESHOLD.get()` 为第 7 个 `ConfigValue#get`，`ordinal = 6`），新区块返回 `Double.MAX_VALUE` 抑制升无限，并在 `RETURN` 将有限正储量按 `ceil(amount * 0.10)` 折算（原 400 万–1400 万 mB 折算为 40 万–140 万 mB，即 400–1400 桶）。
+  2. 在 `OilChunksSavedData#getChunkOilAmount` 内同样抑制新区块对存盘有限值 `< Integer.MAX_VALUE` 的二次升无限。
+  3. 在 `OilScannerItem#inventoryTick` 内对新区块同步按 `10%` 缩放 `OIL_CHUNK_THRESHOLD` 与 `OIL_CHUNK_INFINITE_THRESHOLD` 四处读取，使高低储量分界中点由 `7,000,000 mB` 同步降至 `700,000 mB`，保留“少量原油 / 大量原油”区分。
+- 验证：`CdgOilBalanceTest` 4 项单测通过；待整合包新区块实机验证。
+
+### 19.4 取消显示连接器（`create:display_link`）范围限制
+
+- 双重拦截（避免直接改大 `AllConfigs.server().logistics.displayLinkRange` 导致 `range * range` 32 位有符号整数溢出为负数）：
+  1. `DisplayLinkUnlimitedItemMixin` 在 `DisplayLinkBlockItem#getMaxDistanceFromSelection()I` `HEAD` 返回 `Integer.MAX_VALUE`：保留 `ClickToLinkBlockItem#useOn` 的同维度相等校验（`maxDistance != -1`），同时使原版 `closerThan` 与 Sable `ClickToLinkBlockItemMixin` 的 IEEE-754 `double` 距离平方比较（`v * v ≈ 4.61×10^18`）恒放行。
+  2. `DisplayLinkUnlimitedTargetMixin` 在 `DisplayLinkBlockEntity#getTargetPosition` `HEAD` 直接返回 `this.worldPosition.offset(this.targetOffset)`：绕过 Sable `DisplayLinkBlockEntityMixin` 在 `TAIL` 按 `range * range` 将远距目标强行清零为 `BlockPos.ZERO` 的截断（同时覆盖 `updateGatheredData` 与移动后重绑 `DisplayLinkBlockMixin#afterMove`）。
+- 验证：编译与 Mixin 签名核验通过；待整合包远距与跨 Sable 实机验证。
+
+### 19.5 望远镜（`dimblend-spyglass`）最近显示距离降至 64 格
+
+- `SpyglassDistance.MIN_BLOCKS` 由 `128.0` 改为 `64.0`（服务端补边环自动随之变为 `[64 − 48, 1024 + 48] = [16, 1072]`，仍完全容纳 `MOVE_THRESHOLD_BLOCKS = 32` 的移动窗口）。
+- 验证：`dimblend-spyglass` 全部 174 项单测通过；待整合包举镜实机验证。
+
+### 19.6 折跃门推 Sable：任意一人在任意 Sable 上即推进全部进门车体
+
+- `dimblend` 模块 `WarpGateMotion` 与 `WarpGateSableCrossing`：统计全服（不限游戏模式、不限维度）站在任意 Sable 子层级上的玩家数 `playersOnAnySubLevel`；只要 `playersOnAnySubLevel >= 1`，所有从西侧（`-X`）进入折跃门柱体的 Sable 子层级（无论该节车体自身是否站人、无论地面是否另有生存模式队友）一律获得 `+X` 推进；仅当 `playersOnAnySubLevel == 0`（全服无人在任何 Sable 上）时在门内刹停（`HOLD_STILL`）防止无人空车溜走。
+- 验证：`WarpGateMotionTest` 在内的 `dimblend` 全部 252 项单测通过；待整合包实机验证。
+
+### 19.7 列车抖动横向力与 ±2.5° 限幅微侧倾修复（`train-lateral-shake-mode = sway_plus_micro_roll`）
+
+- 根因：`ChassisBlueprint` 将车厢两端转向架设为 `allowOffset = false`（`pivotJoint` `LINEAR_Z` 锁死 `[0, 0]`，34 米间距双点锁死连带卡死偏航角 `ANGULAR_Y`），而 §18.2 `ChassisRailLock` 又将世界关节翻滚轴 `ANGULAR_X` 写入初始硬锁集，致使刚体在横向与侧倾上零自由度；同时重型车厢（`40,000–300,000 kg`）的质量与转动惯量远超原始 `1200 pN` 常数，位移不足 `1 mm`。
+- 修法（`TrainLateralForceMath` + `PhysicsBogeyLateralForceMixin` + `ChassisRailLock` + `ChassisRailLockRules`，用户覆写拍板「水平微晃 + 限幅 `±2.5°` 轻微侧倾」）：
+  1. **水平微晃（`±0.12 m`）**：当 `trainLateralForce` 启用且 `trainShakeForcePn > 0` 时，对 `!options.allowLateralOffset` 的挂轨转向架将 `pivotJoint` `ConstraintJointAxis.LINEAR_Z` 游隙放宽至 `[-0.12, +0.12]` 米（对关闭 `allowYawOffset`/`allowPitchOffset` 的转向架同步放开 `ANGULAR_X` 至 `±2.5°`），并在 `updateForces` 中施加按 `normalMass` 缩放的水平弹簧阻尼回正力（`ω = 6.0 rad/s, ζ = 0.65`）。
+  2. **动态 `±2.5°` 限幅微侧倾（严守 `Y=66` 与车头零俯仰）**：由于 Rapier 求解器内 `locked_axes` 优先级高于 `limit_axes`/`motor_axes`（`joint_velocity_constraint.rs:141-143`），`ChassisRailLock` 对单纵轴车体（X 向或经 `Ry(-π/2)` 对齐的 Z 向车体）将永久硬锁轴收敛为 `{LINEAR_Y, ANGULAR_Z}`，而将纵向翻滚轴 `ANGULAR_X` 在平时设为 `[0.0, 0.0]` 硬限位 + 归零电机（静止或单侧偏载时严守 `0.00°` 不歪斜）；仅在 `notifyLateralShakePulse` 触发后的 `40 tick` 窗口（`10 tick` 施力 + `30 tick` 阻尼回正）内动态放开至 `[-2.5°, +2.5°]` 并挂上弹簧阻尼电机（`stiffness = 36.0, damping = 8.4`），弯道偏航刷新阈值同步收紧至 `3.0°` 消除 yaw-roll 交叉耦合。
+  3. **质量与转动惯量双归一化**：水平冲量按 `normalMass / 400.0` 缩放，纵向侧倾扭矩冲量按 `(rollMoment / 500.0) / sqrt(bogeyCount)` 缩放（继续线性响应 `/dbx` 面板的 `trainShakeForcePn` 与 `trainShakeIntervalSeconds`），并分别由 `canPushFurther`（`0.12 m`）与 `canRollFurther`（`2.5°`）防止达到限位后继续同向猛顶。
+- 验证：`TrainLateralForceMathTest` 8 项与 `ChassisRailLockRulesTest` 9 项纯函数单测通过，新增 `ChassisWorldAnchorGameTests#microRollPulseAllowsCappedTwoPointFiveDegreeRollAndResettlesFlatAtDeck66` GameTest；待整合包实机乘车验证。

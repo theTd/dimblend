@@ -3,17 +3,16 @@ package dimblend.api;
 /**
  * The warp gate's speed and passage rules for a Sable sub-level passing through it.
  *
- * <p>User requirements 2026-11-03, corrected twice: 2026-11-04 (first correction) and the
- * 2026-11-04 supplement this version implements.
+ * <p>User requirements 2026-11-03, corrected 2026-11-04 and updated 2026-11-12.
  *
  * <h2>The rules as they now stand</h2>
  * <ul>
- *   <li>a sub-level going through the gate is given at least <b>1 m/s</b> toward +X — but only when
- *       there is a player riding <i>that</i> sub-level ("在其上有 任意游戏模式 玩家 时");</li>
- *   <li>a sub-level must not cross back from +X toward -X. The supplement replaces the hard refusal
- *       with a velocity rule: <b>force its X velocity to +1 m/s</b>;</li>
- *   <li>when not every <b>survival-mode</b> player is standing on a Sable sub-level, the gate holds
- *       a forward crossing at <b>zero velocity</b> instead of blocking it outright.</li>
+ *   <li>whenever <b>any</b> player (any game mode) is on <b>any</b> Sable sub-level, every
+ *       sub-level going forward through the gate is given at least <b>1 m/s</b> toward +X
+ *       ("需要有任意一个玩家在任意sable上就生效 无论是谁 在哪个sable"), including uncrewed coupled cars;</li>
+ *   <li>a sub-level must not cross back from +X toward -X: <b>force its X velocity to +1 m/s</b>;</li>
+ *   <li>when <b>no</b> player is on any Sable sub-level, the gate holds a forward crossing at
+ *       <b>zero velocity</b> so unattended trains do not drift through alone.</li>
  * </ul>
  *
  * <p><b>Why the first correction was replaced.</b> The first version refused a backward crossing
@@ -52,11 +51,11 @@ public final class WarpGateMotion {
     public enum Action {
         /** Nothing to change: already fast enough, or a structure the gate has no business with. */
         NONE,
-        /** Below the minimum toward +X, with a player aboard: raise it to the minimum. */
+        /** Below the minimum toward +X, while at least one player is on any Sable: raise to minimum. */
         PUSH_PLUS_X,
         /** Coming from the +X side toward -X: force the X velocity to the minimum forward speed. */
         TURN_PLUS_X,
-        /** A forward crossing while a survival player is off a sub-level: hold the velocity at zero. */
+        /** A forward crossing while no player is on any Sable sub-level: hold the velocity at zero. */
         HOLD_STILL
     }
 
@@ -86,26 +85,21 @@ public final class WarpGateMotion {
      * Decides what to do with one sub-level at a gate.
      *
      * <p>The order carries meaning. A structure that is already clear on the +X side is turned
-     * around first: the crew rule refuses <i>crossings</i>, and turning this one back out is the
-     * strongest thing the gate does to it. Then a forward crossing is held when the crew is split.
-     * Only then does the push apply, and only to a structure somebody is actually riding — an empty
-     * sub-level drifting through is neither pushed nor stopped.
+     * around first so a released structure is never trapped inside. Then a forward crossing is held
+     * when nobody at all is on any Sable sub-level. Otherwise, whenever at least one player (in any
+     * game mode) is on any Sable sub-level, every forward-crossing sub-level (including uncrewed
+     * coupled carriages) is raised to at least {@link #MIN_PLUS_X_SPEED} toward +X.
      *
-     * @param velocityX                  the sub-level's current world X velocity, m/s
-     * @param side                       the side the sub-level was last clear of
-     * @param everySurvivalPlayerAboard  every survival-mode player is standing on a Sable sub-level
-     * @param playerOnThisStructure      a player in any game mode is riding this very sub-level
+     * @param velocityX                the sub-level's current world X velocity, m/s
+     * @param side                     the side the sub-level was last clear of
+     * @param anyPlayerOnAnySubLevel   at least one player (any game mode) is riding or tracking any Sable sub-level
      */
-    public static Action decide(double velocityX, Side side, boolean everySurvivalPlayerAboard,
-            boolean playerOnThisStructure) {
+    public static Action decide(double velocityX, Side side, boolean anyPlayerOnAnySubLevel) {
         if (side == Side.EAST) {
             return velocityX < 0.0 ? Action.TURN_PLUS_X : Action.NONE;
         }
-        if (!everySurvivalPlayerAboard) {
+        if (!anyPlayerOnAnySubLevel) {
             return Action.HOLD_STILL;
-        }
-        if (!playerOnThisStructure) {
-            return Action.NONE;
         }
         return velocityX >= MIN_PLUS_X_SPEED ? Action.NONE : Action.PUSH_PLUS_X;
     }

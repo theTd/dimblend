@@ -21,6 +21,12 @@ class ChassisRailLockRulesTest {
         assertFalse(ChassisRailLockRules.lockedAxes().contains(Axis.LINEAR_X));
         assertFalse(ChassisRailLockRules.lockedAxes().contains(Axis.LINEAR_Z));
         assertFalse(ChassisRailLockRules.lockedAxes().contains(Axis.ANGULAR_Y));
+
+        // Micro-roll capable rail locks keep LINEAR_Y and ANGULAR_Z hard-locked while leaving
+        // ANGULAR_X to dynamic [0, 0] / [-2.5 deg, +2.5 deg] joint limits.
+        assertEquals(Set.of(Axis.LINEAR_Y, Axis.ANGULAR_Z), ChassisRailLockRules.microRollLockedAxes());
+        assertEquals(2.5, ChassisRailLockRules.MAX_MICRO_ROLL_DEGREES, 1.0E-9);
+        assertEquals(Math.toRadians(2.5), ChassisRailLockRules.MAX_MICRO_ROLL_RADIANS, 1.0E-9);
     }
 
     @Test
@@ -158,6 +164,11 @@ class ChassisRailLockRulesTest {
         // Non-finite inputs fail closed without triggering setFrame1 with NaN.
         assertFalse(ChassisRailLockRules.needsFrameRefresh(Double.NaN, 0.0, 0.0, 0.0));
         assertFalse(ChassisRailLockRules.needsFrameRefresh(0.0, 0.0, Double.NaN, 0.0));
+
+        // When micro-roll is open, world-frame yaw refreshes past 3.0 deg to prevent curve cross-coupling.
+        assertFalse(ChassisRailLockRules.needsFrameRefresh(0.0, 0.0, 3.0, 0.0, true));
+        assertTrue(ChassisRailLockRules.needsFrameRefresh(0.0, 0.0, Math.nextUp(3.0), 0.0, true));
+        assertFalse(ChassisRailLockRules.needsFrameRefresh(0.0, 0.0, 10.0, 0.0, false));
     }
 
     private static Context good() {

@@ -39,8 +39,15 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.endsWith(".client.SableSubLevelSpriteAnimationMixin")
                 || mixinClassName.endsWith(".client.SableSingleBlockSpriteAnimationMixin")
                 || mixinClassName.endsWith(".client.SableParticleRenderPoseMixin")
-                || mixinClassName.endsWith(".client.SableParticleEngineRenderPoseMixin")) {
+                || mixinClassName.endsWith(".client.SableParticleEngineRenderPoseMixin")
+                || mixinClassName.endsWith(".client.SableCritParticleInitMixin")) {
             return isLoaded("sable");
+        }
+        if (mixinClassName.endsWith(".compat.create.CrushingWheelControllerParticleMixin")
+                || mixinClassName.endsWith(".compat.create.CrushingWheelControllerBeParticleMixin")
+                || mixinClassName.endsWith(".compat.create.CrushingWheelKineticEffectParticleMixin")
+                || mixinClassName.endsWith(".compat.create.CrushingWheelRotationIndicatorMixin")) {
+            return isLoaded("create") && isLoaded("sable");
         }
         if (mixinClassName.endsWith(".compat.lootjournal.LootJournalPickupRenderMixin")) {
             return isLoaded("loot_journal")
@@ -71,7 +78,9 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".compat.cdg.CdgModularEngineTankCapacityMixin")
                 || mixinClassName.endsWith(".compat.cdg.EngineThrottleLockMixin")
                 || mixinClassName.endsWith(".compat.cdg.ModularEngineRedstoneMixin")
-                || mixinClassName.endsWith(".compat.cdg.CdgEngineGoggleFuelHintMixin")) {
+                || mixinClassName.endsWith(".compat.cdg.CdgEngineGoggleFuelHintMixin")
+                || mixinClassName.endsWith(".compat.cdg.OilChunksSavedDataMixin")
+                || mixinClassName.endsWith(".compat.cdg.OilScannerItemMixin")) {
             return isLoaded("createdieselgenerators");
         }
         if (mixinClassName.endsWith(".compat.cca.ElectricMotorMixin")
@@ -142,7 +151,9 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".compat.create.GameRendererDoorOverhangMixin")
                 || mixinClassName.endsWith(".compat.create.WhistleHornBlockMixin")
                 || mixinClassName.endsWith(".compat.create.WhistleHornBlockEntityMixin")
-                || mixinClassName.endsWith(".compat.create.WhistleHornClientMixin")) {
+                || mixinClassName.endsWith(".compat.create.WhistleHornClientMixin")
+                || mixinClassName.endsWith(".compat.create.DisplayLinkUnlimitedItemMixin")
+                || mixinClassName.endsWith(".compat.create.DisplayLinkUnlimitedTargetMixin")) {
             return isLoaded("create");
         }
         if (mixinClassName.endsWith(".compat.fluid.GutterOutletPrecipitationMixin")

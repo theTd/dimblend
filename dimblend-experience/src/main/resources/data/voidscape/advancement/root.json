@@ -1,0 +1,45 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "voidscape"
+    }
+  ],
+  "criteria": {
+    "in_void": {
+      "conditions": {
+        "player": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "location": {
+                "biomes": "#dimblend_experience:orig_dim/voidscape"
+              }
+            }
+          }
+        ]
+      },
+      "trigger": "minecraft:location"
+    }
+  },
+  "display": {
+    "background": "minecraft:textures/block/bedrock.png",
+    "description": {
+      "translate": "advancement.voidscape.root.desc"
+    },
+    "icon": {
+      "count": 1,
+      "id": "voidscape:voidic_crystal"
+    },
+    "title": {
+      "translate": "advancement.voidscape.root"
+    }
+  },
+  "requirements": [
+    [
+      "in_void"
+    ]
+  ],
+  "sends_telemetry_event": true
+}

@@ -1,0 +1,93 @@
+{
+  "replace": false,
+  "values": [
+    {
+      "id": "eternal_starlight:crystallized_desert",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:dark_swamp",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:ether_river",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:glimmer_scrubland",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:grim_shore",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:icy_sea",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:lucent_mycelium_isle",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:lush_shallow_sea",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:permafrost_peaks",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:scarlet_forest",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:shimmer_river",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:solaris_isles",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:spiral_kelp_forest",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:starlight_dense_forest",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:starlight_forest",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:starlight_permafrost_forest",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:starlight_taiga",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:starlit_sea",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:the_abyss",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:torreya_forest",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:umbral_plains",
+      "required": false
+    },
+    {
+      "id": "eternal_starlight:warm_shore",
+      "required": false
+    }
+  ]
+}

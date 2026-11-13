@@ -14,6 +14,7 @@ import dev.ryanhcode.sable.companion.math.Pose3dc;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import dev.ryanhcode.sable.sublevel.storage.SubLevelRemovalReason;
+import dimblend.experience.Config;
 import dimblend.experience.DimBlend;
 import dimblend.experience.chassis.ChassisBlueprint;
 import dimblend.experience.chassis.ChassisEvents;
@@ -21,6 +22,7 @@ import dimblend.experience.chassis.ChassisPose;
 import dimblend.experience.chassis.ChassisRailLockRules;
 import dimblend.experience.chassis.ChassisRegistry;
 import dimblend.experience.chassis.ChassisRegistryData;
+import dimblend.experience.compat.simurail.TrainLateralForceMath;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -33,6 +35,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -62,7 +65,10 @@ public final class ChassisRailLock {
     private static final Logger LOGGER = DimBlend.LOGGER;
     private static final Set<ConstraintJointAxis> LOCKED_AXES =
             constraintAxes(ChassisRailLockRules.lockedAxes());
+    private static final Set<ConstraintJointAxis> MICRO_ROLL_LOCKED_AXES =
+            constraintAxes(ChassisRailLockRules.microRollLockedAxes());
     private static final Quaterniond IDENTITY = new Quaterniond();
+    private static final Quaterniond ROT_Z_TO_X = new Quaterniond().rotationY(-Math.PI / 2.0);
     private static final int MAX_REMOVE_ATTEMPTS = 200;
     private static final int FAILURE_LOG_INTERVAL_TICKS = 200;
 
@@ -96,6 +102,37 @@ public final class ChassisRailLock {
         if (state != null) {
             state.stable.put(id, 0);
         }
+    }
+
+    /**
+     * 横向抖动脉冲触发时由转向架通知：在 {@code dimblend:rotating} 内为该车体临时放开
+     * {@code ±2.5°} 纵向微侧倾窗口并挂载弹簧阻尼电机，窗口结束后自动收紧回 {@code 0°} 硬锁。
+     */
+    public static void notifyLateralShakePulse(ServerSubLevel subLevel) {
+        if (subLevel == null || subLevel.isRemoved()) {
+            return;
+        }
+        ServerLevel level = subLevel.getLevel();
+        if (level == null || !ChassisEvents.inDimension(level) || !isLateralShakeActive()) {
+            return;
+        }
+        LevelState state = state(level);
+        if (state != null) {
+            state.notifyLateralShakePulse(subLevel.getUniqueId());
+        }
+    }
+
+    /** 诊断/测试用：当前车体的 {@code ±2.5°} 微侧倾窗口是否处于打开状态。 */
+    public static boolean isMicroRollOpen(ServerLevel level, UUID id) {
+        if (level == null || id == null) {
+            return false;
+        }
+        LevelState state = LEVELS.get(level);
+        if (state == null) {
+            return false;
+        }
+        ActiveLock active = state.active.get(id);
+        return active != null && active.rollOpen() && valid(active.joint());
     }
 
     /** 校准/注销时调用：立刻释放旧约束，避免继续按旧标称高度保持。 */
@@ -178,7 +215,9 @@ public final class ChassisRailLock {
             UUID id,
             GenericConstraintHandle joint,
             Vector3d frameAnchor,
-            double frameYawDegrees) {
+            double frameYawDegrees,
+            boolean microRollCapable,
+            boolean rollOpen) {
     }
 
     private record Evaluation(
@@ -187,11 +226,13 @@ public final class ChassisRailLock {
             double nominalHeight,
             Vector3d worldAnchor,
             Vector3d plotAnchor,
-            Quaterniond yawFrame,
+            Quaterniond worldFrame,
+            Quaterniond bodyFrame,
             double yawDegrees,
+            boolean microRollCapable,
             String reason) {
         static Evaluation fail(String reason) {
-            return new Evaluation(null, null, 0.0, null, null, null, 0.0, reason);
+            return new Evaluation(null, null, 0.0, null, null, null, null, 0.0, false, reason);
         }
     }
 
@@ -211,6 +252,7 @@ public final class ChassisRailLock {
         private final ServerSubLevelContainer container;
         private final Map<UUID, ActiveLock> active = new LinkedHashMap<>();
         private final Map<UUID, Integer> stable = new HashMap<>();
+        private final Map<UUID, Integer> microRollTicks = new HashMap<>();
         private boolean retired;
         private int ticks;
         private int nextScan;
@@ -242,8 +284,31 @@ public final class ChassisRailLock {
             UUID id = subLevel.getUniqueId();
             releaseInternal(id, reason.name().toLowerCase(Locale.ROOT));
             stable.remove(id);
+            microRollTicks.remove(id);
             if (reason == SubLevelRemovalReason.UNLOADED && registry().get(id) != null) {
                 markLifecycle(id, ChassisRegistry.Lifecycle.UNLOADED);
+            }
+        }
+
+        void notifyLateralShakePulse(UUID id) {
+            if (retired || id == null) {
+                return;
+            }
+            microRollTicks.put(id, TrainLateralForceMath.MICRO_ROLL_WINDOW_TICKS);
+            ActiveLock lock = active.get(id);
+            if (lock != null && lock.microRollCapable() && !lock.rollOpen() && valid(lock.joint())) {
+                try {
+                    applyOpenMicroRoll(lock.joint());
+                    active.put(id, new ActiveLock(
+                            lock.id(),
+                            lock.joint(),
+                            lock.frameAnchor(),
+                            lock.frameYawDegrees(),
+                            true,
+                            true));
+                } catch (RuntimeException failure) {
+                    logFailure("open_micro_roll", failure);
+                }
             }
         }
 
@@ -262,6 +327,7 @@ public final class ChassisRailLock {
 
         private void verifyActive() {
             ChassisRegistry registry = registry();
+            boolean shakeActive = isLateralShakeActive();
             for (Map.Entry<UUID, ActiveLock> entry : List.copyOf(active.entrySet())) {
                 UUID id = entry.getKey();
                 if (!active.containsKey(id)) {
@@ -307,18 +373,58 @@ public final class ChassisRailLock {
                     }
                     continue;
                 }
+                int remainingRollTicks = microRollTicks.getOrDefault(id, 0);
+                if (remainingRollTicks > 1) {
+                    microRollTicks.put(id, remainingRollTicks - 1);
+                } else if (remainingRollTicks == 1) {
+                    microRollTicks.remove(id);
+                }
+                boolean shouldOpenRoll = lock.microRollCapable()
+                        && remainingRollTicks > 0
+                        && shakeActive;
+                boolean rollOpen = lock.rollOpen();
+                if (lock.microRollCapable() && shouldOpenRoll != rollOpen) {
+                    try {
+                        if (shouldOpenRoll) {
+                            applyOpenMicroRoll(lock.joint());
+                        } else {
+                            applyClosedMicroRoll(lock.joint());
+                        }
+                        rollOpen = shouldOpenRoll;
+                        lock = new ActiveLock(
+                                id,
+                                lock.joint(),
+                                lock.frameAnchor(),
+                                lock.frameYawDegrees(),
+                                true,
+                                rollOpen);
+                        active.put(id, lock);
+                    } catch (RuntimeException failure) {
+                        releaseInternal(id, "toggle_micro_roll_failed");
+                        if (registered != null) {
+                            markLifecycle(id, ChassisRegistry.Lifecycle.REGISTERED);
+                        }
+                        logFailure("toggle_micro_roll", failure);
+                        continue;
+                    }
+                }
                 double dx = evaluation.worldDeck().x - lock.frameAnchor().x;
                 double dz = evaluation.worldDeck().z - lock.frameAnchor().z;
                 if (ChassisRailLockRules.needsFrameRefresh(
-                        dx, dz, evaluation.yawDegrees(), lock.frameYawDegrees())) {
+                        dx, dz, evaluation.yawDegrees(), lock.frameYawDegrees(), rollOpen)) {
                     try {
                         Vector3d refreshedAnchor = new Vector3d(
                                 evaluation.worldDeck().x,
                                 evaluation.nominalHeight(),
                                 evaluation.worldDeck().z);
-                        lock.joint().setFrame1(refreshedAnchor, evaluation.yawFrame());
+                        lock.joint().setFrame1(refreshedAnchor, evaluation.worldFrame());
                         active.put(id, new ActiveLock(
-                                id, lock.joint(), refreshedAnchor, evaluation.yawDegrees()));
+                                id,
+                                lock.joint(),
+                                refreshedAnchor,
+                                evaluation.yawDegrees(),
+                                lock.microRollCapable(),
+                                rollOpen));
                     } catch (RuntimeException failure) {
                         releaseInternal(id, "refresh_frame_failed");
                         if (registered != null) {
@@ -361,6 +467,7 @@ public final class ChassisRailLock {
                 scanCandidate(id, sub, null);
             }
             stable.keySet().removeIf(id -> !seen.contains(id));
+            microRollTicks.keySet().removeIf(id -> !seen.contains(id) && !active.containsKey(id));
         }
 
         private void scanCandidate(
@@ -393,38 +500,53 @@ public final class ChassisRailLock {
                 ServerSubLevel sub,
                 Evaluation evaluation) {
             try {
+                boolean microRollCapable = evaluation.microRollCapable();
                 GenericConstraintHandle joint = pipeline().addConstraint(null, sub,
                         new GenericConstraintConfiguration(
                                 evaluation.worldAnchor(),
                                 evaluation.plotAnchor(),
-                                evaluation.yawFrame(),
-                                IDENTITY,
-                                LOCKED_AXES));
+                                evaluation.worldFrame(),
+                                evaluation.bodyFrame(),
+                                microRollCapable ? MICRO_ROLL_LOCKED_AXES : LOCKED_AXES));
                 if (joint == null || !joint.isValid()) {
                     logFailure("create_invalid_" + id, null);
                     return;
+                }
+                boolean rollOpen = false;
+                if (microRollCapable) {
+                    rollOpen = microRollTicks.getOrDefault(id, 0) > 0 && isLateralShakeActive();
+                    if (rollOpen) {
+                        applyOpenMicroRoll(joint);
+                    } else {
+                        applyClosedMicroRoll(joint);
+                    }
                 }
                 active.put(id, new ActiveLock(
                         id,
                         joint,
                         new Vector3d(evaluation.worldAnchor()),
-                        evaluation.yawDegrees()));
+                        evaluation.yawDegrees(),
+                        microRollCapable,
+                        rollOpen));
                 if (entry != null) {
                     markLifecycle(id, ChassisRegistry.Lifecycle.ACTIVE);
                 }
                 LOGGER.info("[chassis-lock] locked {} blueprint={} deckY={} nominalY={} yaw={} "
-                                + "axes=LINEAR_X/Z + ANGULAR_Y free, LINEAR_Y + ANGULAR_X/Z locked",
+                                + "microRollCapable={} rollOpen={}",
                         id,
                         entry != null ? entry.blueprint() : "UNREGISTERED",
                         evaluation.worldDeck().y,
                         evaluation.nominalHeight(),
-                        evaluation.yawDegrees());
+                        evaluation.yawDegrees(),
+                        microRollCapable,
+                        rollOpen);
             } catch (RuntimeException failure) {
                 logFailure("create", failure);
             }
         }
 
         private void releaseInternal(UUID id, String reason) {
+            microRollTicks.remove(id);
             ActiveLock lock = active.remove(id);
             if (lock == null) {
                 return;
@@ -440,6 +562,7 @@ public final class ChassisRailLock {
             }
             active.clear();
             stable.clear();
+            microRollTicks.clear();
             // The body/scene is going away; do not keep retrying handles that belonged
             // to this retired level state.
             PENDING.entrySet().removeIf(entry -> entry.getValue().state == this);
@@ -521,6 +644,8 @@ public final class ChassisRailLock {
             int tracked = 0;
             boolean derailed = false;
             boolean bogeyLayoutValid = true;
+            Direction.Axis longitudinalAxis = Direction.Axis.X;
+            boolean singleLongitudinalAxis = true;
 
             if (entry != null && ChassisRailLockRules.standardBlueprint(entry.blueprint())) {
                 nominalHeight = entry.nominalHeight();
@@ -529,11 +654,18 @@ public final class ChassisRailLock {
                 Set<BlockPos> expected = expectedBogeys(entry.blueprint(), plotCenterBlock);
                 Set<BlockPos> actual = new HashSet<>();
                 boolean allEnabled = true;
+                Direction.Axis seenAxis = null;
                 for (var actor : sub.getPlot().getBlockEntityActors()) {
                     if (!(actor instanceof PhysicsBogeyBlockEntity bogey)) {
                         continue;
                     }
                     actual.add(bogey.getBlockPos().immutable());
+                    Direction.Axis axis = bogey.getFacing().getAxis();
+                    if (seenAxis == null) {
+                        seenAxis = axis;
+                    } else if (seenAxis != axis) {
+                        singleLongitudinalAxis = false;
+                    }
                     if (bogey.hasTrack()) {
                         tracked++;
                     }
@@ -543,6 +675,9 @@ public final class ChassisRailLock {
                     if (!bogey.getOptions().enabled) {
                         allEnabled = false;
                     }
+                }
+                if (seenAxis != null) {
+                    longitudinalAxis = seenAxis;
                 }
                 bogeyLayoutValid = !expected.isEmpty() && actual.equals(expected) && allEnabled;
                 bogeyPositions = expected;
@@ -554,6 +689,7 @@ public final class ChassisRailLock {
                 Set<BlockPos> enabledPositions = new HashSet<>();
                 Integer bogeyPlotY = null;
                 boolean consistentY = true;
+                Direction.Axis seenAxis = null;
                 for (var actor : sub.getPlot().getBlockEntityActors()) {
                     if (!(actor instanceof PhysicsBogeyBlockEntity bogey)
                             || !bogey.getOptions().enabled) {
@@ -561,6 +697,12 @@ public final class ChassisRailLock {
                     }
                     BlockPos pos = bogey.getBlockPos().immutable();
                     enabledPositions.add(pos);
+                    Direction.Axis axis = bogey.getFacing().getAxis();
+                    if (seenAxis == null) {
+                        seenAxis = axis;
+                    } else if (seenAxis != axis) {
+                        singleLongitudinalAxis = false;
+                    }
                     if (bogeyPlotY == null) {
                         bogeyPlotY = pos.getY();
                     } else if (bogeyPlotY != pos.getY()) {
@@ -572,6 +714,9 @@ public final class ChassisRailLock {
                     if (bogey.isDerailed()) {
                         derailed = true;
                     }
+                }
+                if (seenAxis != null) {
+                    longitudinalAxis = seenAxis;
                 }
                 if (enabledPositions.isEmpty()) {
                     return Evaluation.fail("no_enabled_bogeys");
@@ -619,26 +764,31 @@ public final class ChassisRailLock {
                     angles.rollDegrees());
 
             if (!bogeyLayoutValid) {
-                return new Evaluation(context, worldDeck, nominalHeight, null, null, null,
-                        angles.yawDegrees(), "nonstandard_bogeys");
+                return new Evaluation(context, worldDeck, nominalHeight, null, null, null, null,
+                        angles.yawDegrees(), false, "nonstandard_bogeys");
             }
             if (tracked != expectedCount) {
-                return new Evaluation(context, worldDeck, nominalHeight, null, null, null,
-                        angles.yawDegrees(), "bogey_off_track");
+                return new Evaluation(context, worldDeck, nominalHeight, null, null, null, null,
+                        angles.yawDegrees(), false, "bogey_off_track");
             }
             if (derailed) {
-                return new Evaluation(context, worldDeck, nominalHeight, null, null, null,
-                        angles.yawDegrees(), "derailed");
+                return new Evaluation(context, worldDeck, nominalHeight, null, null, null, null,
+                        angles.yawDegrees(), false, "derailed");
             }
             if (!track.chunksReady()) {
-                return new Evaluation(context, worldDeck, nominalHeight, null, null, null,
-                        angles.yawDegrees(), "chunk_not_ready");
+                return new Evaluation(context, worldDeck, nominalHeight, null, null, null, null,
+                        angles.yawDegrees(), false, "chunk_not_ready");
             }
 
+            boolean microRollCapable = singleLongitudinalAxis
+                    && (longitudinalAxis == Direction.Axis.X || longitudinalAxis == Direction.Axis.Z);
+            Quaterniond bodyFrame = microRollCapable && longitudinalAxis == Direction.Axis.Z
+                    ? new Quaterniond(ROT_Z_TO_X)
+                    : new Quaterniond(IDENTITY);
             Vector3d worldAnchor = new Vector3d(worldDeck.x, nominalHeight, worldDeck.z);
-            Quaterniond yawFrame = ChassisPose.yawFrame(pose.orientation());
+            Quaterniond worldFrame = ChassisPose.yawFrame(pose.orientation()).mul(bodyFrame);
             return new Evaluation(context, worldDeck, nominalHeight, worldAnchor, plotDeck,
-                    yawFrame, angles.yawDegrees(), "ok");
+                    worldFrame, bodyFrame, angles.yawDegrees(), microRollCapable, "ok");
         }
 
         private Set<BlockPos> expectedBogeys(ChassisBlueprint blueprint, BlockPos center) {
@@ -709,6 +859,41 @@ public final class ChassisRailLock {
             mapped.add(ConstraintJointAxis.valueOf(axis.name()));
         }
         return Collections.unmodifiableSet(mapped);
+    }
+
+    private static boolean isLateralShakeActive() {
+        if (!Config.isLoaded()) {
+            return false;
+        }
+        int interval = TrainLateralForceMath.intervalTicks(Config.TRAIN_SHAKE_INTERVAL_SECONDS.get());
+        return Config.TRAIN_LATERAL_FORCE.get()
+                && interval > 0
+                && Config.TRAIN_SHAKE_FORCE_PN.get() > 0;
+    }
+
+    private static void applyOpenMicroRoll(GenericConstraintHandle joint) {
+        joint.setLimit(
+                ConstraintJointAxis.ANGULAR_X,
+                -ChassisRailLockRules.MAX_MICRO_ROLL_RADIANS,
+                ChassisRailLockRules.MAX_MICRO_ROLL_RADIANS);
+        joint.setMotor(
+                ConstraintJointAxis.ANGULAR_X,
+                0.0,
+                TrainLateralForceMath.MICRO_ROLL_MOTOR_STIFFNESS,
+                TrainLateralForceMath.MICRO_ROLL_MOTOR_DAMPING,
+                false,
+                0.0);
+    }
+
+    private static void applyClosedMicroRoll(GenericConstraintHandle joint) {
+        joint.setLimit(ConstraintJointAxis.ANGULAR_X, 0.0, 0.0);
+        joint.setMotor(
+                ConstraintJointAxis.ANGULAR_X,
+                0.0,
+                TrainLateralForceMath.IDLE_ROLL_MOTOR_STIFFNESS,
+                TrainLateralForceMath.IDLE_ROLL_MOTOR_DAMPING,
+                false,
+                0.0);
     }
 
     private static Vector3d blockCenter(BlockPos pos) {

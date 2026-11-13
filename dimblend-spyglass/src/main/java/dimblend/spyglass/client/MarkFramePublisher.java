@@ -21,7 +21,7 @@ import org.joml.Matrix4f;
  * <p>Every level pass replaces the previous frame's hand-off, also when the player is not scoping, so
  * a HUD layer can never read stale matrices. While the player <b>is</b> scoping with a usable terrain
  * fog, the saved selection is checked against the live position first: it is dropped only when its
- * saved union-bounds centre truly left the {@code [128, 1024]} ring. Turning, zooming, an overlap
+ * saved union-bounds centre truly left the {@code [64, 1024]} ring. Turning, zooming, an overlap
  * that hides the mark or an empty snapshot never reaches that check. Lowering the spyglass returns
  * before it, which is what keeps the selection.
  */

@@ -1,0 +1,65 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "kaleidoscope_dim_wine"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "the_bumblezone"
+    }
+  ],
+  "parent": "kaleidoscope_dim_wine:the_bumblezone_enter",
+  "criteria": {
+    "has_the_bumblezone_honey_bucket": {
+      "conditions": {
+        "items": [
+          {
+            "items": "the_bumblezone:honey_bucket"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_the_bumblezone_royal_jelly_bucket": {
+      "conditions": {
+        "items": [
+          {
+            "items": "the_bumblezone:royal_jelly_bucket"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_the_bumblezone_sugar_water_bucket": {
+      "conditions": {
+        "items": [
+          {
+            "items": "the_bumblezone:sugar_water_bucket"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    }
+  },
+  "display": {
+    "description": {
+      "translate": "advancements.kaleidoscope_dim_wine.the_bumblezone_sugar_water_bucket.desc"
+    },
+    "icon": {
+      "count": 1,
+      "id": "the_bumblezone:sugar_water_bucket"
+    },
+    "title": {
+      "translate": "advancements.kaleidoscope_dim_wine.the_bumblezone_sugar_water_bucket.title"
+    }
+  },
+  "requirements": [
+    [
+      "has_the_bumblezone_sugar_water_bucket",
+      "has_the_bumblezone_honey_bucket",
+      "has_the_bumblezone_royal_jelly_bucket"
+    ]
+  ],
+  "sends_telemetry_event": true
+}
