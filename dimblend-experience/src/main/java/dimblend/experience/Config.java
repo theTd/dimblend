@@ -220,8 +220,8 @@ public final class Config {
             .defineInRange("trainDeadmanRadius", 32.0D, 8.0D, 128.0D);
 
     public static final ModConfigSpec.BooleanValue TRAIN_LATERAL_FORCE = BUILDER
-            .comment("E 板块 E8：车架速度大于 4 m/s 时以 速度/20 的概率施加横向力；默认每 2 秒抽签、1200 pN，可分别调节"
-                    + "（垂直车架朝向、左右随机、持续 10 tick，作用于车架位置）。全维度；需要 Simurail 在场")
+            .comment("E 板块 E8：车架速度大于 4 m/s 时以 速度/20 的概率施加横向力；每个 Sable 结构每轮仅随机"
+                    + "挑选一个高速启用车架抽签（默认每 2 秒、200 pN、范围 0-2000，持续 10 tick）。全维度；需要 Simurail 在场")
             .define("trainLateralForce", true);
 
     // 键名由 trainFixedBrakeSignal（v1.14 布尔：任意正强度一律按 1 级计）改为 trainBrakeSignalCap：
@@ -236,9 +236,11 @@ public final class Config {
             .comment("Random train shaking draw interval in seconds; default 2.0. 0 disables draws, otherwise 0.1-60.0 in steps of 0.1.")
             .defineInRange("trainShakeIntervalSeconds", 2.0D, 0.0D, 60.0D);
 
+    // 键名由 trainShakeForcePn（旧默认 1200、旧范围 0-10000）改为 trainLateralShakeForcePn：
+    // 老配置中保存的 0 或 1200 仍落在 [0, 2000] 内，NeoForge 会保留旧值不套用新默认；改名后自动清除旧键并应用默认 200
     public static final ModConfigSpec.IntValue TRAIN_SHAKE_FORCE_PN = BUILDER
-            .comment("Additional lateral force per random train shaking in pN; default 1200. Range 0-10000, step 1.")
-            .defineInRange("trainShakeForcePn", 1200, 0, 10000);
+            .comment("Additional lateral force per random train shaking in pN; default 200. Range 0-2000, step 1.")
+            .defineInRange("trainLateralShakeForcePn", 200, 0, 2000);
 
     public static final ModConfigSpec.BooleanValue VILLAGER_MASTER = BUILDER
             .comment("G 板块 G1：旋转维度内村民首次获得职业时定大师并补全全部交易，每条只能成交一次、不补货，掉工作站点不掉职业；"

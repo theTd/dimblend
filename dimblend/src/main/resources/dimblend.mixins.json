@@ -28,6 +28,7 @@
     "FlowingFluidSpreadInvoker",
     "CorridorLavaChunkPyramidMixin",
     "CorridorLavaChunkStatusTasksMixin",
+    "StationDepotChunkStatusTasksMixin",
     "LavaFluidUltrawarmMixin",
     "LiquidBlockLavaFlowMixin",
     "DistanceManagerAccessor",

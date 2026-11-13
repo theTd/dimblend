@@ -14,8 +14,8 @@ Missing optional mods leave their controls disabled.
 
 | Setting | Default | Valid values | Owner |
 | --- | --- | --- | --- |
-| Train shaking draw interval | 2.0 seconds | 0 = disabled; 0.1-60.0, step 0.1 | experience |
-| Train additional lateral force | 1200 pN | 0-10000, step 1 | experience |
+| Train shaking draw interval | 2.0 seconds | 0 = disabled; 0.1-60.0, step 0.1 (picks one random bogey per Sable) | experience |
+| Train additional lateral force | 200 pN | 0-2000, step 1 | experience |
 | Bogie redstone signal cap | 1 | 1-15, step 1; signals above the cap are clamped to it, 15 restores vanilla scaling | experience |
 | Brake sound speed threshold | 2.0 m/s | 0.0-64.0 m/s, step 0.1; brake sound plays only above the threshold, release sound is not gated | experience |
 | Deadman brake radius | 32 | 8-128 blocks, step 1; rotating only: a moving consist with nobody within this radius of its nearest bogie force-brakes that consist; any raw redstone level change on any bogie releases its entire connected consist | experience |

@@ -645,19 +645,19 @@
   fail-open。旧键 `offStructureTeleport` 作废自动清除。
   验证：编译及无人值守/速度门槛局部单测；用户已确认此前距离刹车实测正确；新的信号等级变化整列解除、他列隔离与粒子同步待实机验证。
   连接语义仅覆盖 Sable 同车厢及 Simurail 自动车钩；其他模组的连接器不自动视为同列。
-- E8 车架随机横向力（2026-09-24 新条目，全维度，服务端）：逐车架（转向架 BE）独立计时——
-  |visualSpeed| &gt; 4 m/s 期间每隔固定 2 秒（40 tick）判定一次，以
-  min(速度/20, 1) 的概率触发；触发后对车架所在子层级施加 1200 pN 力，方向为车架局部
-  `getLateral()`（水平、垂直车架朝向），左右随机，持续 10 tick（0.5 秒，总冲量 600 pN·s；2026-09-24 用户由 12000 改为 1200）。
-  作用点为车架方块中心（plot 局部坐标，偏离质心，带出摇摆/侧倾）。计时在服务端 `tick()`，
-  速度不大于 4 m/s 即撤销计时、再次超速重新开始固定 2 秒计时；进行中的 10 tick 不因降速中断。
-  施力在 `sable$physicsTick` 每物理子步按 `1200 × timeStep` 记入本模组 sable 力分组
+- E8 车架随机横向力（2026-09-24 新条目，2026-11-13 规则修订，全维度，服务端）：按 Sable 结构（`ServerSubLevel`）统一计时——
+  结构内存在 |visualSpeed| &gt; 4 m/s 的启用车架期间，每隔固定 2 秒（40 tick）从该结构所有 &gt;4 m/s 启用车架中仅随机挑选 **1 个** 车架抽取一次，以
+  min(选中车架速度/20, 1) 的概率触发；触发后仅对该选中车架施力（默认 200 pN，范围 0–2000 pN，键名 `trainLateralShakeForcePn`），方向为车架局部
+  `getLateral()`（水平、垂直车架朝向），左右随机，持续 10 tick（0.5 秒，默认总冲量 100 pN·s）。
+  作用点为选中车架方块中心（plot 局部坐标，偏离质心，带出摇摆/侧倾）。计时在服务端主线程 `TrainLateralShakeScheduler` 推进，
+  结构内无 &gt;4 m/s 车架即清空计时、再次超速重新开始固定 2 秒计时；进行中的 10 tick 不因降速中断，且触发/持续期间在服务端主线程通知 `ChassisRailLock.notifyLateralShakePulse`。
+  施力在 `sable$physicsTick` 每物理子步按质量归一化冲量记入本模组 sable 力分组
   `dimblend_experience:lateral_force`（`QueuedForceGroup.applyAndRecordPointForce`，plot 局部点 +
   局部冲量，螺旋桨/simurail 牵引同型；sable 同子步统一 applyQueuedForces），Simulated 力示意图
   可按该分组（“横向力”，默认显示）绘制；分组注册条件与 mixin 一致（simurail 在场）；
   pN 为 sable 力单位（`BlockEntityPropeller#getThrust` 同单位）。未组装（不在子层级）不计时。
-  实现 `PhysicsBogeyLateralForceMixin` + 纯函数 `TrainLateralForceMath`；
-  新开关 `trainLateralForce`（默认开，热关闭下一 tick 清空计时与进行中施力）
+  实现 `PhysicsBogeyLateralForceMixin` + `TrainLateralShakeScheduler` + 纯函数 `TrainLateralForceMath`；
+  开关 `trainLateralForce`（默认开，热关闭下一 tick 清空计时与进行中施力）
 - E9 转向架红石信号强度上限（2026-10-10 用户口径，2026-10-12 v1.17 调整为上限可调，全维度）：转向架
   收到的红石信号强度不高于上限的原样生效，超过上限的一律压到上限；原行为为 `getControlStrength()D` =
   信号/15 随强度线性（上限 15 即等效关闭、恢复原版）。实现

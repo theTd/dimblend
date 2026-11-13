@@ -5,6 +5,8 @@ import dimblend.worldgen.GeodeRules;
 import dimblend.worldgen.OakTrackCorridor;
 import dimblend.worldgen.OrePileRules;
 import dimblend.worldgen.RegionBoundaryNoStructureZone;
+import dimblend.worldgen.StationDepot;
+import dimblend.worldgen.StationDepotGeometry;
 import dimblend.worldgen.TreeLikeFeatures;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
@@ -65,13 +67,14 @@ public abstract class ConfiguredFeatureMixin {
             return;
         }
         int dz = Math.abs(pos.getZ() - OakTrackCorridor.CORRIDOR_Z);
-        if (dz > OakTrackCorridor.VAULT_RADIUS) {
+        if (dz > StationDepotGeometry.PLATFORM_HALF_WIDTH) {
             return;
         }
         if (!TreeLikeFeatures.isTreeLike(feature())) {
             return;
         }
-        if (OakTrackCorridor.blocksTreeLikeOrigin(level, pos)) {
+        if (OakTrackCorridor.blocksTreeLikeOrigin(level, pos)
+                || StationDepot.blocksTreeLikeOrigin(level, pos)) {
             cir.setReturnValue(false);
         }
     }

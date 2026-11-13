@@ -705,6 +705,52 @@ class RecipeEditRulesTest {
         }
     }
 
+    /**
+     * 2026-11-13：哨戒动力臂的无序合成配方在保留原两项材料的基础上，追加 电子管 x1 + 深渊之心 x1；
+     * 反向拆解配方 {@code sentrymechanicalarm:mechanical_arm_from_sentry} 不受影响。
+     */
+    @Test
+    void sentryMechanicalArmAddsElectronTubeAndHeartOfTheDeep() {
+        ResourceLocation recipeId = ResourceLocation.parse("sentrymechanicalarm:sentry_mechanical_arm");
+        ResourceLocation recycleId = ResourceLocation.parse("sentrymechanicalarm:mechanical_arm_from_sentry");
+        RecipeEdit.ModifyRecipeFields rule = fieldRuleById(recipeId);
+        assertNotNull(rule, "缺少对 sentrymechanicalarm:sentry_mechanical_arm 的字段改写规则");
+        assertEquals(Set.of(recipeId), rule.recipeIds(), "规则必须只命中 sentrymechanicalarm:sentry_mechanical_arm");
+        assertNull(fieldRuleById(recycleId), "反向拆解配方不得受本次改写影响");
+
+        JsonObject fixture = json("""
+                {
+                  "type": "minecraft:crafting_shapeless",
+                  "category": "misc",
+                  "ingredients": [
+                    { "item": "create:mechanical_arm" },
+                    { "item": "create:precision_mechanism" }
+                  ],
+                  "result": {
+                    "count": 1,
+                    "id": "sentrymechanicalarm:sentry_mechanical_arm"
+                  }
+                }
+                """).getAsJsonObject();
+
+        JsonObject edited = applyFieldEdits(fixture, rule.fieldEdits());
+        assertEquals("minecraft:crafting_shapeless", edited.get("type").getAsString(),
+                "无序配方类型必须保持不变");
+        assertResultUnchanged(fixture, edited);
+
+        List<String> ingredients = new ArrayList<>();
+        for (JsonElement element : edited.getAsJsonArray("ingredients")) {
+            ingredients.add(describeIngredient(element));
+        }
+        assertEquals(List.of(
+                "create:mechanical_arm",
+                "create:precision_mechanism",
+                "create:electron_tube",
+                "deeperdarker:heart_of_the_deep"),
+                ingredients,
+                "哨戒动力臂无序合成必须包含 动力臂/精密构件/电子管/深渊之心 各 1 个");
+    }
+
     /** 取出命中给定配方 ID 的字段改写规则；不存在即断言失败。 */
     private static RecipeEdit.FieldModify fieldRuleFor(List<RecipeEdit> edits, ResourceLocation recipeId) {
         for (RecipeEdit edit : edits) {

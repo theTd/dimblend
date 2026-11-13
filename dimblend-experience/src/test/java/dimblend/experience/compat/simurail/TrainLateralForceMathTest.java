@@ -2,8 +2,13 @@ package dimblend.experience.compat.simurail;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 /** E8 车架随机横向力：概率、间隔、质量归一化与水平蛇行回中弹簧（纯函数，见 {@link TrainLateralForceMath}）。 */
@@ -92,14 +97,102 @@ class TrainLateralForceMathTest {
 
     @Test
     void totalImpulseOverPushIsIndependentOfSubsteps() {
-        // 10 tick = 0.5 秒，总冲量 1200 × 0.5 = 600，与每 tick 物理子步数无关
+        // 默认 200 pN，持续 10 tick = 0.5 秒，总冲量 200 × 0.5 = 100，与每 tick 物理子步数无关
+        assertEquals(200.0D, TrainLateralForceMath.FORCE_PN, 1.0E-9);
         for (int substeps : new int[] {1, 2, 4}) {
             double step = 0.05D / substeps;
             double total = 0.0D;
             for (int i = 0; i < TrainLateralForceMath.PUSH_DURATION_TICKS * substeps; i++) {
                 total += TrainLateralForceMath.impulsePerStep(step);
             }
-            assertEquals(600.0D, total, 1.0E-6);
+            assertEquals(100.0D, total, 1.0E-6);
         }
+    }
+
+    @Test
+    void subLevelDrawPicksSingleFastBogeyPerIntervalAndResetsWhenSlowOrReconfigured() {
+        var state = new TrainLateralForceMath.SubLevelDrawState();
+        double[] sixFast = {12.0D, 12.0D, 12.0D, 12.0D, 12.0D, 12.0D};
+        AtomicInteger selectorCalls = new AtomicInteger();
+        AtomicInteger rollCalls = new AtomicInteger();
+        List<Integer> observedBounds = new ArrayList<>();
+
+        for (int tick = 1; tick < 40; tick++) {
+            assertNull(TrainLateralForceMath.stepSubLevelDraw(
+                    state,
+                    40,
+                    sixFast,
+                    bound -> {
+                        selectorCalls.incrementAndGet();
+                        return 0;
+                    },
+                    () -> {
+                        rollCalls.incrementAndGet();
+                        return 0.0D;
+                    },
+                    () -> true));
+        }
+        assertEquals(0, selectorCalls.get());
+        assertEquals(0, rollCalls.get());
+
+        // 第 40 tick 仅从 6 个车架中随机挑 1 个并抽签 1 次
+        TrainLateralForceMath.DrawOutcome hit = TrainLateralForceMath.stepSubLevelDraw(
+                state,
+                40,
+                sixFast,
+                bound -> {
+                    selectorCalls.incrementAndGet();
+                    observedBounds.add(bound);
+                    return 4;
+                },
+                () -> {
+                    rollCalls.incrementAndGet();
+                    return 0.2D;
+                },
+                () -> false);
+        assertNotNull(hit);
+        assertEquals(4, hit.candidateIndex());
+        assertEquals(-1.0D, hit.sign(), 1.0E-9);
+        assertEquals(1, selectorCalls.get());
+        assertEquals(1, rollCalls.get());
+        assertEquals(List.of(6), observedBounds);
+        assertEquals(40, state.countdown());
+
+        // 混合速度：<= 4 m/s 的车架不参与抽选，仅从 2 个高速车架（原下标 1 与 3）中挑 1 个并用其速度判定概率
+        double[] mixed = {2.0D, 10.0D, 4.0D, 16.0D};
+        var mixedState = new TrainLateralForceMath.SubLevelDrawState();
+        TrainLateralForceMath.DrawOutcome miss = TrainLateralForceMath.stepSubLevelDraw(
+                mixedState,
+                1,
+                mixed,
+                bound -> {
+                    assertEquals(2, bound);
+                    return 0; // 第 0 个高速车架即 mixed[1]（10 m/s -> 0.5 概率）
+                },
+                () -> 0.6D, // < 0.8（mixed[3]），但 >= 0.5（mixed[1]），按选中的 mixed[1] 不命中
+                () -> true);
+        assertNull(miss);
+
+        TrainLateralForceMath.DrawOutcome fastPick = TrainLateralForceMath.stepSubLevelDraw(
+                mixedState,
+                1,
+                mixed,
+                bound -> {
+                    assertEquals(2, bound);
+                    return 1; // 第 1 个高速车架即 mixed[3]（16 m/s -> 0.8 概率）
+                },
+                () -> 0.6D,
+                () -> true);
+        assertNotNull(fastPick);
+        assertEquals(3, fastPick.candidateIndex());
+        assertEquals(1.0D, fastPick.sign(), 1.0E-9);
+
+        // 减速至 <= 4 m/s 或间隔配置改变时清空倒计时，恢复后重新计满完整间隔
+        TrainLateralForceMath.stepSubLevelDraw(state, 40, new double[] {4.0D, 3.0D}, b -> 0, () -> 0.0D, () -> true);
+        assertEquals(-1, state.countdown());
+        assertNull(TrainLateralForceMath.stepSubLevelDraw(state, 5, sixFast, b -> 0, () -> 0.0D, () -> true));
+        assertEquals(4, state.countdown());
+        assertNull(TrainLateralForceMath.stepSubLevelDraw(state, 10, sixFast, b -> 0, () -> 0.0D, () -> true));
+        assertEquals(9, state.countdown());
     }
 }

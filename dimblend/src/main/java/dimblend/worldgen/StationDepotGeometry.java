@@ -168,6 +168,36 @@ public final class StationDepotGeometry {
         return boundaryX + CAVERN_MAX_DX;
     }
 
+    /**
+     * Vertical depth below the deck / rail floor where a tree or giant mushroom origin
+     * would still lose its trunk/support column when the depot hall is carved.
+     */
+    private static final int TREE_UNDERMINED_DEPTH = 48;
+
+    /**
+     * True when a tree/fungus feature rooted at {@code (x, TRACK_Y + dy, z)} lies inside a
+     * depot's full footprint ({@code |z| <= PLATFORM_HALF_WIDTH}) within the vertical range
+     * where post-decoration depot carving would sever its trunk or root support.
+     */
+    public static boolean blocksTreeLikeOrigin(
+            int x,
+            int dy,
+            int z,
+            int bandSize,
+            IntFunction<String> laneNameOfRegion
+    ) {
+        if (Math.abs(z) > PLATFORM_HALF_WIDTH || dy < -TREE_UNDERMINED_DEPTH || dy > CAVERN_APEX_DY + 1) {
+            return false;
+        }
+        for (int boundary : boundariesTouchingChunkX(bandSize, x, x)) {
+            if (buildsDepot(boundary, bandSize, laneNameOfRegion)
+                    && x >= minBlockX(boundary) && x <= maxBlockX(boundary)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Block X on the main line where both curves meet and the switch stands. */
     public static int junctionX(int boundaryX) {
         return boundaryX + JUNCTION_DX;
