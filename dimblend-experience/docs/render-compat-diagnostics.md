@@ -99,6 +99,7 @@
 |---|---|---|
 | `-Ddimblend.sable.particle.diag=true` | 关 | 子层级粒子渲染位姿校正的采样：全局 2 秒最多一行，记录本帧被平移的粒子数与本帧最大位移（格）。默认关闭时不进方法。 |
 | `-Ddimblend.sable.animation.diag=true` | 关 | 子层级动画补标记的采样：**全局 2 秒最多一行**（不分区块、不按刻配额，没有每刻条数上限）；记录区块 origin、`compiled` 身份、两级代次、贴图名、贴图实例身份、**当前图集同名贴图实例身份**、`is_current`、`mark_call`、`active` 回读。状态级另有 24 条上限；重载代次推进单独一行。 |
+| `-Ddimblend.lootjournal.icon.diag=true` | 关 | Loot Journal 拾取 HUD 组件的入口采样：全局 2 秒最多一行 `[loot-journal-icon]`；记录 `GuiGraphics#bufferSource` 的真实实现类（`HudBatchingBufferSource` 是否在场）、`GL_DEPTH_TEST`、shader color、pose 累计 z、`options.hideGui`。只读，不换 source、不改 GL 状态。 |
 
 采样只读公开信息（`System.identityHashCode`、`sprite.contents().name()`、
 `atlas.getSprite(name) == sprite`、`sodium$isActive()`），**不改变任何 GL / 渲染状态**。
@@ -160,31 +161,9 @@
 实机判据：静止车最大位移≈0；行驶/转弯时粒子不再相对磨盘前移或抖动；
 未被追踪的地面粒子行为不变。
 
-### 3.2 Loot Journal 图标缺失——现场证据已核，仍无法复现（不改产品代码）
-**安装与配置事实（2026-11-11 复核，推翻「缺 ICON」的猜测）**
-- 实例装的是 `mods/loot_journal-neoforge-1.21.1-6.2.2.jar`；配置在
-  `config/obscuria/loot_journal-client.toml`（不是 `config/loot_journal*.toml`），
-  第 44 行 `elementOrder = "COUNT 4px NAME 4px ICON 4px TOTAL"`，**ICON 在位**；
-  `scale=1.0`、`activeTheme="Classic"`、`enableLootJournal/showItemPickups=true`。
-- 主题 Classic 的图标是 `{"type":"simple","padding_left":6,...}`
-  （`assets/loot_journal/pickups/styles/classic/common.json`）；并且 `PickupStyle.DEFAULT`
-  也用 `SimpleIcon.DEFAULT`，所以**主题解析失败也不会只剩文字**。
-- 事件栈：`LootJournalHelper.java:54` 用 `itemEntity.getItem().copyWithCount(packet.getAmount())`，
-  不是被拾取流程 shrink 掉的同一个 stack；`ItemPickupEvent#renderIcon` →
-  `GuiGraphics#renderFakeItem(stack,-8,-8)`（vanilla `GuiGraphics.java:792–797`，`isEmpty()` 才跳过）。
-- 上次实机 `logs/latest.log` 里没有 `loot_journal` 的资源加载报错或异常行。
-
-**结论**：按代码与配置，ICON 应当被绘制；「图标消失」只可能来自绘制期状态
-（shader color alpha / depth / scissor / pose）或模型解析，而这三者本轮**没有任何现场证据**。
-
-**阻塞（准确）**：没有能证明 HUD 的截图。桥的 `screenshot` 取主渲染目标、发生在
-`gui.render` 之前，`E:\misc\TrainTripWorld\screenshots\nine_loot_*.png` 三张都只有世界没有 HUD，
-所以「文字在、图标不在」既未复现也未排除。
-
-**下一步（需要一次有效实机，需新增共享注册，未在本轮擅自加）**：在
-`dev.obscuria.lootjournal.client.events.ItemPickupEvent#renderIcon` 的 HEAD 软门控采样一次：
-stack 是否为空、`RenderSystem.getShaderColor()` 的 alpha、`GL_DEPTH_TEST`/`GL_BLEND`/`GL_SCISSOR_TEST`
-状态、当前 pose 的 z，以及 `guiScale`。**不改用户配置、不按猜测改 depth**。
+### 3.2 Loot Journal 图标缺失——已定位到玩家端 `elementOrder` 拼写错字触发 `[NAME]` 回退并修复
+- **真实根因（2026-11-14 玩家实际配置 + 字节码闭环）**：开发实例 `E:\misc\TrainTripWorld\config\obscuria\loot_journal-client.toml` 是合法默认串 `"COUNT 4px NAME 4px ICON 4px TOTAL"`（因此本机无法复现），而玩家 PCL 实例传来的 `loot_journal-client.toml` 第 44 行为 `elementOrder = "COUNT 4px NAME 4px ICON 4px TOTA"`（漏写末尾 `L`）。`LayoutParser#createElement("TOTA")` 抛 `IllegalArgumentException`，`ConfigCache#refresh` 捕获后回退到 `PickupLayout.DEFAULT`，而上游 `PickupLayout.DEFAULT` 实为 `new PickupLayout(List.of(NameToken.SHARED))`（仅含 `NAME`，`ICON` 被静默丢弃）。
+- **修法**：`LootJournalLayoutSanitizerMixin` 在 `LayoutParser#normalize` 入口通过 `LootJournalLayoutSanitizer` 自动修复唯一前缀错字（如 `TOTA -> TOTAL`）并隔离非法词元；同时移除已证伪的 `LootJournalHudCompat`（换 `bufferSource`），仅保留默认关闭的只读采样开关 `-Ddimblend.lootjournal.icon.diag=true`。
 
 ### 3.3 明确不做
 - 坐标源：Sable `RenderSection` origin 是 plot 全局存储坐标，父 `ClientLevel` 被
@@ -210,6 +189,12 @@ stack 是否为空、`RenderSystem.getShaderColor()` 的 alpha、`GL_DEPTH_TEST`
 - `SableSubLevelSpriteAnimationMixin` 的手工预检**未通过**：报
   `dev.ryanhcode.sable.companion.ClientSubLevelAccess` 找不到——该类型在 sable 的 jarjar 内层，
   手工 classpath 无法拼齐。**交整合 owner 用 Gradle 正规 classpath 编译判定**，本轮不自行排错。
+- **2026-11-14（粉碎轮粒子坐标定点化 & Loot Journal 布局容错）**：新增普通包工具类
+  `dimblend.experience.compat.create.CrushingParticleMath` 与 `CrushingWheelControllerParticleMixin` /
+  `CrushingWheelControllerBeParticleMixin` 的 `double` 定点分支；删除 `LootJournalHudCompat` 与
+  `GuiGraphicsBufferSourceAccessor`，新增 `LootJournalIconDiagnostics`、`IconSamplingWindow`、
+  `LootJournalLayoutSanitizer` 及 `LootJournalLayoutSanitizerMixin`（登记入 `dimblend_experience.mixins.json`
+  `client` 并在 `DimBlendMixinPlugin` 按 `isLoaded("loot_journal") && classPresent("...LayoutParser")` 门控）。
 
 ## 5. 只读取证脚本（本机静态就绪，实机执行属 live）
 

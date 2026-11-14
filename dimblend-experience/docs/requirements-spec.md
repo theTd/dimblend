@@ -1756,11 +1756,17 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
 - 实现：`ChassisRailLock`、`ChassisRailLockRules`。
 - 验证：`ChassisRailLockRulesTest` 单测 + `-PwithChassis` 旋转维度 GameTest 20/20 全绿 + TrainTripWorld 实机（施加 `dv=(3.5,-5.0,0)` 与 `dw=(0.3,0,-0.3)` 跑 15 tick：`delta_x=+3.658`、`delta_y=0.0`、`pitch=0.0°`、`roll=0.0°`、`MassData` 前后恒为 `114.5`，车轮紧贴轨面不穿轨）。
 
-### 18.3 Loot Journal 拾取图标与 ImmediatelyFast HUD 批处理兼容（`loot-journal-icon`）
+### 18.3 Loot Journal 拾取图标：`elementOrder` 错字回退缺陷修复与只读诊断（`loot-journal-icon`）
 
-- 根因：整合包开启 `ImmediatelyFast` `hud_batching: true` 时，`GuiGraphics#bufferSource` 被替换为批处理缓冲源，Loot Journal `PickupComponent#render` 内嵌的物品图标绘制与 HUD 批处理提交序及 `GL_DEPTH_TEST`/混合状态冲突，导致文字显示而图标丢失。
-- 修法：`LootJournalPickupRenderMixin` 包裹 `dev.obscuria.lootjournal.client.renderer.PickupComponent#render`，进入前经 `LootJournalHudCompat` 先 `flush` 当前 HUD 批次并将 `GuiGraphics`（`GuiGraphicsBufferSourceAccessor`）临时切回原版 `Minecraft.getInstance().renderBuffers().bufferSource()`，退出时在 `finally` 内冲刷并对称恢复原 `bufferSource`、`GL_DEPTH_TEST`、shader color 与 blend 状态，保持全局 `hud_batching: true` 不降级。
-- 验证：TrainTripWorld 实机开启 `hud_batching: true` 连续拾取钻石/扳手/黄铜门，右下角 Loot Journal 条目图标全部正常绘制，帧末 `GL_DEPTH_TEST` 状态恢复为 `false`。
+- 真实根因（玩家端 `config/obscuria/loot_journal-client.toml` + `loot_journal-neoforge-1.21.1-6.2.2.jar` 字节码核实）：
+  1. 玩家实际配置文件第 44 行为 `elementOrder = "COUNT 4px NAME 4px ICON 4px TOTA"`（末尾漏了 `TOTAL` 的 `L`）；
+  2. `LayoutParser#parse` → `createElement("TOTA")` 在字节码 `160..173` 抛 `IllegalArgumentException`；
+  3. `ConfigCache#refresh`（字节码 `70..108`）捕获 `Exception` 后仅写一行日志并将布局设为 `PickupLayout.DEFAULT`，而上游 `PickupLayout.<clinit>`（字节码 `0..16`）把 `DEFAULT` 定义为 `new PickupLayout(List.of(NameToken.SHARED))`——**仅剩 `NAME`，把 `COUNT`、`ICON`、`TOTAL` 全部丢弃**，精确产生「面板和物品名字还在，对应的物品图标不见了」。
+- 原 ImmediatelyFast 归因作废：commit `9f36d86` 猜测的「`hud_batching` 致图标被深度测试挡掉」已被三重证据推翻——① 玩家端两份 spark（`Ba8oZtMkHa`、`yP50mvVMQO`）的 `SOURCES` 列表根本未安装 `ImmediatelyFast`；② `b689741^` 期间 `DimBlendMixinPlugin#classPresent` 恒抛异常使兼容层零应用，同日实拍 `screenshots/item3_loot_journal_icons_*.png`（配置为合法 `TOTAL`）图标全部正常；③ 旧兼容层在 `swappedSource == false` 时每帧无谓调用 `flush()` 并覆写 shader color / blend / depth 状态。
+- 修法：
+  1. **布局容错修复**（`LootJournalLayoutSanitizerMixin` + `LootJournalLayoutSanitizer`）：挂入 `LayoutParser#normalize(String)`，对合法配置（含用户刻意去掉 `ICON` 的合法布局如 `"COUNT 4px NAME"`）零拷贝原样放行；对含非法词元的配置自动修复 `>= 3` 字符的唯一合法前缀（`TOTA` → `TOTAL` 等）、剔除未知词元与悬空间距（全空时回退到 `"COUNT 4 NAME 4 ICON 4 TOTAL"` 而非 `[NAME]`），并去重打印一次 `[loot-journal-layout]` `WARN`。
+  2. **清理旧兼容层并保留只读诊断**：删除 `LootJournalHudCompat` 与 `GuiGraphicsBufferSourceAccessor`，`LootJournalPickupRenderMixin` 改为默认关闭的只读入口采样（`-Ddimblend.lootjournal.icon.diag=true` → `LootJournalIconDiagnostics`，全局 2 秒最多一行，零 GL 状态改写）。
+- 验证：`LootJournalLayoutSanitizerTest` 5 项 + `LootJournalIconDiagnosticsTest` 7 项单测通过。
 
 ### 18.4 Sable 子层级粒子位姿对齐（`millstone-particle-target`）
 
@@ -1799,6 +1805,13 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
   2. `CritParticle` 构造器末尾提前调用一次 `this.tick()`，此时 `sable$initialKickOut()`（挂在构造器 `TAIL`）尚未把 `1.6×10^7` 的 plot 坐标投到世界空间，导致 `sable$moveWithSubLevels` 用帧间位姿差放大 plot 坐标；`SableCritParticleInitMixin` 用 `@WrapOperation` 在该预跑 `tick()` 期间临时压空 `sable$trackingSubLevel` 使其在纯局部 plot 空间完成热身步。
   3. `RotationIndicatorParticle#tick` 每刻执行 `setPos(origin)` 写回 plot 坐标触发 `>0.5` 格脱钩，由粉碎轮 `RotationIndicatorParticleData` 作用域纳入 `CrushingWheelParticleScope` 一并豁免脱钩。
 - 验证：`CrushingWheelParticleScopeTest` 3 项单测通过；待整合包实机验证。
+
+### 19.1.1 Sable 子层级粉碎轮粒子坐标定点化（`float` → `double`）
+
+- 根因（以线上 `create-1.21.1-6.0.10.jar` 字节码为准）：`CrushingWheelControllerBlock#animateTick`（字节码 `30..43`）与 `CrushingWheelControllerBlockEntity#spawnParticles`（字节码 `89..116`）都写作 `(float) pos.getX() + rand.nextFloat()` → `i2f / fadd / f2d`。Sable plot 方块坐标从 `20,480,000` 起（`SubLevelContainer.DEFAULT_ORIGIN = 10000`，`DEFAULT_LOG_PLOT_SIZE = 7` chunk ⇒ `10000 * 128 * 16`），已越过 `2^24`，`float` ULP = `2.0`：抖动（`< 1`，小于半个 ULP）被整体舍回偶数，奇数 plot 坐标再被挪满 1 格。错位量 `= roundToEven(plotX) - plotX`，只由方块在 plot 里的坐标决定，故「重启不变、挪动方块才换位置、摆的位置不同相对错位也不同、从不在正确位置」。
+- 修法：新增纯算术 `CrushingParticleMath`（`SUB_BLOCK_LIMIT = 1 << 23`，`needsExactDouble` / `exactJitteredCoordinate` / `quantizedJitteredCoordinate`）；两处 `@WrapMethod` 在「客户端 + Sable 子层级 + `needsExactDouble`」时改调逐句复刻的 `dimblend$spawnExactCritParticles` / `dimblend$spawnExactParticles`（`(double) coordinate + jitter`），否则原样委派。随机数消耗逐次一致（`nextInt(1)` + 3×/12× `nextFloat`），阈值以下（`2^23 - 1` 处 ULP 仍为 `0.5`）完全走 Create 原路径，且仍包在 `CrushingWheelParticleScope` 内。
+- 不受影响：`create:millstone`（`MillstoneBlockEntity#spawnParticles` 与 `sendParticles` 全程 `double`）、`dndecor:*_millstone`、`kaleidoscope_cookery:millstone`；`dndecor:*_crushing_wheel` 继承同一控制器，自动覆盖。
+- 验证：`CrushingParticleMathTest` 4 项单测通过；红测（把 `exactJitteredCoordinate` 换回 `(float)` 口径）失败，确认用例有效；待整合包实机验证。
 
 ### 19.2 特殊维度进度改为进入原维度任意生物群系解锁
 

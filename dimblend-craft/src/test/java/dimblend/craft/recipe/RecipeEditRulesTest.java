@@ -755,6 +755,23 @@ class RecipeEditRulesTest {
                 "哨戒动力臂无序合成必须包含 动力臂/精密构件/电子管/深渊之心 各 1 个");
     }
 
+    /**
+     * 2026-11-14：补删 Create Recycle Everything 的蓝冰 / 浮冰 1->9 粉碎拆解配方，
+     * 保留本 mod 随包 1->3 粉碎配方。
+     */
+    @Test
+    void recycleEverythingIceCrushingRecipesAreDefensivelyDeleted() {
+        RecipeEdit.DeleteByRecipeId rule = deleteRuleByLabel("蓝冰与浮冰原拆解粉碎配方");
+        assertNotNull(rule, "缺少规则「蓝冰与浮冰原拆解粉碎配方」");
+        assertEquals(Set.of(
+                ResourceLocation.parse("create_recycle_everything:crushing/vanilla/scrap_blue_ice"),
+                ResourceLocation.parse("create_recycle_everything:crushing/vanilla/scrap_packed_ice"),
+                ResourceLocation.parse("create:crushing/misc/scrap_blue_ice"),
+                ResourceLocation.parse("create:crushing/misc/scrap_packed_ice")),
+                rule.recipeIds());
+        assertTrue(rule.defensive(), "create_recycle_everything 为玩家端可选附属，必须标防御性");
+    }
+
     /** 取出命中给定配方 ID 的字段改写规则；不存在即断言失败。 */
     private static RecipeEdit.FieldModify fieldRuleFor(List<RecipeEdit> edits, ResourceLocation recipeId) {
         for (RecipeEdit edit : edits) {
