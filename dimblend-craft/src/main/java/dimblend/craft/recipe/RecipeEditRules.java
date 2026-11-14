@@ -112,6 +112,16 @@ import com.google.gson.JsonPrimitive;
  *       同样<b>禁止</b>全局 {@link RecipeEdit.ReplaceIngredient}（末影珍珠 / 烈焰棒是全包常见材料）。
  *       另注意 {@code enderstorage:recolour_ender_tank} / {@code ..._ender_chest} 与标准合成
  *       共享同一个输出物品，按产物匹配的删除或网格规则会误伤，二者必须保留。</li>
+ *   <li>蓝冰与浮冰原拆解粉碎配方（2026-11-14 补删）：玩家端 PCL 整合包安装了
+ *       {@code Create Recycle Everything (Continued) 1.1}（{@code create_recycle_everything}，
+ *       本机开发实例 {@code TrainTripWorld/mods} 未安装该 jar），其随包自带两条 {@code 1 -> 9}
+ *       的 {@code create:crushing} 拆解配方
+ *       {@code create_recycle_everything:crushing/vanilla/scrap_blue_ice} 与
+ *       {@code create_recycle_everything:crushing/vanilla/scrap_packed_ice}（1.0.x 移植版同源 ID 为
+ *       {@code create:crushing/misc/scrap_blue_ice} / {@code scrap_packed_ice}），与随包的
+ *       {@code dimblend_craft:blue_ice_crushing} / {@code packed_ice_crushing}（{@code 1 -> 3}）并存冲突。
+ *       按精确配方 ID 标 {@code defensive = true} 删除：装有该附属时命中删除，未装该附属的开发实例
+ *       按预期降级为 {@code INFO} 不刷假 {@code WARN}；随包 {@code 1 -> 3} 配方与原版/Create 洗涤冰配方保留不动。</li>
  * </ul>
  */
 public final class RecipeEditRules {
@@ -489,6 +499,18 @@ public final class RecipeEditRules {
                         + "{\"item\": \"deeperdarker:heart_of_the_deep\"}"
                         + "]")
                 .build());
+
+        // —— 3.22 蓝冰与浮冰原拆解粉碎配方（2026-11-14 补删） ——
+        // 玩家端 PCL 实例安装了 Create Recycle Everything (Continued) 1.1（create_recycle_everything），
+        // 自带 1 蓝冰 -> 9 浮冰、1 浮冰 -> 9 冰（100 tick）的粉碎拆解配方，与本 mod 随包的 1 -> 3
+        // 粉碎配方并存；一并覆盖 1.0.x 同源移植版的 create:crushing/misc/scrap_*_ice 两条 ID。
+        // 本机开发实例未安装该附属，标 defensive = true 避免空转假 WARN。
+        edits.add(new RecipeEdit.DeleteByRecipeId("蓝冰与浮冰原拆解粉碎配方",
+                Set.of(ResourceLocation.parse("create_recycle_everything:crushing/vanilla/scrap_blue_ice"),
+                        ResourceLocation.parse("create_recycle_everything:crushing/vanilla/scrap_packed_ice"),
+                        ResourceLocation.parse("create:crushing/misc/scrap_blue_ice"),
+                        ResourceLocation.parse("create:crushing/misc/scrap_packed_ice")),
+                true));
 
         return edits.build();
     }

@@ -104,7 +104,6 @@
 		"compat.simurail.AutomaticCouplerTypeAccessor"
 	],
 	"client": [
-		"client.GuiGraphicsBufferSourceAccessor",
 		"client.InBedChatScreenMixin",
 		"client.FrontlightBlockChangeMixin",
 		"client.SableSubLevelSpriteAnimationMixin",
@@ -114,6 +113,7 @@
 		"client.SableCritParticleInitMixin",
 		"client.VeilWrappedDepthStencilMixin",
 		"compat.lootjournal.LootJournalPickupRenderMixin",
+		"compat.lootjournal.LootJournalLayoutSanitizerMixin",
 		"compat.camerapture.PictureItemFrameMixin",
 		"compat.camerapture.CameraPictureCropMixin",
 		"compat.camerapture.CameraViewfinderMixin",

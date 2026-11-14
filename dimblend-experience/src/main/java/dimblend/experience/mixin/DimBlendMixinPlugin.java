@@ -56,6 +56,10 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
             return isLoaded("loot_journal")
                     && classPresent("dev.obscuria.lootjournal.client.renderer.PickupComponent");
         }
+        if (mixinClassName.endsWith(".compat.lootjournal.LootJournalLayoutSanitizerMixin")) {
+            return isLoaded("loot_journal")
+                    && classPresent("dev.obscuria.lootjournal.client.renderer.layout.LayoutParser");
+        }
         if (mixinClassName.endsWith(".compat.connected.KineticBatteryLifecycleMixin")
                 || mixinClassName.endsWith(".compat.connected.LinkHandlerEventHitMixin")
                 || mixinClassName.endsWith(".compat.connected.LinkedItemUseOverridesMixin")) {

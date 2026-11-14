@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 
@@ -15,12 +17,14 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import net.minecraft.resources.ResourceLocation;
+
 /**
- * 蓝冰 / 浮冰 的 Create 粉碎配方（随包数据）。
+ * 蓝冰 / 浮冰 的 Create 粉碎配方（随包数据 + 上游拆解粉碎配方防御性删除）。
  *
- * <p>全整合包 190 个 jar 扫描确认：上游没有任何 {@code blue_ice} 或 {@code packed_ice} 的
- * {@code create:crushing} 配方，因此两条配方由本 mod 随包提供，且不需要
- * {@code RecipeEditRules} 的改写或删除规则（无上游配方可匹配，加了只会留一条 WARN）。</p>
+ * <p>两条 {@code 1 -> 3} 粉碎配方由本 mod 随包提供；玩家端 PCL 整合包安装的
+ * {@code Create Recycle Everything (Continued) 1.1} 另有 {@code 1 -> 9} 拆解粉碎配方
+ * （本机开发实例未装该 jar），由 {@link RecipeEditRules#edits()} 按精确配方 ID 防御性删除。</p>
  *
  * <p>JSON 通过类加载器读取（与 {@link FilterFrameStonecuttingTest} 一致），文件缺失或格式
  * 错误在单测阶段就失败，而不是等到进游戏才发现。</p>
@@ -80,6 +84,60 @@ class IceCrushingRecipesTest {
             assertTrue(rawConditions.isJsonArray(), path + " 的 neoforge:conditions 必须是数组");
             assertTrue(hasModLoadedCondition(rawConditions.getAsJsonArray(), "create"),
                     path + " 必须要求 create 模组（create:crushing 类型）");
+        }
+    }
+
+    /**
+     * 2026-11-14：删除 Create Recycle Everything 的蓝冰/浮冰 1->9 拆解粉碎配方，
+     * 同时确保随包 1->3 配方与非粉碎冰配方不被误删。
+     */
+    @Test
+    void upstreamRecycleEverythingIceCrushingRecipesAreDefensivelyDeleted() {
+        Set<ResourceLocation> expectedDeleted = Set.of(
+                ResourceLocation.parse("create_recycle_everything:crushing/vanilla/scrap_blue_ice"),
+                ResourceLocation.parse("create_recycle_everything:crushing/vanilla/scrap_packed_ice"),
+                ResourceLocation.parse("create:crushing/misc/scrap_blue_ice"),
+                ResourceLocation.parse("create:crushing/misc/scrap_packed_ice"));
+        RecipeEdit.DeleteByRecipeId found = null;
+        for (RecipeEdit edit : RecipeEditRules.edits()) {
+            if (edit instanceof RecipeEdit.DeleteByRecipeId delete
+                    && "蓝冰与浮冰原拆解粉碎配方".equals(delete.label())) {
+                found = delete;
+                break;
+            }
+        }
+        assertNotNull(found, "缺少删除蓝冰/浮冰上游拆解粉碎配方的规则");
+        assertEquals(expectedDeleted, found.recipeIds(),
+                "必须覆盖 create_recycle_everything 1.1 与 1.0.x 两条同源拆解粉碎配方 ID");
+        assertTrue(found.defensive(),
+                "开发实例未装 create_recycle_everything，必须标 defensive = true 避免假 WARN");
+
+        Set<ResourceLocation> mustKeepIds = Set.of(
+                ResourceLocation.parse("dimblend_craft:blue_ice_crushing"),
+                ResourceLocation.parse("dimblend_craft:packed_ice_crushing"),
+                ResourceLocation.parse("create:splashing/ice"),
+                ResourceLocation.parse("minecraft:packed_ice"),
+                ResourceLocation.parse("minecraft:blue_ice"));
+        Set<ResourceLocation> mustKeepResults = Set.of(
+                ResourceLocation.parse("minecraft:ice"),
+                ResourceLocation.parse("minecraft:packed_ice"),
+                ResourceLocation.parse("minecraft:blue_ice"));
+        for (List<RecipeEdit> phase : List.of(
+                RecipeEditRules.edits(), RecipeEditRules.ingredientEdits(), RecipeEditRules.lateEdits())) {
+            for (RecipeEdit edit : phase) {
+                if (edit instanceof RecipeEdit.DeleteByRecipeId delete) {
+                    for (ResourceLocation keep : mustKeepIds) {
+                        assertFalse(delete.recipeIds().contains(keep),
+                                "规则「" + delete.label() + "」误删了必须保留的配方 " + keep);
+                    }
+                }
+                if (edit instanceof RecipeEdit.DeleteByResultId delete) {
+                    for (ResourceLocation result : mustKeepResults) {
+                        assertFalse(delete.resultIds().matches(result),
+                                "规则「" + delete.label() + "」按产物删除命中了 " + result);
+                    }
+                }
+            }
         }
     }
 
