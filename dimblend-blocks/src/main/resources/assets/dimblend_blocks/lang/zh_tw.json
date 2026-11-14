@@ -13,5 +13,7 @@
 	"block.dimblend_blocks.creative_brass_encased_cogwheel": "創造模式黃銅外殼齒輪",
 	"block.dimblend_blocks.fragile_cobblestone": "易碎圓石",
 	"block.dimblend_blocks.fragile_stone": "易碎石頭",
-	"block.dimblend_blocks.shell_marker": "貝殼標記"
+	"block.dimblend_blocks.shell_marker": "貝殼標記",
+	"block.dimblend_blocks.train_ender_chest": "列車終界物流箱",
+	"block.dimblend_blocks.train_ender_chest.tooltip": "僅可在列車上使用"
 }

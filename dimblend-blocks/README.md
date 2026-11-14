@@ -24,6 +24,12 @@ ModDevGradle 2.0.147 / Gradle 9.2.1，与 `dimblend`、`dimblend-craft`、
   `RightClickBlock`/`RightClickItem`，另有 `BucketItem#emptyContents` mixin 兜底直接调用的
   与「点干燥面递归到岩浆格」的路径）。生存/冒险扣掉桶内水（回空桶，优先物品自定义合成
   剩余物），创造保留满水桶。先查 `getChunkNow` 再读方块状态，未加载区块不触碰。
+- E 板块·列车末影物流箱（`dimblend_blocks:train_ender_chest`，仅在 EnderStorage 在场时激活）——
+  复刻 `enderstorage:ender_chest` 全套功能（三枚独立色标垫片染色、钻石私频锁扣、27 格同频共享存储、
+  `IItemHandler` 与比较器信号、Create `MountedItemStorage` 兼容），箱体黑曜石部分替换为 Create
+  物品保险库深蓝铆接钢板材质；默认采用独立 `StorageType("dimblend_train_item")` 列车专属通道（不与
+  普通末影箱/末影袋串频），且仅允许放置在 Sable 子层级结构上（`BlockItem#canPlace` + `EntityPlaceEvent`
+  纵深防御）。
 
 ## 常用命令
 
@@ -31,7 +37,8 @@ ModDevGradle 2.0.147 / Gradle 9.2.1，与 `dimblend`、`dimblend-craft`、
 | --- | --- |
 | `./gradlew :dimblend-blocks:build` | 构建并输出 jar 到 `dimblend-blocks/build/libs/` |
 | `./gradlew :dimblend-blocks:test` | 跑纯逻辑单测（`WaterBucketLavaQuenchMathTest`） |
-| `./gradlew :dimblend-blocks:runGameTestServer` | 跑 GameTest（含 `WaterBucketLavaQuenchGameTest`） |
+| `./gradlew :dimblend-blocks:runGameTestServer` | 跑无软依赖基线 GameTest（含 `WaterBucketLavaQuenchGameTest`） |
+| `./gradlew :dimblend-blocks:runGameTestServer -PwithEnderStorage` | 连同 EnderStorage + CodeChickenLib + Sable 跑 `TrainEnderChestGameTest` |
 | `./gradlew :dimblend-blocks:runClient` | 启动开发客户端 |
 | `./gradlew :dimblend-blocks:runServer` | 启动开发服务端 |
 | `./gradlew :dimblend-blocks:runData` | 运行数据生成，输出到 `dimblend-blocks/src/generated/resources/` |
@@ -41,13 +48,14 @@ ModDevGradle 2.0.147 / Gradle 9.2.1，与 `dimblend`、`dimblend-craft`、
 - `src/main/java/dimblend/blocks/` — Java 源码（主类 `DimBlendBlocks`）
   - `compat/copycats/` — C 板块方块/BE/物品/创造栏注册（`CreativeCopycats`；含 C4 洁净变体、C5 隐藏交互）
   - `compat/create/` — K 板块创造传动件注册（`CreativeKinetics`，仅 Create 在场）
+  - `compat/enderstorage/` — E 板块列车末影物流箱方块/BE/物品/存储插件/Sable 放置守卫/Create 移动存储/3D 渲染器
   - `api/` — 对兄弟 mod 开放的唯一入口（`CreativeCopycatHiding` 隐藏查询）
   - `client/` — 客户端渲染（`CreativeCopycatClient` 模型装饰/幽灵渲染，`CreativeKineticsClient` 传动件 visual）
   - `fragile/` — 易碎石头家族（`FragileStones` / 流体结果重定向 `FragileFluidResults`）+ 水桶浇岩浆
     （`WaterBucketLavaQuench` 事件层、`WaterBucketLavaQuenchMath` 纯判定表）
   - `mixin/` — C0 硬度统一（`DimBlendBlocksMixinPlugin` 按 copycats/create 在场性过滤）+
     水桶浇岩浆兜底（`BucketItemLavaQuenchMixin`，原版目标，无条件应用）
-  - `gametest/` — GameTest（`WaterBucketLavaQuenchGameTest` 常驻；`CreativeCopycatHidingGameTest` 仅 copycats 在场）
+  - `gametest/` — GameTest（`WaterBucketLavaQuenchGameTest` 常驻；`CreativeCopycatHidingGameTest` 仅 copycats 在场；`TrainEnderChestGameTest` 仅 enderstorage + create + sable 在场）
 - `src/test/java/` — 纯逻辑单测（不吃游戏引导）
 - `src/main/resources/` — 资源（assets / data）
 - `src/main/templates/` — `neoforge.mods.toml` 模板，属性由 `gradle.properties` 展开注入
@@ -56,5 +64,7 @@ ModDevGradle 2.0.147 / Gradle 9.2.1，与 `dimblend`、`dimblend-craft`、
 ## libs jar
 
 Copycats+（C 板块编译基类）走 Modrinth Maven 定点版本
-（`maven.modrinth:copycats:3.0.4+mc.1.21.1-neoforge`，见 `build.gradle`），不 vendor blob。
-需运行时联测时临时将 `compileOnly` 提升为 `localRuntime`。
+（`maven.modrinth:copycats:3.0.4+mc.1.21.1-neoforge`），EnderStorage 与 CodeChickenLib（E 板块）
+走官方 covers1624 Maven（`1.21.1-2.13.0.191` / `1.21.1-4.6.1.526`），Sable 引用全仓唯一追踪的
+`dimblend/libs/sable-neoforge-1.21.1-2.0.5_cui-modded.jar`（见 `build.gradle`）。
+需运行时联测时通过 `-PwithCopycats` / `-PwithEnderStorage` 临时将 `compileOnly` 提升为 `localRuntime`。

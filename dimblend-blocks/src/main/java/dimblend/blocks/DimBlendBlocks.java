@@ -9,12 +9,16 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.event.RegisterGameTestsEvent;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import dimblend.blocks.compat.copycats.CreativeCopycats;
 import dimblend.blocks.compat.create.CreativeKinetics;
+import dimblend.blocks.compat.enderstorage.TrainEnderChests;
+import dimblend.blocks.compat.enderstorage.client.TrainEnderChestClient;
 import dimblend.blocks.fragile.FragileStones;
 import dimblend.blocks.gametest.CreativeCopycatHidingGameTest;
+import dimblend.blocks.gametest.TrainEnderChestGameTest;
 import dimblend.blocks.gametest.WaterBucketLavaQuenchGameTest;
 import dimblend.blocks.treasure.ShellMarker;
 
@@ -60,6 +64,14 @@ public class DimBlendBlocks {
             CreativeKinetics.register(modEventBus);
         }
 
+        // 列车末影物流箱：仅 EnderStorage 在场时注册（硬引用 EnderStorage/CCL 类型，经 isLoaded 守卫触达）
+        if (ModList.get().isLoaded("enderstorage")) {
+            TrainEnderChests.register(modEventBus);
+            if (FMLEnvironment.dist.isClient()) {
+                TrainEnderChestClient.register(modEventBus);
+            }
+        }
+
         modEventBus.addListener(DimBlendBlocks::onRegisterGameTests);
     }
 
@@ -71,6 +83,13 @@ public class DimBlendBlocks {
         // 仅 copycats 在场（dev 下 -PwithCopycats）时注册
         if (ModList.get().isLoaded("copycats")) {
             event.register(CreativeCopycatHidingGameTest.class);
+        }
+
+        // 列车末影物流箱 GameTest：类内硬引用 EnderStorage、Create 与 Sable 类型，三者均在场（dev 下 -PwithEnderStorage）时注册
+        if (ModList.get().isLoaded("enderstorage")
+                && ModList.get().isLoaded("create")
+                && ModList.get().isLoaded("sable")) {
+            event.register(TrainEnderChestGameTest.class);
         }
     }
 

@@ -9,17 +9,18 @@
 > `RecipeJsonEditor` 的完整 serializer Codec 往返与游戏内实际合成必须在进档后确认，
 > 详见第 6 节。不要把「单测绿」当成「配方已生效」或 serializer 保真证明。
 
-## 1. 需求
+## 1. 需求（2026-11-14 修订）
 
 只改 EnderStorage 的两个标准合成，其余一律不动：
 
 | 配方 ID | 改动 | 保持不变 |
 |---|---|---|
 | `enderstorage:ender_tank` | 末影珍珠位（`key.P`）→ `voidscape:machine_core`（虚空核心） | 四角烈焰棒、`C` 炼药锅、`O` 黑曜石、`W` 羊毛、pattern、产物与数量 |
-| `enderstorage:ender_chest` | 四角烈焰棒（`key.B`，共 4 格）→ `minecraft:blaze_powder` | 末影珍珠位、`C` 木箱标签、`O` 黑曜石、`W` 羊毛、pattern、产物与数量 |
+| `enderstorage:ender_chest` | 恢复原始四角烈焰棒（`key.B` 不再改写），末影珍珠位（`key.P`）→ `voidscape:machine_core`（虚空核心） | 四角烈焰棒、`C` 木箱标签、`O` 黑曜石、`W` 羊毛、pattern、产物与数量 |
 
-明确不做：水缸四角烈焰棒不动；箱子末影珍珠不动；不改其它材料、颜色行为、serializer、
+明确不做：水缸与末影箱四角烈焰棒均不动；不改其它材料、颜色行为、serializer、
 产物；`enderstorage:recolour_ender_tank` / `recolour_ender_chest` 两条染色配方必须保留。
+（注：列车专属的低阶替代品「列车末影物流箱 `dimblend_blocks:train_ender_chest`」在 `dimblend-blocks` 独立注册数据包配方。）
 
 ## 2. 取证
 
@@ -102,9 +103,9 @@
 | tank 原始 | 烈焰棒 | 羊毛标签 | 烈焰棒 | 黑曜石标签 | 炼药锅 | 黑曜石标签 | 烈焰棒 | 末影珍珠标签 | 烈焰棒 |
 | tank 改后 | 烈焰棒 | 羊毛标签 | 烈焰棒 | 黑曜石标签 | 炼药锅 | 黑曜石标签 | 烈焰棒 | **虚空核心** | 烈焰棒 |
 | chest 原始 | 烈焰棒 | 羊毛标签 | 烈焰棒 | 黑曜石标签 | 木箱标签 | 黑曜石标签 | 烈焰棒 | 末影珍珠标签 | 烈焰棒 |
-| chest 改后 | **烈焰粉** | 羊毛标签 | **烈焰粉** | 黑曜石标签 | 木箱标签 | 黑曜石标签 | **烈焰粉** | 末影珍珠标签 | **烈焰粉** |
+| chest 改后 | 烈焰棒 | 羊毛标签 | 烈焰棒 | 黑曜石标签 | 木箱标签 | 黑曜石标签 | 烈焰棒 | **虚空核心** | 烈焰棒 |
 
-因此改 `key.B` 一次就会覆盖箱子的 4 个角；改 `key.P` 只覆盖水缸的 1 个末影珍珠位。
+因此水缸与末影箱均只改 `key.P`（覆盖第 8 槽末影珍珠位），四角 `key.B` 保持原始烈焰棒。
 
 ## 3. 实现
 
@@ -121,7 +122,7 @@
 | 规则名 | 配方 ID | 字段 | 值 |
 |---|---|---|---|
 | 末影水缸珍珠改虚空核心 | `enderstorage:ender_tank` | `key.P` | `{"item":"voidscape:machine_core"}` |
-| 末影箱四角烈焰棒改烈焰粉 | `enderstorage:ender_chest` | `key.B` | `{"item":"minecraft:blaze_powder"}` |
+| 末影箱珍珠改虚空核心 | `enderstorage:ender_chest` | `key.P` | `{"item":"voidscape:machine_core"}` |
 
 实现时被排除的三种做法，以及原因：
 
@@ -146,10 +147,10 @@
    - 应用规则后：只有槽位 8 变成 `voidscape:machine_core`，四角仍是烈焰棒，
      `C/O/W` 与 `result` 不变；
    - `type` 仍是 `enderstorage:create_recipe`，key 符号集合不变（不新增未使用的符号）。
-2. `enderChestBlazeRodCornersAreRewrittenToBlazePowderKeepingPearl`
+2. `enderChestPearlSlotIsRewrittenToVoidCoreKeepingBlazeRodCorners`
    - fixture 原布局：四角烈焰棒、槽位 8 是 `c:ender_pearls`、`C` 是 `c:chests/wooden`；
-   - 应用规则后：槽位 1/3/7/9 全部变烈焰粉，槽位 8 仍是末影珍珠，`C/O/W` 与 `result` 不变；
-     key 符号集合不变。
+   - 应用规则后：只有槽位 8 变成 `voidscape:machine_core`，槽位 1/3/7/9 仍是烈焰棒，`C/O/W` 与 `result` 不变；
+     key 符号集合与 `enderstorage:create_recipe` 类型不变。
 3. `enderStorageRecolourRecipesAreNeverTargeted`
    - 两条新规则都不命中 `recolour_ender_tank` / `recolour_ender_chest`；
    - 两条染色 JSON 仍是 `enderstorage:recolour_recipe`，输出与标准合成相同；
@@ -186,20 +187,20 @@
 
 1. **重载日志**：进档后查 `logs\latest.log`，必须出现两条
    `[配方] 修改 enderstorage:ender_tank：key.P -> {"item":"voidscape:machine_core"}（规则：末影水缸珍珠改虚空核心）`
-   与 `[配方] 修改 enderstorage:ender_chest：key.B -> {"item":"minecraft:blaze_powder"}（规则：末影箱四角烈焰棒改烈焰粉）`。
+   与 `[配方] 修改 enderstorage:ender_chest：key.P -> {"item":"voidscape:machine_core"}（规则：末影箱珍珠改虚空核心）`。
    同轮应有 `[配方] 本轮编辑完成：删除 … 条，修改 … 条，排序 … 条`，且修改计数包含这两条。
 2. **失败判据**：若出现
    `[配方] 规则「末影水缸珍珠改虚空核心」无法应用于配方 enderstorage:ender_tank（JSON 往返编辑失败…）`
    或同类 ERROR，说明 Codec 往返/路径假设不成立，配方仍是旧材料；记录日志并回到本文件第 2 节重新取证，
    不要用「JEI 看起来没变」猜。
 3. **JEI / 配方书**：水缸显示 4 烈焰棒 + 1 羊毛 + 2 黑曜石 + 1 炼药锅 + 1 虚空核心；
-   箱子显示 4 烈焰粉 + 1 羊毛 + 2 黑曜石 + 1 木箱 + 1 末影珍珠。
+   箱子显示 4 烈焰棒 + 1 羊毛 + 2 黑曜石 + 1 木箱 + 1 虚空核心。
    同时确认染色配方仍在（JEI 可能不显示 special 配方，以实际合成台为准）。
 4. **实际合成台**：
    - 水缸：按上述材料摆出，产出 1 个末影水缸；把羊毛换成红色羊毛，产物频率颜色应为红色
      （证明 `CreateRecipe#assemble` 未被网格编辑破坏）。
-   - 箱子：四角烈焰粉，产出 1 个末影箱；红色羊毛同样应得到红色频率。
-   - 反例：水缸珍珠位放末影珍珠、箱子四角放烈焰棒，都应**不能**合成（旧材料路径已关闭）。
+   - 箱子：四角烈焰棒 + 虚空核心，产出 1 个末影箱；红色羊毛同样应得到红色频率。
+   - 反例：水缸或箱子珍珠位放末影珍珠、或箱子四角放烈焰粉，都应**不能**合成（旧材料路径已关闭）。
 5. **染色配方**：用任意染料 + 已合成的末影水缸/末影箱在 3×3 合成台里染色，仍能改变颜色、
    产物数量为 1；确认 `recolour_ender_tank` / `recolour_ender_chest` 没有被误删。
 6. **回归**：确认 `enderstorage:ender_pouch`（3.18.4，`key.P` 改虚空核心）行为不变；

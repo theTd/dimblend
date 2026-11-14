@@ -318,11 +318,9 @@ public final class Config {
                     + "默认 2；同维度载具密集时调高可消除扫描饥饿（GameTest 套件钉 64）")
             .defineInRange("sableLavaMeltScanBudget", 2, 1, 64);
 
-    public static final ModConfigSpec.BooleanValue ENDER_STORAGE_STRUCTURE_ONLY = BUILDER
-            .comment("G 板块 G5：旋转维度内末影箱/末影罐（enderstorage:ender_chest / ender_tank）只能放在 sable 结构上；"
-                    + "放在结构外则放行放置后本 tick 末破坏返还（真人回背包、机器放置掉落，频率保留）；"
-                    + "创造模式豁免；需要 enderstorage 在场，sable 缺席时放行")
-            .define("enderStorageStructureOnly", true);
+    // G5（enderStorageStructureOnly：末影箱/末影水缸仅限 sable 结构放置）已于 2026-11-14 取消：
+    // 末影箱/水缸均改为消耗虚空核心并放开地面摆放，列车专属物流箱改由 dimblend_blocks:train_ender_chest 承担。
+    // 删除此配置键使已有存档的 dimblend_experience-server.toml 自动清理遗留项。
 
     public static final ModConfigSpec.BooleanValue COPYCAT_OBSIDIAN_HARDNESS = BUILDER
             .comment("伪装硬度（全局功能，不限维度）：Create / Copycats+ / Create Connected"

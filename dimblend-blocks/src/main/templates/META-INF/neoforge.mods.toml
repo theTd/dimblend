@@ -103,6 +103,30 @@ config="${mod_id}.mixins.json"
     ordering="NONE"
     side="BOTH"
 
+# EnderStorage 与 CodeChickenLib 提供列车末影物流箱继承的基类、频率组件与渲染器（可选：缺失时该板块整体禁用）；
+# AFTER 确保 EnderStorage 先完成自身插件表与数据组件注册。
+[[dependencies.${mod_id}]]
+    modId="enderstorage"
+    type="optional"
+    versionRange="[2.13,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="codechickenlib"
+    type="optional"
+    versionRange="[4.6,)"
+    ordering="AFTER"
+    side="BOTH"
+
+# Sable 提供列车末影物流箱的子层级归属放置判定（可选：缺失时拒绝放置）
+[[dependencies.${mod_id}]]
+    modId="sable"
+    type="optional"
+    versionRange="[2.0,)"
+    ordering="AFTER"
+    side="BOTH"
+
 # Features are specific properties of the game environment, that you may want to declare you require. This example declares
 # that your mod requires GL version 3.2 or higher. Other features will be added. They are side aware so declaring this won't
 # stop your mod loading on the server for example.
