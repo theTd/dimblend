@@ -1,0 +1,39 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "enderstorage"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "create"
+    }
+  ],
+  "type": "enderstorage:create_recipe",
+  "key": {
+    "B": {
+      "item": "minecraft:blaze_powder"
+    },
+    "W": {
+      "item": "minecraft:white_wool"
+    },
+    "I": {
+      "tag": "c:plates/iron"
+    },
+    "V": {
+      "item": "create:item_vault"
+    },
+    "P": {
+      "tag": "c:ender_pearls"
+    }
+  },
+  "pattern": [
+    "BWB",
+    "IVI",
+    "BPB"
+  ],
+  "result": {
+    "count": 1,
+    "id": "dimblend_blocks:train_ender_chest"
+  }
+}

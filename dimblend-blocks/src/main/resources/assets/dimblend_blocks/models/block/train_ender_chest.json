@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:block/block",
+  "textures": {
+    "particle": "dimblend_blocks:block/train_ender_chest_particle"
+  }
+}

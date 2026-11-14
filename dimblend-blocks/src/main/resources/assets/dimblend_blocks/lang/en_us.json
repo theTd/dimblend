@@ -13,5 +13,7 @@
   "block.dimblend_blocks.creative_brass_encased_cogwheel": "Creative Brass Encased Cogwheel",
   "block.dimblend_blocks.fragile_cobblestone": "Fragile Cobblestone",
   "block.dimblend_blocks.fragile_stone": "Fragile Stone",
-  "block.dimblend_blocks.shell_marker": "Shell Marker"
+  "block.dimblend_blocks.shell_marker": "Shell Marker",
+  "block.dimblend_blocks.train_ender_chest": "Train Ender Logistics Chest",
+  "block.dimblend_blocks.train_ender_chest.tooltip": "Can only be used on trains"
 }

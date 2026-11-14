@@ -134,7 +134,7 @@
 
 ## enderstorage
 
-- [ ] 待实测｜enderstorage:ender_chest 与 enderstorage:ender_tank 只能放置在 sable 结构上 仅在 dimblend:rotating 维度生效（2026-09-27 新条目已实施：`EnderStorageStructureGuard` 沿用 F1「放行放置+tick 末拆除返还」，结构外放置即拆、真人回背包/机器放置掉落，返还走方块自身掉落规则保留频率；创造模式豁免，新开关 enderStorageStructureOnly，见 spec G5；待实测）
+- [x] 已取消（2026-11-14）｜取消末影箱（`enderstorage:ender_chest`）与末影水缸（`enderstorage:ender_tank`）的摆放限制：移除 `EnderStorageStructureGuard`、`EnderStorageBlockIds` 与配置键 `enderStorageStructureOnly`，二者恢复全地形可放置；Sable 结构专属存储职责转交 `dimblend_blocks:train_ender_chest`（列车末影物流箱）
 
 ## sable 结构空位与岩浆（G 板块配套）
 

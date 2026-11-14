@@ -962,24 +962,9 @@
   若未来走 `changeDimension` 路径，rotating 出发的由旅行禁令兜底；
   指令/死亡等非门手段不动；新开关 `portalBan`（默认开）
 
-### G5 末影存储只能放在 sable 结构上（v1.10）
-- rotating 内：`enderstorage:ender_chest` / `enderstorage:ender_tank`（EnderStorage
-  2.13.0.191）放置坐标位于 sable 子层级内（贴列车/舰船结构放置）→ 正常留块；
-  否则不留块。原版 `minecraft:ender_chest` 不在此列；其他维度不管
-- 创造模式豁免；机器/非玩家实体放置同样拦截
-- 拦截方式沿用 F1「放行放置 + 本服务端 tick 末破坏返还」（不取消 `EntityPlaceEvent`，
-  理由同 F1）：真人玩家（精确 `ServerPlayer` 类判据）`destroyBlock` 不掉落、掉落物
-  直回背包（无提示；同 tick 内已下线则改原地掉落）；机器/非玩家放置 `destroyBlock`
-  掉落。返还走方块自身掉落规则 `Block#getDrops`（拆除前按 BE 计算）而非
-  `new ItemStack(block)`：`BlockEnderStorage#getDrops` 读 BE 频率写回物品，
-  私有频率另返还钥匙物品，与玩家挖掉该方块所得一致；箱/罐内容存于频率全局存储，
-  拆除不丢内容
-- 结构判定与 G2 同口径（`Sable.HELPER.getContaining` 查放置坐标）；识别用快照目标
-  状态 + 注册表名比对，无编译依赖；enderstorage 缺席无目标、sable 缺席 fail-open 放行
-- 已知接受风险：只拦 `EntityPlaceEvent` 路径，Create 装置解体、蓝图炮等直接
-  `setBlock` 写入不触发事件、不拦
-- 实现 `EnderStorageStructureGuard` + 纯函数 `EnderStorageBlockIds`；
-  新开关 `enderStorageStructureOnly`（默认开）
+### G5 末影存储只能放在 sable 结构上（v1.10，**2026-11-14 已取消**）
+- 2026-11-14 用户需求：取消末影箱（`enderstorage:ender_chest`）与末影水缸（`enderstorage:ender_tank`）的摆放限制；同步将末影箱配方恢复烈焰棒并将珍珠改为虚空核心（`dimblend-craft`），并在 `dimblend-blocks` 新增仅可放置于 Sable 结构的「列车末影物流箱」（`dimblend_blocks:train_ender_chest`）
+- `EnderStorageStructureGuard`、`EnderStorageBlockIds`、`EnderStorageBlockIdsTest` 及配置键 `enderStorageStructureOnly` 已整体移除（旧存档服务端配置自动清理遗留键）
 
 ### G7 产蛋器内嵌鸡在 Sable 子层级不显示（2026-10-15，纯客户端修复，v6 按渲染层拆分模型，**2026-10-15 实机验收通过**）
 
@@ -1105,7 +1090,6 @@
 | sableStructureVoidFit | G3 配套（载具结构空位拟合挡水） | true |
 | sableVoidFitRefitTicks | G3 配套（拟合扫描周期 1–40 tick） | 5 |
 | portalBan | G4 | true |
-| enderStorageStructureOnly | G5（末影存储仅限 sable 结构放置） | true |
 | sableLavaMelt | G6（岩浆按 sableLavaMeltSpeed 倍率（默认 4 倍徒手速）熔毁 sable 结构方块并掉落） | true |
 | sableLavaMeltSpeed | G6 配套（熔毁速度倍率 0.5–64.0 步进 0.1，运行中即时生效；经 /dbx 面板可调） | 4.0 |
 | steamEngineOverload | H（蒸汽引擎过载两阶段） | true |
@@ -1206,7 +1190,7 @@
 | client.SableCritParticleInitMixin | 原版 CritParticle（构造器内预跑 `tick()` 期间临时压空 `sable$trackingSubLevel`） | §19.1 | sable 在场（client 数组） |
 | compat.create.CrushingWheelControllerParticleMixin / CrushingWheelControllerBeParticleMixin / CrushingWheelKineticEffectParticleMixin / CrushingWheelRotationIndicatorMixin | Create 粉碎轮与粉碎轮控制器粒子发射入口（作用域标记 `CrushingWheelParticleScope`） | §19.1 | create + sable 双在场（client 数组） |
 
-事件处理器（非 mixin）：DeathRules（A1，LivingExperienceDropEvent + PlayerEvent.Clone）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainDeadmanSync（E7' 锁存状态进服/换维度补发；规则本体 `TrainDeadmanBrake` 在 Simurail 在场时显式注册维度 Post tick 与卸载/停服事件，mixin 仅采样）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、EnderStorageStructureGuard（G5）、ExplorationMapLootFilter（A10，LootTableLoadEvent 战利品表加载时把地图条目替换为纸条目）、PaperInsteadOfMapsLootModifier（A10 第三层，NeoForge 全局战利品修饰器，最终把地图堆换成 1 张纸）。
+事件处理器（非 mixin）：DeathRules（A1，LivingExperienceDropEvent + PlayerEvent.Clone）、DepthCurse（A3/A4）、CurseBossbar（A5）、SafeZoneSpawnGuard（A6）、SimurailBlockGuard（E1）、TrainDeadmanSync（E7' 锁存状态进服/换维度补发；规则本体 `TrainDeadmanBrake` 在 Simurail 在场时显式注册维度 Post tick 与卸载/停服事件，mixin 仅采样）、PhysicsAssemblerGuard（F1）、CreativeTabContents（C/K，dimblend-blocks 创造栏登记）、NicknameCommand/NicknameSync（A8）、VillagerMasterRules（G1，含职业记录附件/restock取消/掉职业恢复）、StructureBedGuard（G2）、PortalBan（G4）、ExplorationMapLootFilter（A10，LootTableLoadEvent 战利品表加载时把地图条目替换为纸条目）、PaperInsteadOfMapsLootModifier（A10 第三层，NeoForge 全局战利品修饰器，最终把地图堆换成 1 张纸）。
 
 ### 依赖接线（C 板块例外为版本级对齐）
 

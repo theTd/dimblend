@@ -2,6 +2,7 @@ package dimblend.blocks;
 
 import dimblend.blocks.compat.copycats.CreativeCopycats;
 import dimblend.blocks.compat.create.CreativeKinetics;
+import dimblend.blocks.compat.enderstorage.TrainEnderChests;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModList;
@@ -31,6 +32,9 @@ public final class CreativeTabContents {
         if (ModList.get().isLoaded("create")) {
             event.accept(CreativeKinetics.CREATIVE_SHAFT_ITEM);
             event.accept(CreativeKinetics.CREATIVE_COGWHEEL_ITEM);
+        }
+        if (ModList.get().isLoaded("enderstorage")) {
+            event.accept(TrainEnderChests.TRAIN_ENDER_CHEST_ITEM);
         }
     }
 

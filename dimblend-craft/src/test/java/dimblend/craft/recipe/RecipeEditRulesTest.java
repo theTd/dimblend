@@ -607,15 +607,17 @@ class RecipeEditRulesTest {
     }
 
     /**
-     * 2026-11-11：末影箱四角烈焰棒（key.B）整组换成烈焰粉，末影珍珠保留。
+     * 2026-11-14 修订：末影箱恢复原始配方中的四角烈焰棒（key.B 不变），
+     * 并将末影珍珠位（key.P）换成虚空核心。
      *
      * <p>pattern {@code BWB/OCO/BPB} 中 B 位于 4 个角（槽位 1/3/7/9），
      * P 位于第三行中间（槽位 8）。C 仍是 {@code c:chests/wooden} 标签。</p>
      */
     @Test
-    void enderChestBlazeRodCornersAreRewrittenToBlazePowderKeepingPearl() {
+    void enderChestPearlSlotIsRewrittenToVoidCoreKeepingBlazeRodCorners() {
         RecipeEdit.ModifyRecipeFields rule = fieldRuleById(ENDER_CHEST);
         assertNotNull(rule, "缺少对 enderstorage:ender_chest 的字段改写规则");
+        assertEquals("末影箱珍珠改虚空核心", rule.label(), "规则名必须与需求一致");
         assertEquals(Set.of(ENDER_CHEST), rule.recipeIds(), "规则必须只命中 enderstorage:ender_chest");
 
         JsonObject fixture = json(ENDER_CHEST_JSON).getAsJsonObject();
@@ -627,14 +629,16 @@ class RecipeEditRulesTest {
 
         JsonObject edited = applyFieldEdits(fixture, rule.fieldEdits());
         assertEquals(List.of(
-                "minecraft:blaze_powder", "#c:wools", "minecraft:blaze_powder",
+                "minecraft:blaze_rod", "#c:wools", "minecraft:blaze_rod",
                 "#c:obsidians", "#c:chests/wooden", "#c:obsidians",
-                "minecraft:blaze_powder", "#c:ender_pearls", "minecraft:blaze_powder"),
+                "minecraft:blaze_rod", "voidscape:machine_core", "minecraft:blaze_rod"),
                 expandGrid(edited),
-                "末影箱四个角都应变成烈焰粉；末影珍珠位（槽位 8）与 C/W/O 不得变化");
+                "末影箱只应把第三行中间（槽位 8）的末影珍珠换成虚空核心；四角烈焰棒与 C/W/O 不得变化");
+        assertEquals("enderstorage:create_recipe", edited.get("type").getAsString(),
+                "改材料不得改变自定义配方类型（CreateRecipe 的羊毛染色 assemble 依赖它）");
         assertSameKeySymbols(fixture, edited);
         assertResultUnchanged(fixture, edited);
-        assertOtherKeysUnchanged(fixture, edited, "C", "O", "P", "W");
+        assertOtherKeysUnchanged(fixture, edited, "B", "C", "O", "W");
     }
 
     /**

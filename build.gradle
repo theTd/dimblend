@@ -45,6 +45,17 @@ subprojects {
                 includeGroup("maven.modrinth")
             }
         }
+        // EnderStorage 与 CodeChickenLib（及传递依赖 Quack）的官方仓库：
+        // exclusive 保证这两个 group 只走 covers1624，避免轮询其他慢仓。
+        exclusiveContent {
+            forRepository {
+                maven { url = "https://maven.covers1624.net" }
+            }
+            filter {
+                includeGroup("io.codechicken")
+                includeGroup("net.covers1624")
+            }
+        }
         maven { url = "https://maven.architectury.dev/" }
         maven { url = "https://maven.wispforest.io/releases/" }
     }

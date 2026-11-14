@@ -1,0 +1,5 @@
+{
+  "parent": "minecraft:item/generated",
+  "class": "dimblend.blocks.compat.enderstorage.client.TrainEnderChestItemRenderer",
+  "loader": "codechickenlib:class"
+}

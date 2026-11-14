@@ -1,0 +1,13 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "enderstorage"
+    }
+  ],
+  "type": "enderstorage:recolour_recipe",
+  "result": {
+    "count": 1,
+    "id": "dimblend_blocks:train_ender_chest"
+  }
+}

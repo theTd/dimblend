@@ -58,6 +58,8 @@ neoForge {
         // The gametest system is also enabled by default for other run configs under the /test command.
         gameTestServer {
             type = "gameTestServer"
+            // 与 dimblend 子工程一致：隔离 run/mods 客户端模组，仅加载 Gradle 声明的运行时依赖。
+            gameDirectory = project.file('run-gametest')
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
 
@@ -132,6 +134,22 @@ dependencies {
     // 用法：./gradlew :dimblend-blocks:runGameTestServer -PwithCopycats
     if (project.hasProperty('withCopycats')) {
         localRuntime "maven.modrinth:copycats:3.0.4+mc.1.21.1-neoforge"
+    }
+
+    // 列车末影物流箱（EnderStorage 软依赖板块 + Sable 放置校验）：
+    // EnderStorage 与 CodeChickenLib 走官方 covers1624 Maven（与实例 2.13.0.191 / 4.6.1.526 字节一致）；
+    // Sable 沿用单仓 dimblend/libs/ 追踪的 cui-modded 2.0.5 构建与 sable-companion shim。
+    compileOnly "io.codechicken:EnderStorage:1.21.1-2.13.0.191"
+    compileOnly "io.codechicken:CodeChickenLib:1.21.1-4.6.1.526"
+    compileOnly "dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:${project.sable_companion_version}"
+    compileOnly files(rootProject.file("dimblend/libs/sable-neoforge-1.21.1-2.0.5_cui-modded.jar"))
+    // -PwithEnderStorage 时把 EnderStorage + CodeChickenLib + Sable 提升进 dev GameTest 运行，
+    // 默认保持 compileOnly，使无 EnderStorage 的软依赖安全路径与有 EnderStorage 的功能路径都能独立自测。
+    if (project.hasProperty('withEnderStorage')) {
+        localRuntime "io.codechicken:EnderStorage:1.21.1-2.13.0.191"
+        localRuntime "io.codechicken:CodeChickenLib:1.21.1-4.6.1.526"
+        localRuntime "dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:${project.sable_companion_version}"
+        localRuntime files(rootProject.file("dimblend/libs/sable-neoforge-1.21.1-2.0.5_cui-modded.jar"))
     }
 
     // 水桶浇岩浆的 5x5 判定表自检单测（纯 Java，BlockPos 来自 main 的编译类路径）。
