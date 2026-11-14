@@ -284,5 +284,11 @@
 	"item.dimblend_experience.supplement.levitite_bucket": "Effectively lightens trains without adding drag",
 	"item.dimblend_experience.supplement.doll": "It would also make a capable stock keeper",
 	"dimblend_experience.display_source.traction_efficiency": "Traction Efficiency",
+	"dimblend_experience.display_source.vault_storage_groups": "Storage Readout - Groups",
+	"dimblend_experience.display_source.vault_storage_items": "Storage Readout - Pieces",
+	"dimblend_experience.display_source.vault_storage.display": "Display Format",
+	"dimblend_experience.display_source.vault_storage.count": "Count/Max",
+	"dimblend_experience.display_source.vault_storage.progress_bar": "Progress Bar",
+	"dimblend_experience.display_source.vault_storage.percent": "Percent",
 	"item.dimblend_experience.create_door_pairing": "Right-click again with the same door in hand to form a single-block double door"
 }

@@ -119,6 +119,9 @@ public class DimBlend {
             // the compat classes therefore never load in a Create-free installation.
             dimblend.experience.compat.create.SlidingDoorPairingInteraction.register();
             dimblend.experience.compat.create.SlidingDoorPairingTooltip.register();
+            // 显示连接器读取保险库存量（物品保险库 / 纵向物品保险库 / 集装箱）：
+            // addon 的方块实体类型按注册名挂接，addon 缺席时该模块照常启动。
+            dimblend.experience.compat.create.vault.VaultDisplaySources.register(modEventBus);
         }
 
         // 探索规则都在服务端执行，走 SERVER 配置
@@ -178,6 +181,8 @@ public class DimBlend {
             // 玩偶售货员：目标类来自 Create，Doll 只按注册名访问，缺 Doll 时各用例自己
             // SKIP 并打 WARN（不是不注册），所以只按 Create 门控。
             event.register(DollStockKeeperGameTests.class);
+            // 保险库存量读数：贴非主控段读整台多结构的 capability 路径（Create 本体提供方块）
+            event.register(dimblend.experience.gametest.VaultDisplaySourceGameTests.class);
         }
         if (ModList.get().isLoaded("create_connected")) {
             event.register(LinkedTransmitterGameTests.class);
