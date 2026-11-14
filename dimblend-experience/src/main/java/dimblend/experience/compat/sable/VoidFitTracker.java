@@ -100,6 +100,17 @@ public final class VoidFitTracker {
         return materializedCellsByChunk.get(pos.toLong());
     }
 
+    /** 指定世界格是否属于当前拟合目标或尚未拆完的已物化尾迹空位（零分配查询）。 */
+    public boolean isFittedCell(long cell) {
+        long key = chunkKey(cell);
+        LongOpenHashSet target = targetCellsByChunk.get(key);
+        if (target != null && target.contains(cell)) {
+            return true;
+        }
+        LongOpenHashSet materialized = materializedCellsByChunk.get(key);
+        return materialized != null && materialized.contains(cell);
+    }
+
     /** 记录某载具已将指定世界格写入为 structure_void，并同步加入区块倒排。 */
     public void addMaterialized(UUID id, long cell) {
         VehicleFit fit = vehicles.get(id);

@@ -71,6 +71,8 @@
 - [x] 左下角物品栏左侧显示当前区域序号 + 以玩家当前位置为准的行进进度（`BandProgressHud`：护甲行上方的进度条，区域序号居中，`BandInfoSync` 推送 band_size；生存/冒险/创造显示，旁观隐藏）
 - [x] 进度条正上方再挂两行居中文字（2026-10-23）：上「当前区域编号-区域名」、下「前方到达：…」；区域名映射 地表/地下/下界/天域/暮色/星光/末地/深暗/虚空（`BandLaneNames`，不识别的 mod 区域兜底「异界」）。「前方」只按位置取远离出生点一格（0→+1、负→-1、正→+1），与移动方向无关；下一格是固定剧本（0-20/32/33）或刚开地表连段的强制收尾格 → 显示具体名，随机抽选 → 生存/冒险显示「未知」（`BandLaneAssigner.scriptedOutwardDelegate`，随机结果不下发）；**2026-11-02 起创造模式对随机抽选也下发真实区域名**（`BandLaneSync.nextLaneAt`），去重 key 带上创造标志以便原地切模式重发；`BandLaneSync` 按区域变化推送 当前lane+下一lane。白线（列车标记）同日改为服务端判定：只认有 force-load 票据、包围盒中心 |z|≤7、且与玩家距离 ≤320 格的 sable，走 `BandTrainPayload` 下发，客户端保留最后一次结果
 
+- [x] 区域强制改道与荒岛（2026-11-13，末影龙追逐）：外部模组经 `RegionOverrides.forceLane` 把 34 号及以后的正向随机区写成 `END_BARREN`（脚本区 32/33 与负侧一律拒绝），覆盖表存主世界 `dimblend_region_overrides`（`RegionOverrideStore`：不可变表 + volatile 引用，worldgen 线程无锁读；主世界 `LevelEvent.Load` 时读入——它在 `createLevels` 里早于其它维度构造与 `prepareLevels`，见 `MinecraftServer.java:375`；`ServerStoppedEvent` 清空）。生效点只有一处：`BandLayout.delegateIndex`（无 layout 时的 `fixedDelegateIndex` 同样处理）把该区解析到第一个末地 delegate，于是隔墙/折越门（`sameLaneAcrossBoundary`）、禁结构带、`BandLaneSync` 的区域名、站场与奖励车厢的区域查询全部看到「末地」，末地↔末地边界不建墙；`scriptedOutwardLaneName` 对已强制的前方区直接返回 `end`，`BandLaneSync` 去重 key 带本区/前方区强制位，玩家原地不动也会重发。区块本体（`BarrenRegionGeneration` + `RotatingChunkGenerator`）：地形走末地噪声（末地石荒岛），`createBiomes` 后整块群系调色板改为 `minecraft:end_barrens`，跳过 delegate 的 `applyBiomeDecoration`/`createStructures`/`createReferences`/`spawnOriginalMobs`（原版结构件就在 decoration 里落地），`RotatingBiomeSource.getNoiseBiome` 对强制区也一律回 `end_barrens`（结构定位、刷怪判定与未生成区块的查询看不到末地高地），走廊的轨道/拱洞/玻璃壳/隔墙/折越门由 `OakTrackCorridor`/`RegionBoundaryWall` 照旧写。只影响覆盖写入之后生成的区块，已生成的荒岛永久保留
+
 ## 三、分纬度规则
 
 ### 地表（Overworld）

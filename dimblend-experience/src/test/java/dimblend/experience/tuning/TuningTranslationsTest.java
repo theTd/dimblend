@@ -21,7 +21,7 @@ class TuningTranslationsTest {
         }
         for (String status : new String[] {"no_permission", "invalid", "unavailable", "saving", "saved",
                 "save_failed", "timeout", "increase", "decrease", "reset_default", "missing_mod",
-                "section_sable", "section_main"}) {
+                "section_sable", "section_main", "section_dragon_chase"}) {
             assertTrue(english.has(TuningOption.PREFIX + status), status);
         }
     }

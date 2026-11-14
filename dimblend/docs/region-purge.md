@@ -104,6 +104,9 @@ vanilla 会以 CREATE 方式重新打开，留下 0 字节空文件；由上面�
   每次扫描期前在服务端主线程检查带强加载票据的 Sable 挂接链。若整条链所有区块均已超出有效保留距离、
   不含任何玩家（旁观模式及超出子世界包围盒 ±32m 的陈旧 `trackingSubLevel` 不视作占用）、不触及 `inSablePlotGrid`、且区块上没有任何非 Sable/非瞬态（忽略 `SUB_LEVEL_LOADED` / `UNKNOWN` / `POST_TELEPORT`，拦截 `/forceload` 等持久化）票据，则开始累计连续满足时长；
   连续达到 `idleSeconds` 后摘除其强加载票据（`/dimblend purge now` 时 `idleTicks = 0` 当场摘票，并在有摘票时自动于约 5 秒后追加一次扫描收走卸载后的区域）。
+  例外：链内任一节被 `dimblend.api.NonCrewCarriages.isForceLoadProtected` 判为「必须保持加载」时整链不摘票——
+  末影龙追逐未开战（`WAITING`）与追逐中（`ACTIVE`）的龙巢走这条，否则龙巢在列车身后被摘票卸载，
+  追逐会按「龙巢消失」自我放弃并白白烧掉那个末地区域；`WON` 的龙巢不受保护，仍随区域清理。
 - [x] **按质心 `pose.position` 唯一归属区域、挂接链原子删除**（`coord_region_rule = pose_center`）：
   按各节质心世界坐标 `(floor(pose.x) >> 9, floor(pose.z) >> 9)` 归属对应 `r.X.Z`。为保持 `SubLevelHoldingChunk` 依赖链一致性，
   同一 `loading_dependencies` 挂接链中的所有子世界原子判定：仅当链内至少一节质心位于当前待删区域 `r.X.Z`（或所有成员所在地形 `.mca` 均已不在盘上）且链内所有其他成员所在 `r.X.Z.mca` 也均已不在盘上时，才整链一并删除。

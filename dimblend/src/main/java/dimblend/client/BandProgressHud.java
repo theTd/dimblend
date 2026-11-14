@@ -21,9 +21,11 @@ import net.minecraft.world.level.GameType;
  * "前方到达：…" (random-drawn neighbors show 未知, except for creative players
  * who get the real next lane; names come from {@code BandLaneSync} pushes,
  * mapped by {@link BandLaneNames}); off the corridor the lines hide. Wherever
- * the player is, a white vertical marker pins the train centroid x pushed by
+ * the player is, a vertical marker pins the train centroid x pushed by
  * the server (see {@link ClientBandTrain} and {@code dimblend.band.BandTrainLocator})
- * so the player can see where the train is; when the train is in another band
+ * so the player can see where the train is; it is white normally and red while
+ * {@link dimblend.api.BandTrainMarker} overrides the target with {@code alert}
+ * (the dragon-chase nest); when the train is in another band
  * the marker clamps to the bar edge on the train's side. The position must come
  * from the server — force-load tickets are server-only and Sable drops
  * sub-levels beyond its 320-block network tracking range — and the client keeps
@@ -49,6 +51,8 @@ public final class BandProgressHud {
     private static final int BACKGROUND_COLOR = 0xA0000000;
     private static final int FILL_COLOR = 0xFFE0A020;
     private static final int TRAIN_MARKER_COLOR = 0xFFFFFFFF;
+    /** 警戒白线（龙巢目标，{@link dimblend.api.BandTrainMarker.Marker#alert()}）：需求 §3.3 白线变红。 */
+    private static final int ALERT_MARKER_COLOR = 0xFFFF3030;
     /**
      * 两行区域文字的显示半宽（|z| &lt; 16，轨道走廊）。与白线的列车走廊
      * {@link dimblend.band.BandTrainMath#TRAIN_HALF_WIDTH}（7）是两个独立口径：
@@ -123,8 +127,8 @@ public final class BandProgressHud {
     }
 
     /**
-     * 1px 白色竖杠，标出服务端下发的列车质心位置；火车不在玩家当前区段时
-     * 钉在指向火车那一侧的边缘，提示往回走的方向。
+     * 1px 竖杠，标出服务端下发的列车质心位置；火车不在玩家当前区段时
+     * 钉在指向火车那一侧的边缘，提示往回走的方向。警戒（龙巢）时画红。
      */
     private static void drawTrainMarker(GuiGraphics graphics, Minecraft mc, int left, int barTop,
             int bandSize, int region) {
@@ -132,6 +136,7 @@ public final class BandProgressHud {
         if (trainX.isEmpty()) {
             return;
         }
+        int color = ClientBandTrain.alert(mc.level) ? ALERT_MARKER_COLOR : TRAIN_MARKER_COLOR;
         int trainBlockX = (int) Math.floor(trainX.getAsDouble());
         int trainRegion = BandLayout.regionOfBlockX(trainBlockX, bandSize);
         int markerX;
@@ -141,6 +146,6 @@ public final class BandProgressHud {
         } else {
             markerX = trainRegion < region ? left : left + BAR_WIDTH - 1;
         }
-        graphics.fill(markerX, barTop - 1, markerX + 1, barTop + BAR_HEIGHT + 1, TRAIN_MARKER_COLOR);
+        graphics.fill(markerX, barTop - 1, markerX + 1, barTop + BAR_HEIGHT + 1, color);
     }
 }

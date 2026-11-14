@@ -8,6 +8,10 @@ public final class TuningSettings {
         if (!Config.isLoaded() || (!option.modId().isEmpty() && !ModList.get().isLoaded(option.modId()))) {
             return false;
         }
+        // Reached only when the mod is installed: the bridge class must not load otherwise.
+        if (option.dragonChase()) {
+            return DragonChaseTuningBridge.isLoaded();
+        }
         return switch (option) {
             case SOILING_MULTIPLIER -> CarwashTuningBridge.isLoaded();
             case BOGIE_ROLL_TORQUE -> SimurailTuningBridge.isLoaded();
@@ -62,6 +66,12 @@ public final class TuningSettings {
                     SABLE_PHYSICS_TICK_INTERVAL, SABLE_SLEEP_SKIP, SABLE_CONTACT_FORCE_EVENTS,
                     SABLE_BIOME_PROJECTION_FAST_PATH, SABLE_EMPTY_CONTAINER_FAST_PATH ->
                     available(option) ? SableTuningBridge.get(option) : option.defaultValue();
+            // Owned by dimblend-dragonchase's server config; unavailable without that mod.
+            case DRAGON_CHASE_SPEED_FLOOR_ENABLED, DRAGON_CHASE_GENERATION_SPEED_STEP,
+                    DRAGON_CHASE_HEALTH_MULTIPLIER, DRAGON_CHASE_LOSE_DISTANCE,
+                    DRAGON_CHASE_MIN_SPEED_GROWTH_DISTANCE, DRAGON_CHASE_MIN_SPEED_CAP,
+                    DRAGON_CHASE_FIREBALL_DAMAGE_THRESHOLD, DRAGON_CHASE_DAMAGE_CAP_PERCENT ->
+                    available(option) ? DragonChaseTuningBridge.get(option) : option.defaultValue();
         };
     }
 
@@ -73,6 +83,9 @@ public final class TuningSettings {
             CarwashTuningBridge.set(value);
         } else if (option == TuningOption.BOGIE_ROLL_TORQUE) {
             SimurailTuningBridge.set(value);
+        } else if (option.dragonChase()) {
+            // The owning mod's config saves itself; experience keeps no copy.
+            DragonChaseTuningBridge.set(option, value);
         } else if (option.sable()) {
             SableTuningBridge.set(option, value);
         } else {
@@ -118,6 +131,11 @@ public final class TuningSettings {
             case ITEM_DRAIN_GROWTH_COST -> Config.ITEM_DRAIN_GROWTH_COST_MB.set((int) value);
             case STATION_CARRIAGE_LIMIT -> Config.STATION_CARRIAGE_LIMIT.set((int) value);
             case BOGIE_ROLL_TORQUE, SOILING_MULTIPLIER -> { }
+            // Owned by dimblend-dragonchase's server config; the bridge writes them on the server.
+            case DRAGON_CHASE_SPEED_FLOOR_ENABLED, DRAGON_CHASE_GENERATION_SPEED_STEP,
+                    DRAGON_CHASE_HEALTH_MULTIPLIER, DRAGON_CHASE_LOSE_DISTANCE,
+                    DRAGON_CHASE_MIN_SPEED_GROWTH_DISTANCE, DRAGON_CHASE_MIN_SPEED_CAP,
+                    DRAGON_CHASE_FIREBALL_DAMAGE_THRESHOLD, DRAGON_CHASE_DAMAGE_CAP_PERCENT -> { }
             case SABLE_SUBSTEPS, SABLE_SOLVER_ITERATIONS, SABLE_PGS_ITERATIONS, SABLE_STABILIZATION_ITERATIONS,
                     SABLE_PHYSICS_TICK_INTERVAL, SABLE_SLEEP_SKIP, SABLE_CONTACT_FORCE_EVENTS,
                     SABLE_BIOME_PROJECTION_FAST_PATH, SABLE_EMPTY_CONTAINER_FAST_PATH -> { }

@@ -111,6 +111,8 @@ if (project.hasProperty('supplementNoPowder') && !project.hasProperty('withSuppl
 dependencies {
     // Optional panel bridge: experience only imports carwash's api package.
     compileOnly project(":dimblend-carwash")
+    // Same pattern for the Dragon Chase tuning page: only dimblend.dragonchase.api is imported.
+    compileOnly project(":dimblend-dragonchase")
     // Same for radio: only its api package (reception noise, End voice frequency, acoustic intensity).
     compileOnly project(":dimblend-radio")
     // Optional source panel: experience only imports spyglass's api package.

@@ -34,7 +34,9 @@ import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.NoiseColumn;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeManager;
+import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
@@ -306,7 +308,20 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
     ) {
         this.ensureRuntime(structureManager.registryAccess());
         int index = this.bandIndex(chunk.getPos());
-        return this.delegates.get(index).createBiomes(this.delegateRandom(index), blender, structureManager, chunk);
+        CompletableFuture<ChunkAccess> biomes = this.delegates.get(index).createBiomes(
+                this.delegateRandom(index), blender, structureManager, chunk);
+        if (!BarrenRegionGeneration.isBarrenChunk(this, chunk.getPos())) {
+            return biomes;
+        }
+        // Forced barren region: the End delegate supplied End island terrain, but its biome
+        // source also paints highlands/midlands (chorus, end-city eligible). Rewrite the whole
+        // palette to end_barrens once it has filled, before any later status reads it.
+        Holder<Biome> barren = BarrenRegionGeneration.barrenBiome(structureManager.registryAccess());
+        Climate.Sampler sampler = randomState.sampler();
+        return biomes.thenApply(filled -> {
+            BarrenRegionGeneration.fillBarrenBiome(filled, barren, sampler);
+            return filled;
+        });
     }
 
     @Override
@@ -554,6 +569,9 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
     @Override
     public void spawnOriginalMobs(WorldGenRegion level) {
         this.ensureRuntimeFromLevel(level);
+        if (BarrenRegionGeneration.isBarrenChunk(this, level.getCenter())) {
+            return;
+        }
         this.delegate(level.getCenter()).spawnOriginalMobs(level);
     }
 
@@ -580,7 +598,8 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
         // Overlap-only and out-of-zone origins still generate; dropBlockedStarts
         // is the AABB spillover net (corridor Z and walled-boundary X).
         ChunkPos pos = chunk.getPos();
-        if (!OakTrackCorridor.originFullyInsideNoStructureZone(pos.z)
+        if (!BarrenRegionGeneration.isBarrenChunk(this, pos)
+                && !OakTrackCorridor.originFullyInsideNoStructureZone(pos.z)
                 && !RegionBoundaryNoStructureZone.originFullyInside(this, pos)) {
             int index = this.bandIndex(pos);
             StructureNoiseSetup.run(() -> this.delegates.get(index).createStructures(
@@ -593,8 +612,15 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
     @Override
     public void applyBiomeDecoration(WorldGenLevel level, ChunkAccess chunk, StructureManager structures) {
         this.ensureRuntimeFromLevel(level);
-        int index = this.bandIndex(chunk.getPos());
-        this.delegates.get(index).applyBiomeDecoration(level, chunk, structures);
+        ChunkPos pos = chunk.getPos();
+        // A barren region runs no delegate decoration: that pass is also where vanilla places
+        // structure pieces (ChunkGenerator.java:337-347, structures.startsForStructure) and every
+        // biome feature, both of which the chase terrain must not have. Everything dimblend writes
+        // for the corridor below is independent of the delegate and still runs.
+        if (!BarrenRegionGeneration.isBarrenChunk(this, pos)) {
+            int index = this.bandIndex(pos);
+            this.delegates.get(index).applyBiomeDecoration(level, chunk, structures);
+        }
         OakTrackCorridor.place(level, chunk);
         OakTrackCorridor.placeLoadedVaultNeighbors(level, chunk.getPos());
         // After the corridor: the wall/gate overwrites boundary columns (track, roadbed).
@@ -609,6 +635,9 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
     @Override
     public void createReferences(WorldGenLevel level, StructureManager structures, ChunkAccess chunk) {
         this.ensureRuntimeFromLevel(level);
+        if (BarrenRegionGeneration.isBarrenChunk(this, chunk.getPos())) {
+            return;
+        }
         int index = this.bandIndex(chunk.getPos());
         this.delegates.get(index).createReferences(level, structures, chunk);
     }

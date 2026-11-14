@@ -24,6 +24,7 @@ import dev.ryanhcode.sable.sublevel.storage.serialization.SubLevelStorage;
 import dev.ryanhcode.sable.sublevel.system.ticket.PhysicsChunkTicketManager;
 import dev.ryanhcode.sable.sublevel.tracking_points.SubLevelTrackingPointSavedData;
 import dev.ryanhcode.sable.sublevel.tracking_points.TrackingPoint;
+import dimblend.api.NonCrewCarriages;
 import dimblend.api.purge.SableSubLevelsPurgedEvent;
 import dimblend.mixin.DistanceManagerAccessor;
 import dimblend.mixin.sable.ServerSubLevelContainerAccessor;
@@ -283,6 +284,12 @@ final class RegionSablePurger implements SablePurgeBridge {
             Long2ObjectOpenHashMap<SortedArraySet<Ticket<?>>> vanillaTickets) {
         for (ServerSubLevel subLevel : chain) {
             if (subLevel.isRemoved()) {
+                return false;
+            }
+            // A car whose owning mod says it must stay loaded (the chase's WAITING/ACTIVE nest) is
+            // not "unmanned": unticketing it would unload the car, make the director abandon the
+            // chase and burn that End region. WON nests answer false and stay purgeable.
+            if (NonCrewCarriages.isForceLoadProtected(level, subLevel.getUniqueId())) {
                 return false;
             }
             Vector3dc posePos = subLevel.logicalPose().position();

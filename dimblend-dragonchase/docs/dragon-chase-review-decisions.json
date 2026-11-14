@@ -1,0 +1,119 @@
+{
+  "page": "末影龙追逐（Dragon Chase）策划对齐",
+  "slug": "dragon-chase-review",
+  "generated": "2026-11-13T09:35:25.020Z",
+  "answers": {
+    "prologue-height": {
+      "value": "轨道上方约 48–64 格盘旋（约 y=112–128）",
+      "mode": "option",
+      "changed": false
+    },
+    "prologue-repeat": {
+      "value": "用2 但其实游戏目前的规定都是要求玩家必须一起行动的 而且整个世界只有一列火车 玩家必须和火车一起前进 而且火车不允许返回 所以我觉得这个问题里的情况都可以不考虑",
+      "mode": "own",
+      "changed": true
+    },
+    "end-advancement": {
+      "value": "保持现状：进 32 区就给，序章龙不发",
+      "mode": "option",
+      "changed": true
+    },
+    "nest-trigger": {
+      "value": "玩家列车开进该末地区域时，在 512 处放出",
+      "mode": "option",
+      "changed": false
+    },
+    "speed-floor-scope": {
+      "value": "原案：全世界所有常加载车体",
+      "mode": "option",
+      "changed": true
+    },
+    "nest-protection": {
+      "value": "1 但是组成龙巢车厢的方块 本身就都是不能被生存模式拆除的 所以我觉得 不会出现这种情况 创造模式 我觉得可以不管",
+      "mode": "own",
+      "changed": true
+    },
+    "nest-after-kill": {
+      "value": "3 速度是为了防止玩家因为追逐龙导致列车没有燃料后 被困在末地 所以需要最低速度 也是一个 追逐胜利以后提供可以安心关闭发动机慢慢修整的机会 龙巢车厢预计就是会带玩家的列车走出末地后 任务结束 再自己消失",
+      "mode": "own",
+      "changed": true
+    },
+    "dragon-position": {
+      "value": "平时在龙巢上方，每次放完龙息弹俯冲到列车上方",
+      "mode": "option",
+      "changed": true
+    },
+    "damage-pacing": {
+      "value": "每秒最多掉 2% 最大生命（至少约 50 秒）",
+      "mode": "option",
+      "changed": false
+    },
+    "hp-players": {
+      "value": "原案：全服在线人数，生成时定一次",
+      "mode": "option",
+      "changed": true
+    },
+    "coupling-rule": {
+      "value": "3 但是通过硬度 也就是玩家可以破坏的砖块 啃车 这样重要的部分永远不会被啃掉 因为车架/车钩/底盘 都是基岩硬度 而且玩家无法编辑它们",
+      "mode": "own",
+      "changed": true
+    },
+    "fall-coupler": {
+      "value": "破坏车厢自己的车钩",
+      "mode": "option",
+      "changed": true
+    },
+    "fall-style": {
+      "value": "1 改成 朝向Z轴任意一个方向 45度弹飞到空中 然后播放爆炸粒子效果和声音 然后消失 这样更有视觉效果",
+      "mode": "own",
+      "changed": true
+    },
+    "crystal-explosion": {
+      "value": "原案：原版爆炸，连列车一起炸",
+      "mode": "option",
+      "changed": true
+    },
+    "crystal-heal": {
+      "value": "不限距离，每颗水晶每秒回 1 点",
+      "mode": "option",
+      "changed": false
+    },
+    "car-spawn-speed": {
+      "value": "生成时比列车慢约 5 m/s，平稳追上挂钩",
+      "mode": "option",
+      "changed": false
+    },
+    "chase-terrain": {
+      "value": "荒岛：只有末地石浮岛",
+      "mode": "option",
+      "changed": false
+    },
+    "reward-blocks": {
+      "value": "金属块（铁块、钻石块、下界合金块……）",
+      "mode": "option",
+      "changed": false
+    }
+  },
+  "changed": [
+    "prologue-repeat",
+    "end-advancement",
+    "speed-floor-scope",
+    "nest-protection",
+    "nest-after-kill",
+    "dragon-position",
+    "hp-players",
+    "coupling-rule",
+    "fall-coupler",
+    "fall-style",
+    "crystal-explosion"
+  ],
+  "skipped": [],
+  "own": [
+    "prologue-repeat",
+    "nest-protection",
+    "nest-after-kill",
+    "coupling-rule",
+    "fall-style"
+  ],
+  "unanswered": []
+}

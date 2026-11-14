@@ -1,0 +1,19 @@
+{
+  "entity.dimblend_dragonchase.chase_dragon": "Ender Dragon",
+  "entity.dimblend_dragonchase.dragon_fireball": "Dragon Fireball",
+  "boss.dimblend_dragonchase.dragon": "Ender Dragon %s %s/%s",
+  "command.dimblend_dragonchase.status": "Chase: %s, generation %s, nest x=%s, dragon %s",
+  "command.dimblend_dragonchase.prologue": "Spawned the prologue dragon.",
+  "command.dimblend_dragonchase.nest": "Queued a nest 300 blocks ahead; waiting for its chunks.",
+  "command.dimblend_dragonchase.damage": "Dealt %s damage to the chase dragon.",
+  "command.dimblend_dragonchase.fireball": "The chase dragon fired a dragon fireball.",
+  "command.dimblend_dragonchase.breath": "The chase dragon is breathing on the track.",
+  "command.dimblend_dragonchase.kill": "Chase resolved as a kill: rewards placed, generation +1.",
+  "command.dimblend_dragonchase.fail": "Chase cleared as a failure: dragon and nest removed.",
+  "command.dimblend_dragonchase.reset": "Chase state reset.",
+  "command.dimblend_dragonchase.generation": "Generation set to %s.",
+  "command.dimblend_dragonchase.no_dragon": "No chase dragon is active.",
+  "command.dimblend_dragonchase.no_chase": "No chase is running.",
+  "command.dimblend_dragonchase.no_train": "No force-loaded sub-level nearby.",
+  "command.dimblend_dragonchase.no_level": "The rotating dimension is not loaded."
+}

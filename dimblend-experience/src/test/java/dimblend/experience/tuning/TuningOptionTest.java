@@ -298,6 +298,56 @@ class TuningOptionTest {
     }
 
     @Test
+    void dragonChasePageMirrorsTheEightLockedValues() {
+        // requirements.md §3.1. Literal values on purpose: the experience test runtime has no
+        // dimblend_dragonchase jar, only its compile-time api. The owning mod validates again in
+        // DragonChaseTuning.Option, so these two lists must stay identical in default/range/step.
+        TuningOption[] options = {
+                TuningOption.DRAGON_CHASE_SPEED_FLOOR_ENABLED,
+                TuningOption.DRAGON_CHASE_GENERATION_SPEED_STEP,
+                TuningOption.DRAGON_CHASE_HEALTH_MULTIPLIER,
+                TuningOption.DRAGON_CHASE_LOSE_DISTANCE,
+                TuningOption.DRAGON_CHASE_MIN_SPEED_GROWTH_DISTANCE,
+                TuningOption.DRAGON_CHASE_MIN_SPEED_CAP,
+                TuningOption.DRAGON_CHASE_FIREBALL_DAMAGE_THRESHOLD,
+                TuningOption.DRAGON_CHASE_DAMAGE_CAP_PERCENT};
+        String[] ids = {"dragon_chase_speed_floor_enabled", "dragon_chase_generation_speed_step",
+                "dragon_chase_health_multiplier", "dragon_chase_lose_distance",
+                "dragon_chase_min_speed_growth_distance", "dragon_chase_min_speed_cap",
+                "dragon_chase_fireball_damage_threshold", "dragon_chase_damage_cap_percent"};
+        double[] defaults = {1.0D, 1.0D, 1.0D, 512.0D, 512.0D, 32.0D, 32.0D, 2.0D};
+        double[] minima = {0.0D, 0.0D, 0.2D, 256.0D, 16.0D, 16.0D, 4.0D, 0.5D};
+        double[] maxima = {1.0D, 8.0D, 5.0D, 1024.0D, 2048.0D, 64.0D, 64.0D, 10.0D};
+        double[] steps = {1.0D, 0.5D, 0.2D, 16.0D, 16.0D, 1.0D, 4.0D, 0.5D};
+        for (int i = 0; i < options.length; i++) {
+            var option = options[i];
+            assertEquals(ids[i], option.id(), ids[i]);
+            assertEquals("dimblend_dragonchase", option.modId(), ids[i]);
+            assertSame(TuningOption.Section.DRAGON_CHASE, option.section(), ids[i]);
+            assertTrue(option.dragonChase(), ids[i]);
+            assertFalse(option.sable(), ids[i]);
+            assertEquals(defaults[i], option.defaultValue(), ids[i]);
+            assertEquals(minima[i], option.minimum(), ids[i]);
+            assertEquals(maxima[i], option.maximum(), ids[i]);
+            assertEquals(steps[i], option.step(), ids[i]);
+            assertEquals(i == 0, option.isCheckbox(), ids[i]);
+            assertTrue(option.isValid(defaults[i]), ids[i]);
+            assertTrue(option.isValid(maxima[i]), ids[i]);
+            assertTrue(option.isValid(minima[i]), ids[i]);
+            assertFalse(option.isValid(minima[i] - steps[i]), ids[i]);
+            assertFalse(option.isValid(maxima[i] + steps[i]), ids[i]);
+        }
+        // Steps that are not tenths/hundredths still round-trip through the input box.
+        assertEquals("1.0", TuningOption.DRAGON_CHASE_GENERATION_SPEED_STEP.format(1.0D));
+        assertEquals("512", TuningOption.DRAGON_CHASE_LOSE_DISTANCE.format(512.0D));
+        assertEquals("2.0", TuningOption.DRAGON_CHASE_DAMAGE_CAP_PERCENT.format(2.0D));
+        assertTrue(TuningOption.DRAGON_CHASE_HEALTH_MULTIPLIER.isValid(1.4D));
+        assertFalse(TuningOption.DRAGON_CHASE_HEALTH_MULTIPLIER.isValid(1.3D));
+        assertTrue(TuningOption.DRAGON_CHASE_FIREBALL_DAMAGE_THRESHOLD.isValid(36.0D));
+        assertFalse(TuningOption.DRAGON_CHASE_FIREBALL_DAMAGE_THRESHOLD.isValid(34.0D));
+    }
+
+    @Test
     void formattingKeepsDeclaredPrecisionAndUsesDecimalPoint() {
         assertEquals("1.0", TuningOption.SHAKE_INTERVAL.format(1.0D));
         assertEquals("100", TuningOption.SHAKE_FORCE.format(100.0D));

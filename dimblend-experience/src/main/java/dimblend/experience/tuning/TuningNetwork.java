@@ -19,9 +19,10 @@ public final class TuningNetwork {
      * Snapshot protocol version. The snapshot carries one value per option, so adding or removing an option
      * changes the wire length: v27 dropped the nine train horn pitch presets, v28 added the observer blaze
      * detection radius, v29 adds the station carriage limit, v30 removes the four radio knobs (they moved to
-     * the jukebox tuning screen in {@code dimblend-radio}, which now owns their server round-trip).
+     * the jukebox tuning screen in {@code dimblend-radio}, which now owns their server round-trip), v31 adds
+     * the eight Dragon Chase options (present but unavailable without {@code dimblend_dragonchase}).
      */
-    public static final String PROTOCOL_VERSION = "30";
+    public static final String PROTOCOL_VERSION = "31";
 
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {

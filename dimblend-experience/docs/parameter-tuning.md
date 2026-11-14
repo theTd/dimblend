@@ -41,6 +41,27 @@ Missing optional mods leave their controls disabled.
 | Rotating monster density (% of vanilla) | 50 | 0-100, step 1; 100 = vanilla density, 0 = no covered monster spawns; natural spawns scale the global cap and keep each spawn with probability p, spawner/trial spawner/structure/chunk generation/patrol/reinforcement cancel with 1-p; bosses and player-caused spawns are never suppressed; other dimensions unaffected | experience |
 | Item drain growth boost water cost | 20 mB | 0-1500, step 1; drained per successful boost, 0 = free | experience |
 | Connectable carriages a surface station may generate | 6 | 3-11, step 1; R6 gate. Counts force-loaded Sable structures containing chassis-frame blocks (`dimblend_blocks:creative_copycat_panel` / `creative_copycat_slab` / `creative_clean_copycat_slab`), across every level of the save, this mod's own pre-placed cars included. At or above the limit the surface station skips its free carriage chassis; the new-world power chassis at X=32 is not limited | experience |
+| Dragon Chase: 2 m/s speed floor | on | Checkbox; keeps force-loaded cars moving forward at 2 m/s or more until the dragon nest is gone. Spare depot cars with no coupled partner are exempt | dimblend_dragonchase |
+| Dragon Chase: min speed step per generation | 1 m/s | 0-8, step 0.5; nest minimum speed = 10 + (generation - 1) x this | dimblend_dragonchase |
+| Dragon Chase: health multiplier | 1.0 | 0.2-5.0, step 0.2; health = (400 + 200 x (online players - 1)) x this, fixed at spawn | dimblend_dragonchase |
+| Dragon Chase: lose distance | 512 blocks | 256-1024, step 16; no force-loaded car this far behind the nest loses the chase | dimblend_dragonchase |
+| Dragon Chase: min speed growth distance | 512 blocks | 16-2048, step 16; +0.5 m/s of nest minimum speed per this distance travelled | dimblend_dragonchase |
+| Dragon Chase: min speed cap | 32 m/s | 16-64, step 1; the train's real speed is unaffected | dimblend_dragonchase |
+| Dragon Chase: breath damage threshold | 32 | 4-64, step 4; damage taken by the dragon that triggers one breath shot, then an 8-second cooldown | dimblend_dragonchase |
+| Dragon Chase: max damage per second | 2.0% | 0.5-10.0, step 0.5; share of the dragon's maximum health it can lose per second, the rest is discarded | dimblend_dragonchase |
+
+### Dragon Chase page
+
+The eight `Dragon Chase:` rows are the **末影龙追逐 / Dragon Chase** page
+(requirements.md §3.1 of `dimblend-dragonchase`). The page's navigation button and
+the eight rows exist only while `dimblend_dragonchase` is installed: the rows are
+always in the snapshot, and without that mod their availability bit is clear, so
+they stay disabled and carry the usual "missing mod" note. Every edit is routed
+through `dimblend.dragonchase.api.DragonChaseTuning` into that mod's own
+`serverconfig/dimblend_dragonchase-server.toml`; experience stores no copy and
+never writes the values itself. Defaults, ranges and steps are the same on both
+sides, and `TuningOptionTest` pins the panel's side with literal values (the
+experience test runtime has no dragonchase jar).
 
 ## Vehicle headlights (surface and volumetric haze)
 
@@ -60,7 +81,7 @@ chunk reloads and vehicle assembly retain activation. Iris still disables this r
 
 The Sable page includes ten **experience-owned, server-authoritative** options.
 Edits persist in `serverconfig/dimblend_experience-server.toml` and broadcast to
-all clients through the tuning snapshot (protocol 28, 64-bit availability mask).
+all clients through the tuning snapshot (protocol 31, 64-bit availability mask).
 
 | `/dbx` option | Config key | Default | Range / step |
 |---|---|---|---|
@@ -338,8 +359,14 @@ Radio follows the same pattern through `dimblend.radio.api.RadioTuning` and its
 own `serverconfig/dimblend_radio-server.toml`. Its settings are heard on each
 client, so remote clients also apply the broadcast radio values in memory
 (NeoForge already sends the config at login). The snapshot carries one value
-per option, so each added or removed option bumps the protocol version (now `29`; see the
+per option, so each added or removed option bumps the protocol version (now `31`; see the
 performance checklist below).
+
+Dragon Chase follows the same pattern through
+`dimblend.dragonchase.api.DragonChaseTuning` and its own
+`serverconfig/dimblend_dragonchase-server.toml`. The dependency is compile-only
+and limited to that mod's `api` package, so experience neither needs it at
+runtime nor loads any of its classes without the `ModList` presence check.
 
 The existing `couplerRedstone` config uses the inverse meaning: true blocks
 redstone effects. The panel displays the positive **allow** meaning. Survival

@@ -86,6 +86,14 @@ public class DimBlend {
         if (ModList.get().isLoaded("simurail")) {
             TrainForceGroups.FORCE_GROUPS.register(modEventBus);
             dimblend.experience.compat.simurail.TrainDeadmanBrake.register();
+            // The two dimblend.api services the Dragon Chase consumes: the ender brake rides the
+            // unattended latch above, and the depot car query reads the station depot's records.
+            // Both interfaces live in dimblend.api, so the core mod must be installed as well
+            // (same gate as ChassisEvents.available); without it these classes cannot even load.
+            if (ModList.get().isLoaded("dimblend")) {
+                dimblend.experience.compat.simurail.TrainBrakeServiceImpl.register();
+                dimblend.experience.chassis.DepotCarQueryImpl.register();
+            }
             dimblend.experience.compat.simurail.TrainLateralShakeScheduler.register();
         }
         if (ModList.get().isLoaded("create") && ModList.get().isLoaded("simurail")) {

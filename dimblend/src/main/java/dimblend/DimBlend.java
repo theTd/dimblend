@@ -1,5 +1,7 @@
 package dimblend;
 
+import dimblend.api.BandTrainMarker;
+import dimblend.api.WarpGateColumns;
 import dimblend.band.BandInfoPayload;
 import dimblend.band.BandInfoSync;
 import dimblend.band.BandLanePayload;
@@ -23,6 +25,8 @@ import dimblend.worldgen.CorridorLavaOriginals;
 import dimblend.worldgen.PregenConfig;
 import dimblend.worldgen.PregenController;
 import dimblend.worldgen.RegionBoundaryWallProtector;
+import dimblend.worldgen.RegionOverrideStore;
+import dimblend.worldgen.WarpGateColumnsImpl;
 import dimblend.worldgen.WarpGatePassageGuard;
 import dimblend.worldgen.WarpGateSableCrossing;
 import net.neoforged.api.distmarker.Dist;
@@ -35,6 +39,7 @@ import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.RegisterGameTestsEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
@@ -51,6 +56,14 @@ public final class DimBlend {
     public DimBlend(IEventBus modBus, ModContainer container) {
         DimBlendRegistries.register(modBus);
         CorridorLavaOriginals.ATTACHMENTS.register(modBus);
+        // Public api implementations owned by this module. The override store's data is loaded
+        // from the overworld's LevelEvent.Load below, which fires before any chunk generates
+        // (see RegionOverrideStore's javadoc for the startup ordering evidence).
+        RegionOverrideStore.install();
+        WarpGateColumns.Impl.install(new WarpGateColumnsImpl());
+        NeoForge.EVENT_BUS.addListener(RegionOverrideStore::onLevelLoad);
+        NeoForge.EVENT_BUS.addListener(RegionOverrideStore::onServerStopped);
+        NeoForge.EVENT_BUS.addListener(DimBlend::onServerStopped);
         container.registerConfig(ModConfig.Type.SERVER, PregenConfig.SPEC);
         container.registerConfig(ModConfig.Type.SERVER, RegionPurgeConfig.SPEC, RegionPurgeConfig.FILE_NAME);
         container.registerConfig(ModConfig.Type.CLIENT, dimblend.diagnostics.SkyTimeTraceSettings.SPEC);
@@ -112,8 +125,15 @@ public final class DimBlend {
         DimBlendCommands.register(event.getDispatcher());
     }
 
+    /** Server-scoped static state must not survive into the next world of the same client session. */
+    private static void onServerStopped(ServerStoppedEvent event) {
+        BandTrainMarker.clear();
+    }
+
     private static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar("1");
+        // "2": BandTrainPayload gained the alert bit (dragon-chase marker). A peer still speaking
+        // "1" would mis-decode the extra boolean, so let NeoForge reject the connection instead.
+        PayloadRegistrar registrar = event.registrar("2");
         TimeLockPayload.register(registrar);
         BandInfoPayload.register(registrar);
         BandLanePayload.register(registrar);

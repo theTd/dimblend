@@ -6,6 +6,7 @@ import com.simibubi.create.content.kinetics.KineticNetwork;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.sublevel.SubLevel;
+import dimblend.api.NonCrewCarriages;
 import dimblend.experience.Config;
 import dimblend.experience.compat.sable.SableWorldPosition;
 import dimblend.experience.exploration.RotatingDimension;
@@ -21,6 +22,7 @@ import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.HashSet;
@@ -42,6 +44,15 @@ public final class TrainDeadmanBrake {
 
     // Only the latch is read by the physics thread. All other state belongs to the server thread.
     private static final Map<ResourceKey<Level>, Set<UUID>> LATCHED = new ConcurrentHashMap<>();
+    /**
+     * The carriages of this table that the ender brake (dimblend.api.TrainBrakeService) latched.
+     *
+     * <p>They share {@link #LATCHED} so that every latch effect — forced full brake, forced
+     * network overload, client purple particles, 0.5-pitch announcement — is literally the
+     * unattended brake's. The second set exists so that turning the unattended brake off, or its
+     * sampling gate, cannot silently disarm a running Dragon Chase.
+     */
+    private static final Map<ResourceKey<Level>, Set<UUID>> ENDER_LATCHED = new ConcurrentHashMap<>();
     private static final Map<ServerLevel, Fleet> FLEETS = new IdentityHashMap<>();
     /**
      * 锁存强制过载的 per-bogey 强制 impact 表（服务端权威；MRV 钩子只读本表、
@@ -68,8 +79,14 @@ public final class TrainDeadmanBrake {
     }
 
     public static void onBogeyServerTick(PhysicsBogeyBlockEntity bogey, double speed, int signal) {
-        if (!(bogey.getLevel() instanceof ServerLevel level) || !RotatingDimension.is(level)
-                || !Config.TRAIN_DEADMAN_BRAKE.get()) {
+        if (!(bogey.getLevel() instanceof ServerLevel level)) {
+            return;
+        }
+        // Normally rotating-only and switch-gated. An ender latch also samples its dimension, so
+        // its release rule (any raw redstone level change on the consist) still applies when the
+        // unattended brake itself is off; the scan below stays rotating-only either way.
+        if (enderLatched(level.dimension()).isEmpty()
+                && (!RotatingDimension.is(level) || !Config.TRAIN_DEADMAN_BRAKE.get())) {
             return;
         }
         FLEETS.computeIfAbsent(level, key -> new Fleet()).samples.put(bogey,
@@ -77,11 +94,18 @@ public final class TrainDeadmanBrake {
     }
 
     public static boolean isLatched(PhysicsBogeyBlockEntity bogey) {
+        SubLevel carriage = Sable.HELPER.getContaining(bogey);
+        if (carriage == null) {
+            return false;
+        }
+        UUID id = carriage.getUniqueId();
+        if (enderLatched(bogey.getLevel().dimension()).contains(id)) {
+            return true;
+        }
         if (!Config.TRAIN_DEADMAN_BRAKE.get()) {
             return false;
         }
-        SubLevel carriage = Sable.HELPER.getContaining(bogey);
-        return carriage != null && latchedCarriages(bogey.getLevel().dimension()).contains(carriage.getUniqueId());
+        return latchedCarriages(bogey.getLevel().dimension()).contains(id);
     }
 
     /**
@@ -97,17 +121,178 @@ public final class TrainDeadmanBrake {
         return LATCHED.getOrDefault(dim, Set.of());
     }
 
+    private static Set<UUID> enderLatched(ResourceKey<Level> dim) {
+        return ENDER_LATCHED.getOrDefault(dim, Set.of());
+    }
+
+    /**
+     * Latches the whole consist containing {@code carriageId} (ender brake, requirements.md §3.4).
+     *
+     * <p>Deliberately the same table as the unattended brake: the forced full brake
+     * ({@code getBrakeStrength}), the forced network overload ({@link #FORCED_IMPACTS}), the
+     * purple client particles and the 0.5-pitch brake announcement all key on that one latch.
+     * Going through it also hands over the release rule unchanged — any raw redstone level
+     * change on any bogey of the consist drops its whole connected consist, in the same level
+     * tick scan that already does that for unattended braking.
+     *
+     * @return true when the consist was found and is now latched
+     */
+    static boolean latchConsist(ServerLevel level, UUID carriageId) {
+        if (level == null || carriageId == null || !Config.isLoaded()) {
+            return false;
+        }
+        TrainDeadmanMath.Consist consist = consistOf(level, carriageId);
+        if (consist == null || consist.carriageIds().isEmpty()) {
+            return false;
+        }
+        ResourceKey<Level> dim = level.dimension();
+        Set<UUID> ender = new HashSet<>(enderLatched(dim));
+        ender.addAll(consist.carriageIds());
+        ENDER_LATCHED.put(dim, Set.copyOf(ender));
+        Set<UUID> previous = latchedCarriages(dim);
+        Set<UUID> next = new HashSet<>(previous);
+        next.addAll(consist.carriageIds());
+        if (!next.equals(previous)) {
+            applyLatch(level, next);
+        }
+        for (PhysicsBogeyBlockEntity bogey : bogeysIn(level, consist.carriageIds())) {
+            forceImpact(bogey);
+        }
+        return true;
+    }
+
+    /** True when the consist containing {@code carriageId} is latched (either cause). */
+    static boolean isCarriageLatched(ServerLevel level, UUID carriageId) {
+        if (level == null || carriageId == null || !Config.isLoaded()) {
+            return false;
+        }
+        Set<UUID> latched = latchedCarriages(level.dimension());
+        if (latched.isEmpty()) {
+            return false;
+        }
+        if (latched.contains(carriageId)) {
+            return true;
+        }
+        // A carriage coupled into a latched consist after the latch reads as latched too.
+        TrainDeadmanMath.Consist consist = consistOf(level, carriageId);
+        if (consist == null) {
+            return false;
+        }
+        for (UUID id : consist.carriageIds()) {
+            if (latched.contains(id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** One latch-set update plus the client sync; the old code inlined exactly this pair. */
+    private static void applyLatch(ServerLevel level, Set<UUID> next) {
+        if (next.isEmpty()) {
+            LATCHED.remove(level.dimension());
+        } else {
+            LATCHED.put(level.dimension(), Set.copyOf(next));
+        }
+        DeadmanLatchPayload.sendToDimension(level, next);
+    }
+
+    /** Drops service latches the shared table no longer holds (a redstone release, an unload). */
+    private static void pruneEnderLatches(ResourceKey<Level> dim, Set<UUID> latched) {
+        Set<UUID> ender = ENDER_LATCHED.get(dim);
+        if (ender == null || latched.containsAll(ender)) {
+            return;
+        }
+        Set<UUID> remaining = new HashSet<>(ender);
+        remaining.retainAll(latched);
+        if (remaining.isEmpty()) {
+            ENDER_LATCHED.remove(dim);
+        } else {
+            ENDER_LATCHED.put(dim, Set.copyOf(remaining));
+        }
+    }
+
+    /** The loaded consist containing {@code carriageId}, or null when it is not a loaded sub-level. */
+    private static TrainDeadmanMath.Consist consistOf(ServerLevel level, UUID carriageId) {
+        var container = SubLevelContainer.getContainer(level);
+        if (container == null) {
+            return null;
+        }
+        List<TrainDeadmanMath.Carriage> carriages = new ArrayList<>();
+        for (SubLevel carriage : container.getAllSubLevels()) {
+            if (carriage.isRemoved()) {
+                continue;
+            }
+            carriages.add(new TrainDeadmanMath.Carriage(
+                    carriage.getUniqueId(), partnersOf(carriage), List.of()));
+        }
+        for (TrainDeadmanMath.Consist consist : TrainDeadmanMath.cluster(carriages)) {
+            if (consist.carriageIds().contains(carriageId)) {
+                return consist;
+            }
+        }
+        return null;
+    }
+
+    /** Every physics bogey of these loaded carriages (server thread, plot actors). */
+    private static List<PhysicsBogeyBlockEntity> bogeysIn(ServerLevel level, Collection<UUID> carriages) {
+        var container = SubLevelContainer.getContainer(level);
+        if (container == null) {
+            return List.of();
+        }
+        List<PhysicsBogeyBlockEntity> bogeys = new ArrayList<>();
+        for (UUID id : carriages) {
+            SubLevel sub = container.getSubLevel(id);
+            if (sub == null || sub.isRemoved()) {
+                continue;
+            }
+            for (var actor : sub.getPlot().getBlockEntityActors()) {
+                if (actor instanceof PhysicsBogeyBlockEntity bogey && !bogey.isRemoved()) {
+                    bogeys.add(bogey);
+                }
+            }
+        }
+        return bogeys;
+    }
+
+    /** The automatic-coupler partners of one carriage, read without loading an absent partner. */
+    private static List<UUID> partnersOf(SubLevel carriage) {
+        List<UUID> partners = new ArrayList<>();
+        for (var actor : carriage.getPlot().getBlockEntityActors()) {
+            if (actor instanceof AutomaticCouplerBlockEntity coupler && !coupler.isRemoved()) {
+                // The upstream dependency helper wraps getSubLevel(partner) in List.of,
+                // which throws for an unloaded partner. Read the same ID and let cluster
+                // ignore absent nodes instead; do not force-load chunks or invent links.
+                UUID partner = ((AutomaticCouplerPartnerAccessor) coupler).dimblend$getPartnerSubLevelId();
+                if (partner != null) {
+                    partners.add(partner);
+                }
+            }
+        }
+        return partners;
+    }
+
     private static void onLevelTick(LevelTickEvent.Post event) {
         if (!(event.getLevel() instanceof ServerLevel level) || !Config.isLoaded()) {
             return;
         }
+        Set<UUID> ender = enderLatched(level.dimension());
         if (!Config.TRAIN_DEADMAN_BRAKE.get()) {
-            if (LATCHED.remove(level.dimension()) != null) {
-                DeadmanLatchPayload.sendToDimension(level, Set.of());
+            if (ender.isEmpty()) {
+                if (LATCHED.remove(level.dimension()) != null) {
+                    DeadmanLatchPayload.sendToDimension(level, Set.of());
+                }
+                // 关开关=全部解除：恢复真实 impact 并清表（空锁存集=只走恢复侧）
+                syncForcedImpacts(level, FLEETS.remove(level), Set.of());
+                return;
             }
-            // 关开关=全部解除：恢复真实 impact 并清表（空锁存集=只走恢复侧）
-            syncForcedImpacts(level, FLEETS.remove(level), Set.of());
-            return;
+            // 末影刹车不受本开关支配：死锁存照旧全部解除，服务锁存的那几个编组留着，
+            // 下面的红石沿扫描继续负责它们的解除规则。
+            Set<UUID> kept = new HashSet<>(ender);
+            if (!kept.equals(latchedCarriages(level.dimension()))) {
+                applyLatch(level, kept);
+                // The dropped deadman latches must give their forced impacts back now.
+                syncForcedImpacts(level, FLEETS.get(level), kept);
+            }
         }
         Fleet fleet = FLEETS.get(level);
         if (fleet == null) {
@@ -131,7 +316,10 @@ public final class TrainDeadmanBrake {
                 }
             }
         }
-        boolean scan = now % CHECK_INTERVAL_TICKS == 0;
+        // The unattended scan stays rotating-only and switch-gated: an ender latch also samples
+        // its own dimension, and the scan must never start latching consists elsewhere.
+        boolean scan = Config.TRAIN_DEADMAN_BRAKE.get() && RotatingDimension.is(level)
+                && now % CHECK_INTERVAL_TICKS == 0;
         if (!scan && signalChanges.isEmpty()) {
             return;
         }
@@ -149,13 +337,10 @@ public final class TrainDeadmanBrake {
         Set<UUID> next = TrainDeadmanMath.updateLatches(previous, consists, signalChanges,
                 consist -> scan && isUnattended(consist.bogeys(), attendants, radius * radius));
         if (!next.equals(previous)) {
-            if (next.isEmpty()) {
-                LATCHED.remove(level.dimension());
-            } else {
-                LATCHED.put(level.dimension(), next);
-            }
-            DeadmanLatchPayload.sendToDimension(level, next);
+            applyLatch(level, next);
         }
+        // A redstone release drops the shared latch, so the service's record drops with it.
+        pruneEnderLatches(level.dimension(), next);
         // 锁存强制过载对齐：锁存变化（立即生效/恢复）之外，扫描周期内重进chunk的
         // 转向架（新 BE 不在表内）也在此补算——仅缺表时推 updateStressFor，不逐 tick 推
         syncForcedImpacts(level, fleet, next);
@@ -199,11 +384,19 @@ public final class TrainDeadmanBrake {
             if (carriage == null || carriage.isRemoved() || !latched.contains(carriage.getUniqueId())) {
                 continue;
             }
-            float forced = computeForcedImpact(bogey);
-            FORCED_IMPACTS.put(bogey, forced);
-            if (bogey.hasNetwork()) {
-                bogey.getOrCreateNetwork().updateStressFor(bogey, forced);
-            }
+            forceImpact(bogey);
+        }
+    }
+
+    /** Forces one latched bogey's synthetic impact into its network, once per entry. */
+    private static void forceImpact(PhysicsBogeyBlockEntity bogey) {
+        if (FORCED_IMPACTS.containsKey(bogey)) {
+            return;
+        }
+        float forced = computeForcedImpact(bogey);
+        FORCED_IMPACTS.put(bogey, forced);
+        if (bogey.hasNetwork()) {
+            bogey.getOrCreateNetwork().updateStressFor(bogey, forced);
         }
     }
 
@@ -248,7 +441,18 @@ public final class TrainDeadmanBrake {
         // 也不当值守锚点——否则马达板车一拉杆自己往 x+ 走、玩家还站在站台上，它就被当成
         // 「无人值守的列车」当场刹死，这个功能就没有意义了。挂在玩家列车上的奖励车厢仍然
         // 计入编组（能连钩），只是它自己不出 Probe，列车自己的车架照旧判定。
-        Set<UUID> rewardWagons = RewardWagonSites.get(level).subLevelIds();
+        //
+        // 同一条规则适用于「非玩家车厢」（dimblend.api.NonCrewCarriages）：末影龙追逐自己
+        // 刷出来的龙巢/末影刹车车/水晶车不是玩家的编组，龙巢还以 10–32 m/s 逃在玩家前方
+        // >128 格外——若算进来，每次追逐开场都会把龙巢转向架当成无人值守列车锁死。
+        Set<UUID> chaseCars = NonCrewCarriages.ids(level);
+        Set<UUID> nonCrew;
+        if (chaseCars.isEmpty()) {
+            nonCrew = RewardWagonSites.get(level).subLevelIds();
+        } else {
+            nonCrew = new HashSet<>(RewardWagonSites.get(level).subLevelIds());
+            nonCrew.addAll(chaseCars);
+        }
         Map<UUID, List<TrainDeadmanMath.Probe>> probes = new HashMap<>();
         for (var entry : fleet.samples.entrySet()) {
             var bogey = entry.getKey();
@@ -256,7 +460,7 @@ public final class TrainDeadmanBrake {
             if (carriage == null || carriage.isRemoved()) {
                 continue; // Unassembled blocks are not a moving train.
             }
-            if (rewardWagons.contains(carriage.getUniqueId())) {
+            if (nonCrew.contains(carriage.getUniqueId())) {
                 continue;
             }
             Vec3 pos = SableWorldPosition.project(level, bogey.getBlockPos().getCenter());
@@ -268,21 +472,9 @@ public final class TrainDeadmanBrake {
             if (carriage.isRemoved()) {
                 continue;
             }
-            List<UUID> partners = new ArrayList<>();
-            for (var actor : carriage.getPlot().getBlockEntityActors()) {
-                if (actor instanceof AutomaticCouplerBlockEntity coupler && !coupler.isRemoved()) {
-                    // The upstream dependency helper wraps getSubLevel(partner) in List.of,
-                    // which throws for an unloaded partner. Read the same ID and let cluster
-                    // ignore absent nodes instead; do not force-load chunks or invent links.
-                    UUID partner = ((AutomaticCouplerPartnerAccessor) coupler).dimblend$getPartnerSubLevelId();
-                    if (partner != null) {
-                        partners.add(partner);
-                    }
-                }
-            }
-            carriages.add(new TrainDeadmanMath.Carriage(carriage.getUniqueId(), partners,
+            carriages.add(new TrainDeadmanMath.Carriage(carriage.getUniqueId(), partnersOf(carriage),
                     TrainDeadmanMath.crewProbes(probes.getOrDefault(carriage.getUniqueId(), List.of()),
-                            rewardWagons.contains(carriage.getUniqueId()))));
+                            nonCrew.contains(carriage.getUniqueId()))));
         }
         return carriages;
     }
@@ -291,6 +483,7 @@ public final class TrainDeadmanBrake {
         if (event.getLevel() instanceof ServerLevel level) {
             FLEETS.remove(level);
             LATCHED.remove(level.dimension());
+            ENDER_LATCHED.remove(level.dimension());
             FORCED_IMPACTS.entrySet().removeIf(entry -> entry.getKey().getLevel() == level);
         }
     }
@@ -298,6 +491,7 @@ public final class TrainDeadmanBrake {
     private static void onServerStopped(ServerStoppedEvent event) {
         FLEETS.clear();
         LATCHED.clear();
+        ENDER_LATCHED.clear();
         FORCED_IMPACTS.clear();
     }
 

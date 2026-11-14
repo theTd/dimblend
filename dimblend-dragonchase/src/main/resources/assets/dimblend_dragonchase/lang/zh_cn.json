@@ -1,0 +1,19 @@
+{
+  "entity.dimblend_dragonchase.chase_dragon": "末影龙",
+  "entity.dimblend_dragonchase.dragon_fireball": "龙息弹",
+  "boss.dimblend_dragonchase.dragon": "末影龙%s世 %s/%s",
+  "command.dimblend_dragonchase.status": "追逐状态：%s，世代 %s，龙巢 x=%s，龙 %s",
+  "command.dimblend_dragonchase.prologue": "已生成序章龙。",
+  "command.dimblend_dragonchase.nest": "已在前方 300 格排入龙巢，等待区块就绪。",
+  "command.dimblend_dragonchase.damage": "已对追逐龙造成 %s 点伤害。",
+  "command.dimblend_dragonchase.fireball": "追逐龙已发射龙息弹。",
+  "command.dimblend_dragonchase.breath": "追逐龙开始向轨道吐息。",
+  "command.dimblend_dragonchase.kill": "已按击杀结算追逐：奖励已发放，世代 +1。",
+  "command.dimblend_dragonchase.fail": "已按失败清除追逐：龙与龙巢已移除。",
+  "command.dimblend_dragonchase.reset": "追逐状态已重置。",
+  "command.dimblend_dragonchase.generation": "世代已设为 %s。",
+  "command.dimblend_dragonchase.no_dragon": "当前没有追逐龙。",
+  "command.dimblend_dragonchase.no_chase": "当前没有进行中的追逐。",
+  "command.dimblend_dragonchase.no_train": "附近没有常加载车体。",
+  "command.dimblend_dragonchase.no_level": "找不到旋转维度。"
+}

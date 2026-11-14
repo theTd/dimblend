@@ -1,0 +1,81 @@
+modLoader="javafml" #mandatory
+
+loaderVersion="${loader_version_range}" #mandatory
+
+license="${mod_license}"
+
+[[mods]] #mandatory
+
+modId="${mod_id}" #mandatory
+
+version="${mod_version}" #mandatory
+
+displayName="${mod_name}" #mandatory
+
+description='''
+DimBlend Dragon Chase: the endgame chase in the rotating dimension. A prologue dragon in End region 32,
+then in later End regions a nest car that flees along the track while a remade ender dragon fights the
+train with fireballs that drop brake and crystal cars. Kill it for the nest's reward.
+Removable on its own: no other DimBlend mod depends on it.
+'''
+
+[[dependencies.${mod_id}]]
+    modId="neoforge"
+    type="required"
+    versionRange="[${neo_version},)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+# 旋转维度、区域布局、折跃门、白线：dimblend.api
+[[dependencies.${mod_id}]]
+    modId="dimblend"
+    type="required"
+    versionRange="[0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+# 车厢 = Sable 子关卡
+[[dependencies.${mod_id}]]
+    modId="sable"
+    type="required"
+    versionRange="[2.0,)"
+    ordering="NONE"
+    side="BOTH"
+
+# 自动车钩与物理转向架
+[[dependencies.${mod_id}]]
+    modId="simurail"
+    type="required"
+    versionRange="[0,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="create"
+    type="required"
+    versionRange="[6.0.10,)"
+    ordering="NONE"
+    side="BOTH"
+
+# 伪装梁/伪装台阶的材质
+[[dependencies.${mod_id}]]
+    modId="copycats"
+    type="required"
+    versionRange="[3.0,)"
+    ordering="NONE"
+    side="BOTH"
+
+# 创造模式伪装方块本体
+[[dependencies.${mod_id}]]
+    modId="dimblend_blocks"
+    type="required"
+    versionRange="[0,)"
+    ordering="NONE"
+    side="BOTH"

@@ -110,35 +110,57 @@ public final class TuningScreen extends Screen {
         if (section == TuningOption.Section.MAIN && hasSkyTimeTraceApi()) {
             addSkyTimeTraceRow();
         }
-        Row navigation = new Row(null, contentHeight, 30, 20, List.of(), List.of());
-        rows.add(navigation);
-        int navigationY = listTop + contentHeight - scroll;
-        if (section == TuningOption.Section.MAIN) {
-            boolean spyglass = SpyglassTuningBridge.isLoaded();
-            int buttons = spyglass ? 3 : 2;
-            int gap = 4;
-            int buttonWidth = (panelWidth - 16 - gap * (buttons - 1)) / buttons;
-            int x = left + 8;
-            add(navigation, Button.builder(Component.translatable(KEY + "section_sable"), button -> switchSection())
-                    .bounds(x, navigationY, buttonWidth, 20).build(), true);
-            x += buttonWidth + gap;
-            if (spyglass) {
-                add(navigation, Button.builder(Component.translatable(KEY + "section_spyglass"),
-                        button -> openSpyglassSources()).bounds(x, navigationY, buttonWidth, 20).build(), true);
-                x += buttonWidth + gap;
-            }
-            add(navigation, Button.builder(Component.translatable(KEY + "section_perf"), button -> openPerfChecklist())
-                    .bounds(x, navigationY, buttonWidth, 20).build(), true);
-        } else {
-            add(navigation, Button.builder(Component.translatable(KEY + "section_main"), button -> switchSection())
-                    .bounds(left + 8, navigationY, panelWidth - 16, 20).build(), true);
-        }
-        contentHeight += navigation.height;
+        addNavigation();
         updating = false;
         scroll = Math.max(0, Math.min(scroll, maxScroll()));
         positionRows();
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> onClose())
                 .bounds(width / 2 - 50, height - 26, 100, 20).build());
+    }
+
+    /**
+     * Sections are reached from the main page and return to it. A page that is a feature of an
+     * optional mod is offered only while that mod is installed: the Dragon Chase bit of the
+     * snapshot is that mod's presence test (requirements.md §3.1).
+     *
+     * <p>Each layout line is its own {@link Row} because {@link #positionRows()} moves a row's
+     * widgets as one block.
+     */
+    private void addNavigation() {
+        List<NavigationButton> buttons = new ArrayList<>();
+        if (section == TuningOption.Section.MAIN) {
+            buttons.add(new NavigationButton(KEY + "section_sable",
+                    () -> openSection(TuningOption.Section.SABLE)));
+            if (SpyglassTuningBridge.isLoaded()) {
+                buttons.add(new NavigationButton(KEY + "section_spyglass", this::openSpyglassSources));
+            }
+            if (snapshot.available(TuningOption.DRAGON_CHASE_SPEED_FLOOR_ENABLED)) {
+                buttons.add(new NavigationButton(KEY + "section_dragon_chase",
+                        () -> openSection(TuningOption.Section.DRAGON_CHASE)));
+            }
+            buttons.add(new NavigationButton(KEY + "section_perf", this::openPerfChecklist));
+        } else {
+            buttons.add(new NavigationButton(KEY + "section_main",
+                    () -> openSection(TuningOption.Section.MAIN)));
+        }
+        int columns = buttons.size() >= 4 ? 2 : Math.max(1, buttons.size());
+        int gap = 4;
+        int buttonWidth = columns == 1 ? panelWidth - 16
+                : (panelWidth - 16 - gap * (columns - 1)) / columns;
+        for (int start = 0; start < buttons.size(); start += columns) {
+            int end = Math.min(buttons.size(), start + columns);
+            Row navigation = new Row(null, contentHeight, 30, 20, List.of(), List.of());
+            rows.add(navigation);
+            int navigationY = listTop + contentHeight - scroll;
+            for (int index = start; index < end; index++) {
+                NavigationButton button = buttons.get(index);
+                int x = left + 8 + (index - start) * (buttonWidth + gap);
+                add(navigation, Button.builder(Component.translatable(button.key()),
+                                pressed -> button.action().run())
+                        .bounds(x, navigationY, buttonWidth, 20).build(), true);
+            }
+            contentHeight += navigation.height;
+        }
     }
 
     private void add(Row row, AbstractWidget widget, boolean editable) {
@@ -200,8 +222,8 @@ public final class TuningScreen extends Screen {
         updating = previousUpdating;
     }
 
-    private void switchSection() {
-        section = section == TuningOption.Section.MAIN ? TuningOption.Section.SABLE : TuningOption.Section.MAIN;
+    private void openSection(TuningOption.Section next) {
+        section = next;
         scroll = 0;
         rebuildWidgets();
     }
@@ -453,6 +475,10 @@ public final class TuningScreen extends Screen {
         for (int i = 0; i < Math.min(2, statusLines.size()); i++) {
             graphics.drawCenteredString(font, statusLines.get(i), width / 2, height - 52 + i * 10, 0xFFFFFFFF);
         }
+    }
+
+    /** One navigation button: a lang key and what pressing it does. */
+    private record NavigationButton(String key, Runnable action) {
     }
 
     private static final class Row {

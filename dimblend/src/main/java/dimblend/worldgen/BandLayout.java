@@ -1,5 +1,6 @@
 package dimblend.worldgen;
 
+import dimblend.api.RegionOverrides;
 import java.util.List;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -24,6 +25,7 @@ public final class BandLayout {
 
     private final List<ChunkGenerator> delegates;
     private final Lane[] lanes;
+    private final byte[] kinds;
     private final BandLaneAssigner assigner;
 
     public BandLayout(List<ChunkGenerator> delegates, long seed) {
@@ -33,15 +35,24 @@ public final class BandLayout {
         requireLane(Lane.UNDERGROUND);
         requireLane(Lane.NETHER);
         requireLane(Lane.END);
-        this.assigner = new BandLaneAssigner(kindsOf(this.lanes), seed);
+        this.kinds = kindsOf(this.lanes);
+        this.assigner = new BandLaneAssigner(this.kinds, seed);
     }
 
     public long seed() {
         return this.assigner.seed();
     }
 
+    /**
+     * Delegate that generates {@code region}. A region another mod forced to
+     * {@link dimblend.api.RegionOverrides.Override#END_BARREN} resolves to the first End delegate
+     * regardless of the seeded draw, so boundary walls/gates ({@link #sameLaneAcrossBoundary}),
+     * the no-structure zone, lane pushes, depot sites and reward-wagon lookups all see the
+     * forced End. The seeded assignment is still walked first, so the assigner's sequential
+     * cache stays complete for every region.
+     */
     public int delegateIndex(int region) {
-        return this.assigner.delegateIndex(region);
+        return BarrenRegionGeneration.delegateIndexFor(this.kinds, region, this.assigner.delegateIndex(region));
     }
 
     public ChunkGenerator delegate(int region) {
@@ -54,11 +65,19 @@ public final class BandLayout {
 
     /**
      * Lane name of the region one step farther from spawn than {@code region} when that
-     * neighbor is scripted (fixed 0–20/32–33 or the forced closer of a freshly opened
-     * surface run), or null when it is a random draw — the HUD shows "未知" then.
+     * neighbor is known without leaking the seeded draw: a forced {@link
+     * dimblend.api.RegionOverrides.Override#END_BARREN} (its real lane, "end"), a fixed
+     * 0–20/32–33 lane, or the forced closer of a freshly opened surface run. Null when it
+     * is a random draw — the HUD shows "未知" then.
      */
     @javax.annotation.Nullable
     public String scriptedOutwardLaneName(int region) {
+        int next = region + (region < 0 ? -1 : 1);
+        if (RegionOverrides.isBarren(next)) {
+            // Delegating through delegateIndex keeps the lane name in one place: an overridden
+            // region resolves to the first End delegate.
+            return laneName(this.delegates.get(this.delegateIndex(next)));
+        }
         int index = this.assigner.scriptedOutwardDelegate(region);
         return index < 0 ? null : laneName(this.delegates.get(index));
     }
@@ -83,8 +102,20 @@ public final class BandLayout {
         return laneOf(delegate) == Lane.SURFACE;
     }
 
+    /**
+     * Fixed-script delegate for {@code region}, used before the seeded layout exists (or when
+     * it never will, e.g. {@link RotatingBiomeSource} with no generator bound). Forced
+     * {@link RegionOverrides.Override#END_BARREN} regions resolve to the first End delegate
+     * here too, so a biome query that runs before the layout is built still sees the override.
+     */
     public static int fixedDelegateIndex(int region, List<ChunkGenerator> delegates) {
         Lane[] lanes = classify(delegates);
+        if (RegionOverrides.isBarren(region)) {
+            int end = firstOf(lanes, Lane.END);
+            if (end >= 0) {
+                return end;
+            }
+        }
         Lane lane = fixedLane(Math.abs(region));
         int index = firstOf(lanes, lane == null ? Lane.SURFACE : lane);
         if (index < 0) {

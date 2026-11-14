@@ -53,10 +53,30 @@ public enum TuningOption {
     // 默认值镜像 Config.OBSERVER_BLAZE_RADIUS（32），由 ObserverBlazeRadiusTest 钉死
     OBSERVER_BLAZE_RADIUS("observer_blaze_radius", 32.0D, 16.0D, 64.0D, 0, "sable", Section.SABLE),
     // 默认值镜像 Config.STATION_CARRIAGE_LIMIT（6），由 TuningOptionTest 钉死；宽度 3-11、精度 1
-    STATION_CARRIAGE_LIMIT("station_carriage_limit", 6.0D, 3.0D, 11.0D, 0, "");
+    STATION_CARRIAGE_LIMIT("station_carriage_limit", 6.0D, 3.0D, 11.0D, 0, ""),
+    // 末影龙追逐（requirements.md §3.1）：八项一一镜像 dimblend-dragonchase 的
+    // api.DragonChaseTuning.Option，读写都经 DragonChaseTuningBridge 转交给那个 mod 的 server
+    // config（默认值/范围/步进与那边逐项相同，由 DragonChaseTuning 自己再校验一次）。
+    // 步进一律走显式 step 构造器：8 项里有 4 项的步进不是 10 的负幂（0.5 / 0.2 / 16 / 4）。
+    DRAGON_CHASE_SPEED_FLOOR_ENABLED("dragon_chase_speed_floor_enabled", 1.0D, "dimblend_dragonchase",
+            Section.DRAGON_CHASE),
+    DRAGON_CHASE_GENERATION_SPEED_STEP("dragon_chase_generation_speed_step", 1.0D, 0.0D, 8.0D, 1,
+            "dimblend_dragonchase", Section.DRAGON_CHASE, 0.5D),
+    DRAGON_CHASE_HEALTH_MULTIPLIER("dragon_chase_health_multiplier", 1.0D, 0.2D, 5.0D, 1,
+            "dimblend_dragonchase", Section.DRAGON_CHASE, 0.2D),
+    DRAGON_CHASE_LOSE_DISTANCE("dragon_chase_lose_distance", 512.0D, 256.0D, 1024.0D, 0,
+            "dimblend_dragonchase", Section.DRAGON_CHASE, 16.0D),
+    DRAGON_CHASE_MIN_SPEED_GROWTH_DISTANCE("dragon_chase_min_speed_growth_distance", 512.0D, 16.0D, 2048.0D, 0,
+            "dimblend_dragonchase", Section.DRAGON_CHASE, 16.0D),
+    DRAGON_CHASE_MIN_SPEED_CAP("dragon_chase_min_speed_cap", 32.0D, 16.0D, 64.0D, 0,
+            "dimblend_dragonchase", Section.DRAGON_CHASE, 1.0D),
+    DRAGON_CHASE_FIREBALL_DAMAGE_THRESHOLD("dragon_chase_fireball_damage_threshold", 32.0D, 4.0D, 64.0D, 0,
+            "dimblend_dragonchase", Section.DRAGON_CHASE, 4.0D),
+    DRAGON_CHASE_DAMAGE_CAP_PERCENT("dragon_chase_damage_cap_percent", 2.0D, 0.5D, 10.0D, 1,
+            "dimblend_dragonchase", Section.DRAGON_CHASE, 0.5D);
 
     /** Display pages of the tuning screen; the snapshot still carries every option. */
-    public enum Section { MAIN, SABLE }
+    public enum Section { MAIN, SABLE, DRAGON_CHASE }
 
     public static final String PREFIX = "screen.dimblend_experience.tuning.";
     private final String id;
@@ -127,6 +147,12 @@ public enum TuningOption {
 
     /** Settings owned by sable's server config; page placement does not imply ownership. */
     public boolean sable() { return section == Section.SABLE && !experienceOwned(); }
+
+    /**
+     * Options of the Dragon Chase page: they live in {@code dimblend_dragonchase}'s server config
+     * and are only routed through that mod's api, never stored here.
+     */
+    public boolean dragonChase() { return section == Section.DRAGON_CHASE; }
 
     public boolean isValid(double value) {
         if (!Double.isFinite(value) || value < minimum || value > maximum) {
