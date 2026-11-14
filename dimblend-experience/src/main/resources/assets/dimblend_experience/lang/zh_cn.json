@@ -284,5 +284,11 @@
 	"item.dimblend_experience.supplement.levitite_bucket": "用于列车时 可有效减重 且不产生阻力",
 	"item.dimblend_experience.supplement.doll": "它也会是称职的仓库管理员",
 	"dimblend_experience.display_source.traction_efficiency": "牵引效率",
+	"dimblend_experience.display_source.vault_storage_groups": "读取存量-计位",
+	"dimblend_experience.display_source.vault_storage_items": "读取存量-计件",
+	"dimblend_experience.display_source.vault_storage.display": "显示格式",
+	"dimblend_experience.display_source.vault_storage.count": "数量/总量",
+	"dimblend_experience.display_source.vault_storage.progress_bar": "进度条",
+	"dimblend_experience.display_source.vault_storage.percent": "百分比",
 	"item.dimblend_experience.create_door_pairing": "手持再次右键可变为单格对开"
 }

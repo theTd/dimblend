@@ -20,8 +20,9 @@ public final class DimBlendClient {
 
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
-        if (net.neoforged.fml.ModList.get().isLoaded("create")
-                && net.neoforged.fml.ModList.get().isLoaded("simurail")) {
+        if (net.neoforged.fml.ModList.get().isLoaded("create")) {
+            // 思索条目按各自 mod 在场性逐条判断（simurail/create_connected/dndecor），
+            // 所以这里只需要 Create 在场即可注册插件。
             event.enqueueWork(() -> net.createmod.ponder.foundation.PonderIndex.addPlugin(
                     new dimblend.experience.client.ponder.SupplementPonderPlugin()));
         }

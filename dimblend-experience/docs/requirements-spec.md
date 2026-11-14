@@ -1843,3 +1843,30 @@ localRuntime，默认不加，dev 运行仍与实例对齐）。
   2. **动态 `±2.5°` 限幅微侧倾（严守 `Y=66` 与车头零俯仰）**：由于 Rapier 求解器内 `locked_axes` 优先级高于 `limit_axes`/`motor_axes`（`joint_velocity_constraint.rs:141-143`），`ChassisRailLock` 对单纵轴车体（X 向或经 `Ry(-π/2)` 对齐的 Z 向车体）将永久硬锁轴收敛为 `{LINEAR_Y, ANGULAR_Z}`，而将纵向翻滚轴 `ANGULAR_X` 在平时设为 `[0.0, 0.0]` 硬限位 + 归零电机（静止或单侧偏载时严守 `0.00°` 不歪斜）；仅在 `notifyLateralShakePulse` 触发后的 `40 tick` 窗口（`10 tick` 施力 + `30 tick` 阻尼回正）内动态放开至 `[-2.5°, +2.5°]` 并挂上弹簧阻尼电机（`stiffness = 36.0, damping = 8.4`），弯道偏航刷新阈值同步收紧至 `3.0°` 消除 yaw-roll 交叉耦合。
   3. **质量与转动惯量双归一化**：水平冲量按 `normalMass / 400.0` 缩放，纵向侧倾扭矩冲量按 `(rollMoment / 500.0) / sqrt(bogeyCount)` 缩放（继续线性响应 `/dbx` 面板的 `trainAdditionalLateralForcePn` 与 `trainShakeDrawIntervalSeconds`），并分别由 `canPushFurther`（`0.12 m`）与 `canRollFurther`（`2.5°`）防止达到限位后继续同向猛顶。
 - 验证：`TrainLateralForceMathTest` 8 项与 `ChassisRailLockRulesTest` 9 项纯函数单测通过，新增 `ChassisWorldAnchorGameTests#microRollPulseAllowsCappedTwoPointFiveDegreeRollAndResettlesFlatAtDeck66` GameTest；待整合包实机乘车验证。
+
+## 20. 2026-11-14 批次：显示连接器读取物品保险库存量与思索来源
+
+### 20.1 适用目标与贴附行为
+- 适用方块实体类型（在 `FMLCommonSetupEvent` 按注册表 ID 动态关联 `DisplaySource.BY_BLOCK_ENTITY`，零硬引用附属模组类，附属缺席照常启动）：
+  - `create:item_vault`（Create 物品保险库）
+  - `create_connected:item_silo`（Create: Connected 纵向物品保险库）
+  - `dndecor:dyed_container`（Design n' Decor 集装箱 `dndecor:container` 及全部染色/纯色变种共用该方块实体类型，继承 `ItemVaultBlockEntity`）
+- 贴附与多结构整仓读取：Create `DisplayLinkBlock` 支持六面贴附且由 `ClickToLinkBlockItem.linkableItemAlwaysPlacesWhenUsed` 强制走放置路径，不被容器右键交互截胡；读取时从 `context.getSourcePos()` 起全程通过 `getChunkSource().getChunkNow(...)` 非阻塞取源段、定位 `IMultiBlockEntityContainer#getController()` 主控段并校验按 `getMainConnectionAxis()` 计算出的水平远角区块均已 `FULL` 加载后，向主控段查询 `Capabilities.ItemHandler.BLOCK` 获取整台多结构拼接后的 `IItemHandler`（贴在非主控段同样读取整台保险库，且本模块读取路径全程不调用 `level.getBlockEntity`）。
+
+### 20.2 功能选项与显示选项口径
+- 功能选项（注册为两个 `DisplaySource`，显示连接器「信息类型」下拉可直接切换）：
+  - **读取存量-计位**（`dimblend_experience:vault_storage_groups`）：总量 = 整台多结构总槽位数（组数）；数量 = 非空槽位数（任意槽位只要有 ≥1 个物品，无论数量是否满 64、无论最大堆叠是 64 / 16 / 1，均计占据 1 组）。
+  - **读取存量-计件**（`dimblend_experience:vault_storage_items`）：总量 = `总槽位数 × 64`；数量 = 各非空槽位 `count × (64 / maxStackSize)` 之和（64 堆叠每件算 1、16 堆叠每件算 4、不可堆叠每件算 64；`maxStackSize <= 0` 防御性按 1 处理）。
+- 显示选项（配置面板第 2 行 `Mode` 滚轮选择，第 1 行保留原生标签输入框）：
+  - `0` **数量/总量**：直接输出 `<数量>/<总量>`；
+  - `1` **进度条**：复用 `PercentOrProgressBarDisplaySource` 原生 `█/▓` 进度条（告示牌 6/9 宽比缩放、翻牌显示板 `Progress` `pixel` 宽翻牌布局）；
+  - `2` **百分比**：输出 `0%–100%` 整数百分比（超出 100% 的极端堆叠场景钳位至 `100%`）。
+
+### 20.3 思索（Ponder）读取来源
+- `DimBlendClient` 放宽为只要 `create` 在场即注册 `SupplementPonderPlugin`；
+- `SupplementPonderPlugin#registerTags` 向 `AllCreatePonderTags.DISPLAY_SOURCES` 注册：
+  - `create:item_vault`（物品保险库）
+  - `create_connected:item_silo`（纵向物品保险库，`create_connected` 在场时）
+  - `dndecor:container`（集装箱，`dndecor` 在场时）
+  - `simurail:physics_bogey`（原有转向架条目，改为 `simurail` 在场时按需加入）
+- 验证：`VaultStorageMathTest` 6 项 JUnit 单测 + `VaultDisplaySourceGameTests` 2 项 GameTest（含 1×1×2 双段保险库贴非主控段读取整仓 64/16/1 三种堆叠口径与 `DisplaySource.getAll` 关联断言）通过。

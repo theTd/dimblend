@@ -26,5 +26,11 @@
 	"config.jade.plugin_dimblend_experience.item_drain_hud": "分液池灌溉狀態",
 	"message.dimblend_experience.depth_curse.max_health": "遠行 生命值上限 -25%",
 	"effect.dimblend_experience.binding_curse": "綁定詛咒",
-	"message.dimblend_experience.item_drain.nether_too_hot": "這裡太熱了"
+	"message.dimblend_experience.item_drain.nether_too_hot": "這裡太熱了",
+	"dimblend_experience.display_source.vault_storage_groups": "讀取存量-計位",
+	"dimblend_experience.display_source.vault_storage_items": "讀取存量-計件",
+	"dimblend_experience.display_source.vault_storage.display": "顯示格式",
+	"dimblend_experience.display_source.vault_storage.count": "數量/總量",
+	"dimblend_experience.display_source.vault_storage.progress_bar": "進度條",
+	"dimblend_experience.display_source.vault_storage.percent": "百分比"
 }
