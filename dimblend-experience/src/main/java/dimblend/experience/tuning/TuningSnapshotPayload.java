@@ -20,7 +20,7 @@ public record TuningSnapshotPayload(boolean open, boolean editable, long availab
                 for (double value : payload.values) {
                     buffer.writeDouble(value);
                 }
-                buffer.writeUtf(payload.acknowledged, 32);
+                buffer.writeUtf(payload.acknowledged, TuningOption.MAX_ID_LENGTH);
                 buffer.writeUtf(payload.message, 64);
             }, buffer -> {
                 boolean open = buffer.readBoolean();
@@ -31,7 +31,7 @@ public record TuningSnapshotPayload(boolean open, boolean editable, long availab
                     values.add(buffer.readDouble());
                 }
                 return new TuningSnapshotPayload(open, editable, availableMask, List.copyOf(values),
-                        buffer.readUtf(32), buffer.readUtf(64));
+                        buffer.readUtf(TuningOption.MAX_ID_LENGTH), buffer.readUtf(64));
             });
 
     public TuningSnapshotPayload {

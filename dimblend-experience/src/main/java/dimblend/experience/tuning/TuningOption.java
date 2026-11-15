@@ -75,6 +75,9 @@ public enum TuningOption {
     DRAGON_CHASE_DAMAGE_CAP_PERCENT("dragon_chase_damage_cap_percent", 2.0D, 0.5D, 10.0D, 1,
             "dimblend_dragonchase", Section.DRAGON_CHASE, 0.5D);
 
+    /** Maximum UTF-8 character length for option identifiers on the tuning wire. */
+    public static final int MAX_ID_LENGTH = 64;
+
     /** Display pages of the tuning screen; the snapshot still carries every option. */
     public enum Section { MAIN, SABLE, DRAGON_CHASE }
 

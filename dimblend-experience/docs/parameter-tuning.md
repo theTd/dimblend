@@ -81,7 +81,9 @@ chunk reloads and vehicle assembly retain activation. Iris still disables this r
 
 The Sable page includes ten **experience-owned, server-authoritative** options.
 Edits persist in `serverconfig/dimblend_experience-server.toml` and broadcast to
-all clients through the tuning snapshot (protocol 31, 64-bit availability mask).
+all clients through the tuning snapshot (protocol 32, 64-bit availability mask).
+Option identifiers and snapshot acknowledgements use a shared UTF-8 wire limit of
+`TuningOption.MAX_ID_LENGTH = 64` characters.
 
 | `/dbx` option | Config key | Default | Range / step |
 |---|---|---|---|
@@ -359,7 +361,8 @@ Radio follows the same pattern through `dimblend.radio.api.RadioTuning` and its
 own `serverconfig/dimblend_radio-server.toml`. Its settings are heard on each
 client, so remote clients also apply the broadcast radio values in memory
 (NeoForge already sends the config at login). The snapshot carries one value
-per option, so each added or removed option bumps the protocol version (now `31`; see the
+per option, so each added or removed option bumps the protocol version (now `32`; the
+option and acknowledgement UTF-8 wire limit is 64 characters; see the
 performance checklist below).
 
 Dragon Chase follows the same pattern through
