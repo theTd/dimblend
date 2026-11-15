@@ -54,6 +54,21 @@ public final class ChassisBlocks {
         return false;
     }
 
+    /**
+     * 创造模式伪装半砖本体（不看形态：倒置/正置/双层都算）。
+     * 洗净后的滴水特效只挂在这种「砖块一半」上，伪装板不出水。
+     */
+    public static boolean isCreativeSlab(BlockState state) {
+        return isBlock(state, CREATIVE_SLAB);
+    }
+
+    /** 倒置上半砖（碰撞体占 [0.5, 1.0]，下半格留空）：可在底面整面 y + 0.49 直接向下滴水。 */
+    public static boolean isCreativeTopHalfSlab(BlockState state) {
+        return isBlock(state, CREATIVE_SLAB)
+                && state.getValue(CopycatSlabBlock.SLAB_TYPE) == SlabType.TOP
+                && state.getValue(CopycatSlabBlock.AXIS) == Direction.Axis.Y;
+    }
+
     /** 可能成为车架的方块（已注册的那些），供客户端包装模型。 */
     public static List<Block> candidateBlocks() {
         List<Block> blocks = new ArrayList<>(2);

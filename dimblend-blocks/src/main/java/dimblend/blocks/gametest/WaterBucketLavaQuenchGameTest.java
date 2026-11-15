@@ -3,6 +3,7 @@ package dimblend.blocks.gametest;
 import java.util.List;
 
 import dimblend.blocks.fragile.FragileStones;
+import dimblend.blocks.fragile.LavaQuenchSmokeTrail;
 import dimblend.blocks.fragile.WaterBucketLavaQuenchMath;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -17,7 +18,6 @@ import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.GameType;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -30,146 +30,228 @@ import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
 /**
- * 水桶浇岩浆的服务端 GameTest：5x5 固化、外环岩浆不波及、任何位置都不出现水/含水方块、
- * 生存扣桶 / 创造留桶，以及 mixin 层（直接 {@code emptyContents}，含「点干燥面递归到岩浆格」）。
- *
- * <p>地形约定：使用 {@code empty_9x5x9}（9x5x9，x/z ∈ [0, 8]、y ∈ [0, 4]），岩浆平面放在相对
- * y = 1（相对 y = 0 是结构方块/命令方块那一行，不能碰）；7x7 场 x/z ∈ [1, 7]（相对中心格
- * (4, 1, 4) 的 dx/dz ∈ [-3, 3]），中心格恰是 5x5 淬火中心，外环（|dx| 或 |dz| = 3）保持岩浆；
- * 场外西/南紧邻半砖也在 x/z ∈ [0, 8] 模板范围内（dx/dz ∈ [-4, 4]），互不越界冲突。</p>
- * <p>注册走 {@code DimBlendBlocks} 的 {@code RegisterGameTestsEvent}（常驻），因此不加
- * {@code @GameTestHolder}，结构命名空间在 {@code @GameTest#templateNamespace} 上指定——与
- * {@code CreativeCopycatHidingGameTest} 同一口径。</p>
+ * 水桶 / 蓝冰冷却岩浆的服务端 GameTest：
+ * <ul>
+ *   <li>右键岩浆源头：3x3x3 内所有源头固化为黑曜石，内部岩浆流与外圈源头保持原样；</li>
+ *   <li>右键 16 格内岩浆流（含蓝冰测试）：源头变黑曜石、沿途岩浆流变易碎石头，蓝冰减 1 且不放蓝冰方块；</li>
+ *   <li>右键超出 16 格岩浆流：方块不固化，触发沿途烟雾回溯轨迹；</li>
+ *   <li>创造模式保留水桶，以及 {@code emptyContents} 干燥面递归兜底。</li>
+ * </ul>
  */
 @PrefixGameTestTemplate(false)
 public final class WaterBucketLavaQuenchGameTest {
 
-    /** 岩浆平面相对 Y：模板最底层内容格（相对 y = 0 是结构方块行，不可写）。 */
     private static final int LAVA_Y = 1;
-    /** 9x5x9 模板水平中心 = 7x7 场与 5x5 淬火中心（玩家可站在其上方直视）。 */
     private static final BlockPos CENTER = new BlockPos(4, LAVA_Y, 4);
 
-    /** 生存：视线命中岩浆 → 5x5 固化、外环不动、无水、桶变空桶。 */
     @GameTest(template = "empty_9x5x9", templateNamespace = "dimblend_blocks")
-    public static void survivalWaterBucketOnLavaQuenchesAndEmpties(GameTestHelper helper) {
-        prepareBasin(helper, true);
+    public static void survivalWaterBucketOnSourceQuenches3x3x3SourcesOnly(GameTestHelper helper) {
+        clearWorkspace(helper);
+        ServerLevel level = helper.getLevel();
+        BlockPos flowingInside = CENTER.offset(1, 0, 0);
+        BlockPos upperSource = CENTER.offset(-1, 1, 0);
+        BlockPos outerSource = CENTER.offset(2, 0, 0);
+
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dz = -2; dz <= 2; dz++) {
+                BlockPos rel = CENTER.offset(dx, 0, dz);
+                BlockState state = rel.equals(flowingInside)
+                        ? Blocks.LAVA.defaultBlockState().setValue(LiquidBlock.LEVEL, 2)
+                        : Blocks.LAVA.defaultBlockState();
+                level.setBlockAndUpdate(helper.absolutePos(rel), state);
+            }
+        }
+        level.setBlockAndUpdate(helper.absolutePos(upperSource), Blocks.LAVA.defaultBlockState());
+        for (BlockPos slab : waterloggableSlabs()) {
+            level.setBlockAndUpdate(helper.absolutePos(slab), Blocks.STONE_SLAB.defaultBlockState());
+        }
+
         Player player = helper.makeMockPlayer(GameType.SURVIVAL);
         player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.WATER_BUCKET));
         aimStraightDownAtCenter(helper, player);
         BlockPos lavaAbsolute = helper.absolutePos(CENTER);
-        PlayerInteractEvent.RightClickBlock event = new PlayerInteractEvent.RightClickBlock(player,
-                InteractionHand.MAIN_HAND, lavaAbsolute, topFaceHit(lavaAbsolute));
+        PlayerInteractEvent.RightClickBlock event = new PlayerInteractEvent.RightClickBlock(
+                player, InteractionHand.MAIN_HAND, lavaAbsolute, topFaceHit(lavaAbsolute));
         NeoForge.EVENT_BUS.post(event);
 
         assertIntercepted(event);
-        assertQuenched(helper, true);
-        assertOuterRingStillLava(helper);
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                BlockPos rel = CENTER.offset(dx, 0, dz);
+                BlockState actual = level.getBlockState(helper.absolutePos(rel));
+                if (rel.equals(flowingInside)) {
+                    if (!actual.is(Blocks.LAVA)) {
+                        throw new GameTestAssertException("3x3x3 内非源头岩浆流应保持岩浆，实际为 " + actual);
+                    }
+                } else if (!actual.is(Blocks.OBSIDIAN)) {
+                    throw new GameTestAssertException("3x3x3 内岩浆源头 " + rel + " 应变为黑曜石，实际为 " + actual);
+                }
+            }
+        }
+        if (!level.getBlockState(helper.absolutePos(upperSource)).is(Blocks.OBSIDIAN)) {
+            throw new GameTestAssertException("3x3x3 上层岩浆源头应变为黑曜石");
+        }
+        if (!level.getBlockState(helper.absolutePos(outerSource)).is(Blocks.LAVA)) {
+            throw new GameTestAssertException("3x3x3 外圈岩浆源头不应被波及");
+        }
         assertNoWaterOrWaterloggedAnywhere(helper);
-        ItemStack after = player.getItemInHand(InteractionHand.MAIN_HAND);
-        if (!after.is(Items.BUCKET)) {
-            throw new GameTestAssertException("生存水桶浇岩浆后应变成空桶，实际为 " + after);
+        if (!player.getItemInHand(InteractionHand.MAIN_HAND).is(Items.BUCKET)) {
+            throw new GameTestAssertException("生存水桶冷却岩浆后应变成空桶");
         }
         helper.succeed();
     }
 
-    /** 创造：走 RightClickItem 分支 → 同样固化，但桶保持满水桶。 */
+    @GameTest(template = "empty_9x5x9", templateNamespace = "dimblend_blocks")
+    public static void survivalBlueIceTracesFlowWithin16AndConsumesOne(GameTestHelper helper) {
+        clearWorkspace(helper);
+        ServerLevel level = helper.getLevel();
+        BlockPos sourceRel = new BlockPos(1, LAVA_Y, 4);
+        BlockPos flow1Rel = new BlockPos(2, LAVA_Y, 4);
+        BlockPos flow2Rel = new BlockPos(3, LAVA_Y, 4);
+        BlockPos clickedRel = CENTER; // (4, 1, 4)
+
+        level.setBlockAndUpdate(helper.absolutePos(sourceRel), Blocks.LAVA.defaultBlockState());
+        level.setBlockAndUpdate(helper.absolutePos(flow1Rel), Blocks.LAVA.defaultBlockState().setValue(LiquidBlock.LEVEL, 2));
+        level.setBlockAndUpdate(helper.absolutePos(flow2Rel), Blocks.LAVA.defaultBlockState().setValue(LiquidBlock.LEVEL, 4));
+        level.setBlockAndUpdate(helper.absolutePos(clickedRel), Blocks.LAVA.defaultBlockState().setValue(LiquidBlock.LEVEL, 6));
+
+        Player player = helper.makeMockPlayer(GameType.SURVIVAL);
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.BLUE_ICE, 3));
+        aimStraightDownAtCenter(helper, player);
+        BlockPos clickedAbs = helper.absolutePos(clickedRel);
+        PlayerInteractEvent.RightClickBlock event = new PlayerInteractEvent.RightClickBlock(
+                player, InteractionHand.MAIN_HAND, clickedAbs, topFaceHit(clickedAbs));
+        NeoForge.EVENT_BUS.post(event);
+
+        assertIntercepted(event);
+        if (!level.getBlockState(helper.absolutePos(sourceRel)).is(Blocks.OBSIDIAN)) {
+            throw new GameTestAssertException("16 格内上游源头应变为黑曜石");
+        }
+        for (BlockPos flowRel : List.of(flow1Rel, flow2Rel, clickedRel)) {
+            BlockState actual = level.getBlockState(helper.absolutePos(flowRel));
+            if (!actual.is(FragileStones.FRAGILE_STONE.get())) {
+                throw new GameTestAssertException("回溯路径上的岩浆流 " + flowRel + " 应变为易碎石头，实际为 " + actual);
+            }
+        }
+        ItemStack after = player.getItemInHand(InteractionHand.MAIN_HAND);
+        if (!after.is(Items.BLUE_ICE) || after.getCount() != 2) {
+            throw new GameTestAssertException("生存模式使用蓝冰后数量应减 1（3 -> 2），实际为 " + after);
+        }
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty_9x5x9", templateNamespace = "dimblend_blocks")
+    public static void flowOver16SchedulesSmokeWithoutSolidifying(GameTestHelper helper) {
+        clearWorkspace(helper);
+        LavaQuenchSmokeTrail.clearActiveTrails();
+        ServerLevel level = helper.getLevel();
+        BlockPos clickedAbs = helper.absolutePos(CENTER);
+        for (int dy = 0; dy < 18; dy++) {
+            level.setBlockAndUpdate(clickedAbs.above(dy), Blocks.LAVA.defaultBlockState().setValue(LiquidBlock.LEVEL, 8));
+        }
+        BlockPos sourceAbs = clickedAbs.above(18);
+        level.setBlockAndUpdate(sourceAbs, Blocks.LAVA.defaultBlockState());
+
+        try {
+            Player player = helper.makeMockPlayer(GameType.SURVIVAL);
+            player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.WATER_BUCKET));
+            // 站在南侧看向中心格的岩浆瀑布底部（eye = cy + 1.62, dz = 1.5, xRot = 35° -> y ≈ cy + 0.57 命中 clickedAbs）
+            player.setPos(clickedAbs.getX() + 0.5D, clickedAbs.getY(), clickedAbs.getZ() + 2.5D);
+            player.setYRot(180.0F);
+            player.setYHeadRot(180.0F);
+            player.setXRot(35.0F);
+
+            PlayerInteractEvent.RightClickBlock event = new PlayerInteractEvent.RightClickBlock(
+                    player, InteractionHand.MAIN_HAND, clickedAbs, topFaceHit(clickedAbs));
+            NeoForge.EVENT_BUS.post(event);
+
+            assertIntercepted(event);
+            if (!level.getBlockState(clickedAbs).is(Blocks.LAVA) || !level.getBlockState(sourceAbs).is(Blocks.LAVA)) {
+                throw new GameTestAssertException("超出 16 格的岩浆流与源头都不应被固化");
+            }
+            if (LavaQuenchSmokeTrail.activeTrailCount() < 1) {
+                throw new GameTestAssertException("超出 16 格时应登记沿途烟雾与熄灭音效轨迹");
+            }
+            ItemStack expected = WaterBucketLavaQuenchMath.CONSUME_WHEN_SOURCE_OVER_16
+                    ? new ItemStack(Items.BUCKET)
+                    : new ItemStack(Items.WATER_BUCKET);
+            if (!player.getItemInHand(InteractionHand.MAIN_HAND).is(expected.getItem())) {
+                throw new GameTestAssertException("超出 16 格时桶状态不符合预期");
+            }
+        } finally {
+            LavaQuenchSmokeTrail.clearActiveTrails();
+            for (int dy = 0; dy <= 18; dy++) {
+                level.setBlockAndUpdate(clickedAbs.above(dy), Blocks.AIR.defaultBlockState());
+            }
+        }
+        helper.succeed();
+    }
+
     @GameTest(template = "empty_9x5x9", templateNamespace = "dimblend_blocks")
     public static void creativeWaterBucketOnLavaKeepsFullBucket(GameTestHelper helper) {
-        prepareBasin(helper, false);
+        clearWorkspace(helper);
+        ServerLevel level = helper.getLevel();
+        level.setBlockAndUpdate(helper.absolutePos(CENTER), Blocks.LAVA.defaultBlockState());
+
         Player player = helper.makeMockPlayer(GameType.CREATIVE);
-        // makeMockPlayer 只覆盖 isCreative()，hasInfiniteMaterials() 读的是 abilities.instabuild。
         player.getAbilities().instabuild = true;
         player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.WATER_BUCKET));
         aimStraightDownAtCenter(helper, player);
-        PlayerInteractEvent.RightClickItem event = new PlayerInteractEvent.RightClickItem(player,
-                InteractionHand.MAIN_HAND);
+        PlayerInteractEvent.RightClickItem event = new PlayerInteractEvent.RightClickItem(player, InteractionHand.MAIN_HAND);
         NeoForge.EVENT_BUS.post(event);
 
         assertIntercepted(event);
-        assertQuenched(helper, false);
-        assertNoWaterOrWaterloggedAnywhere(helper);
-        ItemStack after = player.getItemInHand(InteractionHand.MAIN_HAND);
-        if (!after.is(Items.WATER_BUCKET)) {
-            throw new GameTestAssertException("创造水桶浇岩浆后应保留满水桶，实际为 " + after);
+        if (!level.getBlockState(helper.absolutePos(CENTER)).is(Blocks.OBSIDIAN)) {
+            throw new GameTestAssertException("创造模式水桶冷却源头应变为黑曜石");
+        }
+        if (!player.getItemInHand(InteractionHand.MAIN_HAND).is(Items.WATER_BUCKET)) {
+            throw new GameTestAssertException("创造模式水桶应保留满水桶");
         }
         helper.succeed();
     }
 
-    /**
-     * Mixin 层：玩家点岩浆上方干燥石块的底面 → 原版 {@code emptyContents} 判目标不可替换后
-     * 递归到相邻格（岩浆），递归那次被 mixin 接住，5x5 固化且上方石块不被浇成含水方块。
-     */
     @GameTest(template = "empty_9x5x9", templateNamespace = "dimblend_blocks")
     public static void dryFaceClickRecursingIntoLavaQuenches(GameTestHelper helper) {
-        prepareBasin(helper, false);
+        clearWorkspace(helper);
         ServerLevel level = helper.getLevel();
         BlockPos lavaAbsolute = helper.absolutePos(CENTER);
         BlockPos dryAbsolute = lavaAbsolute.above();
+        level.setBlockAndUpdate(lavaAbsolute, Blocks.LAVA.defaultBlockState());
         level.setBlockAndUpdate(dryAbsolute, Blocks.STONE.defaultBlockState());
 
         Player player = helper.makeMockPlayer(GameType.SURVIVAL);
         ItemStack bucketStack = new ItemStack(Items.WATER_BUCKET);
         player.setItemInHand(InteractionHand.MAIN_HAND, bucketStack);
-        // 点干燥石块的底面：方向 DOWN → 递归目标就是下面那格岩浆。
         BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(dryAbsolute).add(0.0, -0.5, 0.0),
                 Direction.DOWN, dryAbsolute, false);
         BucketItem bucket = (BucketItem) bucketStack.getItem();
         boolean emptied = bucket.emptyContents(player, level, dryAbsolute, hit, bucketStack);
 
         if (!emptied) {
-            throw new GameTestAssertException("岩浆格被 mixin 接管后 emptyContents 应返回 true，实际 false");
+            throw new GameTestAssertException("岩浆格被 mixin 接管后 emptyContents 应返回 true");
         }
-        assertQuenched(helper, false);
+        if (!level.getBlockState(lavaAbsolute).is(Blocks.OBSIDIAN)) {
+            throw new GameTestAssertException("递归命中岩浆源头应变为黑曜石");
+        }
         assertNoWaterOrWaterloggedAnywhere(helper);
-        BlockState dryState = level.getBlockState(dryAbsolute);
-        if (!dryState.is(Blocks.STONE)) {
-            throw new GameTestAssertException("干燥石块不应被放水改写，实际为 " + dryState);
-        }
-        if (!player.getItemInHand(InteractionHand.MAIN_HAND).is(Items.WATER_BUCKET)) {
-            throw new GameTestAssertException("emptyContents 本身不扣桶，水桶不应被改动");
-        }
         helper.succeed();
     }
 
-    /**
-     * 7x7 岩浆场：{@code mixed} 为真时 5x5 内交替放源岩浆与流动岩浆（LEVEL 2 / 8），
-     * 外环一律源岩浆；另在紧邻场外的两格放可含水石半砖。
-     */
-    private static void prepareBasin(GameTestHelper helper, boolean mixed) {
+    private static void clearWorkspace(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
-        // 清掉上一轮残留的瞄准路径方块（例如 dryFaceClick 写的那块石头），射线必须直达岩浆。
-        level.setBlockAndUpdate(helper.absolutePos(CENTER.above()), Blocks.AIR.defaultBlockState());
-        level.setBlockAndUpdate(helper.absolutePos(CENTER.above(2)), Blocks.AIR.defaultBlockState());
-        for (int dx = -3; dx <= 3; dx++) {
-            for (int dz = -3; dz <= 3; dz++) {
-                boolean flowing = mixed
-                        && Math.abs(dx) <= WaterBucketLavaQuenchMath.QUENCH_RADIUS
-                        && Math.abs(dz) <= WaterBucketLavaQuenchMath.QUENCH_RADIUS
-                        && ((dx + dz) & 1) != 0;
-                level.setBlockAndUpdate(helper.absolutePos(CENTER.offset(dx, 0, dz)),
-                        lavaState(flowing, dx + dz));
+        for (int dx = -4; dx <= 4; dx++) {
+            for (int dz = -4; dz <= 4; dz++) {
+                for (int dy = 0; dy <= 3; dy++) {
+                    level.setBlockAndUpdate(helper.absolutePos(CENTER.offset(dx, dy, dz)), Blocks.AIR.defaultBlockState());
+                }
             }
         }
-        for (BlockPos slab : waterloggableSlabs()) {
-            level.setBlockAndUpdate(helper.absolutePos(slab), Blocks.STONE_SLAB.defaultBlockState());
-        }
     }
 
-    /** 源岩浆 = LEVEL 0；流动岩浆交替 LEVEL 2（非下落）与 LEVEL 8（下落），两者 {@code isSource()} 都为假。 */
-    private static BlockState lavaState(boolean flowing, int offset) {
-        if (!flowing) {
-            return Blocks.LAVA.defaultBlockState();
-        }
-        int fluidLevel = Math.floorMod(offset, 4) == 1 ? 2 : 8;
-        return Blocks.LAVA.defaultBlockState().setValue(LiquidBlock.LEVEL, fluidLevel);
-    }
-
-    /** 场外紧邻的两个可含水石半砖（西侧、南侧各一）。 */
     private static List<BlockPos> waterloggableSlabs() {
         return List.of(CENTER.offset(-4, 0, 0), CENTER.offset(0, 0, 4));
     }
 
-    /** 站在中心格上方（结构内，视高 1.62 仍在模板内）垂直下看：射线首格必是中心岩浆格。 */
     private static void aimStraightDownAtCenter(GameTestHelper helper, Player player) {
         BlockPos absolute = helper.absolutePos(CENTER);
         player.setPos(absolute.getX() + 0.5D, absolute.getY() + 1.0D, absolute.getZ() + 0.5D);
@@ -184,45 +266,10 @@ public final class WaterBucketLavaQuenchGameTest {
 
     private static void assertIntercepted(ICancellableEvent event) {
         if (!event.isCanceled()) {
-            throw new GameTestAssertException("水桶浇岩浆必须取消原版交互（否则会放水），实际未取消");
+            throw new GameTestAssertException("水桶/蓝冰冷却岩浆必须取消原版交互，实际未取消");
         }
     }
 
-    /** 5x5：源岩浆格变黑曜石，流动格变易碎石头；每格都断言，别用「至少一格」糊过去。 */
-    private static void assertQuenched(GameTestHelper helper, boolean mixed) {
-        ServerLevel level = helper.getLevel();
-        for (BlockPos rel : WaterBucketLavaQuenchMath.horizontalSquare5x5(CENTER)) {
-            int dx = rel.getX() - CENTER.getX();
-            int dz = rel.getZ() - CENTER.getZ();
-            boolean flowing = mixed && ((dx + dz) & 1) != 0;
-            Block expected = flowing ? FragileStones.FRAGILE_STONE.get() : Blocks.OBSIDIAN;
-            BlockState actual = level.getBlockState(helper.absolutePos(rel));
-            if (!actual.is(expected)) {
-                throw new GameTestAssertException(
-                        "5x5 淬火格 " + rel + "（dx=" + dx + " dz=" + dz + "）应为 " + expected + "，实际为 " + actual);
-            }
-        }
-    }
-
-    /** 7x7 场里 |dx| 或 |dz| = 3 的外环必须还是岩浆。 */
-    private static void assertOuterRingStillLava(GameTestHelper helper) {
-        ServerLevel level = helper.getLevel();
-        for (int dx = -3; dx <= 3; dx++) {
-            for (int dz = -3; dz <= 3; dz++) {
-                if (Math.abs(dx) <= WaterBucketLavaQuenchMath.QUENCH_RADIUS
-                        && Math.abs(dz) <= WaterBucketLavaQuenchMath.QUENCH_RADIUS) {
-                    continue;
-                }
-                BlockPos rel = CENTER.offset(dx, 0, dz);
-                BlockState actual = level.getBlockState(helper.absolutePos(rel));
-                if (!actual.is(Blocks.LAVA)) {
-                    throw new GameTestAssertException("5x5 外环岩浆不应被改写：" + rel + " 实际为 " + actual);
-                }
-            }
-        }
-    }
-
-    /** 整片作业区（含场外半砖）任何位置都不允许出现水或含水方块。 */
     private static void assertNoWaterOrWaterloggedAnywhere(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         for (int dx = -4; dx <= 4; dx++) {
@@ -231,11 +278,11 @@ public final class WaterBucketLavaQuenchGameTest {
                     BlockPos absolute = helper.absolutePos(CENTER.offset(dx, dy, dz));
                     BlockState state = level.getBlockState(absolute);
                     if (state.is(Blocks.WATER) || state.getFluidState().is(FluidTags.WATER)) {
-                        throw new GameTestAssertException("浇岩浆不允许放水，却在 " + absolute + " 留下 " + state);
+                        throw new GameTestAssertException("冷却岩浆不允许放水，却在 " + absolute + " 留下 " + state);
                     }
                     if (state.hasProperty(BlockStateProperties.WATERLOGGED)
                             && state.getValue(BlockStateProperties.WATERLOGGED)) {
-                        throw new GameTestAssertException("浇岩浆不允许产生含水方块，" + absolute + " 为 " + state);
+                        throw new GameTestAssertException("冷却岩浆不允许产生含水方块，" + absolute + " 为 " + state);
                     }
                 }
             }

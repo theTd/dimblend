@@ -20,8 +20,18 @@ import org.jetbrains.annotations.Nullable;
  * <p>{@code publishedAtNanos} lets the input layer reject a stale frame: a click must hit what is
  * on screen now, at the current GUI size, not a frame left over from before a resize, a pause or a
  * hang.
+ *
+ * <p>{@link #markers} are external HUD markers from
+ * {@link dimblend.spyglass.api.HudWorldMarkers}. They are projected by the same layer but are not
+ * structure marks: {@link #hit} never returns one, so they cannot be click-selected, while
+ * {@link #hitHudMarker} feeds the optional distance readout.
  */
-record MarkScreenFrame(List<Mark> marks, double guiWidth, double guiHeight, long publishedAtNanos) {
+record MarkScreenFrame(
+        List<Mark> marks,
+        double guiWidth,
+        double guiHeight,
+        long publishedAtNanos,
+        List<HudMarker> markers) {
     record Mark(
             StructureSelection.Entry entry,
             float x,
@@ -49,12 +59,42 @@ record MarkScreenFrame(List<Mark> marks, double guiWidth, double guiHeight, long
         }
     }
 
-    static final MarkScreenFrame EMPTY = new MarkScreenFrame(List.of(), 0.0, 0.0, 0L);
+    /** One projected external marker; {@code id} is the identity the provider chose. */
+    record HudMarker(
+            String id,
+            String glyph,
+            float x,
+            float y,
+            double distance,
+            boolean drawn,
+            boolean inLens,
+            float halfWidth,
+            float viewX,
+            float viewY,
+            float viewZ,
+            boolean guideWithArrowAndDistance) {
+        HudMarker {
+            Objects.requireNonNull(id, "id");
+            Objects.requireNonNull(glyph, "glyph");
+            if (!(halfWidth >= 0.0F)) {
+                throw new IllegalArgumentException("Negative marker half width: " + halfWidth);
+            }
+        }
+    }
+
+    static final MarkScreenFrame EMPTY =
+            new MarkScreenFrame(List.of(), 0.0, 0.0, 0L, List.of());
 
     private static MarkScreenFrame current = EMPTY;
 
     MarkScreenFrame {
         marks = List.copyOf(marks);
+        markers = List.copyOf(markers);
+    }
+
+    /** Frame without external markers, for callers that only publish structures. */
+    MarkScreenFrame(List<Mark> marks, double guiWidth, double guiHeight, long publishedAtNanos) {
+        this(marks, guiWidth, guiHeight, publishedAtNanos, List.of());
     }
 
     static void publish(MarkScreenFrame frame) {
@@ -115,6 +155,32 @@ record MarkScreenFrame(List<Mark> marks, double guiWidth, double guiHeight, long
             screenX[count] = mark.x();
             screenY[count] = mark.y();
             halfWidth[count] = mark.halfWidth();
+            index[count] = i;
+            count++;
+        }
+        int best = CrosshairPicking.hit(
+                screenX, screenY, halfWidth, count, crosshairX, crosshairY, tolerancePx);
+        return best < 0 ? -1 : index[best];
+    }
+
+    /**
+     * Index of the drawn external marker under the crosshair, or {@code -1}. External markers can
+     * feed the distance readout, but this index is never accepted by the structure click path.
+     */
+    int hitHudMarker(double crosshairX, double crosshairY, double tolerancePx) {
+        double[] screenX = new double[this.markers.size()];
+        double[] screenY = new double[this.markers.size()];
+        double[] halfWidth = new double[this.markers.size()];
+        int[] index = new int[this.markers.size()];
+        int count = 0;
+        for (int i = 0; i < this.markers.size(); i++) {
+            HudMarker marker = this.markers.get(i);
+            if (!marker.drawn() || !Float.isFinite(marker.x()) || !Float.isFinite(marker.y())) {
+                continue;
+            }
+            screenX[count] = marker.x();
+            screenY[count] = marker.y();
+            halfWidth[count] = marker.halfWidth();
             index[count] = i;
             count++;
         }

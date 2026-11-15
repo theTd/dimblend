@@ -9,7 +9,9 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 public final class ChassisNetwork {
     private ChassisNetwork() {}
     @SubscribeEvent public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("1");
+        // Bumped to 2 when the choice payload became a preset id and the confirmation left the
+        // wire format (2026-11-15): a 1.x peer cannot decode 2.x payloads.
+        var registrar = event.registrar("2");
         registrar.playToServer(ChassisChoicePayload.TYPE, ChassisChoicePayload.STREAM_CODEC, (payload, context) ->
                 context.enqueueWork(() -> {
                     if (ChassisEvents.available() && context.player() instanceof net.minecraft.server.level.ServerPlayer player) {

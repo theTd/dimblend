@@ -42,6 +42,18 @@ class ChaseMathTest {
     }
 
     @Test
+    void nestGrowsHalfAMetrePerSecondEveryDefaultInterval() {
+        assertEquals(0.5D, ChaseMath.MIN_SPEED_GROWTH_STEP, 0.0D);
+        // requirements.md §3.1 after item 17: the interval defaults to 1024 blocks (256-4096 tunable).
+        assertEquals(10.0D, ChaseMath.minSpeed(32.0D, 1, 1.0D, 1023.9D, 1024.0D), 1.0E-9D);
+        assertEquals(10.5D, ChaseMath.minSpeed(32.0D, 1, 1.0D, 1024.0D, 1024.0D), 1.0E-9D);
+        assertEquals(11.0D, ChaseMath.minSpeed(32.0D, 1, 1.0D, 2048.0D, 1024.0D), 1.0E-9D);
+        assertEquals(12.0D, ChaseMath.minSpeed(32.0D, 1, 1.0D, 4096.0D, 1024.0D), 1.0E-9D);
+        // The smallest tunable interval reaches the same 0.5 m/s step every 256 blocks.
+        assertEquals(10.5D, ChaseMath.minSpeed(32.0D, 1, 1.0D, 256.0D, 256.0D), 1.0E-9D);
+    }
+
+    @Test
     void maxHealthUsesTheOnlineCountFixedAtSpawn() {
         assertEquals(400.0F, ChaseMath.maxHealth(1, 1.0D), 1.0E-4F);
         assertEquals(800.0F, ChaseMath.maxHealth(3, 1.0D), 1.0E-4F);

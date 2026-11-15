@@ -32,5 +32,8 @@
 	"dimblend_experience.display_source.vault_storage.display": "顯示格式",
 	"dimblend_experience.display_source.vault_storage.count": "數量/總量",
 	"dimblend_experience.display_source.vault_storage.progress_bar": "進度條",
-	"dimblend_experience.display_source.vault_storage.percent": "百分比"
+	"dimblend_experience.display_source.vault_storage.percent": "百分比",
+	"tooltip.dimblend_experience.camera.line1": "背包內拾取紙張右鍵相機添加相紙",
+	"tooltip.dimblend_experience.camera.line2": "拍照記錄下你的旅程",
+	"tooltip.dimblend_experience.camera.line3": "照片也會記下你拍照的位置 以便你需要返回"
 }

@@ -142,6 +142,10 @@ tasks.named('test', Test).configure {
     useJUnitPlatform()
 }
 
+// 水桶 5x5x5 范围单测引用原版值类型 BlockPos：与其余子工程一致，测试类路径挂上 main 的编译类路径。
+sourceSets.test.compileClasspath += sourceSets.main.compileClasspath
+sourceSets.test.runtimeClasspath += sourceSets.main.compileClasspath
+
 // This block of code expands all declared replace properties in the specified resource targets.
 // A missing property will result in an error. Properties are expanded using ${} Groovy notation.
 var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {

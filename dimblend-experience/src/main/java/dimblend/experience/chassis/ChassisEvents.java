@@ -49,7 +49,9 @@ public final class ChassisEvents {
      * 驾驶台右键：主手空手或 Create 扳手、未潜行、且驾驶台当前可用时才开选择页。
      *
      * <p>副手事件直接放行（{@code getHand() != MAIN_HAND}）；潜行放行，保留扳手拆卸；
-     * 其他物品放行，不吞掉放置/使用。服务端只有在 {@link ChassisSelection#open} 真正建立
+     * 其他物品放行，不吞掉放置/使用；非创造模式玩家在
+     * {@link ChassisInteraction#SURVIVAL_STANDARD_CHASSIS_ENABLED} 关闭时也放行（2026-11-15，
+     * 驾驶台降级为创造调试工具）。服务端只有在 {@link ChassisSelection#open} 真正建立
      * 会话后才取消事件；客户端用同一份 {@link ChassisSelection#applicable} 判据取消，
      * 避免“点了没菜单”。</p>
      *
@@ -70,7 +72,7 @@ public final class ChassisEvents {
         boolean menuTrigger = ChassisInteraction.menuTrigger(event.getItemStack().isEmpty(),
                 event.getItemStack().is(com.simibubi.create.AllItems.WRENCH));
         boolean applicable = ChassisSelection.applicable(event.getLevel(), player, event.getPos());
-        if (ChassisInteraction.decide(true, player.isShiftKeyDown(), menuTrigger, applicable)
+        if (ChassisInteraction.decide(true, player.isShiftKeyDown(), menuTrigger, applicable, player.isCreative())
                 != ChassisInteraction.Action.OPEN) return;
         if (event.getLevel() instanceof ServerLevel) {
             if (!(player instanceof net.minecraft.server.level.ServerPlayer serverPlayer)

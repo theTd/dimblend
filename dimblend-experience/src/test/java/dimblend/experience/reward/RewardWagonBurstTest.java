@@ -14,7 +14,7 @@ class RewardWagonBurstTest {
     @Test
     void theRadiusAndCountMatchTheRequirement() {
         assertEquals(5.0, RewardWagonBurst.RADIUS, 1.0E-9, "需求写的是半径 5");
-        assertEquals(20, RewardWagonBurst.PARTICLES, "原版生物死亡是 20 个 POOF");
+        assertEquals(80, RewardWagonBurst.PARTICLES, "2026-11-15：消失粒子量 x4，20 × 4 = 80");
     }
 
     @Test

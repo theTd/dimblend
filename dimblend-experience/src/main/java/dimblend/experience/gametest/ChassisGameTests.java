@@ -173,7 +173,7 @@ public final class ChassisGameTests {
     }
 
     @GameTest(template = "empty", templateNamespace = "dimblend_chassis", timeoutTicks = 100)
-    public static void placementRefundAndSelectionCannotSkipCoolingOff(GameTestHelper helper) {
+    public static void placementRefundAndSelectionSpawnsImmediately(GameTestHelper helper) {
         ServerLevel level = rotating(helper);
         BlockPos center = new BlockPos(384, 65, 0);
         loadSite(level, center);
@@ -190,6 +190,8 @@ public final class ChassisGameTests {
                         && custom.payload() instanceof dimblend.experience.chassis.ChassisScreenPayload response) reply.set(response);
             }
         };
+        // 2026-11-15: the chassis console is a creative debug tool by default.
+        player.setGameMode(net.minecraft.world.level.GameType.CREATIVE);
         BlockPos bad = center.offset(0, 0, 6);
         placedByPlayer(level, player, bad);
         ChassisEvents.onTick(new net.neoforged.neoforge.event.tick.ServerTickEvent.Post(() -> true, level.getServer()));
@@ -204,29 +206,26 @@ public final class ChassisGameTests {
                 net.minecraft.world.InteractionHand.MAIN_HAND, center, new net.minecraft.world.phys.BlockHitResult(
                         center.getCenter(), Direction.UP, center, false));
         ChassisEvents.onUse(click);
-        helper.assertTrue(click.isCanceled() && reply.get() != null, "right-click is routed to chassis selection");
+        helper.assertTrue(click.isCanceled() && reply.get() != null && reply.get().open(),
+                "right-click is routed to chassis selection");
         var token = reply.get().token();
+        // Closing the page only drops the session: the console stays in the world.
         dimblend.experience.chassis.ChassisSelection.choose(player,
-                new dimblend.experience.chassis.ChassisChoicePayload(token, 0, false));
-        helper.assertTrue(reply.get().waitMillis() == 5000, "server starts a five-second deadline");
-        dimblend.experience.chassis.ChassisSelection.choose(player,
-                new dimblend.experience.chassis.ChassisChoicePayload(token, 0, true));
-        helper.assertTrue(level.getBlockState(center).is(AllBlocks.TRAIN_CONTROLS.get())
-                && !ChassisConstruction.reserved(level, center), "early confirmation cannot consume or build");
-        dimblend.experience.chassis.ChassisSelection.choose(player,
-                new dimblend.experience.chassis.ChassisChoicePayload(token, -1, false));
+                new dimblend.experience.chassis.ChassisChoicePayload(token, ""));
+        helper.assertTrue(level.getBlockState(center).is(AllBlocks.TRAIN_CONTROLS.get()), "closing never spawns");
         ChassisEvents.onUse(click);
         var replacement = reply.get().token();
-        helper.assertTrue(!replacement.equals(token) && reply.get().selected() == -1, "reopening resets the choice and token");
+        helper.assertTrue(!replacement.equals(token) && reply.get().open(), "reopening issues a fresh token");
+        // A stale token cannot spawn anything.
         dimblend.experience.chassis.ChassisSelection.choose(player,
-                new dimblend.experience.chassis.ChassisChoicePayload(replacement, 1, false));
-        helper.assertTrue(reply.get().waitMillis() == 5000 && reply.get().selected() == 1, "reselection restarts all five seconds");
+                new dimblend.experience.chassis.ChassisChoicePayload(token, "power"));
+        helper.assertTrue(level.getBlockState(center).is(AllBlocks.TRAIN_CONTROLS.get())
+                && !ChassisConstruction.reserved(level, center), "a stale session cannot consume the controller");
+        // One click, one spawn: no cooling-off list, no second confirmation packet.
         dimblend.experience.chassis.ChassisSelection.choose(player,
-                new dimblend.experience.chassis.ChassisChoicePayload(token, 0, true));
-        helper.assertTrue(!ChassisConstruction.reserved(level, center), "stale session cannot confirm");
-        dimblend.experience.chassis.ChassisSelection.choose(player,
-                new dimblend.experience.chassis.ChassisChoicePayload(replacement, -1, false));
-        level.removeBlock(center, false);
+                new dimblend.experience.chassis.ChassisChoicePayload(replacement, "power"));
+        helper.assertTrue(level.getBlockState(center).isAir(), "the controller is consumed by the chosen preset");
+        helper.assertTrue(ChassisConstruction.reserved(level, center), "the chosen preset starts building at once");
         helper.succeed();
     }
 

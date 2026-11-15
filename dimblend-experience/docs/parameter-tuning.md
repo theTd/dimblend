@@ -45,7 +45,7 @@ Missing optional mods leave their controls disabled.
 | Dragon Chase: min speed step per generation | 1 m/s | 0-8, step 0.5; nest minimum speed = 10 + (generation - 1) x this | dimblend_dragonchase |
 | Dragon Chase: health multiplier | 1.0 | 0.2-5.0, step 0.2; health = (400 + 200 x (online players - 1)) x this, fixed at spawn | dimblend_dragonchase |
 | Dragon Chase: lose distance | 512 blocks | 256-1024, step 16; no force-loaded car this far behind the nest loses the chase | dimblend_dragonchase |
-| Dragon Chase: min speed growth distance | 512 blocks | 16-2048, step 16; +0.5 m/s of nest minimum speed per this distance travelled | dimblend_dragonchase |
+| Dragon Chase: min speed growth distance | 1024 blocks | 256-4096, step 16; +0.5 m/s of nest minimum speed per this distance travelled | dimblend_dragonchase |
 | Dragon Chase: min speed cap | 32 m/s | 16-64, step 1; the train's real speed is unaffected | dimblend_dragonchase |
 | Dragon Chase: breath damage threshold | 32 | 4-64, step 4; damage taken by the dragon that triggers one breath shot, then an 8-second cooldown | dimblend_dragonchase |
 | Dragon Chase: max damage per second | 2.0% | 0.5-10.0, step 0.5; share of the dragon's maximum health it can lose per second, the rest is discarded | dimblend_dragonchase |

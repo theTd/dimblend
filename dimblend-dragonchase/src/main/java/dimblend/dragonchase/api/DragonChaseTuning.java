@@ -17,7 +17,7 @@ public final class DragonChaseTuning {
         GENERATION_SPEED_STEP("generation_speed_step", 1.0D, 0.0D, 8.0D, 0.5D, false),
         HEALTH_MULTIPLIER("health_multiplier", 1.0D, 0.2D, 5.0D, 0.2D, false),
         LOSE_DISTANCE("lose_distance", 512.0D, 256.0D, 1024.0D, 16.0D, false),
-        MIN_SPEED_GROWTH_DISTANCE("min_speed_growth_distance", 512.0D, 16.0D, 2048.0D, 16.0D, false),
+        MIN_SPEED_GROWTH_DISTANCE("min_speed_growth_distance", 1024.0D, 256.0D, 4096.0D, 16.0D, false),
         MIN_SPEED_CAP("min_speed_cap", 32.0D, 16.0D, 64.0D, 1.0D, false),
         FIREBALL_DAMAGE_THRESHOLD("fireball_damage_threshold", 32.0D, 4.0D, 64.0D, 4.0D, false),
         DAMAGE_CAP_PERCENT("damage_cap_percent", 2.0D, 0.5D, 10.0D, 0.5D, false);

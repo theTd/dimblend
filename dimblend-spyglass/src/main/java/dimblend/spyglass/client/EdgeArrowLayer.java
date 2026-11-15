@@ -23,6 +23,9 @@ import org.joml.Vector3f;
  * the glyphs are projected identically, and a selected mark hidden by the overlap rule is still
  * located by its projected direction ({@link EdgeArrowTarget}). The arrow is drawn above the scope
  * overlay, on the black frame, as a small filled triangle rotated to the target direction.
+ *
+ * <p>An external HUD marker that asked for guidance ({@code guideWithArrowAndDistance}) owns the
+ * arrow first, even with the spyglass lowered; structure targets keep the scoping gate.
  */
 // RegisterGuiLayersEvent is an IModBusEvent: FML registers this listener on the mod bus by itself.
 @EventBusSubscriber(modid = DimBlendSpyglass.MODID, value = Dist.CLIENT)
@@ -41,27 +44,35 @@ public final class EdgeArrowLayer {
     }
 
     private static void render(GuiGraphics graphics, DeltaTracker deltaTracker) {
+        MarkScreenFrame frame = MarkScreenFrame.current();
+        MarkScreenFrame.HudMarker guide = EdgeArrowTarget.chooseGuideMarker(frame);
+        if (guide != null) {
+            arrow(graphics, frame, new Vector3f(guide.viewX(), guide.viewY(), guide.viewZ()));
+            return;
+        }
         Minecraft minecraft = Minecraft.getInstance();
         if (!SpyglassScopeGate.isScoping(minecraft)) {
             return;
         }
-        MarkScreenFrame frame = MarkScreenFrame.current();
         StructureSelection.Entry selected = StructureSelection.current();
         MarkScreenFrame.Mark target =
                 EdgeArrowTarget.choose(frame, selected == null ? null : selected.key());
         if (target == null) {
             return;
         }
+        arrow(graphics, frame, new Vector3f(target.viewX(), target.viewY(), target.viewZ()));
+    }
+
+    private static void arrow(GuiGraphics graphics, MarkScreenFrame frame, Vector3f view) {
         EdgeArrowGeometry.Arrow arrow = EdgeArrowGeometry.compute(
-                new Vector3f(target.viewX(), target.viewY(), target.viewZ()),
+                view,
                 frame.guiWidth(),
                 frame.guiHeight(),
                 INSET,
                 CROSSHAIR_RADIUS);
-        if (arrow == null) {
-            return;
+        if (arrow != null) {
+            draw(graphics, arrow);
         }
-        draw(graphics, arrow);
     }
 
     private static void draw(GuiGraphics graphics, EdgeArrowGeometry.Arrow arrow) {

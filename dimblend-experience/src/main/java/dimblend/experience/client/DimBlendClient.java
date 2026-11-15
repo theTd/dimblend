@@ -35,6 +35,17 @@ public final class DimBlendClient {
         // G8/G11 探照灯与观察者烈焰人的物品提示（纯客户端，按注册名判定，不解析第三方类型）
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(SearchlightTooltips::onItemTooltip));
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(SupplementTooltips::onItemTooltip));
+        // CameraCapture 相机提示（同样只按注册名判定，不解析第三方类型）
+        event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(CameraTooltips::onItemTooltip));
+        // 相片拍摄地点 @ 标记：只导入 dimblend.api / dimblend.spyglass.api，
+        // 因此三个 mod 都在场时才加载该 provider（缺席时类不解析）。
+        event.enqueueWork(() -> {
+            if (net.neoforged.fml.ModList.get().isLoaded("camerapture")
+                    && net.neoforged.fml.ModList.get().isLoaded("dimblend")
+                    && net.neoforged.fml.ModList.get().isLoaded("dimblend_spyglass")) {
+                dimblend.experience.compat.camerapture.PhotoOriginHud.register();
+            }
+        });
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(
                 (ClientPlayerNetworkEvent.LoggingOut logout) -> {
                     ClientFarCurseTier.reset();

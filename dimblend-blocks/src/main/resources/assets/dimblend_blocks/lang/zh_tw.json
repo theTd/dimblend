@@ -15,5 +15,6 @@
 	"block.dimblend_blocks.fragile_stone": "易碎石頭",
 	"block.dimblend_blocks.shell_marker": "貝殼標記",
 	"block.dimblend_blocks.train_ender_chest": "列車終界物流箱",
-	"block.dimblend_blocks.train_ender_chest.tooltip": "僅可在列車上使用"
+	"block.dimblend_blocks.train_ender_chest.tooltip": "僅可在列車上使用",
+	"tooltip.dimblend_blocks.lava_cool": "右鍵熔岩可使其冷卻"
 }

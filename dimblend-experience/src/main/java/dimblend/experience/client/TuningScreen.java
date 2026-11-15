@@ -23,6 +23,12 @@ import net.neoforged.fml.ModList;
 
 public final class TuningScreen extends Screen {
     private static final String KEY = TuningOption.PREFIX;
+    /** 固定顶部标签栏：标题之下、滚动区之上，永远不随 rows 滚动。 */
+    private static final int TAB_TOP = 24;
+    private static final int TAB_HEIGHT = 20;
+    private static final int TAB_GAP = 4;
+    /** 标签按钮的最小宽度；窗口太窄时按这个宽度折行，而不是把字压扁。 */
+    private static final int TAB_MIN_WIDTH = 92;
     private final Map<TuningOption, String> drafts = new EnumMap<>(TuningOption.class);
     private final Map<TuningOption, Double> pending = new LinkedHashMap<>();
     private final List<Row> rows = new ArrayList<>();
@@ -53,7 +59,14 @@ public final class TuningScreen extends Screen {
     protected void init() {
         panelWidth = Math.min(520, width - 24);
         left = (width - panelWidth) / 2;
-        listTop = 34;
+        // 顶部标签栏先占位，滚动区一律从它下面开始：否则 rows 的点击/裁剪会伸进标签栏。
+        List<NavigationButton> tabs = tabs();
+        int fittingColumns = Math.max(1, (panelWidth - 16 + TAB_GAP) / (TAB_MIN_WIDTH + TAB_GAP));
+        // Never more than two compact rows: a narrow window squeezes the buttons rather than
+        // eating the scrollable list's height.
+        int tabColumns = Math.min(tabs.size(), Math.max(fittingColumns, (tabs.size() + 1) / 2));
+        int tabRows = (tabs.size() + tabColumns - 1) / tabColumns;
+        listTop = TAB_TOP + tabRows * (TAB_HEIGHT + TAB_GAP) + 4;
         listBottom = height - 60;
         rows.clear();
         skyTimeTraceRow = null;
@@ -110,7 +123,7 @@ public final class TuningScreen extends Screen {
         if (section == TuningOption.Section.MAIN && hasSkyTimeTraceApi()) {
             addSkyTimeTraceRow();
         }
-        addNavigation();
+        addTabs(tabs, tabColumns);
         updating = false;
         scroll = Math.max(0, Math.min(scroll, maxScroll()));
         positionRows();
@@ -119,47 +132,48 @@ public final class TuningScreen extends Screen {
     }
 
     /**
-     * Sections are reached from the main page and return to it. A page that is a feature of an
-     * optional mod is offered only while that mod is installed: the Dragon Chase bit of the
-     * snapshot is that mod's presence test (requirements.md §3.1).
+     * 顶部标签：主面板与每个分页始终都在，当前页禁用，其它页一键直达，不需要滚到底再翻页。
      *
-     * <p>Each layout line is its own {@link Row} because {@link #positionRows()} moves a row's
-     * widgets as one block.
+     * <p>可选 mod 的分页只在该 mod 存在时出现：末影龙追逐看快照里的可用位
+     * （requirements.md §3.1），望远镜看它自己的桥接是否加载。
      */
-    private void addNavigation() {
+    private List<NavigationButton> tabs() {
         List<NavigationButton> buttons = new ArrayList<>();
-        if (section == TuningOption.Section.MAIN) {
-            buttons.add(new NavigationButton(KEY + "section_sable",
-                    () -> openSection(TuningOption.Section.SABLE)));
-            if (SpyglassTuningBridge.isLoaded()) {
-                buttons.add(new NavigationButton(KEY + "section_spyglass", this::openSpyglassSources));
-            }
-            if (snapshot.available(TuningOption.DRAGON_CHASE_SPEED_FLOOR_ENABLED)) {
-                buttons.add(new NavigationButton(KEY + "section_dragon_chase",
-                        () -> openSection(TuningOption.Section.DRAGON_CHASE)));
-            }
-            buttons.add(new NavigationButton(KEY + "section_perf", this::openPerfChecklist));
-        } else {
-            buttons.add(new NavigationButton(KEY + "section_main",
-                    () -> openSection(TuningOption.Section.MAIN)));
+        buttons.add(new NavigationButton(KEY + "section_main",
+                () -> openSection(TuningOption.Section.MAIN),
+                section == TuningOption.Section.MAIN));
+        buttons.add(new NavigationButton(KEY + "section_sable",
+                () -> openSection(TuningOption.Section.SABLE),
+                section == TuningOption.Section.SABLE));
+        if (SpyglassTuningBridge.isLoaded()) {
+            buttons.add(new NavigationButton(KEY + "section_spyglass", this::openSpyglassSources, false));
         }
-        int columns = buttons.size() >= 4 ? 2 : Math.max(1, buttons.size());
-        int gap = 4;
+        if (snapshot.available(TuningOption.DRAGON_CHASE_SPEED_FLOOR_ENABLED)) {
+            buttons.add(new NavigationButton(KEY + "section_dragon_chase",
+                    () -> openSection(TuningOption.Section.DRAGON_CHASE),
+                    section == TuningOption.Section.DRAGON_CHASE));
+        }
+        buttons.add(new NavigationButton(KEY + "section_perf", this::openPerfChecklist, false));
+        return buttons;
+    }
+
+    /**
+     * Places the tabs as ordinary screen widgets: fixed Y, never scrolled, never clipped by the
+     * list's scissor. They wrap into a second compact row only when the panel is too narrow for
+     * every tab at {@link #TAB_MIN_WIDTH}.
+     */
+    private void addTabs(List<NavigationButton> tabs, int columns) {
         int buttonWidth = columns == 1 ? panelWidth - 16
-                : (panelWidth - 16 - gap * (columns - 1)) / columns;
-        for (int start = 0; start < buttons.size(); start += columns) {
-            int end = Math.min(buttons.size(), start + columns);
-            Row navigation = new Row(null, contentHeight, 30, 20, List.of(), List.of());
-            rows.add(navigation);
-            int navigationY = listTop + contentHeight - scroll;
-            for (int index = start; index < end; index++) {
-                NavigationButton button = buttons.get(index);
-                int x = left + 8 + (index - start) * (buttonWidth + gap);
-                add(navigation, Button.builder(Component.translatable(button.key()),
-                                pressed -> button.action().run())
-                        .bounds(x, navigationY, buttonWidth, 20).build(), true);
-            }
-            contentHeight += navigation.height;
+                : (panelWidth - 16 - TAB_GAP * (columns - 1)) / columns;
+        for (int index = 0; index < tabs.size(); index++) {
+            NavigationButton tab = tabs.get(index);
+            int x = left + 8 + (index % columns) * (buttonWidth + TAB_GAP);
+            int y = TAB_TOP + (index / columns) * (TAB_HEIGHT + TAB_GAP);
+            Button button = Button.builder(Component.translatable(tab.key()),
+                            pressed -> tab.action().run())
+                    .bounds(x, y, buttonWidth, TAB_HEIGHT).build();
+            button.active = !tab.current();
+            addRenderableWidget(button);
         }
     }
 
@@ -442,7 +456,7 @@ public final class TuningScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderTransparentBackground(graphics);
-        graphics.fill(left, listTop - 4, left + panelWidth, listBottom + 4, 0xE0181818);
+        graphics.fill(left, TAB_TOP - 4, left + panelWidth, listBottom + 4, 0xE0181818);
         graphics.drawCenteredString(font, title, width / 2, 14, 0xFFFFFFFF);
         graphics.enableScissor(left, listTop, left + panelWidth, listBottom);
         for (Row row : rows) {
@@ -477,8 +491,8 @@ public final class TuningScreen extends Screen {
         }
     }
 
-    /** One navigation button: a lang key and what pressing it does. */
-    private record NavigationButton(String key, Runnable action) {
+    /** One top-bar tab: a lang key, what pressing it does, and whether it is the page on show. */
+    private record NavigationButton(String key, Runnable action, boolean current) {
     }
 
     private static final class Row {

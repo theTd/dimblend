@@ -1,4 +1,6 @@
 {
   "block.dimblend.warp_gate": "折跃门",
-  "dimblend.biome_suffix.underground": "地下"
+  "dimblend.biome_suffix.underground": "地下",
+  "tooltip.dimblend.voidscape_infuser": "这家伙 对世界上所有亡灵生物都有额外的恨意",
+  "tooltip.dimblend.voidscape_collector": "不知为什么 这个东西 可复制其正下方的矿岩"
 }

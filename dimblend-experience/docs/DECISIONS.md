@@ -56,3 +56,25 @@ Recorded from `dimblend-seven-fixes` (`generated: 2026-11-12T16:27:26.321Z`, 5 l
 
 5. **`train-lateral-shake-mode` [OVERRIDE] (`sway_plus_micro_roll`)**: **水平微晃 + 限幅 ±2.5° 轻微侧倾**
    - Keeps `ChassisRailLock` hard-locking deck elevation (`Y = 66.0` / `entry.nominalHeight()`) and nose pitch (`ANGULAR_Z = 0°`), opens `±0.12 m` spring-centered horizontal sway (`LINEAR_Z`) on `!allowLateralOffset` bogeys, AND dynamically opens capped `±2.5°` (`ANGULAR_X`) spring-damped micro-roll during lateral shake pulses (`[0°, 0°]` dead-flat lock when parked/idle so off-center cargo never tilts idle cars), with inertia-normalized roll torque impulses alongside mass-normalized horizontal impulses.
+
+---
+
+# DimBlend Experience — 20-Item Batch Decisions (2026-11-15)
+
+Recorded from `dimblend-batch-1115` (`generated: 2026-11-15T14:13:32.844Z`, 5 locked decisions: 4 defaults kept, 1 explicit user override).
+
+1. **`fluid-hatch-direction` [OVERRIDE]**: **只能放入、不能取出**
+   - `FluidHatchRules.ACTIVE_MODE = Mode.DEPOSIT_ONLY`; `FluidHatchDirectionMixin` permits `tryEmptyItem` deposit and blocks `tryFillItem` extract.
+   - `dimblend-craft` `lang_overrides/{zh_cn,en_us,zh_tw}.json` `block.create_dragons_plus.fluid_hatch.tooltip.behaviour1` retains only the deposit clause.
+
+2. **`controls-debug-menu` [DEFAULT]**: **仅创造模式可打开生成菜单**
+   - `ChassisInteraction.SURVIVAL_STANDARD_CHASSIS_ENABLED = false`; `create:controls` right-click opens the no-confirmation preset spawn screen for all non-nest presets in Creative only.
+
+3. **`lava-over-16-consume` [DEFAULT]**: **消耗（化作沿途烟雾蒸发）**
+   - `WaterBucketLavaQuenchMath.CONSUME_WHEN_SOURCE_OVER_16 = true`; Survival consumes water from the bucket or 1 blue ice even when the upstream lava source is `> 16` steps away and evaporates into the sequential smoke + extinguish-sound trail.
+
+4. **`photo-marker-hud` [DEFAULT]**: **仅世界投影“@”符号（同放下望远镜后的标记）**
+   - `PhotoOriginHud.GUIDE_WITH_ARROW_AND_DISTANCE = false`; holding `camerapture:picture` in main/off-hand renders only the `2x` world-projected `@` glyph when `RegionLanes.sameRegion` matches, with no off-screen arrow or crosshair distance readout.
+
+5. **`camera-creative-durability` [DEFAULT]**: **创造与生存一致（均按相机内耐久结算，0耐久提示无纸张）**
+   - `CameraFilmRules.CREATIVE_BYPASSES_DURABILITY = false`; Creative and Survival both consume 1 camera film durability per shot out of 64 max, start newly crafted cameras at 0 shots, reload via paper right-click in inventory, and display the upstream `no_paper` warning without shooting at 0 remaining shots.

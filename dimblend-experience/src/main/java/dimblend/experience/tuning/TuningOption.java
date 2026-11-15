@@ -66,7 +66,7 @@ public enum TuningOption {
             "dimblend_dragonchase", Section.DRAGON_CHASE, 0.2D),
     DRAGON_CHASE_LOSE_DISTANCE("dragon_chase_lose_distance", 512.0D, 256.0D, 1024.0D, 0,
             "dimblend_dragonchase", Section.DRAGON_CHASE, 16.0D),
-    DRAGON_CHASE_MIN_SPEED_GROWTH_DISTANCE("dragon_chase_min_speed_growth_distance", 512.0D, 16.0D, 2048.0D, 0,
+    DRAGON_CHASE_MIN_SPEED_GROWTH_DISTANCE("dragon_chase_min_speed_growth_distance", 1024.0D, 256.0D, 4096.0D, 0,
             "dimblend_dragonchase", Section.DRAGON_CHASE, 16.0D),
     DRAGON_CHASE_MIN_SPEED_CAP("dragon_chase_min_speed_cap", 32.0D, 16.0D, 64.0D, 0,
             "dimblend_dragonchase", Section.DRAGON_CHASE, 1.0D),

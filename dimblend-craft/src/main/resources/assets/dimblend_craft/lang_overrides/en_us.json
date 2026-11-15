@@ -1,6 +1,8 @@
 {
   "advancement.create.rose_quartz.desc": "Polish some Charged Quartz",
   "block.cold_sweat.icebox": "Freezer Box",
+  "block.create_dragons_plus.fluid_hatch.tooltip.behaviour1": "_Deposits_ _contained fluid_ from your _held item_ into the _tank_ it is placed on.",
+  "block.fluid.copper_tap.tooltip.summary": "Right-click to switch. Can fill _Basins_, _Cauldrons_, _Stockpots_, _Kettles_ below, or perform spout processing on _Depots_ below",
   "block.create.rose_quartz_block": "Block of Charged Quartz",
   "block.create.rose_quartz_lamp": "Charged Quartz Lamp",
   "block.create.rose_quartz_tiles": "Charged Quartz Tiles",

@@ -15,5 +15,6 @@
   "block.dimblend_blocks.fragile_stone": "Fragile Stone",
   "block.dimblend_blocks.shell_marker": "Shell Marker",
   "block.dimblend_blocks.train_ender_chest": "Train Ender Logistics Chest",
-  "block.dimblend_blocks.train_ender_chest.tooltip": "Can only be used on trains"
+  "block.dimblend_blocks.train_ender_chest.tooltip": "Can only be used on trains",
+  "tooltip.dimblend_blocks.lava_cool": "Right-click lava to cool it"
 }

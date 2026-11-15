@@ -3,6 +3,7 @@ package dimblend.experience.chassis;
 import com.simibubi.create.AllBlocks;
 import dimblend.api.CorridorRails;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -15,16 +16,21 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/** The server owns the selected kind and five-second deadline; packets cannot skip either. */
+/**
+ * The server owns the open session and the chosen preset; packets cannot skip either.
+ *
+ * <p>2026-11-15: the five-second cooling-off period and the second click are gone. One click on the
+ * screen sends {@link ChassisChoicePayload}, and the server spawns immediately after the same
+ * checks that guard placement: the session token, the player's permission for that preset
+ * ({@link ChassisPreset#visibleTo(boolean)}) and the site still being applicable. An empty preset
+ * id means the player closed the page, so the session is simply dropped.
+ */
 public final class ChassisSelection {
     private static final Map<UUID, Session> SESSIONS = new HashMap<>();
-    private static final long WAIT_NANOS = 5_000_000_000L;
     private static final class Session {
         final UUID token = UUID.randomUUID();
         final ServerLevel level;
         final BlockPos pos;
-        int selected = -1;
-        long readyAt;
         Session(ServerLevel level, BlockPos pos) { this.level = level; this.pos = pos.immutable(); }
     }
     private ChassisSelection() {}
@@ -69,36 +75,29 @@ public final class ChassisSelection {
         if (!applicable(level, player, pos)) return false;
         Session session = new Session(level, pos);
         SESSIONS.put(player.getUUID(), session);
-        reply(player, session, -1, 0);
+        reply(player, session, true);
         return true;
     }
 
     public static void choose(ServerPlayer player, ChassisChoicePayload payload) {
         Session session = SESSIONS.get(player.getUUID());
         if (session == null || !session.token.equals(payload.token())) return;
-        if (payload.kind() == -1) { SESSIONS.remove(player.getUUID()); return; }
-        if (!valid(player, session) || payload.kind() < 0 || payload.kind() >= ChassisBlueprint.values().length) {
-            close(player, session);
+        // One choice per session: the click that spawns also ends it, and so does a close.
+        SESSIONS.remove(player.getUUID());
+        if (payload.preset().isEmpty()) return;
+        if (!valid(player, session)) {
+            reply(player, session, false);
             return;
         }
-        if (!payload.confirm()) {
-            // A choice is locked until the screen is closed and a fresh session is opened.
-            if (session.selected != -1) return;
-            session.selected = payload.kind();
-            session.readyAt = System.nanoTime() + WAIT_NANOS;
-            reply(player, session, session.selected, 5000);
+        ChassisPreset preset = ChassisPreset.byId(payload.preset()).orElse(null);
+        if (preset == null || !preset.available() || !preset.permitted(player.isCreative())) {
+            player.displayClientMessage(Component.translatable(
+                    "message.dimblend_experience.chassis.creative_only"), true);
+            reply(player, session, false);
             return;
         }
-        if (session.selected != payload.kind()) return;
-        long remaining = session.readyAt - System.nanoTime();
-        if (remaining > 0) {
-            reply(player, session, session.selected, (int) ((remaining + 999_999) / 1_000_000));
-            return;
-        }
-        if (!ChassisConstruction.start(session.level, session.pos, ChassisBlueprint.values()[session.selected])) {
-            ChassisConstruction.broadcast(session.level, "unsafe");
-        }
-        close(player, session);
+        // The spawner broadcasts its own failure reason ("unsafe" / "spawn_failed").
+        ChassisPresetSpawner.spawn(session.level, session.pos, preset);
     }
 
     public static void tick(MinecraftServer server) {
@@ -114,10 +113,10 @@ public final class ChassisSelection {
     }
     private static void close(ServerPlayer player, Session session) {
         SESSIONS.remove(player.getUUID());
-        reply(player, session, -2, 0);
+        reply(player, session, false);
     }
-    private static void reply(ServerPlayer player, Session session, int kind, int waitMillis) {
-        PacketDistributor.sendToPlayer(player, new ChassisScreenPayload(session.token, kind, waitMillis));
+    private static void reply(ServerPlayer player, Session session, boolean open) {
+        PacketDistributor.sendToPlayer(player, new ChassisScreenPayload(session.token, open));
     }
     public static void clear() { SESSIONS.clear(); }
 }
