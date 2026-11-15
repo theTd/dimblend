@@ -12,9 +12,9 @@ public record TuningEditPayload(String option, double value) implements CustomPa
             ResourceLocation.fromNamespaceAndPath(DimBlend.MODID, "tuning_edit"));
     public static final StreamCodec<FriendlyByteBuf, TuningEditPayload> STREAM_CODEC = StreamCodec.of(
             (buffer, payload) -> {
-                buffer.writeUtf(payload.option, 32);
+                buffer.writeUtf(payload.option, TuningOption.MAX_ID_LENGTH);
                 buffer.writeDouble(payload.value);
-            }, buffer -> new TuningEditPayload(buffer.readUtf(32), buffer.readDouble()));
+            }, buffer -> new TuningEditPayload(buffer.readUtf(TuningOption.MAX_ID_LENGTH), buffer.readDouble()));
 
     @Override
     public Type<? extends CustomPacketPayload> type() { return TYPE; }

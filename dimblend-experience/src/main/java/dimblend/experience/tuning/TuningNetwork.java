@@ -20,9 +20,10 @@ public final class TuningNetwork {
      * changes the wire length: v27 dropped the nine train horn pitch presets, v28 added the observer blaze
      * detection radius, v29 adds the station carriage limit, v30 removes the four radio knobs (they moved to
      * the jukebox tuning screen in {@code dimblend-radio}, which now owns their server round-trip), v31 adds
-     * the eight Dragon Chase options (present but unavailable without {@code dimblend_dragonchase}).
+     * the eight Dragon Chase options (present but unavailable without {@code dimblend_dragonchase}), v32 widens
+     * the option/acknowledged UTF-8 wire limit from 32 to 64 characters for the Dragon Chase option IDs.
      */
-    public static final String PROTOCOL_VERSION = "31";
+    public static final String PROTOCOL_VERSION = "32";
 
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {

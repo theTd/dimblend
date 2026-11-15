@@ -8,12 +8,15 @@ import org.junit.jupiter.api.Test;
 
 class TuningSignBitTest {
     @Test
-    void snapshotProtocolIsThirtyOneAfterAddingTheDragonChasePage() {
+    void snapshotProtocolIsThirtyTwoAfterWideningDragonChaseIdentifiers() {
         // The snapshot carries one value per option, so the wire length changed when OBSERVER_BLAZE_RADIUS was
         // added (v28), when STATION_CARRIAGE_LIMIT was (v29), when the four radio knobs left for the
         // jukebox screen (v30), and again when the eight Dragon Chase options arrived (v31): any client still
         // speaking an older version would mis-decode the tail of the list and be rejected.
-        assertEquals("31", TuningNetwork.PROTOCOL_VERSION);
+        assertEquals("32", TuningNetwork.PROTOCOL_VERSION);
+        for (var option : TuningOption.values()) {
+            assertTrue(option.id().length() <= TuningOption.MAX_ID_LENGTH, option.id());
+        }
         assertTrue(TuningOption.values().length <= Long.SIZE, "the availability mask is a long");
         assertTrue(TuningOption.OBSERVER_BLAZE_RADIUS.ordinal() < Long.SIZE);
         assertTrue(TuningOption.STATION_CARRIAGE_LIMIT.ordinal() < Long.SIZE);
@@ -48,6 +51,38 @@ class TuningSignBitTest {
             assertFalse(buffer.isReadable());
         } finally {
             buffer.release();
+        }
+    }
+
+    @Test
+    void everyOptionIdentifierRoundTripsThroughBothPayloadCodecs() {
+        var values = Arrays.stream(TuningOption.values()).map(TuningOption::defaultValue).toList();
+        var identifiers = new java.util.ArrayList<String>();
+        for (var option : TuningOption.values()) {
+            identifiers.add(option.id());
+        }
+        identifiers.add("");
+        for (var identifier : identifiers) {
+            var editBuffer = new FriendlyByteBuf(Unpooled.buffer());
+            try {
+                var edit = new TuningEditPayload(identifier,
+                        TuningOption.byId(identifier) == null ? 0.0D : TuningOption.byId(identifier).defaultValue());
+                TuningEditPayload.STREAM_CODEC.encode(editBuffer, edit);
+                assertEquals(edit, TuningEditPayload.STREAM_CODEC.decode(editBuffer));
+                assertFalse(editBuffer.isReadable());
+            } finally {
+                editBuffer.release();
+            }
+
+            var snapshotBuffer = new FriendlyByteBuf(Unpooled.buffer());
+            try {
+                var snapshot = new TuningSnapshotPayload(false, true, 0L, values, identifier, "saved");
+                TuningSnapshotPayload.STREAM_CODEC.encode(snapshotBuffer, snapshot);
+                assertEquals(snapshot, TuningSnapshotPayload.STREAM_CODEC.decode(snapshotBuffer));
+                assertFalse(snapshotBuffer.isReadable());
+            } finally {
+                snapshotBuffer.release();
+            }
         }
     }
 
