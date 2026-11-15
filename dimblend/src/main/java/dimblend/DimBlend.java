@@ -17,6 +17,7 @@ import dimblend.compat.CreateTrackGraphCompat;
 import dimblend.compat.TerraBlenderRotatingCompat;
 import dimblend.compat.VoidscapeBand;
 import dimblend.compat.VoidscapeNetherDezombify;
+import dimblend.compat.VoidscapeUndeadInfusion;
 import dimblend.time.TimeLockPayload;
 import dimblend.time.TimeLockSync;
 import dimblend.weather.ServerGlobalWeatherLock;
@@ -99,6 +100,7 @@ public final class DimBlend {
         NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, VoidscapeBand::onSpawnPositionExit);
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, VoidscapeBand::onFinalizeSpawnEnter);
         NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, VoidscapeBand::onFinalizeSpawnExit);
+        NeoForge.EVENT_BUS.addListener(VoidscapeUndeadInfusion::onLivingDrops);
         NeoForge.EVENT_BUS.register(MONITOR);
         NeoForge.EVENT_BUS.register(WATCHDOG);
         NeoForge.EVENT_BUS.addListener(dimblend.diagnostics.SlowTickRecorder::onServerStopping);

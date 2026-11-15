@@ -26,6 +26,7 @@ public final class DimBlendClient {
         NeoForge.EVENT_BUS.addListener(TwilightBandFog::onLevelUnload);
         NeoForge.EVENT_BUS.addListener(RotatingDimensionEffects::onLevelUnload);
         NeoForge.EVENT_BUS.addListener(ClientSkyTimeTrace::onFrame);
+        NeoForge.EVENT_BUS.addListener(VoidscapeMachineTooltips::onItemTooltip);
     }
 
     public static void onRegisterGuiLayers(RegisterGuiLayersEvent event) {

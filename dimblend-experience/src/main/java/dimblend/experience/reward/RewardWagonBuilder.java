@@ -1,6 +1,5 @@
 package dimblend.experience.reward;
 
-import com.simibubi.create.AllSoundEvents;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.companion.math.BoundingBox3i;
@@ -16,6 +15,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemStack;
@@ -291,22 +291,25 @@ public final class RewardWagonBuilder {
 
     /**
      * Plays the requirement's dissolve feedback: the monster-death particle burst and the
-     * Create wrench-remove sound.
+     * vault-deactivate sound.
      *
      * <p><b>"Monster death particles".</b> A vanilla living entity's death plays
      * {@code ParticleTypes.POOF} twenty times ({@code LivingEntity.java:1841,1851-1858}), which is
-     * what this burst reproduces.
+     * the burst this one is modelled on. 2026-11-15: the player asked for four times that density
+     * ("消失时的粒子量 x4"), so {@link RewardWagonBurst#PARTICLES} is 80.
      *
      * <p><b>Radius five, not a point.</b> The requirement says "在物理转向架位置 y-1 半径 5"
      * (at the bogey's y-1, radius 5). The first version spawned every particle at the bogey
      * itself with a 0.5 spread, so the burst was invisible from a few blocks away. The positions
-     * are now drawn uniformly inside a five-block sphere around that point, with the count kept
-     * at the vanilla twenty: the requirement moved the burst's extent, not its density.
+     * are drawn uniformly inside a five-block sphere around that point.
      *
-     * <p><b>The sound.</b> {@code AllSoundEvents.WRENCH_REMOVE} is the compound Create calls
-     * "wrench_remove": it is a {@code playExisting} group of {@code ITEM_PICKUP} and
-     * {@code NETHERITE_BLOCK_HIT}, so playing this one event already produces both halves and no
-     * second call is needed.
+     * <p><b>The sound.</b> 2026-11-15: the requirement now asks for
+     * {@code minecraft:block.vault.deactivate} played at pitch 0.5 ("消失时播放
+     * minecraft:block.vault.deactivate pinch=0.5"). It replaces Create's
+     * {@code WRENCH_REMOVE} group. {@code SoundEvents.VAULT_DEACTIVATE} is a plain
+     * {@code SoundEvent}, so the vanilla {@code Level#playSound(Player, BlockPos, SoundEvent,
+     * SoundSource, float, float)} overload takes it; the lower pitch stretches the vault's
+     * shutdown sweep, which is what the player asked for.
      */
     public static void playDissolveEffects(ServerLevel level, BlockPos bogeyPos) {
         net.minecraft.util.RandomSource random = level.getRandom();
@@ -321,7 +324,31 @@ public final class RewardWagonBuilder {
                     1,
                     0.0, 0.0, 0.0, 0.0);
         }
-        AllSoundEvents.WRENCH_REMOVE.playOnServer(level, bogeyPos, 1.0F, 1.0F);
+        level.playSound(null, bogeyPos, SoundEvents.VAULT_DEACTIVATE, SoundSource.BLOCKS, 1.0F, 0.5F);
+    }
+
+    /**
+     * Puts a wagon built by the creative debug preset under the normal dissolve watch.
+     *
+     * <p>2026-11-15：驾驶台调试生成的奖励车厢必须和正常生成的完全同命——清空或碰到传送门后播放
+     * 粒子与音效、半秒后消失。溶解由 {@code RewardWagonTicker} 按站点表驱动，而站点表平时由
+     * 区域规划发现；调试车不来自规划，所以这里显式登记：`built`、子层级 UUID 都写进去，
+     * 之后 ticker 用同一套 {@code existing/scan/dissolve} 路径照看它。
+     *
+     * <p>站点表按中心 X 记录，同一 X 只会有一条；若该 X 本来就有未建成的规划车，调试车就接管这条记录，
+     * 规划车不会再在同一个位置重复建一遍。
+     */
+    public static void registerDebugWagon(ServerLevel level, int centerX,
+            dev.ryanhcode.sable.sublevel.ServerSubLevel car) {
+        RewardWagonSites data = RewardWagonSites.get(level);
+        RewardWagonSites.Site site = data.site(centerX);
+        site.built = true;
+        site.attempts = 0;
+        site.dissolved = false;
+        site.dissolveDeadline = 0;
+        site.effectsPlayed = false;
+        site.subLevelId = car.getUniqueId();
+        data.setDirty();
     }
 
     /** True when the dimension is the rotating corridor this feature belongs to. */

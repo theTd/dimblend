@@ -7,6 +7,9 @@ package dimblend.experience.chassis;
  * 才拦下这次点击并开菜单；潜行一律放行（扳手拆卸仍归 Create），副手一律不触发，其他物品一律放行。
  * 潜行/物品判据必须两端一致，因此这里的输入只有布尔值，客户端与服务端各自用同一份规则求值。</p>
  *
+ * <p>2026-11-15：驾驶台降级为创造调试工具，
+ * {@link #SURVIVAL_STANDARD_CHASSIS_ENABLED} 关闭时非创造玩家一律放行（见 {@link #decide}）。</p>
+ *
  * <p>适用条件不满足时返回 {@link Action#PASS}，调用方不得取消事件——否则会出现“点了没反应、
  * 也没有菜单”的吞点击。服务端只有在 {@link ChassisSelection#open} 真正建立会话后才取消事件。</p>
  *
@@ -17,6 +20,15 @@ package dimblend.experience.chassis;
  * 之后，这两条边界都能被纯布尔单测钉死。</p>
  */
 public final class ChassisInteraction {
+    /**
+     * 生存模式是否允许使用标准底盘驾驶台（2026-11-15 用户口径：驾驶台“作为创造模式调试专用”）。
+     *
+     * <p>{@code false}（默认）：只有创造模式玩家右键能打开选择页，生存模式一律放行原版路径；
+     * {@code true}：生存也能打开，但只看得到 {@link ChassisPreset.Family#STANDARD} 的两种标准底盘，
+     * 奖励车厢与末影龙追逐车厢仍然只给创造。服务端对预设另做一次同样的判定，客户端过滤不是权限。
+     */
+    public static final boolean SURVIVAL_STANDARD_CHASSIS_ENABLED = false;
+
     public enum Action {
         /** 不拦截，继续走原版/Create 的右键逻辑。 */
         PASS,
@@ -43,9 +55,14 @@ public final class ChassisInteraction {
      * @param sneaking    玩家是否潜行；潜行永远返回 PASS
      * @param menuTrigger 主手是否为空或 Create 扳手，见 {@link #menuTrigger(boolean, boolean)}
      * @param applicable  驾驶台、维度、轨道与距离是否都满足
+     * @param creative    玩家是否创造模式，见 {@link #SURVIVAL_STANDARD_CHASSIS_ENABLED}
      */
-    public static Action decide(boolean mainHand, boolean sneaking, boolean menuTrigger, boolean applicable) {
+    public static Action decide(boolean mainHand, boolean sneaking, boolean menuTrigger, boolean applicable,
+            boolean creative) {
         if (!mainHand || sneaking || !menuTrigger || !applicable) {
+            return Action.PASS;
+        }
+        if (!creative && !SURVIVAL_STANDARD_CHASSIS_ENABLED) {
             return Action.PASS;
         }
         return Action.OPEN;

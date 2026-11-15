@@ -18,8 +18,11 @@ public final class RewardWagonBurst {
     /** Radius of the burst, in blocks, from the requirement. */
     public static final double RADIUS = 5.0;
 
-    /** How many particles one burst spawns: the vanilla mob-death count. */
-    public static final int PARTICLES = 20;
+    /**
+     * How many particles one burst spawns: the vanilla mob-death twenty, quadrupled on
+     * 2026-11-15 at the player's request ("消失时的粒子量 x4").
+     */
+    public static final int PARTICLES = 80;
 
     /** One particle's offset from the burst centre, in blocks. */
     public record Offset(double dx, double dy, double dz) {

@@ -70,6 +70,13 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.contains(".compat.firefightingadd.")) {
             return isLoaded("createfirefightingadd");
         }
+        if (mixinClassName.endsWith(".compat.dragonsplus.FluidHatchDirectionMixin")) {
+            return isLoaded("create_dragons_plus")
+                    && classPresent("plus.dragons.createdragonsplus.common.fluids.hatch.FluidHatchBlock");
+        }
+        if (mixinClassName.endsWith(".compat.fluid.CopperTapCookeryFillMixin")) {
+            return isLoaded("fluid") && isLoaded("kaleidoscope_cookery");
+        }
         if (mixinClassName.endsWith(".compat.yat.CopperSinkBottlePurityMixin")) {
             return isLoaded("fluid") && isLoaded("yet_another_thirst");
         }

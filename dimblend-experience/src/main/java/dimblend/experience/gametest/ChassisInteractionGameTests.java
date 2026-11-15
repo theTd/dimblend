@@ -55,6 +55,17 @@ public final class ChassisInteractionGameTests {
         AtomicReference<ChassisScreenPayload> reply = new AtomicReference<>();
         attachConnection(player, reply);
 
+        // 2026-11-15: the console is a creative debug tool by default. A survival player must
+        // take the vanilla path; cancelling here would swallow the click with no menu.
+        ServerPlayer survival = player(level, center);
+        AtomicReference<ChassisScreenPayload> survivalReply = new AtomicReference<>();
+        attachConnection(survival, survivalReply);
+        PlayerInteractEvent.RightClickBlock survivalClick = click(survival, center, InteractionHand.MAIN_HAND);
+        ChassisEvents.onUse(survivalClick);
+        helper.assertTrue(!survivalClick.isCanceled() && survivalReply.get() == null,
+                "survival passes through while SURVIVAL_STANDARD_CHASSIS_ENABLED is false");
+
+        player.setGameMode(net.minecraft.world.level.GameType.CREATIVE);
         PlayerInteractEvent.RightClickBlock empty = click(player, center, InteractionHand.MAIN_HAND);
         ChassisEvents.onUse(empty);
         helper.assertTrue(empty.isCanceled() && reply.get() != null, "empty main hand opens the chassis menu");

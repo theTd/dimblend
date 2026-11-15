@@ -1,6 +1,8 @@
 {
   "advancement.create.rose_quartz.desc": "拋光一些感電石英",
   "block.cold_sweat.icebox": "冷凍盒",
+  "block.create_dragons_plus.fluid_hatch.tooltip.behaviour1": "將你_手持_的物品內含的_流體__存入_其所附的_儲罐_中。",
+  "block.fluid.copper_tap.tooltip.summary": "右鍵開關。可以填充下方的_工作盆_，_煉藥鍋_，_湯鍋_，_水壺_，或對下方的_置物台_進行注液加工",
   "block.create.rose_quartz_block": "感電石英方塊",
   "block.create.rose_quartz_lamp": "感電石英燈",
   "block.create.rose_quartz_tiles": "感電石英磚瓦",

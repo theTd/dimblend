@@ -78,5 +78,4 @@ public enum ChassisBlueprint {
         boolean end = rank == 0 || rank == total - 1;
         return java.util.Optional.of(end ? new BogeyTuning(32.0F, false) : new BogeyTuning(0.0F, true));
     }
-    public String translationKey() { return "chassis.dimblend_experience." + name().toLowerCase(java.util.Locale.ROOT); }
 }

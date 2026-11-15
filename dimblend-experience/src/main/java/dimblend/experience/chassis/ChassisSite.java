@@ -160,6 +160,52 @@ public final class ChassisSite {
             debris.add(pos.immutable());
         }
         AABB box = bounds(center);
+        if (!clearOfSubLevels(level, box)) return false;
+        // Only now: a refused site must not have been half-cleaned on the way out.
+        for (BlockPos pos : debris) {
+            level.setBlock(pos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
+        }
+        return true;
+    }
+
+    /**
+     * Clearance for one pre-generated car instead of the 45-block chassis strip.
+     *
+     * <p>2026-11-15 创造调试：奖励车厢（9×3）与末影龙追逐车厢（13×7）比标准底盘短得多，用
+     * {@link #clear(ServerLevel, BlockPos, Map, boolean)} 的 ±24 检查带会把 20 格外的另一节车厢也
+     * 算成障碍，调试时挨着放就永远失败。规则本身不变：只忽略空气、轨道、{@code create:fake_track}
+     * 与调用方列出的 {@code allowed} 方块，Sable 已投影的实际方块也不能占入。
+     *
+     * <p>区块未加载时一律拒绝：生成器会在服务端线程同步加载，这个检查必须先于任何 setBlock。
+     *
+     * @param halfLength 车厢半长（X），{@code halfWidth} 半宽（Z）
+     * @param height     中心方块以上的检查高度，含中心那一层以下一格（轨道）
+     * @param allowed    允许占位的方块（例如尚未移除的驾驶台本身）
+     */
+    public static boolean clearCar(ServerLevel level, BlockPos center, int halfLength, int halfWidth, int height,
+            Map<BlockPos, BlockState> allowed) {
+        for (int cx = (center.getX() - halfLength) >> 4; cx <= (center.getX() + halfLength) >> 4; cx++) {
+            for (int cz = (center.getZ() - halfWidth) >> 4; cz <= (center.getZ() + halfWidth) >> 4; cz++) {
+                if (level.getChunkSource().getChunkNow(cx, cz) == null) return false;
+            }
+        }
+        for (BlockPos pos : BlockPos.betweenClosed(center.offset(-halfLength, -1, -halfWidth),
+                center.offset(halfLength, height, halfWidth))) {
+            BlockState state = level.getBlockState(pos);
+            BlockState expected = allowed.get(pos);
+            if (expected != null) {
+                if (!state.equals(expected)) return false;
+                continue;
+            }
+            if (!isIgnorable(state, false)) return false;
+        }
+        return clearOfSubLevels(level, new AABB(
+                center.getX() - halfLength, center.getY() - 1, center.getZ() - halfWidth,
+                center.getX() + halfLength, center.getY() + height, center.getZ() + halfWidth));
+    }
+
+    /** No assembled Sable sub-level may already project into this box. */
+    private static boolean clearOfSubLevels(ServerLevel level, AABB box) {
         var container = SubLevelContainer.getContainer(level);
         if (container == null) return false;
         for (var candidate : container.getAllSubLevels()) {
@@ -174,10 +220,6 @@ public final class ChassisSite {
             });
             // A plot still arriving from disk is not evidence that the site is clear.
             if (occupied[0] || examined[0] == 0) return false;
-        }
-        // Only now: a refused site must not have been half-cleaned on the way out.
-        for (BlockPos pos : debris) {
-            level.setBlock(pos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
         }
         return true;
     }

@@ -82,6 +82,15 @@ public class DimBlend {
             modEventBus.addListener(dimblend.experience.compat.yat.ThirstFilterBalance::setup);
         }
 
+        // CameraCapture 相纸/耐久：默认组件改 MAX_DAMAGE/DAMAGE，背包内纸张右键装填。
+        // 只有 camerapture 在场才解析这些类；mixin 由 DimBlendMixinPlugin 同样门控。
+        if (ModList.get().isLoaded("camerapture")) {
+            modEventBus.addListener(
+                    dimblend.experience.compat.camerapture.CameraDurability::modifyDefaultComponents);
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                    dimblend.experience.compat.camerapture.CameraDurability::onStackedOnOther);
+        }
+
         // E8 横向力的 sable 力分组（Simulated 力示意图按分组绘制），条件与 E8 mixin 一致：仅 simurail 在场
         if (ModList.get().isLoaded("simurail")) {
             TrainForceGroups.FORCE_GROUPS.register(modEventBus);

@@ -93,6 +93,37 @@ class MarkScreenFrameTest {
         assertEquals(VILLAGE, projectedMark.entry().key());
     }
 
+    @Test
+    void externalMarkersAreNeverStructureClickTargets() {
+        MarkScreenFrame frame = new MarkScreenFrame(
+                List.of(),
+                800.0,
+                600.0,
+                1_000_000_000L,
+                List.of(hudMarker(100.0F, 100.0F, true, 16.0F)));
+
+        assertEquals(-1, frame.hit(100.0, 100.0, 4.0), "click selection only knows structures");
+        assertEquals(0, frame.hitHudMarker(100.0, 100.0, 4.0));
+    }
+
+    @Test
+    void anUndrawnExternalMarkerIsNotHit() {
+        MarkScreenFrame frame = new MarkScreenFrame(
+                List.of(),
+                800.0,
+                600.0,
+                1_000_000_000L,
+                List.of(hudMarker(100.0F, 100.0F, false, 16.0F)));
+
+        assertEquals(-1, frame.hitHudMarker(100.0, 100.0, 4.0));
+    }
+
+    private static MarkScreenFrame.HudMarker hudMarker(
+            float x, float y, boolean drawn, float halfWidth) {
+        return new MarkScreenFrame.HudMarker(
+                "photo_origin", "@", x, y, 300.0, drawn, false, halfWidth, 0.0F, 0.0F, -1.0F, true);
+    }
+
     private static MarkScreenFrame frame(MarkScreenFrame.Mark... marks) {
         return new MarkScreenFrame(List.of(marks), 800.0, 600.0, 1_000_000_000L);
     }

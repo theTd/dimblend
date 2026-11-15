@@ -315,9 +315,9 @@ class TuningOptionTest {
                 "dragon_chase_health_multiplier", "dragon_chase_lose_distance",
                 "dragon_chase_min_speed_growth_distance", "dragon_chase_min_speed_cap",
                 "dragon_chase_fireball_damage_threshold", "dragon_chase_damage_cap_percent"};
-        double[] defaults = {1.0D, 1.0D, 1.0D, 512.0D, 512.0D, 32.0D, 32.0D, 2.0D};
-        double[] minima = {0.0D, 0.0D, 0.2D, 256.0D, 16.0D, 16.0D, 4.0D, 0.5D};
-        double[] maxima = {1.0D, 8.0D, 5.0D, 1024.0D, 2048.0D, 64.0D, 64.0D, 10.0D};
+        double[] defaults = {1.0D, 1.0D, 1.0D, 512.0D, 1024.0D, 32.0D, 32.0D, 2.0D};
+        double[] minima = {0.0D, 0.0D, 0.2D, 256.0D, 256.0D, 16.0D, 4.0D, 0.5D};
+        double[] maxima = {1.0D, 8.0D, 5.0D, 1024.0D, 4096.0D, 64.0D, 64.0D, 10.0D};
         double[] steps = {1.0D, 0.5D, 0.2D, 16.0D, 16.0D, 1.0D, 4.0D, 0.5D};
         for (int i = 0; i < options.length; i++) {
             var option = options[i];
@@ -345,6 +345,16 @@ class TuningOptionTest {
         assertFalse(TuningOption.DRAGON_CHASE_HEALTH_MULTIPLIER.isValid(1.3D));
         assertTrue(TuningOption.DRAGON_CHASE_FIREBALL_DAMAGE_THRESHOLD.isValid(36.0D));
         assertFalse(TuningOption.DRAGON_CHASE_FIREBALL_DAMAGE_THRESHOLD.isValid(34.0D));
+        // The nest grows 0.5 m/s every 1024 blocks, tunable 256-4096: the panel clamps to that
+        // window and the input box refuses anything outside it.
+        var growthDistance = TuningOption.DRAGON_CHASE_MIN_SPEED_GROWTH_DISTANCE;
+        assertEquals("1024", growthDistance.format(growthDistance.defaultValue()));
+        assertTrue(growthDistance.isValid(256.0D));
+        assertTrue(growthDistance.isValid(4096.0D));
+        assertFalse(growthDistance.isValid(255.9D));
+        assertFalse(growthDistance.isValid(4097.0D));
+        assertEquals(256.0D, growthDistance.minimum(), 0.0D);
+        assertEquals(4096.0D, growthDistance.maximum(), 0.0D);
     }
 
     @Test

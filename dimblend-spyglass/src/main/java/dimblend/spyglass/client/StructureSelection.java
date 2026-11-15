@@ -21,9 +21,10 @@ import org.jetbrains.annotations.Nullable;
  * change or a mark hidden by the overlap rule can never be mistaken for "the structure is gone".
  * The server-provided union bounds are stable, so the anchor does not drift.
  *
- * <p>{@link #pruneOutOfRange} is the only place that clears the selection by distance, and callers
- * must only run it while the player is scoping with a usable terrain fog: lowering the spyglass
- * keeps the selection, and an effect/fluid fog must not clear it either.
+ * <p>{@link #pruneOutOfRange} is the only place that clears the selection by distance. A scoped
+ * caller only runs it while the terrain fog is usable; with the spyglass lowered it runs on distance
+ * alone, so the pinned mark disappears exactly when its structure leaves the ring. Lowering the
+ * spyglass itself keeps the selection.
  *
  * <p>Client main thread only.
  */
@@ -94,12 +95,13 @@ final class StructureSelection {
     /**
      * Drops the selection when its saved centre really left the display ring.
      *
-     * <p>Call only while scoping, and only with a usable terrain fog ({@code revealEnabled}): a fog
-     * that is disabled by water, lava, powder snow, blindness or darkness says nothing about the
-     * structure's distance.
+     * <p>Scoped callers pass {@code false} when the terrain fog is unusable ({@code revealEnabled}
+     * off): a fog disabled by water, lava, powder snow, blindness or darkness says nothing about the
+     * structure's distance. With the spyglass lowered the saved mark is pinned to the HUD, so the
+     * publisher passes {@code true} and only the {@code [64, 1024]} ring can drop it.
      */
-    static void pruneOutOfRange(double playerX, double playerZ, boolean revealEnabled) {
-        if (!revealEnabled || selected == null) {
+    static void pruneOutOfRange(double playerX, double playerZ, boolean pruneByDistance) {
+        if (!pruneByDistance || selected == null) {
             return;
         }
         if (!SpyglassDistance.inRange(selected.distanceTo(playerX, playerZ))) {

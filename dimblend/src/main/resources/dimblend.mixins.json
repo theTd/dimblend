@@ -91,6 +91,8 @@
     "voidscape.BlockTransformerItemMixin",
     "voidscape.EtherealPlantGeneratorMixin",
     "voidscape.GerminatorBlockEntityMixin",
+    "voidscape.InfuserBlockEntityMixin",
+    "voidscape.CollectorBlockEntityMixin",
     "voidscape.InsanityMixin",
     "voidscape.LevelUtilMixin",
     "voidscape.SpireFeatureMixin",

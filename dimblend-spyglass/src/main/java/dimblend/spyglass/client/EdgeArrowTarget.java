@@ -38,6 +38,24 @@ final class EdgeArrowTarget {
         return best;
     }
 
+    /**
+     * Chooses the external marker the edge arrow should point at: the nearest one that asked for
+     * guidance and is outside the lens. A marker already inside the lens needs no arrow, and a
+     * marker that did not ask for guidance never moves the arrow.
+     */
+    static @Nullable MarkScreenFrame.HudMarker chooseGuideMarker(MarkScreenFrame frame) {
+        MarkScreenFrame.HudMarker best = null;
+        for (MarkScreenFrame.HudMarker marker : frame.markers()) {
+            if (!marker.guideWithArrowAndDistance() || marker.inLens()) {
+                continue;
+            }
+            if (best == null || marker.distance() < best.distance()) {
+                best = marker;
+            }
+        }
+        return best;
+    }
+
     private EdgeArrowTarget() {
     }
 }

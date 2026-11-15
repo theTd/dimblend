@@ -13,9 +13,24 @@
 - 不合规驾驶台破坏并掉落；全服在线玩家收到快捷栏上方消息“需要放置在宽轨上”或“附近不空旷 不安全”。合规时广播“右键选择底盘类型”。
 - 右键归属（2026-11-10，阶段1）：主手空手或 Create 扳手**普通右键**打开选择页；潜行一律放行（扳手拆卸仍归 Create）；副手永不触发；其他物品放行。适用条件（驾驶台、`dimblend:rotating`、天然主线、8 格内、玩家可交互）不满足时不取消事件，避免吞点击；服务端只有真正建立会话后才取消（2026-11-11 复核：物品→触发器映射收进 `ChassisInteraction.menuTrigger`，避免映射散落在事件体里被改成“非空即触发”而吞掉放置/使用）。
 - 客户端适用条件（2026-11-10，C4）：不猜 `TrackBlock`；用服务器推送的当前 band lane + band size 反推与服务端 `CorridorRails` 相同的 per-delegate 轨道 id。只有**驾驶台与玩家同一 band region**且 lane 已知时才取消；跨 region、`unknown` 或未同步时返回 false（不取消，服务端决定），避免用过期 lane 吞掉一个本应放行的放置。
-- 右键打开两种选项。第一次点击后提示“该操作不可逆 请谨慎考虑 稍候”、选项禁用5秒，再显示“再次点击 确认打印”。可随时退出；重开重新选择、重新计时。服务端验证会话、距离、冷静期及场地；多人重复确认只成功一次。
+- 右键打开选择页（2026-11-15 起不再有二次确认）：点任意预设立刻发包并关页，服务端当场生成；ESC/取消只丢弃会话。服务端验证会话 token、预设 id、玩家权限与场地，一次会话只处理一次选择。旧的“5 秒冷静期 + 再次点击确认”整段删除。
 - 性能优先：每6 tick铺一排，约13.5秒完成，伴随捡物品音效；每tick施工预算约2ms，最多8处同时施工。服务器卡顿可延长工期。只组装图纸中的方块，不收集轨道或周围建筑；整车通过Sable持久强制加载。
 - 施工进度落盘。区块暂未加载时暂停并请求临时加载；重启后继续。施工期间遇到障碍或图纸方块被改动，清除仍与图纸一致的已生成方块并退回一个驾驶台；不覆盖玩家新放的障碍。
+
+## 创造调试预设（2026-11-15）
+
+用户口径：驾驶台右键后的内容取消二次确认，内部包含所有预生成的列车种类（**龙巢车厢除外**），可选直接生成，作为创造模式调试专用。
+
+- **权限开关**：`ChassisInteraction.SURVIVAL_STANDARD_CHASSIS_ENABLED = false`（默认）。false 时只有 `player.isCreative()` 能打开选择页，生存右键一律放行原版路径；true 时生存也能打开，但列表只有两种标准底盘。服务端在 `ChassisSelection.choose` 用 `ChassisPreset.permitted(creative)` 再判一次，客户端过滤不是权限。
+- **预设表**：`ChassisPreset` 共 15 项，`id()` 为枚举名小写，也是网络包与语言键的键：
+  - 标准底盘 2 项：`power`、`carriage`（`ChassisConstruction` 逐排施工，原样保留）。
+  - 奖励车厢 11 项：`shallow_copper`、`shallow_zinc`、`shallow_iron`、`deep_iron`、`deep_zinc`、`deep_copper`、`deepsilver`、`saltpeter`、`twilight_chest`、`sound_trap`、`motor_wagon`（`RewardWagonBuilder` 一次装配，与正常生成同一条路径；种子取当场随机）。
+  - 末影龙追逐 2 项：`brake`、`crystal`（`DragonChaseDebugCars.spawnBrake/spawnCrystal` → `DragonCars.buildBrakeCar/buildCrystalCar`，静止生成，刹车已通电、水晶已种下）。仅在 `dimblend_dragonchase` 存在时出现；`CarKind.NEST`（龙巢）**永不**进入这张表，`DragonChaseDebugCarsTest` 与 `ChassisPresetTest` 联合钉死这条。
+- **生成位置**：驾驶台下方必须是天然主线，`CorridorRails` 把主线钉在 `Y=64, Z=0`，所以驾驶台恒为 `(x, 65, 0)`，正好是 `RewardWagonBuilder.center(x)` 与 `CarAssembler.center(x)`；三种来源共用同一中心，不需要偏移参数。生成前先删掉中心格的 `create:controls`（生成器只装配自己的方块），失败时退回一个驾驶台并提示 `spawn_failed`。
+- **调试车仍走正常生命周期**：奖励车厢装配成功后由 `RewardWagonBuilder.registerDebugWagon` 写进 `RewardWagonSites`（`built=true` + 子层级 UUID），因此清空/碰传送门后照常播放粒子与金库音效并在半秒后消失；末影龙追逐车厢由 `DragonCars` 正常登记到 `DragonCarriages`（刹车信号已通电、水晶已种下），不另开调试分支。
+- **场地检查**：奖励/末影龙车厢用 `ChassisSite.clearCar` 按各自尺寸（9×3、13×7）检查，而不是标准底盘的 ±24 带；规则不变（只忽略空气、轨道、`create:fake_track` 与调用方列出的驾驶台本身，Sable 已投影方块不能占入，区块未加载即拒绝）。标准底盘仍走 `ChassisSite.clear`。
+- **网络**：`ChassisChoicePayload(token, preset)`（`STRING_UTF8`，空串=关页），`ChassisScreenPayload(token, open)`；`ChassisNetwork` 的 registrar 版本升到 `2`。旧的双击包（`int kind, boolean confirm`）不再存在。
+- **UI**：`ChassisScreen` 三列（窄窗两列）网格，按钮悬停显示描述；超过列表高度才滚动；点击即发包并关页，没有 `confirmed`、`CONFIRMED_DELAY_MS` 或第二次点击门。
 
 ## 仅新世界的出生端设施
 

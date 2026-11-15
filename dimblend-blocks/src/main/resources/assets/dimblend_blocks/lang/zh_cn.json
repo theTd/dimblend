@@ -15,5 +15,6 @@
 	"block.dimblend_blocks.fragile_stone": "易碎石头",
 	"block.dimblend_blocks.shell_marker": "贝壳标记",
 	"block.dimblend_blocks.train_ender_chest": "列车末影物流箱",
-	"block.dimblend_blocks.train_ender_chest.tooltip": "仅可在列车上使用"
+	"block.dimblend_blocks.train_ender_chest.tooltip": "仅可在列车上使用",
+	"tooltip.dimblend_blocks.lava_cool": "右键岩浆可使其冷却"
 }
