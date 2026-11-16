@@ -1,5 +1,6 @@
 package dimblend.worldgen;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -41,9 +42,26 @@ public final class BandLaneAssigner {
             SURFACE, UNDERGROUND, NETHER, END, AETHER, TWILIGHT, STARLIGHT, OTHERSIDE, VOIDSCAPE, MOD
     };
 
+    private static final int INITIAL_LOOKUP_SIZE = 64;
+    /**
+     * Upper bound on {@code |region|}: covers Minecraft's {@code ±30,000,000} world border and
+     * Sable's {@code 20,480,000+} plot coordinates even at the minimum 64-block band width
+     * ({@code 33,554,432 / 64 = 524,288}), while rejecting corrupt {@code Integer.MIN_VALUE} /
+     * {@code Integer.MAX_VALUE} inputs before walking {@code 2^31} steps or overflowing array sizes.
+     */
+    static final int MAX_REGION_DISTANCE = 1 << 20;
+
     private final byte[] kinds;
     private final long seed;
     private final Map<Integer, Integer> cache = new HashMap<>();
+    /**
+     * Published copies of {@link #cache} for {@code region >= 0}, indexed by region. {@code -1}
+     * is the miss sentinel (every delegate index is {@code >= 0}); a miss falls through to the
+     * synchronized walk. Replaced copy-on-write so readers never see a partially written table.
+     */
+    private volatile int[] posCache;
+    /** Same as {@link #posCache} for {@code region < 0}, indexed by {@code -region}. */
+    private volatile int[] negCache;
 
     public BandLaneAssigner(byte[] kinds, long seed) {
         this.kinds = kinds.clone();
@@ -52,7 +70,13 @@ public final class BandLaneAssigner {
         requireKind(UNDERGROUND);
         requireKind(NETHER);
         requireKind(END);
-        this.cache.put(0, firstOf(SURFACE));
+        int surface = firstOf(SURFACE);
+        this.cache.put(0, surface);
+        this.posCache = new int[INITIAL_LOOKUP_SIZE];
+        Arrays.fill(this.posCache, -1);
+        this.posCache[0] = surface;
+        this.negCache = new int[INITIAL_LOOKUP_SIZE];
+        Arrays.fill(this.negCache, -1);
     }
 
     public long seed() {
@@ -64,29 +88,90 @@ public final class BandLaneAssigner {
     }
 
     public int delegateIndex(int region) {
-        synchronized (this.cache) {
-            Integer cached = this.cache.get(region);
-            if (cached != null) {
-                return cached;
-            }
-            int step = region > 0 ? 1 : -1;
-            int current = this.cache.get(0);
-            for (int r = step; ; r += step) {
-                Integer known = this.cache.get(r);
-                if (known != null) {
-                    current = known;
-                    if (r == region) {
-                        return current;
-                    }
-                    continue;
+        if (region < -MAX_REGION_DISTANCE || region > MAX_REGION_DISTANCE) {
+            throw new IllegalArgumentException("region out of bounds: " + region);
+        }
+        if (region >= 0) {
+            int[] positive = this.posCache;
+            if (region < positive.length) {
+                int known = positive[region];
+                if (known >= 0) {
+                    return known;
                 }
-                current = assign(r, current);
-                this.cache.put(r, current);
-                if (r == region) {
-                    return current;
+            }
+        } else {
+            int distance = -region;
+            int[] negative = this.negCache;
+            if (distance < negative.length) {
+                int known = negative[distance];
+                if (known >= 0) {
+                    return known;
                 }
             }
         }
+        return this.walkTo(region);
+    }
+
+    /**
+     * Sequential assignment walk under {@link #cache}'s monitor. Fills every region from spawn
+     * out to {@code region}, then republishes the lookup array for that side.
+     */
+    private int walkTo(int region) {
+        synchronized (this.cache) {
+            Integer cached = this.cache.get(region);
+            int result;
+            if (cached != null) {
+                // Another thread completed this region between our fast-path miss and the lock.
+                result = cached;
+            } else {
+                int step = region > 0 ? 1 : -1;
+                int current = this.cache.get(0);
+                int r = step;
+                while (true) {
+                    Integer known = this.cache.get(r);
+                    if (known == null) {
+                        known = assign(r, current);
+                        this.cache.put(r, known);
+                    }
+                    current = known;
+                    if (r == region) {
+                        break;
+                    }
+                    r += step;
+                }
+                result = current;
+            }
+            this.publish(region);
+            return result;
+        }
+    }
+
+    /** Publishes {@code [0..region]} of the walked side into the matching lock-free array. */
+    private void publish(int region) {
+        if (region >= 0) {
+            this.posCache = republish(this.posCache, region, 1);
+        } else {
+            this.negCache = republish(this.negCache, -region, -1);
+        }
+    }
+
+    /**
+     * Copy-on-write publish: every element write lands before the volatile reference store, so a
+     * reader either sees the previous complete table or the new complete one. Slots not covered
+     * by the walk stay at the {@code -1} miss sentinel.
+     */
+    private int[] republish(int[] published, int upTo, int sign) {
+        int[] next = published.length > upTo
+                ? published.clone()
+                : new int[Math.min(MAX_REGION_DISTANCE + 1, Math.max(upTo + 1, published.length * 2))];
+        if (next.length > published.length) {
+            Arrays.fill(next, published.length, next.length, -1);
+        }
+        for (int i = 0; i <= upTo; i++) {
+            Integer index = this.cache.get(sign * i);
+            next[i] = index == null ? -1 : index;
+        }
+        return next;
     }
 
     private int assign(int region, int previous) {
@@ -133,6 +218,9 @@ public final class BandLaneAssigner {
      * The walk to the neighbor fills the cache first so {@link #mustClose} sees it.
      */
     public int scriptedOutwardDelegate(int region) {
+        if (region <= -MAX_REGION_DISTANCE || region >= MAX_REGION_DISTANCE) {
+            throw new IllegalArgumentException("region out of bounds: " + region);
+        }
         synchronized (this.cache) {
             int next = region + (region < 0 ? -1 : 1);
             int index = this.delegateIndex(next);

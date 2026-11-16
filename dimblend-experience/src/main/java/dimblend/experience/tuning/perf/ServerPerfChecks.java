@@ -4,13 +4,17 @@ import dimblend.experience.DimBlend;
 import dimblend.experience.tuning.TuningOption;
 import dimblend.experience.tuning.TuningSettings;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.level.GameRules;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.TickingBlockEntity;
 import net.minecraft.world.level.storage.LevelStorageSource;
 import net.neoforged.fml.ModList;
 
@@ -22,6 +26,9 @@ public final class ServerPerfChecks {
     /** Set once the fix wrote the spark config this run; spark only re-reads it on restart. */
     private static volatile boolean sparkDisabledThisRun;
     private static Boolean asyncSaveMixinActive;
+    /** {@code Level.blockEntityTickers}, the live list of ticking block entities, read once. */
+    private static volatile Field blockEntityTickers;
+    private static volatile boolean blockEntityTickersFailed;
 
     public static List<PerfCheckResult> collect(MinecraftServer server) {
         List<PerfCheckResult> results = new ArrayList<>();
@@ -39,6 +46,9 @@ public final class ServerPerfChecks {
                     high ? "high_dedicated" : "ok", false,
                     Integer.toString(distance), Integer.toString(PerfRules.SIMULATION_DISTANCE_MAX)));
         }
+        results.add(mobSpawnCaps());
+        results.add(randomTickSpeed(server));
+        results.add(chuteContraptionScan(server));
         results.add(sablePhysics());
         return results;
     }
@@ -55,6 +65,16 @@ public final class ServerPerfChecks {
                 // The rule's change callback re-runs setDefaultSpawnPos, which drops the START
                 // ticket right away; the overworld then unloads once nobody keeps it loaded.
                 server.getGameRules().getRule(GameRules.RULE_SPAWN_CHUNK_RADIUS).set(0, server);
+                return true;
+            }
+            case MOB_SPAWN_CAPS -> {
+                // Easy Mob Spawn Control's spawnCaps lowers MobCategory.max in memory, which makes
+                // SpawnState.canSpawnForCategory stop the spawner in O(1) instead of per chunk.
+                return EasyMobSpawnControlBridge.applyLimits();
+            }
+            case RANDOM_TICK_SPEED -> {
+                server.getGameRules().getRule(GameRules.RULE_RANDOMTICKING)
+                        .set(PerfRules.RANDOM_TICK_SPEED_MAX, server);
                 return true;
             }
             default -> {
@@ -135,6 +155,113 @@ public final class ServerPerfChecks {
         boolean present = ModList.get().isLoaded("finite_water");
         return PerfCheckResult.of(PerfCheck.FINITE_WATER, PerfScope.SERVER,
                 present ? PerfStatus.WARN : PerfStatus.OK, present ? "present" : "absent", false);
+    }
+
+    /**
+     * The per-chunk caps every category's {@code SpawnState.canSpawnForCategory} compares against.
+     * Vanilla's 70 / 15 / 20 rarely fill in a world stitched from several biome mods, so the spawner
+     * keeps scanning every chunk (26.2% of the 2026-11 travel tick). Easy Mob Spawn Control's
+     * spawnCaps lowers the caps in place; its spawnRates would cancel FinalizeSpawnEvent and keep
+     * them from ever filling.
+     */
+    private static PerfCheckResult mobSpawnCaps() {
+        int monster = MobCategory.MONSTER.getMaxInstancesPerChunk();
+        int ambient = MobCategory.AMBIENT.getMaxInstancesPerChunk();
+        int waterAmbient = MobCategory.WATER_AMBIENT.getMaxInstancesPerChunk();
+        String[] args = {Integer.toString(monster), Integer.toString(ambient), Integer.toString(waterAmbient),
+                Integer.toString(PerfRules.MONSTER_SPAWN_CAP_MAX),
+                Integer.toString(PerfRules.AMBIENT_SPAWN_CAP_MAX),
+                Integer.toString(PerfRules.WATER_AMBIENT_SPAWN_CAP_MAX)};
+        if (PerfRules.mobSpawnCapsStatus(monster, ambient, waterAmbient) == PerfStatus.OK) {
+            return PerfCheckResult.of(PerfCheck.MOB_SPAWN_CAPS, PerfScope.SERVER, PerfStatus.OK, "ok", false, args);
+        }
+        if (!ModList.get().isLoaded("easy_mob_spawn_control")) {
+            // Installed advice, not a fixable warning: the caps can only be lowered through that mod.
+            return PerfCheckResult.of(PerfCheck.MOB_SPAWN_CAPS, PerfScope.SERVER, PerfStatus.INFO,
+                    "missing", false, args);
+        }
+        return PerfCheckResult.of(PerfCheck.MOB_SPAWN_CAPS, PerfScope.SERVER, PerfStatus.WARN, "high", true, args);
+    }
+
+    private static PerfCheckResult randomTickSpeed(MinecraftServer server) {
+        int speed = server.getGameRules().getInt(GameRules.RULE_RANDOMTICKING);
+        boolean high = speed > PerfRules.RANDOM_TICK_SPEED_MAX;
+        return PerfCheckResult.of(PerfCheck.RANDOM_TICK_SPEED, PerfScope.SERVER,
+                PerfRules.randomTickSpeedStatus(speed), high ? "high" : "ok", high,
+                Integer.toString(speed), Integer.toString(PerfRules.RANDOM_TICK_SPEED_MAX));
+    }
+
+    /**
+     * Counts ticking Create chutes, each of which asks create_connected's contraption inventory
+     * access handler for its inventories once per tick (15.56 s of the 2026-11 travel capture).
+     * The count reads vanilla's per-level ticker list, so no chunk is loaded and no Create class is
+     * referenced.
+     */
+    private static PerfCheckResult chuteContraptionScan(MinecraftServer server) {
+        String max = Integer.toString(PerfRules.TICKING_CHUTES_MAX);
+        if (!ModList.get().isLoaded("create") || !ModList.get().isLoaded("create_connected")) {
+            return PerfCheckResult.of(PerfCheck.CHUTE_CONTRAPTION_SCAN, PerfScope.SERVER,
+                    PerfStatus.UNAVAILABLE, "absent", false, "-", max);
+        }
+        Field field = blockEntityTickers();
+        if (field == null) {
+            return PerfCheckResult.of(PerfCheck.CHUTE_CONTRAPTION_SCAN, PerfScope.SERVER,
+                    PerfStatus.UNAVAILABLE, "absent", false, "-", max);
+        }
+        int count;
+        try {
+            count = countTickingChutes(server, field);
+        } catch (IllegalAccessException | RuntimeException failure) {
+            blockEntityTickersFailed = true;
+            blockEntityTickers = null;
+            DimBlend.LOGGER.warn("Could not scan ticking block entities for Create chutes", failure);
+            return PerfCheckResult.of(PerfCheck.CHUTE_CONTRAPTION_SCAN, PerfScope.SERVER,
+                    PerfStatus.UNAVAILABLE, "absent", false, "-", max);
+        }
+        boolean high = count > PerfRules.TICKING_CHUTES_MAX;
+        return PerfCheckResult.of(PerfCheck.CHUTE_CONTRAPTION_SCAN, PerfScope.SERVER,
+                PerfRules.tickingChutesStatus(count), high ? "high" : "ok", false,
+                Integer.toString(count), max);
+    }
+
+    /**
+     * {@code Level.blockEntityTickers} holds the live ticking block entities in Mojmap runtime
+     * names. A missing or unreadable field disables the scan for the whole session (one warning).
+     */
+    private static Field blockEntityTickers() {
+        if (blockEntityTickersFailed) {
+            return null;
+        }
+        Field field = blockEntityTickers;
+        if (field != null) {
+            return field;
+        }
+        try {
+            field = Level.class.getDeclaredField("blockEntityTickers");
+            field.setAccessible(true);
+        } catch (NoSuchFieldException | RuntimeException failure) {
+            blockEntityTickersFailed = true;
+            DimBlend.LOGGER.warn("Could not read Level.blockEntityTickers; the Create chute scan is unavailable", failure);
+            return null;
+        }
+        blockEntityTickers = field;
+        return field;
+    }
+
+    private static int countTickingChutes(MinecraftServer server, Field field) throws IllegalAccessException {
+        int count = 0;
+        for (ServerLevel level : server.getAllLevels()) {
+            if (!(field.get(level) instanceof List<?> tickers)) {
+                continue;
+            }
+            for (Object entry : tickers) {
+                if (entry instanceof TickingBlockEntity ticker && !ticker.isRemoved()
+                        && PerfRules.isCreateChuteTickerType(ticker.getType())) {
+                    count++;
+                }
+            }
+        }
+        return count;
     }
 
     private static PerfCheckResult sablePhysics() {

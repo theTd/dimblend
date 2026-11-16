@@ -18,9 +18,13 @@ public enum PerfCheck {
     FINITE_WATER("finite_water", false, "absent", "present"),
     OVERWORLD_UNLOAD("overworld_unload", true, "ok", "spawn_chunks", "forced"),
     SIMULATION_DISTANCE("simulation_distance", true, "ok", "high", "high_dedicated"),
+    MOB_SPAWN_CAPS("mob_spawn_caps", true, "ok", "high", "missing"),
+    RANDOM_TICK_SPEED("random_tick_speed", true, "ok", "high"),
+    CHUTE_CONTRAPTION_SCAN("chute_contraption_scan", false, "ok", "high", "absent"),
     RENDER_DISTANCE("render_distance", true, "ok", "high"),
     SABLE_PHYSICS("sable_physics", false, "defaults", "custom", "missing"),
-    SABLE_INTERPOLATION("sable_interpolation", true, "ok", "short", "missing");
+    SABLE_INTERPOLATION("sable_interpolation", true, "ok", "short", "missing"),
+    IMMEDIATELY_FAST("immediately_fast", false, "present", "missing");
 
     public static final String PREFIX = "screen.dimblend_experience.perf.";
     private final String id;

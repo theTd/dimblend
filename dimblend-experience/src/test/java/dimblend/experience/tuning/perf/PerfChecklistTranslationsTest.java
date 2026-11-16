@@ -16,13 +16,7 @@ class PerfChecklistTranslationsTest {
     void bothLanguagesCoverEveryStepAdviceFixAndLabel() throws Exception {
         List<String> keys = new ArrayList<>();
         for (PerfCheck check : PerfCheck.values()) {
-            keys.add(check.key());
-            keys.add(check.key() + ".why");
-            keys.add(check.key() + ".current");
-            check.advices().forEach(advice -> keys.add(check.key() + ".advice." + advice));
-            if (check.fixable()) {
-                keys.add(check.key() + ".fix");
-            }
+            keys.addAll(stepKeys(check));
         }
         for (PerfStatus status : PerfStatus.values()) {
             keys.add(status.key());
@@ -43,6 +37,30 @@ class PerfChecklistTranslationsTest {
                 assertTrue(language.has(key) && !language.get(key).getAsString().isBlank(), code + " " + key);
             }
         }
+    }
+
+    /** zh_tw is a partial language file, so only the steps added in this batch are required there. */
+    @Test
+    void traditionalChineseCoversTheNewestSteps() throws Exception {
+        JsonObject language = language("zh_tw");
+        for (PerfCheck check : List.of(PerfCheck.MOB_SPAWN_CAPS, PerfCheck.RANDOM_TICK_SPEED,
+                PerfCheck.CHUTE_CONTRAPTION_SCAN, PerfCheck.IMMEDIATELY_FAST)) {
+            for (String key : stepKeys(check)) {
+                assertTrue(language.has(key) && !language.get(key).getAsString().isBlank(), "zh_tw " + key);
+            }
+        }
+    }
+
+    private static List<String> stepKeys(PerfCheck check) {
+        List<String> keys = new ArrayList<>();
+        keys.add(check.key());
+        keys.add(check.key() + ".why");
+        keys.add(check.key() + ".current");
+        check.advices().forEach(advice -> keys.add(check.key() + ".advice." + advice));
+        if (check.fixable()) {
+            keys.add(check.key() + ".fix");
+        }
+        return keys;
     }
 
     private JsonObject language(String code) throws Exception {

@@ -78,3 +78,46 @@ Recorded from `dimblend-batch-1115` (`generated: 2026-11-15T14:13:32.844Z`, 5 lo
 
 5. **`camera-creative-durability` [DEFAULT]**: **创造与生存一致（均按相机内耐久结算，0耐久提示无纸张）**
    - `CameraFilmRules.CREATIVE_BYPASSES_DURABILITY = false`; Creative and Survival both consume 1 camera film durability per shot out of 64 max, start newly crafted cameras at 0 shots, reload via paper right-click in inventory, and display the upstream `no_paper` warning without shooting at 0 remaining shots.
+
+---
+
+# DimBlend Performance Optimization — P0 + P1 + postProcessGeneration Batch Decisions (2026-11-15)
+
+Recorded from `dimblend-perf-p0p1-decisions.json` (3 locked decisions: 2 defaults kept, 1 explicit
+user override with own wording). Basis: spark profile `i708Ci2hF3`, a 30-minute TrainTripWorld
+travel capture.
+
+1. **`compute_mode` [DEFAULT] (`remote_castawayl`)**: **卸载构建与测试到远端 CASTAWAYL**
+   - Gradle builds and tests for this batch run on CASTAWAYL, not on the loaded workstation; the
+     worktree only receives source and doc edits.
+
+2. **`sable_scope` [DEFAULT] (`modpack_config_only`)**: **备份并修改整合包 `sable-server.toml`**
+   - Set `sub_level_substeps_per_tick = 1` and `solver_iterations = 12` in the modpack's
+     `serverconfig/sable-server.toml` (backup first), without touching the `sable` repository
+     defaults or its vendored jar. Stock `2 / 18` remains the fallback if a train jitters.
+   - In the checklist the same tradeoff is surfaced by `PerfCheck.SABLE_PHYSICS` (informational;
+     its button opens the Sable page), whose copy now cites the capture's ~13.5 % of server tick
+     time (~3.0 ms/tick) and the ~half saving that `1 / 12` gives.
+
+3. **`third_party_scope` [OVERRIDE / OWN WORDING]**: **严格收敛到 dimblend 仓库，接入调优自查面板**
+   - No third-party config file is rewritten behind the user's back (e.g.
+     `easy_mob_spawn_control-common.toml`) and no invasive mixin is injected into
+     `create_connected`. Instead the three profile-backed findings become checklist steps with
+     one-click fixes inside `dimblend-experience`'s Performance Checklist
+     (`PerfChecklistScreen` / `PerfCheck`):
+     - `PerfCheck.MOB_SPAWN_CAPS` (`mob_spawn_caps`): reads the live
+       `MobCategory.MONSTER` / `AMBIENT` / `WATER_AMBIENT` per-chunk caps; when
+       `easy_mob_spawn_control` is loaded the fix lowers them through that mod's own
+       `CommonConfig.saveSpawnCaps` + `HandleServerAboutToStart.onServerAboutToStart(null)` path
+       (`EasyMobSpawnControlBridge`), which sets `MobCategory.max` in memory so
+       `SpawnState.canSpawnForCategory` fails in O(1). Its `spawnRates` path is deliberately not
+       used: cancelling `FinalizeSpawnEvent` keeps the caps from filling and makes
+       `NaturalSpawner.spawnForChunk` (26.2 % of the captured tick, 5.74 ms/tick) worse.
+     - `PerfCheck.RANDOM_TICK_SPEED` (`random_tick_speed`): reads the game rule, offers the
+       one-click `randomTickSpeed = 3`.
+     - `PerfCheck.CHUTE_CONTRAPTION_SCAN` (`chute_contraption_scan`): counts ticking
+       `create:chute` / `create:smart_chute` block entities by reflecting
+       `Level.blockEntityTickers` (no chunk loads, no Create classes) and advises on the
+       create_connected per-tick inventory scan (15.56 s, 0.47 ms/tick in the capture).
+     - `PerfCheck.IMMEDIATELY_FAST` (`immediately_fast`, client): recommends the client-side
+       batching mod as `INFO`, so it never inflates the warning count.

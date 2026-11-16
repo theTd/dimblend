@@ -29,6 +29,7 @@ final class ClientPerfChecks {
         results.add(distance(PerfCheck.RENDER_DISTANCE, minecraft.options.renderDistance().get(),
                 PerfRules.RENDER_DISTANCE_MAX));
         results.add(sableInterpolation());
+        results.add(immediatelyFast());
         return results;
     }
 
@@ -69,6 +70,13 @@ final class ClientPerfChecks {
         return PerfCheckResult.of(PerfCheck.SABLE_INTERPOLATION, PerfScope.CLIENT, status,
                 status == PerfStatus.OK ? "ok" : "short", status != PerfStatus.OK,
                 String.format(Locale.ROOT, "%.1f", delay), recommended);
+    }
+
+    private static PerfCheckResult immediatelyFast() {
+        // INFO while missing: recommending the mod must not inflate the warning count.
+        boolean present = ModList.get().isLoaded("immediatelyfast");
+        return PerfCheckResult.of(PerfCheck.IMMEDIATELY_FAST, PerfScope.CLIENT,
+                present ? PerfStatus.OK : PerfStatus.INFO, present ? "present" : "missing", false);
     }
 
     private static boolean sableLoaded() {

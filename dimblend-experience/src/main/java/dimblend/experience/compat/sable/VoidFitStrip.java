@@ -1,5 +1,7 @@
 package dimblend.experience.compat.sable;
 
+import java.util.function.Predicate;
+
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongList;
@@ -33,6 +35,9 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
  */
 public final class VoidFitStrip {
 
+    /** section 级存在性探测：palette 不含 structure_void 的 section 整段跳过，不逐格解包。 */
+    private static final Predicate<BlockState> STRUCTURE_VOID_PREDICATE = state -> state.is(Blocks.STRUCTURE_VOID);
+
     /**
      * 把本区块内 tracker 记录的（目标格或已物化待拆格）、当前确为 structure_void 的格子剥成空气。
      *
@@ -56,17 +61,20 @@ public final class VoidFitStrip {
         }
         LongArrayList stripped = new LongArrayList();
         LevelChunkSection[] sections = chunk.getSections();
+        // 逐 section "是否可能含 structure_void" 的探测缓存，两遍共用：pass 1 证明无空位的
+        // section 在 pass 2 不再逐格解包 PalettedContainer。0=未探测 1=可能含有 -1=可跳过
+        byte[] sectionFilter = new byte[sections.length];
         if (hasTarget) {
-            stripCells(level, sections, targetCells, stripped);
+            stripCells(level, sections, targetCells, stripped, sectionFilter);
         }
         if (hasMaterialized) {
-            stripCells(level, sections, materializedCells, stripped);
+            stripCells(level, sections, materializedCells, stripped, sectionFilter);
         }
         return stripped;
     }
 
     private static void stripCells(ServerLevel level, LevelChunkSection[] sections,
-            LongSet cells, LongArrayList stripped) {
+            LongSet cells, LongArrayList stripped, byte[] sectionFilter) {
         BlockState air = Blocks.AIR.defaultBlockState();
         LongIterator it = cells.iterator();
         while (it.hasNext()) {
@@ -79,6 +87,13 @@ public final class VoidFitStrip {
                 continue;
             }
             LevelChunkSection section = sections[index];
+            if (sectionFilter[index] == 0) {
+                sectionFilter[index] = (byte) (!section.hasOnlyAir()
+                        && section.maybeHas(STRUCTURE_VOID_PREDICATE) ? 1 : -1);
+            }
+            if (sectionFilter[index] < 0) {
+                continue;
+            }
             if (section.getBlockState(x & 15, y & 15, z & 15).is(Blocks.STRUCTURE_VOID)) {
                 section.setBlockState(x & 15, y & 15, z & 15, air);
                 stripped.add(cell);

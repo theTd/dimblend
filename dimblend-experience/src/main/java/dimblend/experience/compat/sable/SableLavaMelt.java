@@ -7,8 +7,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
+import dev.ryanhcode.sable.companion.math.BoundingBox3d;
+import dev.ryanhcode.sable.companion.math.BoundingBox3ic;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dimblend.experience.Config;
 import dimblend.experience.DimBlend;
@@ -16,7 +19,9 @@ import dimblend.experience.exploration.RotatingDimension;
 import it.unimi.dsi.fastutil.longs.Long2FloatOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -33,8 +38,11 @@ import net.minecraft.world.level.block.LevelEvent;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
+import org.joml.Matrix4d;
 
 /**
  * G6 岩浆熔毁（结构空位拟合的配对特性）：rotating 维度内，岩浆/岩浆流按
@@ -102,8 +110,11 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
  * 播在 plot 存储格玩家听不见（{@code PhysicsBogeyBrakeSoundMixin} 的事故口径），
  * 投影中心与破坏粒子/掉落同锚。</p>
  *
- * <p>所有世界读取（熔岩探测）都带 {@code hasChunkAt} 守卫且在 tick 上下文执行——
- * 不走 ChunkEvent.Load 内的同步写入路径（见 docs/sable-void-fit-chunk-deadlock.md
+ * <p>所有世界读取（熔岩探测）都在 tick 上下文执行，且只走非阻塞的
+ * {@code ServerChunkCache#getChunkNow}（{@code hasChunkAt} 只查 ticket 等级而不查
+ * FULL 完成态，未完成区块上 {@code getBlockState} 会 {@code managedBlock} 阻塞主线程，
+ * 见 dimblend-dev §8.28）；未就绪区块直接跳过、下一轮再判，绝不触发加载。也不走
+ * ChunkEvent.Load 内的同步写入路径（见 docs/sable-void-fit-chunk-deadlock.md
  * 的事故口径），无邮箱嵌套等锁面。注册走 {@code DimBlend} 构造器的 Sable 门控
  * （{@code ModList.isLoaded("sable")} 才解析本类），与 {@link SableVoidFit} 同款
  * 惰性解析纪律。</p>
@@ -124,6 +135,15 @@ public final class SableLavaMelt {
      */
     private static final TagKey<Block> LAVA_MELT_IMMUNE = TagKey.create(Registries.BLOCK,
             ResourceLocation.fromNamespaceAndPath(DimBlend.MODID, "lava_melt_immune"));
+
+    /** section 级岩浆存在性探测：palette 不含岩浆的 section 整段跳过，不逐格读取。 */
+    private static final Predicate<BlockState> LAVA_SECTION_PREDICATE =
+            state -> state.getBlock() instanceof LiquidBlock && state.getFluidState().is(FluidTags.LAVA);
+
+    /** 载具世界 AABB 的复用暂存（仅主线程 tick 上下文使用）。 */
+    private static final Matrix4d BOUNDS_MATRIX = new Matrix4d();
+    private static final BoundingBox3d BOUNDS_PLOT = new BoundingBox3d();
+    private static final BoundingBox3d BOUNDS_WORLD = new BoundingBox3d();
 
     /** 单个载具的熔毁进度：plot 格（BlockPos.asLong）→ 已累计进度，及上次扫描时刻。 */
     private static final class VehicleMelt {
@@ -209,6 +229,15 @@ public final class SableLavaMelt {
         long now = level.getGameTime();
         long elapsed = melt.lastScan < 0L ? SCAN_TICKS : now - melt.lastScan;
         melt.lastScan = now;
+        // A2 预筛（dimblend-dev §8.28）：先用载具世界 AABB + 接触容差收出块盒，只保留
+        // "区块已 FULL 加载且 section palette 含岩浆"的 section。载具附近根本没有岩浆时
+        // 两趟 forEachProjectedBlock 全部跳过——接触集为空，与走完枚举后 progress 清零
+        // 等价（进度同样清零）。世界读取一律 getChunkNow，绝不触发区块生成/等锁。
+        LongOpenHashSet lavaSections = lavaSectionsNear(level, subLevel);
+        if (lavaSections.isEmpty()) {
+            melt.progress.clear();
+            return;
+        }
         // 倍率逐次扫描读配置：/dbx 面板或改文件后的新值下一轮即生效；已累进度不清零，
         // 后续按新速率累计（与徒手挖掘中途换工具同型）
         double speedMultiplier = Config.SABLE_LAVA_MELT_SPEED.get();
@@ -229,7 +258,7 @@ public final class SableLavaMelt {
                 return;
             }
             boolean columnTop = LavaContactScan.isCoveredColumnTop(columnTops, wx, wy, wz, hx, hz);
-            if (!touchesLava(level, wx, wy, wz, hx, hy, hz, columnTop)) {
+            if (!touchesLava(level, lavaSections, wx, wy, wz, hx, hy, hz, columnTop)) {
                 return;
             }
             long key = plotPos.asLong();
@@ -292,7 +321,7 @@ public final class SableLavaMelt {
      * 岩浆灌进舱内后液面正好落进那一格，地板（隔着 +1 的 structure_void）与任意高度
      * 侧壁都被判成"被浇着"，同轮一起熔毁。</p>
      */
-    private static boolean touchesLava(ServerLevel level,
+    private static boolean touchesLava(ServerLevel level, LongSet lavaSections,
             double wx, double wy, double wz, double hx, double hy, double hz, boolean columnTop) {
         double expand = LavaMeltMath.CONTACT_TOLERANCE;
         int minY = level.getMinBuildHeight();
@@ -303,15 +332,39 @@ public final class SableLavaMelt {
         int y1 = LavaContactScan.scanMaxY(wy, hy, expand, maxY, columnTop);
         int z0 = (int) Math.floor(wz - hz - expand);
         int z1 = (int) Math.floor(wz + hz + expand);
-        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        if (x0 > x1 || y0 > y1 || z0 > z1) {
+            return false;
+        }
+        // section 粒度预筛：本格扫描盒与载具级岩浆 section 集合无交集时零区块读取
+        if (!intersectsLavaSection(lavaSections, x0, y0, z0, x1, y1, z1)) {
+            return false;
+        }
+        // 非阻塞读取：getChunkNow 只取已 FULL 加载的区块（hasChunkAt 只查 ticket 等级，
+        // 未完成区块上 getBlockState 会 managedBlock 阻塞主线程，见 dimblend-dev §8.28）。
+        // 逐格同区块缓存：扫描盒最大几格见方，区块切换只在 x/z 跨 16 边界时发生
+        LevelChunk chunk = null;
+        int chunkX = Integer.MIN_VALUE;
+        int chunkZ = Integer.MIN_VALUE;
         for (int y = y0; y <= y1; y++) {
+            int sectionIndex = -1;
             for (int z = z0; z <= z1; z++) {
                 for (int x = x0; x <= x1; x++) {
-                    pos.set(x, y, z);
-                    if (!level.hasChunkAt(pos)) {
+                    int cx = SectionPos.blockToSectionCoord(x);
+                    int cz = SectionPos.blockToSectionCoord(z);
+                    if (cx != chunkX || cz != chunkZ) {
+                        chunk = level.getChunkSource().getChunkNow(cx, cz);
+                        chunkX = cx;
+                        chunkZ = cz;
+                        sectionIndex = -1;
+                    }
+                    if (chunk == null) {
                         continue;
                     }
-                    BlockState state = level.getBlockState(pos);
+                    if (sectionIndex < 0) {
+                        sectionIndex = chunk.getSectionIndexFromSectionY(SectionPos.blockToSectionCoord(y));
+                    }
+                    BlockState state = chunk.getSection(sectionIndex)
+                            .getBlockState(x & 15, y & 15, z & 15);
                     // 岩浆与岩浆流同列（LiquidBlock + lava 流体标签），同型 mod 流体不管
                     if (state.getBlock() instanceof LiquidBlock && state.getFluidState().is(FluidTags.LAVA)) {
                         return true;
@@ -320,6 +373,74 @@ public final class SableLavaMelt {
             }
         }
         return false;
+    }
+
+    /** 该格扫描盒（含端点）是否与载具级岩浆 section 集合相交。 */
+    private static boolean intersectsLavaSection(LongSet lavaSections,
+            int x0, int y0, int z0, int x1, int y1, int z1) {
+        int sectionX0 = SectionPos.blockToSectionCoord(x0);
+        int sectionX1 = SectionPos.blockToSectionCoord(x1);
+        int sectionY0 = SectionPos.blockToSectionCoord(y0);
+        int sectionY1 = SectionPos.blockToSectionCoord(y1);
+        int sectionZ0 = SectionPos.blockToSectionCoord(z0);
+        int sectionZ1 = SectionPos.blockToSectionCoord(z1);
+        for (int sectionY = sectionY0; sectionY <= sectionY1; sectionY++) {
+            for (int sectionZ = sectionZ0; sectionZ <= sectionZ1; sectionZ++) {
+                for (int sectionX = sectionX0; sectionX <= sectionX1; sectionX++) {
+                    if (lavaSections.contains(SectionPos.asLong(sectionX, sectionY, sectionZ))) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 载具级岩浆 section 收集：plot 盒按当前 {@code logicalPose}（与
+     * {@link VoidFitVoxelizer#forEachProjectedBlock} 同一 pose，绝不用可能滞后的
+     * {@code boundingBox()} 快照）变换取 8 角世界 AABB，外扩接触容差后按区块/section 扫。
+     *
+     * <p>只收"已 FULL 加载且 section palette 可能含岩浆"的 section；缺区块直接跳过
+     * （下一轮扫描再判，绝不触发加载）。空集合 = 载具附近没有岩浆，调用方整趟跳过。</p>
+     */
+    private static LongOpenHashSet lavaSectionsNear(ServerLevel level, ServerSubLevel subLevel) {
+        LongOpenHashSet sections = new LongOpenHashSet();
+        BoundingBox3ic plot = subLevel.getPlot().getBoundingBox();
+        BOUNDS_PLOT.set(plot.minX(), plot.minY(), plot.minZ(),
+                plot.maxX() + 1.0D, plot.maxY() + 1.0D, plot.maxZ() + 1.0D);
+        BOUNDS_PLOT.transform(subLevel.logicalPose(), BOUNDS_MATRIX, BOUNDS_WORLD);
+        LavaContactScan.BlockBox box = LavaContactScan.vehicleScanBounds(
+                BOUNDS_WORLD.minX(), BOUNDS_WORLD.minY(), BOUNDS_WORLD.minZ(),
+                BOUNDS_WORLD.maxX(), BOUNDS_WORLD.maxY(), BOUNDS_WORLD.maxZ(),
+                LavaMeltMath.CONTACT_TOLERANCE, level.getMinBuildHeight(), level.getMaxBuildHeight());
+        if (box.isEmpty()) {
+            return sections;
+        }
+        int chunkX0 = SectionPos.blockToSectionCoord(box.minX());
+        int chunkX1 = SectionPos.blockToSectionCoord(box.maxX());
+        int chunkZ0 = SectionPos.blockToSectionCoord(box.minZ());
+        int chunkZ1 = SectionPos.blockToSectionCoord(box.maxZ());
+        int sectionY0 = SectionPos.blockToSectionCoord(box.minY());
+        int sectionY1 = SectionPos.blockToSectionCoord(box.maxY());
+        for (int chunkX = chunkX0; chunkX <= chunkX1; chunkX++) {
+            for (int chunkZ = chunkZ0; chunkZ <= chunkZ1; chunkZ++) {
+                LevelChunk chunk = level.getChunkSource().getChunkNow(chunkX, chunkZ);
+                if (chunk == null) {
+                    continue;
+                }
+                int yFrom = Math.max(sectionY0, chunk.getMinSection());
+                int yTo = Math.min(sectionY1, chunk.getMaxSection() - 1);
+                for (int sectionY = yFrom; sectionY <= yTo; sectionY++) {
+                    LevelChunkSection section = chunk.getSection(chunk.getSectionIndexFromSectionY(sectionY));
+                    if (section.hasOnlyAir() || !section.maybeHas(LAVA_SECTION_PREDICATE)) {
+                        continue;
+                    }
+                    sections.add(SectionPos.asLong(chunkX, sectionY, chunkZ));
+                }
+            }
+        }
+        return sections;
     }
 
     private static void meltBlock(ServerLevel level, Contact contact) {

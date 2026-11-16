@@ -13,6 +13,7 @@
     "MinecraftServerSlowTickMixin",
     "MinecraftServerLevelTickEventSectionMixin",
     "LevelDayTimeMixin",
+    "LevelChunkPostProcessFluidMixin",
     "LevelWeatherAccessor",
     "NaturalSpawnerMixin",
     "PhantomSpawnerMixin",
