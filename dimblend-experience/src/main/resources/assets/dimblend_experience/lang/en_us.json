@@ -79,6 +79,8 @@
   "screen.dimblend_experience.tuning.dragon_chase_fireball_damage_threshold.description": "Default: 32 damage. Range: 4-64, step 4. Each time the dragon has taken this much damage the counter resets and it turns to fire a dragon breath shot, then cools down for 8 seconds.",
   "screen.dimblend_experience.tuning.dragon_chase_damage_cap_percent": "Max damage per second (%)",
   "screen.dimblend_experience.tuning.dragon_chase_damage_cap_percent.description": "Default: 2.0%. Range: 0.5-10.0, step 0.5. The dragon can lose at most this share of its maximum health per second; damage beyond it is discarded.",
+  "screen.dimblend_experience.tuning.dragon_chase_keep_away_distance": "Nest Minimum Keep-Away Distance",
+  "screen.dimblend_experience.tuning.dragon_chase_keep_away_distance.description": "Minimum distance in blocks the nest car keeps ahead of the player train during a chase.",
   "block.dndecor.andesite_frontlight": "Andesite Train Searchlight",
   "block.dndecor.brass_frontlight": "Brass Train Searchlight",
   "block.dndecor.copper_frontlight": "Copper Train Searchlight",

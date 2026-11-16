@@ -23,12 +23,14 @@ public interface ChaseDragonHandle {
         PROLOGUE_ORBIT,
         /** §3.2: fly forward to track + 32, then along the track climbing 45° to y = 512, then discard itself and fire {@link ChaseDragonListener#onDeparted}. */
         PROLOGUE_DEPART,
-        /** §3.4: follow the nest anchor (x aligned, sway z ±32, y ±16 around nest + 32). */
+        /** §3.4: hold above the nest (x aligned, sway z ±32, y ±16 around nest + 32). */
         CHASE_FOLLOW,
-        /** §3.4: swoop over the train for the requested ticks, then return to CHASE_FOLLOW. */
-        CHASE_SWOOP,
-        /** §3.4: hover at the lowest point above the nest, turn back, breathe onto the track. */
+        /** §3.4: no turn-around; pull quickly back past the nest to the train-front anchor and fire one fireball onto the predicted track impact point, then CHASE_CATCH_UP. */
+        CHASE_FIREBALL,
+        /** §3.4: no turn-around; retreat at low altitude to 50% of the nest-train gap and spray breath onto the track, then CHASE_CATCH_UP. */
         CHASE_BREATH,
+        /** §3.4: after a fireball or breath, gradually close back up on the nest, then CHASE_FOLLOW. */
+        CHASE_CATCH_UP,
         /** §3.6: vanilla death animation and sound only, at the kill position; no drops, no XP. */
         DYING
     }
@@ -38,6 +40,12 @@ public interface ChaseDragonHandle {
     Mode mode();
 
     boolean isAliveAndLoaded();
+
+    /** True when the dragon can start a fireball or breath manoeuvre (i.e. in {@link Mode#CHASE_FOLLOW} or {@link Mode#CHASE_CATCH_UP}, alive and loaded). */
+    default boolean canStartChaseAction() {
+        Mode current = mode();
+        return isAliveAndLoaded() && (current == Mode.CHASE_FOLLOW || current == Mode.CHASE_CATCH_UP);
+    }
 
     /** Current health (already reduced when {@link ChaseDragonListener#onDamageTaken} fires). Inherited from LivingEntity. */
     float getHealth();
@@ -51,27 +59,33 @@ public interface ChaseDragonHandle {
     /** Prologue: start the departure (§3.2). Idempotent. */
     void depart();
 
-    /** Chase: the nest's world centre and the leading train's front, updated every tick by the director. */
+    /**
+     * Chase: the nest's world centre and the leading train's front reference point, updated every
+     * tick by the director. The dragon keeps its distance from the nest and uses the train front as
+     * the retreat target when it fires a fireball or breathes.
+     */
     void setChaseAnchors(Vec3 nestCenter, Vec3 trainFront);
 
     /**
-     * Chase: turn back and fire one dragon fireball that lands exactly on {@code target}
-     * (§3.4: 12 blocks behind the nest on the track). Impact plays an explosion sound only:
-     * no damage, no block damage, no lingering cloud. Fires {@link ChaseDragonListener#onFireballImpact}.
+     * Chase: without turning around, pull quickly back past the nest to the train-front anchor and
+     * fire one dragon fireball that lands exactly on {@code target} (§3.4: the predicted track impact
+     * point ahead of the train), then gradually catch back up to the nest (CHASE_CATCH_UP).
+     * Impact plays an explosion sound only: no damage, no block damage, no lingering cloud. Fires
+     * {@link ChaseDragonListener#onFireballImpact}.
      *
-     * @return false when the dragon is busy (dying, breathing) and did not fire
+     * @return false when the dragon is busy (dying, already retreating/shooting/breathing, or prologue) and did not fire
      */
     boolean fireFireballAt(Vec3 target);
 
-    /** Chase: swoop over the train for {@code ticks}, then return (decision dragon-position). */
-    void beginSwoop(int ticks);
-
     /**
-     * Chase: fly to the lowest point above the nest, turn back and breathe onto the track segment
-     * from {@code trackFrom} to {@code trackTo} (§3.4). Fires {@link ChaseDragonListener#onBreathFinished}
-     * when the breath animation ends.
+     * Chase: without turning around, retreat at low altitude to 50% of the nest-train gap and spray
+     * breath forward onto the track segment from {@code trackFrom} to {@code trackTo} (§3.4), then
+     * gradually catch back up to the nest (CHASE_CATCH_UP). Fires
+     * {@link ChaseDragonListener#onBreathFinished} when the breath spray finishes.
+     *
+     * @return false when the dragon is busy (dying, already retreating/shooting/breathing, or prologue) and did not start
      */
-    void breatheOnto(Vec3 trackFrom, Vec3 trackTo);
+    boolean breatheOnto(Vec3 trackFrom, Vec3 trackTo);
 
     /** Boss bar title; {@code null} hides the bar (prologue). */
     void setBossBarName(Component name);

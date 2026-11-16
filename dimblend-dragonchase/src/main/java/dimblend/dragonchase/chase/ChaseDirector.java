@@ -406,6 +406,7 @@ public final class ChaseDirector {
         double nestZ = centerZ(nest);
         data.nestCenterX = Mth.floor(nestX);
         ChaseTrackScan.Car leader = leaderBehind(corridor, data.nestId, nestX);
+        ChaseTrackScan.Car trainRef = trainFrontCar(corridor, data.nestId, nestX);
         double nestVx = ChaseTrackScan.speedX(nest);
         double minSpeed = data.phase == DragonChaseSavedData.Phase.ACTIVE ? currentMinSpeed(data) : 0.0D;
 
@@ -415,7 +416,11 @@ public final class ChaseDirector {
         }
         if (dragon != null && dragon.isAliveAndLoaded()) {
             Vec3 nestPos = new Vec3(nestX, ChaseMath.TRACK_Y, nestZ);
-            Vec3 trainFront = new Vec3(leader != null ? leader.frontX() : nestX, ChaseMath.TRACK_Y, nestZ);
+            Vec3 trainFront = trainRef != null
+                    ? new Vec3(trainRef.frontX(), ChaseMath.TRACK_Y, nestZ)
+                    // No train at all (debug fireball/breath): one keep-away distance behind the nest,
+                    // never the nest itself, or the retreat target would collapse to zero distance.
+                    : new Vec3(nestX - DragonChaseTuning.keepAwayDistance(), ChaseMath.TRACK_Y, nestZ);
             dragon.setChaseAnchors(nestPos, trainFront);
             List<EndCrystal> crystals = DragonCarriages.aliveCrystals(level);
             dragon.setHealingCrystals(crystals);
@@ -436,10 +441,17 @@ public final class ChaseDirector {
             // §3.3/§3.4: the minimum speed holds even when no car is inside the keep-away window.
             double target = leader == null
                     ? minSpeed
-                    : ChaseMath.nestTargetSpeed(minSpeed, nestX, leader.centerX(), leader.vx());
+                    : ChaseMath.nestTargetSpeed(minSpeed, DragonChaseTuning.keepAwayDistance(), nestX,
+                            leader.centerX(), leader.vx());
             ChaseTrackScan.topUp(nest, ChaseMath.topUpDelta(nestVx, target));
 
             forceBarrenEndAhead(level, data, nestX, bandSize);
+
+            if (dragon != null && dragon.isAliveAndLoaded()) {
+                // §3.4: one place decides when the dragon shoots or breathes, retried every tick so
+                // a threshold reached while it was busy is never swallowed.
+                tryDispatchDragonActions(data, dragon, nestX, now);
+            }
         }
 
         // §3.3 decision nest-trigger: a chase that started and then lost the train behind it ends.
@@ -518,6 +530,27 @@ public final class ChaseDirector {
             }
         }
         return best;
+    }
+
+    /**
+     * §3.4: the train's white-line reference point. The band locator only counts cars within
+     * {@code |z| <= 7}, so that is the train the dragon retreats to; the last car behind the nest
+     * in that narrower band wins, and a corridor car outside it is only a fallback.
+     */
+    private static ChaseTrackScan.Car trainFrontCar(List<ChaseTrackScan.Car> corridor, UUID nestId, double nestX) {
+        ChaseTrackScan.Car front = null;
+        for (ChaseTrackScan.Car car : corridor) {
+            if (car.id().equals(nestId) || car.centerX() >= nestX) {
+                continue;
+            }
+            if (Math.abs(car.centerZ()) > ChaseMath.WHITE_LINE_HALF_WIDTH) {
+                continue;
+            }
+            if (front == null || car.centerX() > front.centerX()) {
+                front = car;
+            }
+        }
+        return front != null ? front : leaderBehind(corridor, nestId, nestX);
     }
 
     private static boolean anyBehind(List<ChaseTrackScan.Car> corridor, UUID nestId, double nestX) {
@@ -692,7 +725,7 @@ public final class ChaseDirector {
         return true;
     }
 
-    /** {@code /dragonchase fireball}: the §3.4 shot, cooldown and swoop included. */
+    /** {@code /dragonchase fireball}: the §3.4 shot and its cooldown, no swoop. */
     public static boolean debugFireball(ServerLevel level) {
         DragonChaseSavedData data = DragonChaseSavedData.get(level);
         ChaseDragonHandle dragon = data.dragonId == null ? null : ChaseDragons.find(level, data.dragonId);
@@ -705,7 +738,6 @@ public final class ChaseDirector {
         }
         data.fireballAccumulator = 0.0D;
         data.fireballCooldownUntil = level.getGameTime() + ChaseMath.FIREBALL_COOLDOWN_TICKS;
-        dragon.beginSwoop(200);
         data.setDirty();
         return true;
     }
@@ -717,8 +749,7 @@ public final class ChaseDirector {
         if (dragon == null || data.nestId == null) {
             return false;
         }
-        breatheBehindNest(dragon, data.nestCenterX);
-        return true;
+        return breatheBehindNest(dragon, data.nestCenterX);
     }
 
     /** {@code /dragonchase kill}: the kill branch without waiting for the last hit. */
@@ -771,9 +802,45 @@ public final class ChaseDirector {
         data.setDirty();
     }
 
-    /** The breath segment §3.4 lays on the track: ~40 blocks behind the nest, from far to near. */
-    static void breatheBehindNest(ChaseDragonHandle dragon, double nestX) {
-        dragon.breatheOnto(new Vec3(nestX - ChaseMath.BREATH_BACK_FROM, ChaseMath.FIREBALL_Y, 0.0D),
+    /**
+     * §3.4: the single place that decides whether the dragon shoots or breathes now. Called every
+     * tick and on every hit, so a threshold reached while the dragon was retreating, shooting or
+     * breathing is retried on the first tick it is free instead of being swallowed forever.
+     *
+     * <p>Breath has priority over the fireball: health thresholds are one-shot milestones, while
+     * the fireball accumulator simply waits. A refused action leaves its state untouched, so
+     * nothing is lost.
+     */
+    static void tryDispatchDragonActions(DragonChaseSavedData data, ChaseDragonHandle dragon, double nestX,
+            long now) {
+        if (!dragon.canStartChaseAction()) {
+            return;
+        }
+        // Real health from the entity (the cap and crystal healing are applied there).
+        double fraction = dragon.getMaxHealth() > 0.0F ? dragon.getHealth() / dragon.getMaxHealth() : 1.0D;
+        int index = ChaseMath.firstUnfiredThreshold(fraction, data.breathFired);
+        if (index >= 0 && breatheBehindNest(dragon, nestX)) {
+            data.breathFired[index] = true;
+            data.setDirty();
+            return;
+        }
+        if (ChaseMath.fireballReady(data.fireballAccumulator, DragonChaseTuning.fireballDamageThreshold())
+                && dragon.fireFireballAt(
+                        new Vec3(nestX - ChaseMath.FIREBALL_BACK, ChaseMath.FIREBALL_Y, 0.0D))) {
+            data.fireballAccumulator = 0.0D;
+            data.fireballCooldownUntil = now + ChaseMath.FIREBALL_COOLDOWN_TICKS;
+            data.setDirty();
+        }
+    }
+
+    /**
+     * The breath segment §3.4 lays on the track: ~40 blocks behind the nest, from far to near.
+     *
+     * @return true when the dragon accepted the manoeuvre; a busy dragon returns false and the
+     *         caller must leave its threshold unfired
+     */
+    static boolean breatheBehindNest(ChaseDragonHandle dragon, double nestX) {
+        return dragon.breatheOnto(new Vec3(nestX - ChaseMath.BREATH_BACK_FROM, ChaseMath.FIREBALL_Y, 0.0D),
                 new Vec3(nestX - ChaseMath.BREATH_BACK_TO, ChaseMath.FIREBALL_Y, 0.0D));
     }
 

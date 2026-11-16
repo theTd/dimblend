@@ -60,6 +60,11 @@ public final class CarRegistry extends SavedData {
         public boolean rewarded;
         /** Retired when the chase that spawned this car ended; its crystals no longer heal later dragons. */
         public boolean retired;
+        /**
+         * The brake car's one-shot coupling sound has been played. A monotonic bit so the sound
+         * fires exactly once per car, and a reload or a chunk unload never replays it.
+         */
+        public boolean coupledSoundPlayed;
         /** Live end crystals of a crystal car, in spawn order. */
         public final List<Crystal> crystals = new ArrayList<>();
 
@@ -215,6 +220,7 @@ public final class CarRegistry extends SavedData {
             entry.putLong("phase_deadline", car.phaseDeadline);
             entry.putBoolean("rewarded", car.rewarded);
             entry.putBoolean("retired", car.retired);
+            entry.putBoolean("coupled_sound_played", car.coupledSoundPlayed);
             ListTag crystals = new ListTag();
             for (Crystal crystal : car.crystals) {
                 CompoundTag slot = new CompoundTag();
@@ -262,6 +268,8 @@ public final class CarRegistry extends SavedData {
             car.phaseDeadline = entry.getLong("phase_deadline");
             car.rewarded = entry.getBoolean("rewarded");
             car.retired = entry.getBoolean("retired");
+            // A save without the key (any write from before this flag existed) means "not played".
+            car.coupledSoundPlayed = entry.getBoolean("coupled_sound_played");
             ListTag crystals = entry.getList("crystals", Tag.TAG_COMPOUND);
             for (int slot = 0; slot < crystals.size(); slot++) {
                 CompoundTag crystal = crystals.getCompound(slot);

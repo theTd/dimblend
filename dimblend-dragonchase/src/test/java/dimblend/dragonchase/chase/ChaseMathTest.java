@@ -114,16 +114,39 @@ class ChaseMathTest {
 
     @Test
     void keepAwayClosesTheGapAndNeverDropsBelowTheMinimum() {
-        // Gap 200 is beyond 128 + 32: the nest only holds its minimum speed.
-        assertEquals(10.0D, ChaseMath.nestTargetSpeed(10.0D, 1200.0D, 1000.0D, 8.0D), 1.0E-9D);
-        // Gap 100: leader 10 + 0.5 * (160 - 100) = 40.
-        assertEquals(40.0D, ChaseMath.nestTargetSpeed(10.0D, 1100.0D, 1000.0D, 10.0D), 1.0E-9D);
-        // A fast leader with a shrinking gap: 50 + 0.5 * 60 = 80.
-        assertEquals(80.0D, ChaseMath.nestTargetSpeed(10.0D, 1100.0D, 1000.0D, 50.0D), 1.0E-9D);
+        assertEquals(128.0D, ChaseMath.CHASE_START_DISTANCE, 0.0D,
+                "the chase still starts at 128 blocks, independently of the keep-away distance");
+        assertEquals(96.0D, ChaseMath.DEFAULT_KEEP_AWAY_DISTANCE, 0.0D);
+
+        // Default 96: desired gap is 96 + 32 = 128.
+        // Gap 200 is beyond it: the nest only holds its minimum speed.
+        assertEquals(10.0D, ChaseMath.nestTargetSpeed(10.0D, 96.0D, 1200.0D, 1000.0D, 8.0D), 1.0E-9D);
+        // Gap 100: leader 10 + 0.5 * (128 - 100) = 24.
+        assertEquals(24.0D, ChaseMath.nestTargetSpeed(10.0D, 96.0D, 1100.0D, 1000.0D, 10.0D), 1.0E-9D);
+        // A fast leader with a shrinking gap would ask for 50 + 0.5 * 68 = 84, capped at 50 + 24.
+        assertEquals(74.0D, ChaseMath.nestTargetSpeed(10.0D, 96.0D, 1060.0D, 1000.0D, 50.0D), 1.0E-9D);
         // The formula can ask for less than the minimum; the minimum wins.
-        assertEquals(25.0D, ChaseMath.nestTargetSpeed(25.0D, 1150.0D, 1000.0D, 0.0D), 1.0E-9D);
-        // A gap that has already collapsed is the strongest correction, still floored.
-        assertEquals(90.0D, ChaseMath.nestTargetSpeed(10.0D, 1000.0D, 1000.0D, 10.0D), 1.0E-9D);
+        assertEquals(30.0D, ChaseMath.nestTargetSpeed(30.0D, 96.0D, 1120.0D, 1000.0D, 0.0D), 1.0E-9D);
+        // A gap that has already collapsed is the strongest correction, capped and still floored.
+        assertEquals(34.0D, ChaseMath.nestTargetSpeed(10.0D, 96.0D, 1000.0D, 1000.0D, 10.0D), 1.0E-9D);
+    }
+
+    @Test
+    void keepAwayHonoursTheTunedDistanceAcrossItsWholeRange() {
+        // Smallest tunable gap (32, desired 64): a 100-block gap is already comfortable.
+        assertEquals(10.0D, ChaseMath.nestTargetSpeed(10.0D, 32.0D, 1100.0D, 1000.0D, 10.0D), 1.0E-9D);
+        // Gap 40 misses 24 of the 64 desired: 18 + 0.5 * 24 = 30.
+        assertEquals(30.0D, ChaseMath.nestTargetSpeed(10.0D, 32.0D, 1040.0D, 1000.0D, 18.0D), 1.0E-9D);
+
+        // Largest tunable gap (256, desired 288): at the 128-block start gap the raw gain would ask
+        // for +80 m/s; the cap keeps it at leader + 24, far below the 64 m/s speed cap.
+        double target = ChaseMath.nestTargetSpeed(10.0D, 256.0D, 1128.0D, 1000.0D, 10.0D);
+        assertEquals(10.0D + ChaseMath.KEEP_AWAY_MAX_BOOST, target, 1.0E-9D);
+        assertEquals(24.0D, ChaseMath.KEEP_AWAY_MAX_BOOST, 0.0D);
+        assertTrue(target < 64.0D, "a 256-block keep-away distance must never exceed the speed cap");
+
+        // Gap 250 still misses 38 of the 288 desired: 16 + 0.5 * 38 = 35, below the cap.
+        assertEquals(35.0D, ChaseMath.nestTargetSpeed(10.0D, 256.0D, 1250.0D, 1000.0D, 16.0D), 1.0E-9D);
     }
 
     @Test

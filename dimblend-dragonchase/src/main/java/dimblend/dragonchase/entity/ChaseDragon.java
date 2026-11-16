@@ -67,29 +67,47 @@ public class ChaseDragon extends EnderDragon implements ChaseDragonHandle {
     public static final double FOLLOW_HEIGHT = 32.0D;
     public static final double FOLLOW_SWAY_AMPLITUDE = 32.0D;
     public static final double FOLLOW_BOB_AMPLITUDE = 16.0D;
-    /** Below this distance to the hover point the breath dragon stops approaching. */
-    private static final double BREATH_ARRIVAL_DISTANCE_SQ = 36.0D;
-    private static final int BREATH_APPROACH_TIMEOUT = 140;
-    /** ~3 s of breathing (requirements.md §3.4). */
-    private static final int BREATH_TICKS = 60;
+    /** Prologue orbit: angular step per tick, flight budget and the anti-jump feed-forward cap. */
+    private static final double ORBIT_ANGULAR_STEP = 0.012D;
+    private static final float ORBIT_TURN_DEGREES_PER_TICK = 3.0F;
+    private static final double ORBIT_MAX_VERTICAL_SPEED = 0.5D;
+    private static final double ORBIT_ACCELERATION = 0.06D;
+    /** Above the chase's fastest anchor (64 m/s): a bigger centre jump is a re-anchor, not motion. */
+    private static final double ORBIT_MAX_FEED_FORWARD = 3.5D;
+    /** Prologue departure: alignment window, flight speed and climb budget. */
+    private static final float DEPART_ALIGN_DEGREES = 20.0F;
+    private static final double DEPART_SPEED = 1.2D;
+    private static final double DEPART_MAX_VERTICAL_SPEED = 1.2D;
+    private static final double DEPART_ACCELERATION = 0.08D;
     /**
-     * Tight hover height above the nest anchor (nest top is trackY + 6, the dragon is 8 tall ->
-     * trackY + 10 clears the structure while counting as "lowest point above the nest", §3.4).
+     * Fireball retreat: hover height over the track (above {@code landingY - 1}, i.e. y = 84 for the
+     * default track) and how fast the dragon pulls back relative to the fleeing train.
      */
-    private static final double BREATH_HOVER_HEIGHT = 10.0D;
-    /** Breath hover: minimum horizontal steering speed while riding the fleeing nest. */
-    public static final double BREATH_MIN_HOVER_SPEED = 3.0D;
-    /** Breath hover: surplus speed over the nest's own so the dragon can close the gap. */
-    public static final double BREATH_SPEED_MARGIN = 1.6D;
-    /** Breath hover: vertical steering cap. */
+    public static final double FIREBALL_RETREAT_HEIGHT = 20.0D;
+    public static final double FIREBALL_RETREAT_SPEED = 2.4D;
+    public static final double FIREBALL_MAX_VERTICAL_SPEED = 1.6D;
+    public static final double FIREBALL_RETREAT_ACCELERATION = 0.35D;
+    public static final int FIREBALL_RETREAT_TIMEOUT = 100;
+    /**
+     * Breath: low hover over the track (nest top is trackY + 6, the dragon is 8 tall -> trackY + 10
+     * clears the structure while counting as "lowest point above the nest", §3.4).
+     */
+    public static final double BREATH_HOVER_HEIGHT = 10.0D;
+    public static final double BREATH_RETREAT_SPEED = 2.2D;
     public static final double BREATH_MAX_VERTICAL_SPEED = 1.4D;
-    /** Breath hover: steering acceleration. */
     public static final double BREATH_ACCELERATION = 0.35D;
+    public static final int BREATH_APPROACH_TIMEOUT = 100;
+    /** ~3 s of breathing (requirements.md §3.4). */
+    public static final int BREATH_TICKS = 60;
+    /** Catch-up: surplus over the nest's own speed, its ramp and the arrival window. */
+    public static final double CATCH_UP_SPEED_SURPLUS = 0.9D;
+    public static final double CATCH_UP_ACCELERATION = 0.08D;
+    public static final double CATCH_UP_ARRIVAL_X = 8.0D;
+    /** Catch-up floor so even a slow nest is closed on instead of matched. */
+    private static final double CATCH_UP_MIN_SPEED = 1.4D;
     /** Horizontal radius (blocks) in which the breath stream is sent, beyond vanilla's 32-block cull. */
     private static final double BREATH_PARTICLE_RADIUS = 256.0D;
     private static final int CRYSTAL_RESYNC_INTERVAL = 100;
-    /** Ticks a fireball turn is held so the head visibly swings back toward the target. */
-    private static final int FIRE_TURN_HOLD_TICKS = 20;
 
     private final DamageBudget damageBudget = new DamageBudget();
     private final ServerBossEvent bossBar;
@@ -120,24 +138,30 @@ public class ChaseDragon extends EnderDragon implements ChaseDragonHandle {
     @Nullable
     private Vec3 lastNestCenter;
     private Vec3 nestVelocity = Vec3.ZERO;
+    @Nullable
+    private Vec3 lastTrainFront;
+    private Vec3 trainVelocity = Vec3.ZERO;
+    @Nullable
+    private Vec3 lastOrbitCenter;
+    private Vec3 orbitVelocity = Vec3.ZERO;
 
-    private int swoopEndTick;
+    /** {@code CHASE_FIREBALL}: ticks spent retreating, and the shot it was planned from. */
+    private int retreatTicks;
+    private double fireballBackOffset = 12.0D;
+    private double fireballLandingY = 65.0D;
+
     private int breathTicks;
     private boolean breathApproached;
-    /**
-     * Breath segment as X offsets from the nest anchor: the nest flees 30-96+ blocks during the
-     * 3 s breath, so the segment must ride with it instead of being frozen at the call position.
-     */
-    private double breathFromOffsetX;
-    private double breathToOffsetX;
     private double breathTrackY;
+    /**
+     * Fallback breath segment, set only while there is no nest anchor at all (a caller that never
+     * sent {@link #setChaseAnchors}); {@link #breatheOnto} clears it as soon as it has an anchor,
+     * because the span is then re-derived every tick and rides the nest.
+     */
     @Nullable
     private Vec3 breathFrom;
     @Nullable
     private Vec3 breathTo;
-
-    private float fireTurnYaw;
-    private int fireTurnTicks;
 
     private boolean bossBarShown;
     private int clientGrowlTime = 100;
@@ -159,12 +183,16 @@ public class ChaseDragon extends EnderDragon implements ChaseDragonHandle {
     public static ChaseDragon createPrologue(ServerLevel level, Vec3 pos) {
         ChaseDragon dragon = new ChaseDragon(DragonChaseRegistries.CHASE_DRAGON.get(), level);
         dragon.mode = ChaseDragonHandle.Mode.PROLOGUE_ORBIT;
-        dragon.setPos(pos.x, pos.y, pos.z);
         dragon.orbitCenter = pos;
+        dragon.lastOrbitCenter = pos;
         dragon.orbitTrackY = pos.y - 56.0D;
         dragon.orbitRadius = 40.0D + Math.floorMod((int) (dragon.swaySeed ^ (dragon.swaySeed >>> 32)), 21);
         dragon.orbitAngle = (double) dragon.getRandom().nextFloat() * Math.PI * 2.0D;
-        dragon.setYRot(90.0F);
+        // Start on the circle, nose along the tangent: spawning at the centre with yaw 90 sent the
+        // dragon charging sideways across its own orbit on tick one.
+        Vec3 start = ChaseDragonFlight.orbitPoint(pos, dragon.orbitRadius, dragon.orbitAngle, pos.y);
+        dragon.setPos(start.x, start.y, start.z);
+        dragon.initHeading(ChaseDragonFlight.orbitTangentYaw(dragon.orbitAngle));
         return dragon;
     }
 
@@ -177,8 +205,22 @@ public class ChaseDragon extends EnderDragon implements ChaseDragonHandle {
             attribute.setBaseValue(Math.max(1.0D, (double) maxHealth));
         }
         dragon.setHealth(dragon.getMaxHealth());
-        dragon.setYRot(90.0F);
+        dragon.initHeading(90.0F);
         return dragon;
+    }
+
+    /**
+     * One-time heading setup before the first tick. The renderer's 64-entry yaw ring buffer is
+     * seeded from {@code getYRot()} on the first {@code pushPositionHistory()}, so all four yaw
+     * fields must agree here; afterwards heading only ever changes through
+     * {@link ChaseDragonFlight#smoothTurn}.
+     */
+    private void initHeading(float yaw) {
+        this.setYRot(yaw);
+        this.yRotO = yaw;
+        this.yBodyRot = yaw;
+        this.yBodyRotO = yaw;
+        this.yRotA = 0.0F;
     }
 
     public static AttributeSupplier.Builder createAttributes() {
@@ -225,8 +267,8 @@ public class ChaseDragon extends EnderDragon implements ChaseDragonHandle {
         if (this.level().isClientSide || this.mode != ChaseDragonHandle.Mode.PROLOGUE_ORBIT) {
             return;
         }
+        // No yaw snap: tickDepart sweeps the nose round to +X over the next few dozen ticks.
         this.mode = ChaseDragonHandle.Mode.PROLOGUE_DEPART;
-        this.setYRot(90.0F);
     }
 
     @Override
@@ -235,21 +277,28 @@ public class ChaseDragon extends EnderDragon implements ChaseDragonHandle {
         this.trainFront = trainFront;
     }
 
+    /**
+     * §3.4: accept the shot. Without a nest anchor (a bare dragon) it fires straight at the target;
+     * with one it enters {@link ChaseDragonHandle.Mode#CHASE_FIREBALL}, pulls back to the train
+     * front and fires from there (see {@link #tickFireballRetreat()}). The heading is never touched.
+     */
     @Override
     public boolean fireFireballAt(Vec3 target) {
-        if (this.level().isClientSide || target == null) {
+        if (this.level().isClientSide || target == null || !this.canStartChaseAction()) {
             return false;
         }
-        if (this.mode == ChaseDragonHandle.Mode.DYING || this.mode == ChaseDragonHandle.Mode.CHASE_BREATH
-                || this.mode == ChaseDragonHandle.Mode.PROLOGUE_ORBIT || this.mode == ChaseDragonHandle.Mode.PROLOGUE_DEPART
-                || this.isDeadOrDying()) {
-            return false;
+        if (this.nestCenter == null) {
+            return this.shootFireballAt(target);
         }
-        Vec3 aim = target.subtract(this.position());
-        this.fireTurnYaw = ChaseDragonFlight.facingYaw(aim);
-        this.fireTurnTicks = FIRE_TURN_HOLD_TICKS;
-        this.setYRot(this.fireTurnYaw);
+        this.fireballBackOffset = Math.max(8.0D, this.nestCenter.x - target.x);
+        this.fireballLandingY = target.y;
+        this.mode = ChaseDragonHandle.Mode.CHASE_FIREBALL;
+        this.retreatTicks = 0;
+        return true;
+    }
 
+    /** Spawns one {@code ChaseFireball} from the mouth toward {@code target}; no heading change. */
+    private boolean shootFireballAt(Vec3 target) {
         if (!(this.level() instanceof ServerLevel serverLevel)) {
             return false;
         }
@@ -266,36 +315,26 @@ public class ChaseDragon extends EnderDragon implements ChaseDragonHandle {
         return true;
     }
 
+    /**
+     * §3.4: accept the breath. Without a nest anchor the recorded segment is used as-is; with one
+     * the dragon retreats to the 50% station and sprays the span derived from it (see
+     * {@link #tickBreath()}).
+     */
     @Override
-    public void beginSwoop(int ticks) {
-        if (this.level().isClientSide || this.mode == ChaseDragonHandle.Mode.DYING
-                || this.mode == ChaseDragonHandle.Mode.CHASE_BREATH
-                || this.mode == ChaseDragonHandle.Mode.PROLOGUE_ORBIT
-                || this.mode == ChaseDragonHandle.Mode.PROLOGUE_DEPART) {
-            return;
-        }
-        this.mode = ChaseDragonHandle.Mode.CHASE_SWOOP;
-        this.swoopEndTick = this.tickCount + Math.max(1, ticks);
-    }
-
-    @Override
-    public void breatheOnto(Vec3 trackFrom, Vec3 trackTo) {
-        if (this.level().isClientSide || this.mode == ChaseDragonHandle.Mode.DYING
-                || this.mode == ChaseDragonHandle.Mode.CHASE_BREATH
-                || this.mode == ChaseDragonHandle.Mode.PROLOGUE_ORBIT
-                || this.mode == ChaseDragonHandle.Mode.PROLOGUE_DEPART) {
-            return;
+    public boolean breatheOnto(Vec3 trackFrom, Vec3 trackTo) {
+        if (this.level().isClientSide || trackFrom == null || trackTo == null || !this.canStartChaseAction()) {
+            return false;
         }
         this.mode = ChaseDragonHandle.Mode.CHASE_BREATH;
-        this.breathFrom = trackFrom;
-        this.breathTo = trackTo;
-        double anchorX = this.nestCenter != null ? this.nestCenter.x : this.getX();
-        this.breathFromOffsetX = trackFrom.x - anchorX;
-        this.breathToOffsetX = trackTo.x - anchorX;
-        this.breathTrackY = trackFrom.y;
-        this.breathTicks = 0;
         this.breathApproached = this.nestCenter == null;
-        this.fireTurnTicks = 0;
+        this.breathTicks = 0;
+        this.breathTrackY = trackFrom.y;
+        // With an anchor the span is re-derived from the station every tick; only a bare dragon
+        // keeps the recorded segment. That also marks "no anchor yet" after a reload: a chase save
+        // carries no segment, so a first tick without anchors holds instead of spraying stale coords.
+        this.breathFrom = this.nestCenter == null ? trackFrom : null;
+        this.breathTo = this.nestCenter == null ? trackTo : null;
+        return true;
     }
 
     @Override
@@ -607,22 +646,51 @@ public class ChaseDragon extends EnderDragon implements ChaseDragonHandle {
     }
 
     private void tickServerFlight() {
-        if (this.fireTurnTicks > 0) {
-            this.fireTurnTicks--;
-        }
         this.nestVelocity = Vec3.ZERO;
         if (this.nestCenter != null) {
             if (this.lastNestCenter != null) {
                 this.nestVelocity = this.nestCenter.subtract(this.lastNestCenter);
+                this.lastNestCenter = this.nestCenter;
+            } else {
+                this.lastNestCenter = this.nestCenter;
             }
-            this.lastNestCenter = this.nestCenter;
+        } else {
+            this.lastNestCenter = null;
+        }
+        if (this.trainFront != null) {
+            if (this.lastTrainFront != null) {
+                this.trainVelocity = this.trainFront.subtract(this.lastTrainFront);
+                this.lastTrainFront = this.trainFront;
+            } else {
+                this.lastTrainFront = this.trainFront;
+            }
+        } else {
+            this.trainVelocity = Vec3.ZERO;
+            this.lastTrainFront = null;
+        }
+        if (this.orbitCenter != null) {
+            if (this.lastOrbitCenter != null) {
+                this.orbitVelocity = this.orbitCenter.subtract(this.lastOrbitCenter);
+                double length = this.orbitVelocity.length();
+                if (length > ORBIT_MAX_FEED_FORWARD) {
+                    // A re-anchored centre must not fling the dragon.
+                    this.orbitVelocity = this.orbitVelocity.scale(ORBIT_MAX_FEED_FORWARD / length);
+                }
+                this.lastOrbitCenter = this.orbitCenter;
+            } else {
+                this.lastOrbitCenter = this.orbitCenter;
+            }
+        } else {
+            this.orbitVelocity = Vec3.ZERO;
+            this.lastOrbitCenter = null;
         }
         switch (this.mode) {
             case PROLOGUE_ORBIT -> this.tickOrbit();
             case PROLOGUE_DEPART -> this.tickDepart();
             case CHASE_FOLLOW -> this.tickFollow();
-            case CHASE_SWOOP -> this.tickSwoop();
+            case CHASE_FIREBALL -> this.tickFireballRetreat();
             case CHASE_BREATH -> this.tickBreath();
+            case CHASE_CATCH_UP -> this.tickCatchUp();
             case DYING -> {
             }
         }
@@ -632,6 +700,17 @@ public class ChaseDragon extends EnderDragon implements ChaseDragonHandle {
     // Flight modes
     // ------------------------------------------------------------------------------------------
 
+    /**
+     * Counter-clockwise circle around the prologue centre.
+     *
+     * <p>The velocity is the analytic circle tangent in the centre's frame plus the anchor's own
+     * motion ({@code orbitVelocity}) and a small radial correction that holds the radius, so the
+     * dragon tracks the circle exactly even while the train runs at 64 m/s. The heading follows
+     * that velocity through the damped steering: aiming the nose at the raw tangent instead would
+     * leave the model flying its circle sideways (3.2 against 0.7 blocks per tick is a 77 degree
+     * crab), and aiming at a look-ahead point on the circle biases the nose inward by half the
+     * look-ahead angle, which slowly spirals the orbit.
+     */
     private void tickOrbit() {
         if (this.orbitCenter == null) {
             this.orbitCenter = this.position();
@@ -639,17 +718,58 @@ public class ChaseDragon extends EnderDragon implements ChaseDragonHandle {
         }
         // 48..64 blocks above the track (decision prologue-height): centre 56, bob +-8.
         double altitude = this.orbitTrackY + 56.0D + ChaseDragonFlight.bobY(this.tickCount, this.swaySeed + 17L, 8.0D);
-        this.orbitAngle = ChaseDragonFlight.wrapAngle(this.orbitAngle + 0.012D);
-        Vec3 target = ChaseDragonFlight.orbitPoint(this.orbitCenter, this.orbitRadius, this.orbitAngle, altitude);
-        this.steerToward(target, Vec3.ZERO, 1.4D, 0.5D, 0.06D);
-        this.faceVelocityOr(90.0F, 4.0F);
+        this.orbitAngle = ChaseDragonFlight.wrapAngle(this.orbitAngle + ORBIT_ANGULAR_STEP);
+
+        double circleSpeed = ORBIT_ANGULAR_STEP * this.orbitRadius;
+        double dx = this.getX() - this.orbitCenter.x;
+        double dz = this.getZ() - this.orbitCenter.z;
+        double distance = Math.max(Math.sqrt(dx * dx + dz * dz), 1.0E-6D);
+        double radial = Mth.clamp((this.orbitRadius - distance) * 0.05D, -0.3D, 0.3D);
+        double vertical = Mth.clamp(altitude - this.getY(), -ORBIT_MAX_VERTICAL_SPEED, ORBIT_MAX_VERTICAL_SPEED);
+        Vec3 desired = new Vec3(
+                -Math.sin(this.orbitAngle) * circleSpeed + radial * dx / distance + this.orbitVelocity.x,
+                vertical,
+                Math.cos(this.orbitAngle) * circleSpeed + radial * dz / distance + this.orbitVelocity.z);
+
+        Vec3 horizontal = new Vec3(desired.x, 0.0D, desired.z);
+        float targetYaw = horizontal.lengthSqr() > 1.0E-12D
+                ? ChaseDragonFlight.facingYaw(horizontal)
+                : ChaseDragonFlight.orbitTangentYaw(this.orbitAngle);
+        ChaseDragonFlight.TurnStep turn = ChaseDragonFlight.smoothTurn(this.getYRot(), this.yRotA, targetYaw,
+                ORBIT_TURN_DEGREES_PER_TICK);
+        this.setYRot(turn.yaw());
+        this.yRotA = turn.yawVelocity();
+
+        this.applyVelocity(ChaseDragonFlight.approach(this.getDeltaMovement(), desired, ORBIT_ACCELERATION));
     }
 
+    /**
+     * §3.2: sweep the nose round to +X while still flying along it, then climb at 45 degrees until
+     * y = 512. Until the nose is within 20 degrees of +X the horizontal velocity follows the nose,
+     * so the dragon leaves the circle in an arc instead of being dragged sideways.
+     */
     private void tickDepart() {
         double climbStartY = this.orbitTrackY + 32.0D;
-        Vec3 waypoint = ChaseDragonFlight.departWaypoint(this.position(), climbStartY);
-        this.steerToward(waypoint, Vec3.ZERO, 1.2D, 1.2D, 0.08D);
-        this.setYRot(ChaseDragonFlight.turnToward(this.getYRot(), 90.0F, 4.0F));
+        ChaseDragonFlight.TurnStep turn = ChaseDragonFlight.smoothTurn(this.getYRot(), this.yRotA, 90.0F,
+                ChaseDragonFlight.MAX_TURN_DEGREES_PER_TICK);
+        this.setYRot(turn.yaw());
+        this.yRotA = turn.yawVelocity();
+
+        Vec3 desired;
+        if (Math.abs(Mth.wrapDegrees(90.0F - this.getYRot())) > DEPART_ALIGN_DEGREES) {
+            float yawRad = this.yawRadians();
+            Vec3 forward = new Vec3((double) Mth.sin(yawRad), 0.0D, (double) -Mth.cos(yawRad));
+            double targetZ = this.orbitCenter != null ? this.orbitCenter.z : this.getZ();
+            double lateral = Mth.clamp((targetZ - this.getZ()) * 0.05D, -0.5D, 0.5D);
+            double vertical = Mth.clamp((climbStartY - this.getY()) * 0.08D, -DEPART_MAX_VERTICAL_SPEED,
+                    DEPART_MAX_VERTICAL_SPEED);
+            desired = new Vec3(forward.x * DEPART_SPEED, vertical, forward.z * DEPART_SPEED + lateral);
+        } else {
+            Vec3 waypoint = ChaseDragonFlight.departWaypoint(this.position(), climbStartY);
+            desired = ChaseDragonFlight.desiredVelocity(waypoint.subtract(this.position()), Vec3.ZERO, DEPART_SPEED,
+                    DEPART_MAX_VERTICAL_SPEED);
+        }
+        this.applyVelocity(ChaseDragonFlight.approach(this.getDeltaMovement(), desired, DEPART_ACCELERATION));
         if (this.getY() >= ChaseDragonFlight.DEPART_TARGET_Y) {
             ChaseDragons.listener().onDeparted(this);
             this.discard();
@@ -660,109 +780,223 @@ public class ChaseDragon extends EnderDragon implements ChaseDragonHandle {
         if (this.nestCenter == null) {
             return;
         }
-        double sway = ChaseDragonFlight.swayZ(this.tickCount, this.swaySeed, FOLLOW_SWAY_AMPLITUDE);
-        double bob = ChaseDragonFlight.bobY(this.tickCount, this.swaySeed + 31L, FOLLOW_BOB_AMPLITUDE);
-        Vec3 target = new Vec3(this.nestCenter.x, this.nestCenter.y + FOLLOW_HEIGHT + bob, this.nestCenter.z + sway);
-        this.steerToward(target, this.nestVelocity, ChaseDragonFlight.FOLLOW_MAX_HORIZONTAL_SPEED,
+        this.steerToward(this.followTarget(), this.nestVelocity, ChaseDragonFlight.FOLLOW_MAX_HORIZONTAL_SPEED,
                 ChaseDragonFlight.FOLLOW_MAX_VERTICAL_SPEED, ChaseDragonFlight.FOLLOW_ACCELERATION);
-        if (this.fireTurnTicks > 0) {
-            this.setYRot(ChaseDragonFlight.turnToward(this.getYRot(), this.fireTurnYaw, 6.0F));
-        } else {
-            // Facing +X, the chase direction.
-            this.setYRot(ChaseDragonFlight.turnToward(this.getYRot(), 90.0F, ChaseDragonFlight.MAX_TURN_DEGREES_PER_TICK));
+        this.faceChaseDirection();
+    }
+
+    /**
+     * §3.4: pull back to just ahead of the train front, then fire at the predicted track point.
+     * The heading stays forward the whole way ({@link ChaseDragonFlight#chaseForwardYaw}).
+     */
+    private void tickFireballRetreat() {
+        if (this.nestCenter == null) {
+            // Anchors arrive in LevelTickEvent.Post after the first entity tick on reload; keep the
+            // saved manoeuvre intact instead of dropping the already-paid fireball.
+            this.setDeltaMovement(Vec3.ZERO);
+            return;
+        }
+        double goalX = ChaseDragonFlight.fireballRetreatX(this.nestCenter.x, this.trainFrontX());
+        Vec3 goal = new Vec3(goalX, this.fireballLandingY - 1.0D + FIREBALL_RETREAT_HEIGHT, this.nestCenter.z);
+        this.steerRelative(goal, this.attackFeedForward(), FIREBALL_RETREAT_SPEED, FIREBALL_MAX_VERTICAL_SPEED,
+                FIREBALL_RETREAT_ACCELERATION);
+        this.faceChaseDirection();
+
+        this.retreatTicks++;
+        boolean arrived = this.getX() <= goalX + 4.0D
+                && Math.abs(this.getZ() - this.nestCenter.z) <= 8.0D;
+        if (arrived || this.retreatTicks >= FIREBALL_RETREAT_TIMEOUT) {
+            // The landing point the shot was planned from, kept at least 16 blocks ahead so an
+            // extreme close-range shot still travels +X.
+            double impactX = Math.max(this.nestCenter.x - this.fireballBackOffset, this.getX() + 16.0D);
+            this.shootFireballAt(new Vec3(impactX, this.fireballLandingY, 0.0D));
+            this.mode = ChaseDragonHandle.Mode.CHASE_CATCH_UP;
         }
     }
 
-    private void tickSwoop() {
-        Vec3 target = this.trainFront != null
-                ? this.trainFront.add(0.0D, 12.0D, 0.0D)
-                : this.nestCenter != null ? this.nestCenter.add(0.0D, FOLLOW_HEIGHT, 0.0D) : this.position();
-        this.steerToward(target, this.nestVelocity, ChaseDragonFlight.FOLLOW_MAX_HORIZONTAL_SPEED, 1.6D, 0.3D);
-        this.faceVelocityOr(90.0F, 6.0F);
-        if (this.tickCount >= this.swoopEndTick) {
-            this.mode = ChaseDragonHandle.Mode.CHASE_FOLLOW;
-        }
-    }
-
+    /**
+     * §3.4: retreat at low altitude to the 50% station, hold it while spraying the track for 3 s,
+     * then catch back up. Phase 1 only flies; phase 2 sprays and re-derives the span every tick.
+     */
     private void tickBreath() {
-        if (!this.breathApproached && this.nestCenter != null) {
-            // Ride the fleeing nest: feed-forward keeps the dragon above it instead of letting it
-            // fall 30-96 blocks behind during the approach.
-            Vec3 hover = this.nestCenter.add(0.0D, BREATH_HOVER_HEIGHT, 0.0D);
-            this.steerToward(hover, this.nestVelocity, this.breathFollowSpeed(), BREATH_MAX_VERTICAL_SPEED,
-                    BREATH_ACCELERATION);
-            this.setYRot(ChaseDragonFlight.turnToward(this.getYRot(), -90.0F, 4.0F));
+        if (this.nestCenter == null) {
+            if (this.breathFrom == null) {
+                // Anchors arrive in LevelTickEvent.Post after the first entity tick on reload; hold
+                // the saved manoeuvre rather than spray a stale segment or burn its tick budget.
+                this.setDeltaMovement(Vec3.ZERO);
+                return;
+            }
+            // A bare dragon (no nest anchor ever sent): spray the recorded segment as-is.
+            this.setDeltaMovement(Vec3.ZERO);
             this.breathTicks++;
-            if (this.position().distanceToSqr(hover) < BREATH_ARRIVAL_DISTANCE_SQ || this.breathTicks >= BREATH_APPROACH_TIMEOUT) {
+            if (this.breathTicks % 2 == 0) {
+                this.emitBreathParticles();
+            }
+            if (this.breathTicks >= BREATH_TICKS) {
+                this.finishBreath();
+            }
+            return;
+        }
+        double stationX = ChaseDragonFlight.breathRetreatX(this.nestCenter.x, this.trainFrontX());
+        Vec3 hover = new Vec3(stationX, this.nestCenter.y + BREATH_HOVER_HEIGHT, this.nestCenter.z);
+        // The station is half of the nest + train span, so it moves at half of their combined speed;
+        // without a train anchor it is a fixed offset from the nest and moves with the nest.
+        Vec3 feedForward = this.trainFront != null
+                ? this.nestVelocity.add(this.trainVelocity).scale(0.5D)
+                : this.nestVelocity;
+        this.steerRelative(hover, feedForward, BREATH_RETREAT_SPEED, BREATH_MAX_VERTICAL_SPEED, BREATH_ACCELERATION);
+        this.faceChaseDirection();
+        this.breathTicks++;
+
+        if (!this.breathApproached) {
+            boolean arrived = Math.abs(this.getX() - stationX) <= 5.0D
+                    && Math.abs(this.getY() - hover.y) <= 4.0D;
+            if (arrived || this.breathTicks >= BREATH_APPROACH_TIMEOUT) {
                 this.breathApproached = true;
                 this.breathTicks = 0;
             }
             return;
         }
-
-        // Hover with the nest, turn back toward the track and breathe for ~3 s. Steering must keep
-        // running: the nest keeps fleeing, and the breath segment rides with it (liveBreathFrom/To).
-        if (this.nestCenter != null) {
-            Vec3 hover = this.nestCenter.add(0.0D, BREATH_HOVER_HEIGHT, 0.0D);
-            this.steerToward(hover, this.nestVelocity, this.breathFollowSpeed(), BREATH_MAX_VERTICAL_SPEED,
-                    BREATH_ACCELERATION);
-        } else {
-            this.setDeltaMovement(Vec3.ZERO);
-        }
-        this.setYRot(ChaseDragonFlight.turnToward(this.getYRot(), -90.0F, 6.0F));
-        this.breathTicks++;
         if (this.breathTicks % 2 == 0) {
             this.emitBreathParticles();
         }
         if (this.breathTicks >= BREATH_TICKS) {
-            ChaseDragons.listener().onBreathFinished(this, this.liveBreathFrom(), this.liveBreathTo());
-            this.breathApproached = false;
-            this.breathTicks = 0;
+            this.finishBreath();
+        }
+    }
+
+    private void finishBreath() {
+        ChaseDragons.listener().onBreathFinished(this, this.liveBreathFrom(), this.liveBreathTo());
+        this.breathApproached = false;
+        this.breathTicks = 0;
+        this.mode = ChaseDragonHandle.Mode.CHASE_CATCH_UP;
+    }
+
+    /**
+     * §3.4: after a shot or a breath, fly the follow point again but with a small permanent speed
+     * surplus, so the gap closes steadily instead of the dragon teleporting back.
+     */
+    private void tickCatchUp() {
+        if (this.nestCenter == null) {
+            // Anchors arrive in LevelTickEvent.Post after the first entity tick on reload; hold the
+            // saved mode so the catch-up resumes instead of being demoted to an anchorless follow.
+            this.setDeltaMovement(Vec3.ZERO);
+            return;
+        }
+        double maxSpeed = Math.max(CATCH_UP_MIN_SPEED, this.nestVelocity.horizontalDistance() + CATCH_UP_SPEED_SURPLUS);
+        // Brake any residual pullback velocity promptly so the dragon does not drift 30+ blocks
+        // behind the locomotive cab after firing, then build the forward surplus gradually.
+        double accel = this.getDeltaMovement().x < this.nestVelocity.x
+                ? FIREBALL_RETREAT_ACCELERATION
+                : CATCH_UP_ACCELERATION;
+        this.steerToward(this.followTarget(), this.nestVelocity, maxSpeed, ChaseDragonFlight.FOLLOW_MAX_VERTICAL_SPEED,
+                accel);
+        this.faceChaseDirection();
+        if (Math.abs(this.getX() - this.nestCenter.x) <= CATCH_UP_ARRIVAL_X) {
             this.mode = ChaseDragonHandle.Mode.CHASE_FOLLOW;
         }
     }
 
-    /** Hover steering speed: at least 3 b/t, always 1.6 b/t above the nest's own speed. */
-    private double breathFollowSpeed() {
-        return Math.max(BREATH_MIN_HOVER_SPEED, this.nestVelocity.horizontalDistance() + BREATH_SPEED_MARGIN);
+    /** The follow hover point, shared by CHASE_FOLLOW and CHASE_CATCH_UP so they join seamlessly. */
+    private Vec3 followTarget() {
+        if (this.nestCenter == null) {
+            return this.position();
+        }
+        double sway = ChaseDragonFlight.swayZ(this.tickCount, this.swaySeed, FOLLOW_SWAY_AMPLITUDE);
+        double bob = ChaseDragonFlight.bobY(this.tickCount, this.swaySeed + 31L, FOLLOW_BOB_AMPLITUDE);
+        return new Vec3(this.nestCenter.x, this.nestCenter.y + FOLLOW_HEIGHT + bob, this.nestCenter.z + sway);
     }
 
-    /**
-     * Track segment start re-projected onto the current nest position; while the nest anchor is
-     * known the breath target follows it instead of staying at the position recorded 3 s ago.
-     */
+    /** Train-front X reference; the fallback gap is the tuning's own keep-away distance. */
+    private double trainFrontX() {
+        return this.trainFront != null
+                ? this.trainFront.x
+                : this.nestCenter != null ? this.nestCenter.x - DragonChaseTuning.keepAwayDistance() : this.getX();
+    }
+
+    /** Speed feed-forward for an attack station: the train when known, else the nest itself. */
+    private Vec3 attackFeedForward() {
+        return this.trainFront != null ? this.trainVelocity : this.nestVelocity;
+    }
+
+    /** Track span start: re-derived from the live station, or the recorded fallback without anchors. */
     private Vec3 liveBreathFrom() {
         if (this.nestCenter == null) {
             return this.breathFrom != null ? this.breathFrom : this.position();
         }
-        return new Vec3(this.nestCenter.x + this.breathFromOffsetX, this.breathTrackY, 0.0D);
+        return new Vec3(this.liveBreathZone().fromX(), this.breathTrackY, 0.0D);
     }
 
-    /** Track segment end, projected like {@link #liveBreathFrom()}. */
+    /** Track span end, re-derived like {@link #liveBreathFrom()}. */
     private Vec3 liveBreathTo() {
         if (this.nestCenter == null) {
             return this.breathTo != null ? this.breathTo : this.position();
         }
-        return new Vec3(this.nestCenter.x + this.breathToOffsetX, this.breathTrackY, 0.0D);
+        return new Vec3(this.liveBreathZone().toX(), this.breathTrackY, 0.0D);
     }
 
-    private void steerToward(Vec3 target, Vec3 feedForward, double maxHorizontalSpeed, double maxVerticalSpeed, double acceleration) {
+    private ChaseDragonFlight.BreathZone liveBreathZone() {
+        double nestX = this.nestCenter != null ? this.nestCenter.x : this.getX();
+        // Phase 1 can time out before the dragon reaches the station (a crawling train), and the
+        // station then sits behind its jaws. Clamping it to the mouth's own X keeps the stream
+        // ahead of the dragon instead of spraying backwards; the nest-side clamps still apply.
+        double stationX = Math.max(ChaseDragonFlight.breathRetreatX(nestX, this.trainFrontX()), this.getX());
+        return ChaseDragonFlight.breathZoneRange(nestX, stationX);
+    }
+
+    /** Follow-style steering: total horizontal speed capped (the cap already includes the anchor). */
+    private void steerToward(Vec3 target, Vec3 feedForward, double maxHorizontalSpeed, double maxVerticalSpeed,
+            double acceleration) {
         Vec3 desired = ChaseDragonFlight.desiredVelocity(target.subtract(this.position()), feedForward, maxHorizontalSpeed,
                 maxVerticalSpeed);
-        Vec3 velocity = ChaseDragonFlight.approach(this.getDeltaMovement(), desired, acceleration);
+        this.accelerate(desired, acceleration);
+    }
+
+    /** Retreat-style steering: the speed cap is relative to the anchor, so the dragon may back off. */
+    private void steerRelative(Vec3 target, Vec3 anchorVelocity, double maxRelativeSpeed, double maxVerticalSpeed,
+            double acceleration) {
+        Vec3 desired = ChaseDragonFlight.retreatVelocity(target.subtract(this.position()), anchorVelocity,
+                maxRelativeSpeed, maxVerticalSpeed);
+        this.accelerate(desired, acceleration);
+    }
+
+    /**
+     * Per-axis acceleration: horizontal and vertical each change by at most {@code acceleration}
+     * per tick. A shared 3D step let a climb eat the horizontal budget, which made the dragon fall
+     * 30 blocks behind while it was still climbing back to the follow altitude.
+     */
+    private void accelerate(Vec3 desired, double acceleration) {
+        Vec3 current = this.getDeltaMovement();
+        Vec3 horizontal = ChaseDragonFlight.approach(new Vec3(current.x, 0.0D, current.z),
+                new Vec3(desired.x, 0.0D, desired.z), acceleration);
+        double vertical = current.y + Mth.clamp(desired.y - current.y, -acceleration, acceleration);
+        this.applyVelocity(new Vec3(horizontal.x, vertical, horizontal.z));
+    }
+
+    private void applyVelocity(Vec3 velocity) {
         this.setDeltaMovement(velocity);
         this.move(MoverType.SELF, velocity);
     }
 
-    private void faceVelocityOr(float fallbackYaw, float maxTurn) {
-        Vec3 velocity = this.getDeltaMovement();
-        float yaw = velocity.horizontalDistanceSqr() > 1.0E-4D ? ChaseDragonFlight.facingYaw(velocity) : fallbackYaw;
-        this.setYRot(ChaseDragonFlight.turnToward(this.getYRot(), yaw, maxTurn));
+    /**
+     * Chase heading, damped: the nose tracks the forward corridor and only leans with the lateral
+     * velocity, so it never swings round during a retreat.
+     */
+    private void faceChaseDirection() {
+        float targetYaw = ChaseDragonFlight.chaseForwardYaw(this.getDeltaMovement());
+        ChaseDragonFlight.TurnStep turn = ChaseDragonFlight.smoothTurn(this.getYRot(), this.yRotA, targetYaw,
+                ChaseDragonFlight.MAX_TURN_DEGREES_PER_TICK);
+        this.setYRot(turn.yaw());
+        this.yRotA = turn.yawVelocity();
+    }
+
+    private float yawRadians() {
+        return this.getYRot() * (float) (Math.PI / 180.0D);
     }
 
     /** Mouth of the model: about 7.5 blocks ahead of the centre, one block up. */
     public Vec3 mouthPosition() {
-        float yawRad = this.getYRot() * (float) (Math.PI / 180.0D);
+        float yawRad = this.yawRadians();
         return new Vec3(this.getX() + (double) Mth.sin(yawRad) * 7.5D, this.getY() + 1.0D,
                 this.getZ() - (double) Mth.cos(yawRad) * 7.5D);
     }
@@ -881,10 +1115,15 @@ public class ChaseDragon extends EnderDragon implements ChaseDragonHandle {
         this.movePart(parts[PART_WING2], (double) (cosYaw * -4.5F), 2.0D, (double) (sinYaw * -4.5F));
 
         float headYOffset = (float) (this.getLatencyPos(5, 1.0F)[1] - this.getLatencyPos(0, 1.0F)[1]);
-        this.movePart(parts[PART_HEAD], (double) (sinYaw * 6.5F * cosPitch), (double) (headYOffset + sinPitch * 6.5F),
-                (double) (-cosYaw * 6.5F * cosPitch));
-        this.movePart(parts[PART_NECK], (double) (sinYaw * 5.5F * cosPitch), (double) (headYOffset + sinPitch * 5.5F),
-                (double) (-cosYaw * 5.5F * cosPitch));
+        // Vanilla EnderDragon.java:330-331: the head and neck lead the body by a fraction of the
+        // current yaw rate, so the dragon looks into its turn instead of sliding through it.
+        float leadYaw = yawRad - this.yRotA * 0.01F;
+        float sinLead = Mth.sin(leadYaw);
+        float cosLead = Mth.cos(leadYaw);
+        this.movePart(parts[PART_HEAD], (double) (sinLead * 6.5F * cosPitch), (double) (headYOffset + sinPitch * 6.5F),
+                (double) (-cosLead * 6.5F * cosPitch));
+        this.movePart(parts[PART_NECK], (double) (sinLead * 5.5F * cosPitch), (double) (headYOffset + sinPitch * 5.5F),
+                (double) (-cosLead * 5.5F * cosPitch));
 
         double[] base = this.getLatencyPos(5, 1.0F);
         for (int k = 0; k < 3; k++) {
@@ -928,25 +1167,31 @@ public class ChaseDragon extends EnderDragon implements ChaseDragonHandle {
             tag.putDouble("OrbitZ", this.orbitCenter.z);
             tag.putDouble("OrbitTrackY", this.orbitTrackY);
         }
-        if (this.mode == ChaseDragonHandle.Mode.CHASE_SWOOP) {
-            // Remaining ticks, not the absolute end tick: tickCount is not stable across a reload.
-            tag.putInt("SwoopRemaining", Math.max(0, this.swoopEndTick - this.tickCount));
-        }
-        if (this.mode == ChaseDragonHandle.Mode.CHASE_BREATH) {
-            tag.putBoolean("BreathApproached", this.breathApproached);
-            tag.putInt("BreathTicks", this.breathTicks);
-            tag.putDouble("BreathFromOffsetX", this.breathFromOffsetX);
-            tag.putDouble("BreathToOffsetX", this.breathToOffsetX);
-            tag.putDouble("BreathTrackY", this.breathTrackY);
-            if (this.breathFrom != null) {
-                tag.putDouble("BreathFromX", this.breathFrom.x);
-                tag.putDouble("BreathFromY", this.breathFrom.y);
-                tag.putDouble("BreathFromZ", this.breathFrom.z);
+        switch (this.mode) {
+            case CHASE_FIREBALL -> {
+                tag.putInt("RetreatTicks", this.retreatTicks);
+                tag.putDouble("FireballBackOffset", this.fireballBackOffset);
+                tag.putDouble("FireballLandingY", this.fireballLandingY);
             }
-            if (this.breathTo != null) {
-                tag.putDouble("BreathToX", this.breathTo.x);
-                tag.putDouble("BreathToY", this.breathTo.y);
-                tag.putDouble("BreathToZ", this.breathTo.z);
+            case CHASE_BREATH -> {
+                tag.putBoolean("BreathApproached", this.breathApproached);
+                tag.putInt("BreathTicks", this.breathTicks);
+                tag.putDouble("BreathTrackY", this.breathTrackY);
+                // Only a bare dragon keeps a recorded segment; an anchored manoeuvre re-derives the
+                // span from the nest every tick, and writing nothing is how a reload knows it must
+                // wait for the anchors before spraying.
+                if (this.nestCenter == null && this.breathFrom != null) {
+                    tag.putDouble("BreathFromX", this.breathFrom.x);
+                    tag.putDouble("BreathFromY", this.breathFrom.y);
+                    tag.putDouble("BreathFromZ", this.breathFrom.z);
+                }
+                if (this.nestCenter == null && this.breathTo != null) {
+                    tag.putDouble("BreathToX", this.breathTo.x);
+                    tag.putDouble("BreathToY", this.breathTo.y);
+                    tag.putDouble("BreathToZ", this.breathTo.z);
+                }
+            }
+            default -> {
             }
         }
     }
@@ -961,29 +1206,35 @@ public class ChaseDragon extends EnderDragon implements ChaseDragonHandle {
         if (tag.contains("OrbitX") && tag.contains("OrbitZ")) {
             this.orbitCenter = new Vec3(tag.getDouble("OrbitX"), this.getY(), tag.getDouble("OrbitZ"));
             this.orbitTrackY = tag.getDouble("OrbitTrackY");
+            this.lastOrbitCenter = this.orbitCenter;
         }
         this.breathApproached = false;
         this.breathTicks = 0;
+        this.retreatTicks = 0;
         if (tag.contains("ChaseMode")) {
             ChaseDragonHandle.Mode saved;
             try {
                 saved = ChaseDragonHandle.Mode.valueOf(tag.getString("ChaseMode"));
             } catch (IllegalArgumentException exception) {
+                // Pre-rewrite saves carry the removed CHASE_SWOOP (and anything else unknown):
+                // restart the chase cleanly instead of dropping the entity or throwing.
                 saved = ChaseDragonHandle.Mode.CHASE_FOLLOW;
             }
-            // Anchors are re-sent by the director every tick; follow restarts cleanly. Swoop and
-            // breath keep their remaining ticks/segment so a reload mid-animation still finishes
-            // and the breath zone is laid down afterwards.
+            // Anchors are re-sent by the director every tick. Attack modes keep their progress so a
+            // reload mid-manoeuvre still fires/sprays and then catches back up.
             switch (saved) {
-                case DYING, PROLOGUE_ORBIT, PROLOGUE_DEPART -> this.mode = saved;
-                case CHASE_SWOOP -> {
-                    this.mode = ChaseDragonHandle.Mode.CHASE_SWOOP;
-                    this.swoopEndTick = this.tickCount + Math.max(1, tag.getInt("SwoopRemaining"));
+                case CHASE_FIREBALL -> {
+                    this.mode = saved;
+                    this.retreatTicks = Math.max(0, tag.getInt("RetreatTicks"));
+                    this.fireballBackOffset = tag.contains("FireballBackOffset")
+                            ? tag.getDouble("FireballBackOffset")
+                            : 12.0D;
+                    this.fireballLandingY = tag.contains("FireballLandingY")
+                            ? tag.getDouble("FireballLandingY")
+                            : 65.0D;
                 }
                 case CHASE_BREATH -> {
-                    this.mode = ChaseDragonHandle.Mode.CHASE_BREATH;
-                    this.breathFromOffsetX = tag.getDouble("BreathFromOffsetX");
-                    this.breathToOffsetX = tag.getDouble("BreathToOffsetX");
+                    this.mode = saved;
                     if (tag.contains("BreathFromX")) {
                         this.breathFrom = new Vec3(tag.getDouble("BreathFromX"), tag.getDouble("BreathFromY"),
                                 tag.getDouble("BreathFromZ"));
@@ -998,7 +1249,7 @@ public class ChaseDragon extends EnderDragon implements ChaseDragonHandle {
                     this.breathApproached = tag.getBoolean("BreathApproached");
                     this.breathTicks = Mth.clamp(tag.getInt("BreathTicks"), 0, BREATH_TICKS - 1);
                 }
-                default -> this.mode = ChaseDragonHandle.Mode.CHASE_FOLLOW;
+                case DYING, PROLOGUE_ORBIT, PROLOGUE_DEPART, CHASE_FOLLOW, CHASE_CATCH_UP -> this.mode = saved;
             }
         }
     }

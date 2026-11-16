@@ -104,6 +104,25 @@ class DragonChaseSavedDataTest {
     }
 
     @Test
+    void fireballAndBreathStateRoundTrip() {
+        DragonChaseSavedData data = new DragonChaseSavedData();
+        data.fireballAccumulator = 27.5D;
+        data.fireballCooldownUntil = 1234L;
+        data.breathFired[1] = true;
+        data.breathFired[3] = true;
+
+        DragonChaseSavedData loaded = DragonChaseSavedData.load(save(data));
+
+        assertEquals(27.5D, loaded.fireballAccumulator, 0.0D,
+                "damage banked while the dragon was busy must survive a reload");
+        assertEquals(1234L, loaded.fireballCooldownUntil);
+        assertFalse(loaded.breathFired[0]);
+        assertTrue(loaded.breathFired[1]);
+        assertFalse(loaded.breathFired[2]);
+        assertTrue(loaded.breathFired[3]);
+    }
+
+    @Test
     void savesTheZonesAsACompoundList() {
         DragonChaseSavedData data = new DragonChaseSavedData();
         data.breathZones.add(new DragonChaseSavedData.BreathZone(1.0D, 2.0D));

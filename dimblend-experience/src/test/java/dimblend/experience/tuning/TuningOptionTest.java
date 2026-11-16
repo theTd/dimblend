@@ -298,7 +298,7 @@ class TuningOptionTest {
     }
 
     @Test
-    void dragonChasePageMirrorsTheEightLockedValues() {
+    void dragonChasePageMirrorsTheNineLockedValues() {
         // requirements.md §3.1. Literal values on purpose: the experience test runtime has no
         // dimblend_dragonchase jar, only its compile-time api. The owning mod validates again in
         // DragonChaseTuning.Option, so these two lists must stay identical in default/range/step.
@@ -310,15 +310,17 @@ class TuningOptionTest {
                 TuningOption.DRAGON_CHASE_MIN_SPEED_GROWTH_DISTANCE,
                 TuningOption.DRAGON_CHASE_MIN_SPEED_CAP,
                 TuningOption.DRAGON_CHASE_FIREBALL_DAMAGE_THRESHOLD,
-                TuningOption.DRAGON_CHASE_DAMAGE_CAP_PERCENT};
+                TuningOption.DRAGON_CHASE_DAMAGE_CAP_PERCENT,
+                TuningOption.DRAGON_CHASE_KEEP_AWAY_DISTANCE};
         String[] ids = {"dragon_chase_speed_floor_enabled", "dragon_chase_generation_speed_step",
                 "dragon_chase_health_multiplier", "dragon_chase_lose_distance",
                 "dragon_chase_min_speed_growth_distance", "dragon_chase_min_speed_cap",
-                "dragon_chase_fireball_damage_threshold", "dragon_chase_damage_cap_percent"};
-        double[] defaults = {1.0D, 1.0D, 1.0D, 512.0D, 1024.0D, 32.0D, 32.0D, 2.0D};
-        double[] minima = {0.0D, 0.0D, 0.2D, 256.0D, 256.0D, 16.0D, 4.0D, 0.5D};
-        double[] maxima = {1.0D, 8.0D, 5.0D, 1024.0D, 4096.0D, 64.0D, 64.0D, 10.0D};
-        double[] steps = {1.0D, 0.5D, 0.2D, 16.0D, 16.0D, 1.0D, 4.0D, 0.5D};
+                "dragon_chase_fireball_damage_threshold", "dragon_chase_damage_cap_percent",
+                "dragon_chase_keep_away_distance"};
+        double[] defaults = {1.0D, 1.0D, 1.0D, 512.0D, 1024.0D, 32.0D, 32.0D, 2.0D, 96.0D};
+        double[] minima = {0.0D, 0.0D, 0.2D, 256.0D, 256.0D, 16.0D, 4.0D, 0.5D, 32.0D};
+        double[] maxima = {1.0D, 8.0D, 5.0D, 1024.0D, 4096.0D, 64.0D, 64.0D, 10.0D, 256.0D};
+        double[] steps = {1.0D, 0.5D, 0.2D, 16.0D, 16.0D, 1.0D, 4.0D, 0.5D, 8.0D};
         for (int i = 0; i < options.length; i++) {
             var option = options[i];
             assertEquals(ids[i], option.id(), ids[i]);
@@ -355,6 +357,14 @@ class TuningOptionTest {
         assertFalse(growthDistance.isValid(4097.0D));
         assertEquals(256.0D, growthDistance.minimum(), 0.0D);
         assertEquals(4096.0D, growthDistance.maximum(), 0.0D);
+        // The nest's keep-away distance steps by 8 from 32 to 256, defaulting to 96.
+        var keepAway = TuningOption.DRAGON_CHASE_KEEP_AWAY_DISTANCE;
+        assertEquals("96", keepAway.format(keepAway.defaultValue()));
+        assertTrue(keepAway.isValid(32.0D));
+        assertTrue(keepAway.isValid(96.0D));
+        assertTrue(keepAway.isValid(104.0D));
+        assertTrue(keepAway.isValid(256.0D));
+        assertFalse(keepAway.isValid(100.0D));
     }
 
     @Test

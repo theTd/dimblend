@@ -1,6 +1,5 @@
 package dimblend.dragonchase.chase;
 
-import dimblend.dragonchase.api.DragonChaseTuning;
 import dimblend.dragonchase.entity.ChaseDragonHandle;
 import dimblend.dragonchase.entity.ChaseDragonListener;
 import dimblend.dragonchase.structure.CarKind;
@@ -42,26 +41,11 @@ final class ChaseListener implements ChaseDragonListener {
         data.fireballAccumulator = ChaseMath.accumulateDamage(data.fireballAccumulator, appliedDamage, now,
                 data.fireballCooldownUntil);
 
-        // §3.4: threshold reached -> reset, fire at the track 12 blocks behind the nest, 8 s cooldown, swoop.
-        if (data.nestId != null
-                && ChaseMath.fireballReady(data.fireballAccumulator, DragonChaseTuning.fireballDamageThreshold())) {
-            Vec3 target = new Vec3(data.nestCenterX - ChaseMath.FIREBALL_BACK, ChaseMath.FIREBALL_Y, 0.0D);
-            if (dragon.fireFireballAt(target)) {
-                data.fireballAccumulator = 0.0D;
-                data.fireballCooldownUntil = now + ChaseMath.FIREBALL_COOLDOWN_TICKS;
-                dragon.beginSwoop(200);
-            }
-        }
-
-        // §3.4: each health threshold, once, sends the dragon to breathe on the track behind the nest.
+        // §3.4: fireball and health-threshold breath share one dispatcher. A dragon that is busy
+        // right now keeps its accumulator and its unfired thresholds; the director retries on every
+        // tick, so nothing is swallowed.
         if (data.nestId != null) {
-            // Real health from the entity (the cap and crystal healing are applied there).
-            double fraction = dragon.getMaxHealth() > 0.0F ? dragon.getHealth() / dragon.getMaxHealth() : 1.0D;
-            int index = ChaseMath.firstUnfiredThreshold(fraction, data.breathFired);
-            if (index >= 0) {
-                data.breathFired[index] = true;
-                ChaseDirector.breatheBehindNest(dragon, data.nestCenterX);
-            }
+            ChaseDirector.tryDispatchDragonActions(data, dragon, data.nestCenterX, now);
         }
         data.setDirty();
     }

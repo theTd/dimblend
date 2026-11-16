@@ -49,12 +49,13 @@ Missing optional mods leave their controls disabled.
 | Dragon Chase: min speed cap | 32 m/s | 16-64, step 1; the train's real speed is unaffected | dimblend_dragonchase |
 | Dragon Chase: breath damage threshold | 32 | 4-64, step 4; damage taken by the dragon that triggers one breath shot, then an 8-second cooldown | dimblend_dragonchase |
 | Dragon Chase: max damage per second | 2.0% | 0.5-10.0, step 0.5; share of the dragon's maximum health it can lose per second, the rest is discarded | dimblend_dragonchase |
+| Dragon Chase: nest minimum keep-away distance | 96 blocks | 32-256, step 8; minimum distance the nest car keeps ahead of the player train during a chase | dimblend_dragonchase |
 
 ### Dragon Chase page
 
-The eight `Dragon Chase:` rows are the **末影龙追逐 / Dragon Chase** page
+The nine `Dragon Chase:` rows are the **末影龙追逐 / Dragon Chase** page
 (requirements.md §3.1 of `dimblend-dragonchase`). The page's navigation button and
-the eight rows exist only while `dimblend_dragonchase` is installed: the rows are
+the nine rows exist only while `dimblend_dragonchase` is installed: the rows are
 always in the snapshot, and without that mod their availability bit is clear, so
 they stay disabled and carry the usual "missing mod" note. Every edit is routed
 through `dimblend.dragonchase.api.DragonChaseTuning` into that mod's own
@@ -361,7 +362,7 @@ Radio follows the same pattern through `dimblend.radio.api.RadioTuning` and its
 own `serverconfig/dimblend_radio-server.toml`. Its settings are heard on each
 client, so remote clients also apply the broadcast radio values in memory
 (NeoForge already sends the config at login). The snapshot carries one value
-per option, so each added or removed option bumps the protocol version (now `32`; the
+per option, so each added or removed option bumps the protocol version (now `33`; the
 option and acknowledgement UTF-8 wire limit is 64 characters; see the
 performance checklist below).
 

@@ -4,7 +4,7 @@ import dimblend.dragonchase.Config;
 import java.util.Locale;
 
 /**
- * Server-thread entry point for the eight Dragon Chase tuning values, used by this mod's own rules
+ * Server-thread entry point for the nine Dragon Chase tuning values, used by this mod's own rules
  * and by optional configuration panels in other mods (dimblend-experience's tuning screen).
  *
  * <p>Defaults, ranges and steps are the locked values of requirements.md §3.1; the damage cap range
@@ -20,7 +20,8 @@ public final class DragonChaseTuning {
         MIN_SPEED_GROWTH_DISTANCE("min_speed_growth_distance", 1024.0D, 256.0D, 4096.0D, 16.0D, false),
         MIN_SPEED_CAP("min_speed_cap", 32.0D, 16.0D, 64.0D, 1.0D, false),
         FIREBALL_DAMAGE_THRESHOLD("fireball_damage_threshold", 32.0D, 4.0D, 64.0D, 4.0D, false),
-        DAMAGE_CAP_PERCENT("damage_cap_percent", 2.0D, 0.5D, 10.0D, 0.5D, false);
+        DAMAGE_CAP_PERCENT("damage_cap_percent", 2.0D, 0.5D, 10.0D, 0.5D, false),
+        KEEP_AWAY_DISTANCE("keep_away_distance", 96.0D, 32.0D, 256.0D, 8.0D, false);
 
         private final String id;
         private final double defaultValue;
@@ -86,6 +87,7 @@ public final class DragonChaseTuning {
     public static double minSpeedCap() { return get(Option.MIN_SPEED_CAP); }
     public static double fireballDamageThreshold() { return get(Option.FIREBALL_DAMAGE_THRESHOLD); }
     public static double damageCapPercent() { return get(Option.DAMAGE_CAP_PERCENT); }
+    public static double keepAwayDistance() { return get(Option.KEEP_AWAY_DISTANCE); }
 
     private DragonChaseTuning() {
     }

@@ -8,19 +8,20 @@ import org.junit.jupiter.api.Test;
 
 class TuningSignBitTest {
     @Test
-    void snapshotProtocolIsThirtyTwoAfterWideningDragonChaseIdentifiers() {
+    void snapshotProtocolIsThirtyThreeAfterAddingNestKeepAwayDistance() {
         // The snapshot carries one value per option, so the wire length changed when OBSERVER_BLAZE_RADIUS was
         // added (v28), when STATION_CARRIAGE_LIMIT was (v29), when the four radio knobs left for the
-        // jukebox screen (v30), and again when the eight Dragon Chase options arrived (v31): any client still
-        // speaking an older version would mis-decode the tail of the list and be rejected.
-        assertEquals("32", TuningNetwork.PROTOCOL_VERSION);
+        // jukebox screen (v30), and when the eight Dragon Chase options arrived (v31); v32 only widened the
+        // identifier limit to 64, and v33 adds the ninth Dragon Chase option (nest keep-away distance): any
+        // client still speaking an older version would mis-decode the tail of the list and be rejected.
+        assertEquals("33", TuningNetwork.PROTOCOL_VERSION);
         for (var option : TuningOption.values()) {
             assertTrue(option.id().length() <= TuningOption.MAX_ID_LENGTH, option.id());
         }
         assertTrue(TuningOption.values().length <= Long.SIZE, "the availability mask is a long");
         assertTrue(TuningOption.OBSERVER_BLAZE_RADIUS.ordinal() < Long.SIZE);
         assertTrue(TuningOption.STATION_CARRIAGE_LIMIT.ordinal() < Long.SIZE);
-        assertTrue(TuningOption.DRAGON_CHASE_DAMAGE_CAP_PERCENT.ordinal() < Long.SIZE,
+        assertTrue(TuningOption.DRAGON_CHASE_KEEP_AWAY_DISTANCE.ordinal() < Long.SIZE,
                 "the last Dragon Chase option still fits the availability mask");
     }
 
