@@ -121,3 +121,21 @@ travel capture.
        create_connected per-tick inventory scan (15.56 s, 0.47 ms/tick in the capture).
      - `PerfCheck.IMMEDIATELY_FAST` (`immediately_fast`, client): recommends the client-side
        batching mod as `INFO`, so it never inflates the warning count.
+
+---
+
+# DimBlend Experience — Batch 1116 Gameplay Decisions (2026-11-16)
+
+Recorded from `dimblend-batch-1116` (`generated: 2026-11-16T05:56:39.750Z`, 3 locked decisions: all 3 explicit user overrides over provisional defaults).
+
+1. **`brew-batch-economy` [OVERRIDE] (`keep_16_yield_quarter`)**: **保留 16 原料槽上限，产出折算为 1/4（16 原料 → 4 份酒）**
+   - `TavernBrewingRules.ACTIVE_MODE = EconomyMode.KEEP_16_YIELD_QUARTER` (enforced by `Batch1116Unit2RulesTest#tavernLockedModeKeepsSixteenInputAndCapsOutputAtFour`).
+   - Barrel ingredient slot limit stays `16` and JEI/EMI/REI display `16` inputs + `4` fluid buckets → `4` outputs; `BarrelRecipe#assemble` divides stackable ingredient counts by `4` (capped at `4`, with `maxStackSize < 4` ingredients exempt from division; closed barrels matching a real recipe with `< 4` stackable items hold idle via `BarrelBlockEntityMixin` instead of spoiling 4 buckets into Vinegar), and unmatched Vinegar fallback yields `4`.
+
+2. **`catalyst-redstone-block-mode` [OVERRIDE] (`replace_with_crystal_sand`)**: **挖除后仍替换为晶化沙或红水晶苔藓**
+   - `CrystalbornCatalystRules.ACTIVE_REPLACE_MODE = ReplaceMode.REPLACE_WITH_CRYSTAL_SAND` (enforced by `Batch1116Unit2RulesTest#crystalbornLockedToReplaceWithCrystalSandAndHasTooltipKey`).
+   - When `eternal_starlight:crystalborn_catalyst` is powered with an adjacent `minecraft:redstone_block`, it mines peripheral blocks matching `pos.below()` (never mining `pos.below()` or `pos` itself, and rejecting `crystallized_sand`/`red_crystal_moss_block` as self-replacing templates) and replaces mined positions with `red_crystal_moss_block` / `crystallized_sand`.
+
+3. **`thermolith-mode-control` [OVERRIDE] (`vanilla_ice_break_only_reset`)**: **仅原版冰/熔岩块单向设模式；仅拆掉重放恢复默认**
+   - `ThermolithModeRules.ACTIVE_POLICY = InteractionPolicy.VANILLA_ICE_BREAK_ONLY_RESET` (enforced by `ColdSweatBatch1116Test#vanillaIceBreakOnlyResetPolicyIsLockedAndOnlyPlainIceCounts`).
+   - Only `minecraft:ice` (`> 40 °C` → `15`) and `minecraft:magma_block` (`< 10 °C` → `15`) set `cold_sweat:thermolith` operating mode without consuming the held block; repeated right-clicks are idempotent and breaking + re-placing restores default `NORMAL` mode.

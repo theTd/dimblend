@@ -81,6 +81,10 @@ public class DimBlend {
         if (ModList.get().isLoaded("yet_another_thirst")) {
             modEventBus.addListener(dimblend.experience.compat.yat.ThirstFilterBalance::setup);
         }
+        if (ModList.get().isLoaded("cold_sweat")) {
+            dimblend.experience.compat.coldsweat.ColdSweatHeatSources.register();
+            dimblend.experience.compat.coldsweat.ThermolithModeRules.register();
+        }
 
         // CameraCapture 相纸/耐久：默认组件改 MAX_DAMAGE/DAMAGE，背包内纸张右键装填。
         // 只有 camerapture 在场才解析这些类；mixin 由 DimBlendMixinPlugin 同样门控。

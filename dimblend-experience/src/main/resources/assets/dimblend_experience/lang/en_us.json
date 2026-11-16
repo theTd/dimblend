@@ -359,6 +359,9 @@
 	"dimblend_experience.display_source.vault_storage.percent": "Percent",
 	"item.dimblend_experience.create_door_pairing": "Right-click again with the same door in hand to form a single-block double door",
 	"tooltip.dimblend_experience.camera.line1": "Pick up paper in inventory and right-click camera to load film",
-	"tooltip.dimblend_experience.camera.line2": "Take pictures to record your journey",
-	"tooltip.dimblend_experience.camera.line3": "Pictures also record where they were taken so you can find your way back"
+  "tooltip.dimblend_experience.camera.line2": "Take pictures to record your journey",
+  "tooltip.dimblend_experience.camera.line3": "Pictures also record where they were taken so you can find your way back",
+  "tooltip.dimblend_experience.crystalborn_catalyst.mode": "Redstone signal starts normal mining; adjacent Redstone Block mines peripheral blocks matching the block below",
+  "tooltip.dimblend_experience.thermolith.mode": "Right-click with Ice / Magma Block to set operating mode",
+  "pack.dimblend_experience.thermolith_override": "DimBlend Thermolith Mode Textures"
 }

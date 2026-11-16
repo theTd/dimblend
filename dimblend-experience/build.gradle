@@ -176,6 +176,11 @@ dependencies {
     // Pinned to the supplied pack versions; compat classes load only behind mod gates.
     // Version numbers can be shared by Forge/Fabric files: use hash-verified NeoForge version IDs.
     compileOnly "maven.modrinth:yet-another-thirst:xmk0FTsX" // NeoForge 1.21-1.5.2
+    compileOnly "maven.modrinth:kaleidoscopetavern:W9ILsQt7" // 1.2.0-neoforge+mc1.21.1
+    compileOnly "maven.modrinth:eternal-starlight:0.9.0+1.21.1+neoforge"
+    compileOnly("io.wispforest:accessories-neoforge:1.1.0-beta.48+1.21.1") { transitive = false }
+    compileOnly("io.wispforest:owo-lib-neoforge:0.12.15.1-beta.6+1.21") { transitive = false }
+    compileOnly("io.wispforest:endec:0.1.8") { transitive = false }
     compileOnly "maven.modrinth:camerapture:bCB7PwmA" // 1.10.12+mc1.21.1-neoforge
     compileOnly "maven.modrinth:create-connected:iUFG9osW" // 1.2.2-mc1.21.1
     // Jade HUD 集成（分液池灌溉/催熟状态）：定点 15.10.5 与 TrainTripWorld 实例一致；

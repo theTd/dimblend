@@ -59,5 +59,8 @@
 	"screen.dimblend_experience.perf.immediately_fast.why": "ImmediatelyFast 會把 HUD、實體、方塊實體與文字的立即模式繪製合併成批次，降低這些內容每幀佔用的 CPU 時間。它只影響本機，不改變畫面內容。",
 	"screen.dimblend_experience.perf.immediately_fast.current": "檢查本機是否安裝了 immediatelyfast。",
 	"screen.dimblend_experience.perf.immediately_fast.advice.present": "已安裝，無需處理。",
-	"screen.dimblend_experience.perf.immediately_fast.advice.missing": "未安裝。把 immediatelyfast 放進本機的 mods 資料夾，可批次繪製 HUD、實體與方塊實體。"
+	"screen.dimblend_experience.perf.immediately_fast.advice.missing": "未安裝。把 immediatelyfast 放進本機的 mods 資料夾，可批次繪製 HUD、實體與方塊實體。",
+	"tooltip.dimblend_experience.crystalborn_catalyst.mode": "充能訊號開始常規挖掘 充能紅石方塊挖掘底部同類方塊",
+	"tooltip.dimblend_experience.thermolith.mode": "使用 冰/岩漿塊 右鍵設定工作模式",
+	"pack.dimblend_experience.thermolith_override": "DimBlend 溫石模式貼圖"
 }

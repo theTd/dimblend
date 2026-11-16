@@ -1,0 +1,94 @@
+{
+  "variants": {
+    "dimblend_mode=normal,powered=false,facing=north": {
+      "model": "cold_sweat:block/thermolith_off"
+    },
+    "dimblend_mode=normal,powered=false,facing=east": {
+      "model": "cold_sweat:block/thermolith_off",
+      "y": 90
+    },
+    "dimblend_mode=normal,powered=false,facing=south": {
+      "model": "cold_sweat:block/thermolith_off",
+      "y": 180
+    },
+    "dimblend_mode=normal,powered=false,facing=west": {
+      "model": "cold_sweat:block/thermolith_off",
+      "y": 270
+    },
+    "dimblend_mode=normal,powered=true,facing=north": {
+      "model": "cold_sweat:block/thermolith_on"
+    },
+    "dimblend_mode=normal,powered=true,facing=east": {
+      "model": "cold_sweat:block/thermolith_on",
+      "y": 90
+    },
+    "dimblend_mode=normal,powered=true,facing=south": {
+      "model": "cold_sweat:block/thermolith_on",
+      "y": 180
+    },
+    "dimblend_mode=normal,powered=true,facing=west": {
+      "model": "cold_sweat:block/thermolith_on",
+      "y": 270
+    },
+    "dimblend_mode=ice,powered=false,facing=north": {
+      "model": "dimblend_experience:block/thermolith_ice_off"
+    },
+    "dimblend_mode=ice,powered=false,facing=east": {
+      "model": "dimblend_experience:block/thermolith_ice_off",
+      "y": 90
+    },
+    "dimblend_mode=ice,powered=false,facing=south": {
+      "model": "dimblend_experience:block/thermolith_ice_off",
+      "y": 180
+    },
+    "dimblend_mode=ice,powered=false,facing=west": {
+      "model": "dimblend_experience:block/thermolith_ice_off",
+      "y": 270
+    },
+    "dimblend_mode=ice,powered=true,facing=north": {
+      "model": "dimblend_experience:block/thermolith_ice_on"
+    },
+    "dimblend_mode=ice,powered=true,facing=east": {
+      "model": "dimblend_experience:block/thermolith_ice_on",
+      "y": 90
+    },
+    "dimblend_mode=ice,powered=true,facing=south": {
+      "model": "dimblend_experience:block/thermolith_ice_on",
+      "y": 180
+    },
+    "dimblend_mode=ice,powered=true,facing=west": {
+      "model": "dimblend_experience:block/thermolith_ice_on",
+      "y": 270
+    },
+    "dimblend_mode=magma,powered=false,facing=north": {
+      "model": "dimblend_experience:block/thermolith_magma_off"
+    },
+    "dimblend_mode=magma,powered=false,facing=east": {
+      "model": "dimblend_experience:block/thermolith_magma_off",
+      "y": 90
+    },
+    "dimblend_mode=magma,powered=false,facing=south": {
+      "model": "dimblend_experience:block/thermolith_magma_off",
+      "y": 180
+    },
+    "dimblend_mode=magma,powered=false,facing=west": {
+      "model": "dimblend_experience:block/thermolith_magma_off",
+      "y": 270
+    },
+    "dimblend_mode=magma,powered=true,facing=north": {
+      "model": "dimblend_experience:block/thermolith_magma_on"
+    },
+    "dimblend_mode=magma,powered=true,facing=east": {
+      "model": "dimblend_experience:block/thermolith_magma_on",
+      "y": 90
+    },
+    "dimblend_mode=magma,powered=true,facing=south": {
+      "model": "dimblend_experience:block/thermolith_magma_on",
+      "y": 180
+    },
+    "dimblend_mode=magma,powered=true,facing=west": {
+      "model": "dimblend_experience:block/thermolith_magma_on",
+      "y": 270
+    }
+  }
+}

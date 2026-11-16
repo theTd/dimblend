@@ -360,5 +360,8 @@
 	"item.dimblend_experience.create_door_pairing": "手持再次右键可变为单格对开",
 	"tooltip.dimblend_experience.camera.line1": "背包内拾取纸张右键相机添加相纸",
 	"tooltip.dimblend_experience.camera.line2": "拍照记录下你的旅程",
-	"tooltip.dimblend_experience.camera.line3": "照片也会记下你拍照的位置 以便你需要返回"
+	"tooltip.dimblend_experience.camera.line3": "照片也会记下你拍照的位置 以便你需要返回",
+	"tooltip.dimblend_experience.crystalborn_catalyst.mode": "充能信号开始常规挖掘 充能红石块挖掘底部同类方块",
+	"tooltip.dimblend_experience.thermolith.mode": "使用 冰/熔岩块 右键设置工作模式",
+	"pack.dimblend_experience.thermolith_override": "DimBlend 温石模式贴图"
 }

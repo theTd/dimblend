@@ -295,6 +295,47 @@ class DuplicateNameRulesTest {
         }
     }
 
+    /** Voidscape 8 台机器的方块显示名：三个语言文件的覆盖值逐条钉死（名字由用户确认）。 */
+    @Test
+    void voidscapeMachineNamesAreConfirmedAcrossLocales() {
+        Map<String, Map<String, String>> expected = new LinkedHashMap<>();
+        expected.put("zh_cn", Map.of(
+                "block.voidscape.machine_collector", "虚空复制器",
+                "block.voidscape.machine_coop", "虚空产蛋器",
+                "block.voidscape.machine_defuser", "虚空抽取器",
+                "block.voidscape.machine_germinator", "虚空之芽",
+                "block.voidscape.machine_hatchery", "龙蛋制造器",
+                "block.voidscape.machine_infuser", "虚空灌注器",
+                "block.voidscape.machine_liquifier", "虚空液化器",
+                "block.voidscape.machine_well", "虚空井"));
+        expected.put("zh_tw", Map.of(
+                "block.voidscape.machine_collector", "虛空複製器",
+                "block.voidscape.machine_coop", "虛空產蛋器",
+                "block.voidscape.machine_defuser", "虛空抽取器",
+                "block.voidscape.machine_germinator", "虛空之芽",
+                "block.voidscape.machine_hatchery", "龍蛋製造器",
+                "block.voidscape.machine_infuser", "虛空灌注器",
+                "block.voidscape.machine_liquifier", "虛空液化器",
+                "block.voidscape.machine_well", "虛空井"));
+        expected.put("en_us", Map.of(
+                "block.voidscape.machine_collector", "Voidic Collector",
+                "block.voidscape.machine_coop", "Voidic Coop",
+                "block.voidscape.machine_defuser", "Voidic Defuser",
+                "block.voidscape.machine_germinator", "Voidic Germinator",
+                "block.voidscape.machine_hatchery", "Draconic Hatchery",
+                "block.voidscape.machine_infuser", "Voidic Infuser",
+                "block.voidscape.machine_liquifier", "Voidic Liquifier",
+                "block.voidscape.machine_well", "Voidic Well"));
+
+        for (Map.Entry<String, Map<String, String>> entry : expected.entrySet()) {
+            Map<String, String> table = LanguageOverrides.load(entry.getKey());
+            for (Map.Entry<String, String> value : entry.getValue().entrySet()) {
+                assertEquals(value.getValue(), table.get(value.getKey()),
+                        entry.getKey() + " 的 " + value.getKey() + " 覆盖值不符");
+            }
+        }
+    }
+
     /** 三个语言文件必须键集一致（缺一个键会让该语言回落到英文，静默不一致）。 */
     @Test
     void languageOverrideTablesShareOneKeySet() {
