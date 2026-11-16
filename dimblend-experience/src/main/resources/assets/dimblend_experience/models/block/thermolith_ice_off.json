@@ -1,0 +1,9 @@
+{
+  "parent": "cold_sweat:block/thermolith_off",
+  "textures": {
+    "back": "dimblend_experience:block/thermolith_back_off_ice",
+    "top": "dimblend_experience:block/thermolith_top_off_ice",
+    "front": "dimblend_experience:block/thermolith_front_off_ice",
+    "head": "dimblend_experience:block/thermolith_head_off_ice"
+  }
+}

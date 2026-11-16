@@ -2,5 +2,11 @@
   "block.dimblend.warp_gate": "Warp Gate",
   "dimblend.biome_suffix.underground": " Underground",
   "tooltip.dimblend.voidscape_infuser": "This thing harbors extra malice toward all undead in the world",
-  "tooltip.dimblend.voidscape_collector": "For some reason, this thing duplicates stone and mineral rock right beneath it"
+  "tooltip.dimblend.voidscape_collector": "For some reason, this thing duplicates stone and mineral rock right beneath it",
+  "tooltip.dimblend.voidscape_liquifier": "Reverse crystallization",
+  "tooltip.dimblend.voidscape_defuser": "Shields against Void corrosion",
+  "tooltip.dimblend.voidscape_germinator": "High-efficiency crop ripening",
+  "tooltip.dimblend.voidscape_well": "A \"perfectly fine\" Void water well",
+  "tooltip.dimblend.voidscape_coop": "Looks enough like an egg — don't overthink it",
+  "tooltip.dimblend.voidscape_hatchery": "............"
 }

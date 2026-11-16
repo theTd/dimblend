@@ -2,5 +2,11 @@
   "block.dimblend.warp_gate": "折跃门",
   "dimblend.biome_suffix.underground": "地下",
   "tooltip.dimblend.voidscape_infuser": "这家伙 对世界上所有亡灵生物都有额外的恨意",
-  "tooltip.dimblend.voidscape_collector": "不知为什么 这个东西 可复制其正下方的矿岩"
+  "tooltip.dimblend.voidscape_collector": "不知为什么 这个东西 可复制其正下方的矿岩",
+  "tooltip.dimblend.voidscape_liquifier": "反向结晶",
+  "tooltip.dimblend.voidscape_defuser": "防护虚空侵蚀",
+  "tooltip.dimblend.voidscape_germinator": "高效作物催熟",
+  "tooltip.dimblend.voidscape_well": "\"很好的\"虚空水井",
+  "tooltip.dimblend.voidscape_coop": "像鸡蛋就行 不要细想",
+  "tooltip.dimblend.voidscape_hatchery": "…………"
 }

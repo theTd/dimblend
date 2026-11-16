@@ -37,6 +37,10 @@ public final class DimBlendClient {
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(SupplementTooltips::onItemTooltip));
         // CameraCapture 相机提示（同样只按注册名判定，不解析第三方类型）
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(CameraTooltips::onItemTooltip));
+        event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(
+                dimblend.experience.compat.starlight.CrystalbornCatalystTooltips::onItemTooltip));
+        event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(
+                dimblend.experience.compat.coldsweat.ThermolithTooltips::onItemTooltip));
         // 相片拍摄地点 @ 标记：只导入 dimblend.api / dimblend.spyglass.api，
         // 因此三个 mod 都在场时才加载该 provider（缺席时类不解析）。
         event.enqueueWork(() -> {
@@ -53,6 +57,11 @@ public final class DimBlendClient {
                     TrainHornClient.reset();
                     dimblend.experience.compat.connected.LinkedTransmitterDiagnostics.reset();
                 }));
+    }
+
+    @SubscribeEvent
+    public static void onAddPackFinders(net.neoforged.neoforge.event.AddPackFindersEvent event) {
+        ThermolithResourcePack.onAddPackFinders(event);
     }
 
     @SubscribeEvent

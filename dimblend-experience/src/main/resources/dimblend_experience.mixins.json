@@ -111,7 +111,18 @@
 		"compat.simurail.AutomaticCouplerTypeAccessor",
 		"compat.camerapture.CameraItemRulesMixin",
 		"compat.camerapture.CameraptureNewPictureMixin",
-		"compat.camerapture.PictureItemOriginMixin"
+		"compat.camerapture.PictureItemOriginMixin",
+		"compat.tavern.BarrelRecipeMixin",
+		"compat.tavern.BarrelBlockEntityMixin",
+		"compat.tavern.BarrelIngredientHandlerMixin",
+		"compat.starlight.CrystalbornCatalystBlockEntityAccessor",
+		"compat.starlight.CrystalbornCatalystBlockEntityMixin",
+		"compat.starlight.CrystalbornCatalystPlacementMixin",
+		"compat.accessories.AccessoriesScreenOpenSurvivalMixin",
+		"compat.yat.VoidicWellPurityMixin",
+		"compat.coldsweat.ThermolithBlockModeMixin",
+		"compat.coldsweat.ThermolithBlockEntityModeMixin",
+		"compat.coldsweat.ThermolithBlockEntityAccessor"
 	],
 	"client": [
 		"client.InBedChatScreenMixin",
@@ -145,7 +156,11 @@
 		"compat.simurail.PhysicsBogeyTrackSoundMixin",
 		"compat.simurail.PhysicsBogeyWideGaugeParticleMixin",
 		"compat.simurail.PhysicsBogeyDeadmanParticleMixin",
-		"compat.simurail.AutomaticCouplerChargeParticleMixin"
+		"compat.simurail.AutomaticCouplerChargeParticleMixin",
+		"compat.tavern.BarrelJeiCategoryMixin",
+		"compat.tavern.BarrelEmiRecipeMixin",
+		"compat.tavern.BarrelReiCategoryMixin",
+		"compat.accessories.AccessoriesClientSurvivalMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

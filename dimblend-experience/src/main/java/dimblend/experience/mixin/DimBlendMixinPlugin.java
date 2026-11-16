@@ -86,6 +86,60 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.contains(".compat.camerapture.")) {
             return isLoaded("camerapture");
         }
+        if (mixinClassName.endsWith(".compat.tavern.BarrelJeiCategoryMixin")) {
+            return isLoaded("kaleidoscope_tavern")
+                    && isLoaded("jei")
+                    && classPresent("com.github.ysbbbbbb.kaleidoscopetavern.compat.jei.category.BarrelRecipeCategory");
+        }
+        if (mixinClassName.endsWith(".compat.tavern.BarrelEmiRecipeMixin")) {
+            return isLoaded("kaleidoscope_tavern")
+                    && isLoaded("emi")
+                    && classPresent("com.github.ysbbbbbb.kaleidoscopetavern.compat.emi.category.EmiBarrelRecipe");
+        }
+        if (mixinClassName.endsWith(".compat.tavern.BarrelReiCategoryMixin")) {
+            return isLoaded("kaleidoscope_tavern")
+                    && isLoaded("roughlyenoughitems")
+                    && classPresent("com.github.ysbbbbbb.kaleidoscopetavern.compat.rei.category.ReiBarrelRecipeCategory");
+        }
+        if (mixinClassName.endsWith(".compat.tavern.BarrelIngredientHandlerMixin")) {
+            return isLoaded("kaleidoscope_tavern")
+                    && classPresent("com.github.ysbbbbbb.kaleidoscopetavern.blockentity.brew.BarrelBlockEntity$1");
+        }
+        if (mixinClassName.endsWith(".compat.tavern.BarrelRecipeMixin")) {
+            return isLoaded("kaleidoscope_tavern")
+                    && classPresent("com.github.ysbbbbbb.kaleidoscopetavern.crafting.recipe.BarrelRecipe");
+        }
+        if (mixinClassName.contains(".compat.tavern.")) {
+            return isLoaded("kaleidoscope_tavern")
+                    && classPresent("com.github.ysbbbbbb.kaleidoscopetavern.blockentity.brew.BarrelBlockEntity");
+        }
+        if (mixinClassName.endsWith(".compat.starlight.CrystalbornCatalystPlacementMixin")) {
+            return isLoaded("eternal_starlight") && isLoaded("sable");
+        }
+        if (mixinClassName.contains(".compat.starlight.")) {
+            return isLoaded("eternal_starlight")
+                    && classPresent("cn.leolezury.eternalstarlight.common.block.entity.CrystalbornCatalystBlockEntity");
+        }
+        if (mixinClassName.endsWith(".compat.accessories.AccessoriesClientSurvivalMixin")) {
+            return isLoaded("accessories")
+                    && classPresent("io.wispforest.accessories.client.AccessoriesClient");
+        }
+        if (mixinClassName.endsWith(".compat.accessories.AccessoriesScreenOpenSurvivalMixin")) {
+            return isLoaded("accessories")
+                    && classPresent("io.wispforest.accessories.networking.server.ScreenOpen");
+        }
+        if (mixinClassName.endsWith(".compat.yat.VoidicWellPurityMixin")) {
+            return isLoaded("voidscape")
+                    && isLoaded("yet_another_thirst")
+                    && classPresent("tamaized.voidscape.block.entity.WellBlockEntity");
+        }
+        if (mixinClassName.endsWith(".compat.coldsweat.ThermolithBlockModeMixin")
+                || mixinClassName.endsWith(".compat.coldsweat.ThermolithBlockEntityModeMixin")
+                || mixinClassName.endsWith(".compat.coldsweat.ThermolithBlockEntityAccessor")) {
+            return isLoaded("cold_sweat")
+                    && classPresent("com.momosoftworks.coldsweat.common.block.ThermolithBlock")
+                    && classPresent("com.momosoftworks.coldsweat.common.blockentity.ThermolithBlockEntity");
+        }
         if (mixinClassName.endsWith(".compat.cdg.DieselEngineRampMixin")
                 || mixinClassName.endsWith(".compat.cdg.HugeDieselEngineMixin")
                 || mixinClassName.endsWith(".compat.cdg.CdgEngineTankCapacityMixin")
