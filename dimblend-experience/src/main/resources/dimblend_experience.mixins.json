@@ -29,6 +29,7 @@
 		"SurvivalWaterlogBlockMixin",
 		"IcePlacementBanMixin",
 		"ChunkMapVoidFitStripMixin",
+		"LevelChunkLoadedAccessor",
 		"StructureVoidBlockPassthroughMixin",
 		"ExplosionVoidFitPassthroughMixin",
 		"compat.sable.SableVoidFitBlockChangeMixin",

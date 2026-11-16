@@ -16,6 +16,25 @@ public final class PerfRules {
     public static final int SIMULATION_DISTANCE_MAX = 8;
     /** Render (= singleplayer view) distance above which chunk loading per distance travelled is flagged. */
     public static final int RENDER_DISTANCE_MAX = 12;
+    /**
+     * Per-chunk monster cap above which the spawner keeps retrying every chunk every tick. Vanilla
+     * keeps 70; with several biome mods the sparse spawn lists rarely fill that, so each chunk's
+     * spawn attempt runs to the end (26.2% of the 2026-11 travel tick, 5.74 ms/tick).
+     */
+    public static final int MONSTER_SPAWN_CAP_MAX = 40;
+    /** Creature cap the one-click Easy Mob Spawn Control fix writes. */
+    public static final int CREATURE_SPAWN_CAP_RECOMMENDED = 8;
+    /** Per-chunk ambient cap above which the spawner is flagged; the fix writes 5. */
+    public static final int AMBIENT_SPAWN_CAP_MAX = 6;
+    public static final int AXOLOTLS_SPAWN_CAP_RECOMMENDED = 4;
+    public static final int UNDERGROUND_WATER_SPAWN_CAP_RECOMMENDED = 4;
+    public static final int WATER_CREATURE_SPAWN_CAP_RECOMMENDED = 4;
+    /** Per-chunk water-ambient cap above which the spawner is flagged; the fix writes 6. */
+    public static final int WATER_AMBIENT_SPAWN_CAP_MAX = 8;
+    /** Vanilla random tick speed; anything above it multiplies per-chunk random block updates. */
+    public static final int RANDOM_TICK_SPEED_MAX = 3;
+    /** Ticking Create chutes above which create_connected's per-tick inventory scan is flagged. */
+    public static final int TICKING_CHUTES_MAX = 16;
     /** Sable snapshot buffer, in ticks, that hides stalls up to roughly (delay + 1) ticks. */
     public static final double SABLE_INTERPOLATION_RECOMMENDED = 3.0D;
     /** Live heap / max heap at or below which the collector has comfortable headroom. */
@@ -109,6 +128,32 @@ public final class PerfRules {
 
     public static PerfStatus interpolationStatus(double delayTicks) {
         return delayTicks >= SABLE_INTERPOLATION_RECOMMENDED ? PerfStatus.OK : PerfStatus.INFO;
+    }
+
+    /**
+     * Whether the live per-chunk caps still let the spawner retry every chunk every tick. Vanilla
+     * keeps 70 monsters / 15 ambient / 20 water ambient per chunk; across dense multi-biome-mod
+     * spawn lists those counts rarely fill, so {@code NaturalSpawner.spawnForChunk} never
+     * short-circuits. Easy Mob Spawn Control's {@code spawnCaps} lowers {@code MobCategory.max}
+     * itself, which makes {@code SpawnState.canSpawnForCategory} fail in O(1).
+     */
+    public static PerfStatus mobSpawnCapsStatus(int monster, int ambient, int waterAmbient) {
+        boolean ok = monster <= MONSTER_SPAWN_CAP_MAX && ambient <= AMBIENT_SPAWN_CAP_MAX
+                && waterAmbient <= WATER_AMBIENT_SPAWN_CAP_MAX;
+        return ok ? PerfStatus.OK : PerfStatus.WARN;
+    }
+
+    public static PerfStatus randomTickSpeedStatus(int speed) {
+        return speed <= RANDOM_TICK_SPEED_MAX ? PerfStatus.OK : PerfStatus.WARN;
+    }
+
+    public static PerfStatus tickingChutesStatus(int count) {
+        return count <= TICKING_CHUTES_MAX ? PerfStatus.OK : PerfStatus.WARN;
+    }
+
+    /** Ticking block entity types whose tick asks create_connected for contraption inventories. */
+    public static boolean isCreateChuteTickerType(String type) {
+        return "create:chute".equals(type) || "create:smart_chute".equals(type);
     }
 
     public static String gib(long bytes) {

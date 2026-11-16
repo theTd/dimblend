@@ -424,7 +424,6 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
                 }
                 float overworldWeight = this.layout().surfaceTwilightSeamWeight(x, this.bandSize);
                 for (int lz = 0; lz < 16; lz++) {
-                    int z = minZ + lz;
                     int sourceTop = Math.max(minY, ocean.getFirstAvailable(lx, lz) - 1);
                     int overworldTop = interpolateGrid(overworldGrid, lx, lz);
                     int twilightTop = interpolateGrid(twilightGrid, lx, lz);
@@ -442,17 +441,20 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
                     BlockState nativeFluid = this.findNativeFluid(chunk, lx, lz, sourceTop + 1, oldSurface);
                     if (blendedTop > sourceTop) {
                         for (int y = sourceTop + 1; y <= blendedTop; y++) {
-                            this.writeSeamBlock(chunk, ocean, surface, cursor, x, y, z, lx, lz, fill);
+                            this.writeSeamBlock(chunk, ocean, surface, lx, y, lz, fill);
                         }
+                        this.markSeamRange(chunk, cursor, minX + lx, minZ + lz, lx, lz, sourceTop + 1, blendedTop, fill);
                     } else {
                         for (int y = blendedTop + 1; y <= sourceTop; y++) {
-                            this.writeSeamBlock(chunk, ocean, surface, cursor, x, y, z, lx, lz, air);
+                            this.writeSeamBlock(chunk, ocean, surface, lx, y, lz, air);
                         }
+                        this.markSeamRange(chunk, cursor, minX + lx, minZ + lz, lx, lz, blendedTop + 1, sourceTop, air);
                     }
                     if (nativeFluid != null && oldSurface > blendedTop) {
                         for (int y = blendedTop + 1; y <= oldSurface; y++) {
-                            this.writeSeamBlock(chunk, ocean, surface, cursor, x, y, z, lx, lz, nativeFluid);
+                            this.writeSeamBlock(chunk, ocean, surface, lx, y, lz, nativeFluid);
                         }
+                        this.markSeamRange(chunk, cursor, minX + lx, minZ + lz, lx, lz, blendedTop + 1, oldSurface, nativeFluid);
                     }
                 }
             }
@@ -495,18 +497,36 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
             ChunkAccess chunk,
             Heightmap ocean,
             Heightmap surface,
-            MutableBlockPos cursor,
-            int x,
-            int y,
-            int z,
             int lx,
+            int y,
             int lz,
             BlockState state
     ) {
         chunk.getSection(chunk.getSectionIndex(y)).setBlockState(lx, y & 15, lz, state, false);
         ocean.update(lx, y, lz, state);
         surface.update(lx, y, lz, state);
-        if (!state.getFluidState().isEmpty()) {
+    }
+
+    /**
+     * Marks a freshly written seam column for post-processing when the written state carries a
+     * fluid. {@code fill} and {@code air} have empty fluid states, so this stays a no-op for
+     * them; it only exists so a fluid-bearing fill can never lose its mark.
+     */
+    private static void markSeamRange(
+            ChunkAccess chunk,
+            MutableBlockPos cursor,
+            int x,
+            int z,
+            int lx,
+            int lz,
+            int fromY,
+            int toY,
+            BlockState state
+    ) {
+        if (fromY > toY || state.getFluidState().isEmpty()) {
+            return;
+        }
+        for (int y = fromY; y <= toY; y++) {
             cursor.set(x, y, z);
             chunk.markPosForPostprocessing(cursor);
         }
@@ -569,10 +589,15 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
     @Override
     public void spawnOriginalMobs(WorldGenRegion level) {
         this.ensureRuntimeFromLevel(level);
-        if (BarrenRegionGeneration.isBarrenChunk(this, level.getCenter())) {
+        ChunkPos center = level.getCenter();
+        // At ChunkStatus.SPAWN, LIGHT -> INITIALIZE_LIGHT(radius=1) -> FEATURES(radius=1) has
+        // finished on all 3x3 chunks, so CARVERS and every feature/structure/corridor/wall/depot
+        // write into center is complete; compact enclosed interior source-water marks off-thread.
+        PostProcessFluidFilter.pruneEnclosedInteriorWaterMarks(level.getChunk(center.x, center.z));
+        if (BarrenRegionGeneration.isBarrenChunk(this, center)) {
             return;
         }
-        this.delegate(level.getCenter()).spawnOriginalMobs(level);
+        this.delegate(center).spawnOriginalMobs(level);
     }
 
     @Override

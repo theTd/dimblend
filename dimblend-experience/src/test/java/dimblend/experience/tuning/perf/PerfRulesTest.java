@@ -70,6 +70,78 @@ class PerfRulesTest {
     }
 
     @Test
+    void mobSpawnCapsFlagTheBandsThatKeepTheSpawnerBusy() {
+        // At or below the max in every category is fine.
+        assertEquals(PerfStatus.OK, PerfRules.mobSpawnCapsStatus(40, 6, 8));
+        assertEquals(PerfStatus.OK, PerfRules.mobSpawnCapsStatus(0, 0, 0));
+        // Vanilla's 70 / 15 / 20, and one category over its own max, are flagged.
+        assertEquals(PerfStatus.WARN, PerfRules.mobSpawnCapsStatus(70, 15, 20));
+        assertEquals(PerfStatus.WARN, PerfRules.mobSpawnCapsStatus(41, 0, 0));
+        assertEquals(PerfStatus.WARN, PerfRules.mobSpawnCapsStatus(0, 7, 0));
+        assertEquals(PerfStatus.WARN, PerfRules.mobSpawnCapsStatus(0, 0, 9));
+    }
+
+    @Test
+    void mergeTargetCapsPreservesStricterPlayerCapsAndExistingMiscCap() {
+        java.util.Map<String, Integer> mergedFromDefaults = EasyMobSpawnControlBridge.mergeTargetCaps(
+                java.util.Map.of("monster", -1, "creature", 3, "water_ambient", 20));
+        assertEquals(PerfRules.MONSTER_SPAWN_CAP_MAX, mergedFromDefaults.get("monster"));
+        assertEquals(3, mergedFromDefaults.get("creature"), "stricter player cap must not be raised");
+        assertEquals(6, mergedFromDefaults.get("water_ambient"));
+        assertEquals(-1, mergedFromDefaults.get("misc"), "missing misc defaults to -1 sentinel");
+
+        java.util.Map<String, Integer> withExplicitMisc = EasyMobSpawnControlBridge.mergeTargetCaps(
+                java.util.Map.of("misc", 15, "monster", 70));
+        assertEquals(15, withExplicitMisc.get("misc"), "existing positive misc cap must never be overwritten to -1");
+        assertEquals(PerfRules.MONSTER_SPAWN_CAP_MAX, withExplicitMisc.get("monster"));
+    }
+
+    @Test
+    void randomTickSpeedAndTickingChutesBands() {
+        assertEquals(PerfStatus.OK, PerfRules.randomTickSpeedStatus(0));
+        assertEquals(PerfStatus.OK, PerfRules.randomTickSpeedStatus(PerfRules.RANDOM_TICK_SPEED_MAX));
+        assertEquals(PerfStatus.WARN, PerfRules.randomTickSpeedStatus(PerfRules.RANDOM_TICK_SPEED_MAX + 1));
+        assertEquals(PerfStatus.OK, PerfRules.tickingChutesStatus(0));
+        assertEquals(PerfStatus.OK, PerfRules.tickingChutesStatus(PerfRules.TICKING_CHUTES_MAX));
+        assertEquals(PerfStatus.WARN, PerfRules.tickingChutesStatus(PerfRules.TICKING_CHUTES_MAX + 1));
+    }
+
+    @Test
+    void onlyCreateChutesCountAsChuteTickers() {
+        assertTrue(PerfRules.isCreateChuteTickerType("create:chute"));
+        assertTrue(PerfRules.isCreateChuteTickerType("create:smart_chute"));
+        assertFalse(PerfRules.isCreateChuteTickerType("create:funnel"));
+        assertFalse(PerfRules.isCreateChuteTickerType("create_connected:inventory_access_port"));
+        assertFalse(PerfRules.isCreateChuteTickerType(null));
+    }
+
+    @Test
+    void newStepsAcceptTheAdvicesTheirChecksProduce() {
+        // Mirrors ServerPerfChecks/ClientPerfChecks: each result those checks can build must name
+        // an advice its step declares, and only fixable steps may report fixable.
+        assertEquals(PerfCheck.PREFIX + "mob_spawn_caps.advice.ok",
+                PerfCheckResult.of(PerfCheck.MOB_SPAWN_CAPS, PerfScope.SERVER, PerfStatus.OK,
+                        "ok", false, "40", "5", "6", "40", "5", "6").adviceKey());
+        assertTrue(PerfCheckResult.of(PerfCheck.MOB_SPAWN_CAPS, PerfScope.SERVER, PerfStatus.WARN,
+                "high", true, "70", "15", "20", "40", "5", "6").fixable());
+        PerfCheckResult missing = PerfCheckResult.of(PerfCheck.MOB_SPAWN_CAPS, PerfScope.SERVER,
+                PerfStatus.INFO, "missing", false, "70", "15", "20", "40", "5", "6");
+        assertEquals(PerfCheck.MOB_SPAWN_CAPS, missing.check());
+        assertTrue(PerfCheckResult.of(PerfCheck.RANDOM_TICK_SPEED, PerfScope.SERVER, PerfStatus.WARN,
+                "high", true, "5", "3").fixable());
+        assertEquals(PerfCheck.PREFIX + "chute_contraption_scan.advice.absent",
+                PerfCheckResult.of(PerfCheck.CHUTE_CONTRAPTION_SCAN, PerfScope.SERVER,
+                        PerfStatus.UNAVAILABLE, "absent", false, "-", "16").adviceKey());
+        PerfCheckResult manyChutes = PerfCheckResult.of(PerfCheck.CHUTE_CONTRAPTION_SCAN, PerfScope.SERVER,
+                PerfStatus.WARN, "high", false, "17", "16");
+        assertFalse(manyChutes.fixable());
+        PerfCheckResult immediate = PerfCheckResult.of(PerfCheck.IMMEDIATELY_FAST, PerfScope.CLIENT,
+                PerfStatus.INFO, "missing", false);
+        assertFalse(immediate.fixable());
+        assertEquals(PerfCheck.PREFIX + "immediately_fast.advice.missing", immediate.adviceKey());
+    }
+
+    @Test
     void argumentsAreKeptWithinTheNetworkLimitSoTheReportAlwaysEncodes() {
         // 2026-10-12 regression: generational ZGC's four MXBean names (70 characters) exceeded the
         // old 64-character limit, the report failed to encode and the player was disconnected.

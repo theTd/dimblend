@@ -17,6 +17,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import net.minecraft.Util;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -46,8 +47,8 @@ import org.slf4j.Logger;
  * the worldgen mailboxes run on. The only mod-side line, labeled {@code pregen}, is a
  * one-line context so pregen ticket pressure can be told apart from engine pressure.
  *
- * <p>Root stall indicator: a per-chunk ledger of unresolved generation futures. A holder
- * {@code getAllFutures()} entry that stays incomplete across samples longer than
+ * <p>Root stall indicator: a per-chunk ledger of unresolved generation futures. A status
+ * slot in the holder's {@code futures} array that stays incomplete across samples longer than
  * {@link #STUCK_TICKS} marks the chunk as stuck. That is the direct symptom of a
  * generation step whose future never completes; in particular the fatal-exception path
  * leaves the step future pending and the generation ref count claimed, so the chunk can
@@ -65,6 +66,8 @@ public final class ChunkGenMonitor {
     private static final int LOG_THROTTLE_TICKS = 1200;
     /** Ledger slots per chunk; ChunkStatus.FULL has the highest status index. */
     private static final int STATUS_SLOTS = ChunkStatus.FULL.getIndex() + 1;
+    /** Status order, identical to the index order of {@code GenerationChunkHolder.futures}. */
+    private static final List<ChunkStatus> STATUSES = ChunkStatus.getStatusList();
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -184,11 +187,19 @@ public final class ChunkGenMonitor {
             long chunk = holder.getPos().toLong();
             this.seen.add(chunk);
             Ledger ledger = this.pending.get(chunk);
+            // A chunk already at the terminal FULL status with no ledger entry has nothing to
+            // age and nothing to complete: the slot walk below would read every status and
+            // change no state. {@code getAllFutures()} used to allocate one ArrayList plus one
+            // Pair per status per visible holder just to reach the same conclusion.
+            if (ledger == null && holder.getChunkIfPresentUnchecked(ChunkStatus.FULL) != null) {
+                continue;
+            }
             boolean anyPending = false;
-            for (com.mojang.datafixers.util.Pair<ChunkStatus, CompletableFuture<ChunkResult<ChunkAccess>>> pair
-                    : holder.getAllFutures()) {
-                CompletableFuture<ChunkResult<ChunkAccess>> future = pair.getSecond();
-                int slot = pair.getFirst().getIndex();
+            AtomicReferenceArray<CompletableFuture<ChunkResult<ChunkAccess>>> futures =
+                    ((GenerationChunkHolderAccessor) holder).dimblend$futures();
+            int slots = Math.min(futures.length(), STATUSES.size());
+            for (int slot = 0; slot < slots; slot++) {
+                CompletableFuture<ChunkResult<ChunkAccess>> future = futures.get(slot);
                 boolean trackable = slot >= 0 && slot < STATUS_SLOTS;
                 if (future != null && !future.isDone()) {
                     anyPending = true;
@@ -202,7 +213,7 @@ public final class ChunkGenMonitor {
                     } else if (now - ledger.stamps[slot] > STUCK_TICKS) {
                         stuck.add(new StuckEntry(
                                 chunk,
-                                pair.getFirst(),
+                                STATUSES.get(slot),
                                 now - ledger.stamps[slot],
                                 holder.getGenerationRefCount(),
                                 holder.getQueueLevel(),

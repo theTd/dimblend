@@ -93,6 +93,43 @@ public final class LavaContactScan {
         return false;
     }
 
+    /** 世界坐标格范围（含端点）：载具接触扫描、区块与 section 预筛共用的盒。 */
+    public record BlockBox(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        public boolean isEmpty() {
+            return minX > maxX || minY > maxY || minZ > maxZ;
+        }
+    }
+
+    /**
+     * 载具级接触扫描盒：把载具全部投影方块的接触扫描格范围（SableLavaMelt#touchesLava）收成一个盒。
+     *
+     * <p>入参是世界侧 AABB（载具 plot 盒按当前 pose 变换后的 8 角包围盒），它已经包住
+     * 每个方块变换后的完整体积，因此对方块 i 有 {@code wx_i - hx_i >= minX} 与
+     * {@code wx_i + hx_i <= maxX}（同理 y/z）。由 floor 与 max/min 的单调性：</p>
+     * <ul>
+     * <li>{@code floor(wx-hx-expand) >= floor(minX-expand)}</li>
+     * <li>{@code floor(wx+hx+expand) <= floor(maxX+expand)}</li>
+     * <li>{@code scanMinY(...) >= max(minBuildHeight, floor(minY-expand))}</li>
+     * <li>{@code scanMaxY(..., columnTop) <= min(maxBuildHeight-1,
+     *     max(floor(maxY+expand), floor(maxY)+1))}——柱顶 +1 项也对 maxY 单调</li>
+     * </ul>
+     * <p>所以本盒是"每个方块各自扫描盒"的严格超集，按它预筛 section 不会漏岩浆格。</p>
+     *
+     * @param maxBuildHeight 世界最高层（不含），盒内最大 y 为 {@code maxBuildHeight - 1}
+     */
+    public static BlockBox vehicleScanBounds(double minX, double minY, double minZ,
+            double maxX, double maxY, double maxZ, double expand,
+            int minBuildHeight, int maxBuildHeight) {
+        int yLimit = maxBuildHeight - 1;
+        return new BlockBox(
+                (int) Math.floor(minX - expand),
+                Math.max(minBuildHeight, (int) Math.floor(minY - expand)),
+                (int) Math.floor(minZ - expand),
+                (int) Math.floor(maxX + expand),
+                Math.min(yLimit, Math.max((int) Math.floor(maxY + expand), (int) Math.floor(maxY) + 1)),
+                (int) Math.floor(maxZ + expand));
+    }
+
     private LavaContactScan() {
     }
 }

@@ -4,6 +4,8 @@ import java.util.Map;
 import java.util.OptionalLong;
 import java.util.UUID;
 
+import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
+import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dimblend.experience.Config;
 import it.unimi.dsi.fastutil.longs.Long2IntMap;
@@ -71,8 +73,6 @@ public final class VoidFitApplier {
     /** 单次 refit / removeAll 的旧空位拆除上限（严格大于放置上限，杜绝持续行驶下尾迹净增长）。 */
     public static final int REMOVE_BUDGET = CELL_BUDGET * 2;
 
-    private static final BlockState VOID = Blocks.STRUCTURE_VOID.defaultBlockState();
-    private static final BlockState AIR = Blocks.AIR.defaultBlockState();
     private static final int PLACE_FLAGS = Block.UPDATE_NONE | Block.UPDATE_KNOWN_SHAPE;
     private static final int PLACE_FLAGS_EVICT_FLUID =
             Block.UPDATE_CLIENTS | Block.UPDATE_NONE | Block.UPDATE_KNOWN_SHAPE;
@@ -470,8 +470,37 @@ public final class VoidFitApplier {
             // 柱顶格是车顶方块自身那一格：本格驱逐成空位，熔岩抬到柱顶 +1
             moveLavaAbove(level, tracker, self, rest, current);
         }
-        level.setBlock(pos, VOID, pureFluid ? PLACE_FLAGS_EVICT_FLUID : PLACE_FLAGS);
+        // 干净区块上的干燥 AIR -> STRUCTURE_VOID 只是内存里的临时空位：VoidFitStrip 在
+        // 保存前会把它剥回 AIR，而磁盘上本来就是 AIR。setBlock 无条件置 unsaved=true，
+        // 若不清回 false，载具持续行驶时沿线所有区块每 10s 被重复存盘（spark 34.19s）。
+        // 真实方块改动（wasUnsaved=true）或驱逐流体（pureFluid=true，可能伴随抬岩浆）
+        // 必须落盘，此时不清。
+        boolean wasUnsaved = chunk.isUnsaved();
+        level.setBlock(pos, Blocks.STRUCTURE_VOID.defaultBlockState(),
+                pureFluid ? PLACE_FLAGS_EVICT_FLUID : PLACE_FLAGS);
+        if (shouldPreserveCleanChunkOnPlace(wasUnsaved, pureFluid)) {
+            chunk.setUnsaved(false);
+        }
         return true;
+    }
+
+    /**
+     * 放置后是否可以清掉区块脏标记：仅"原本干净 + 不是流体驱逐"的无害空位写入。
+     *
+     * <p>不变式：干燥 {@code AIR -> STRUCTURE_VOID} 不落盘（保存时被
+     * {@link VoidFitStrip} 剥回空气，磁盘上原本就是空气），所以不该把区块标脏；
+     * 驱逐流体会改写世界真实内容，原区块已脏时的写入属于别的改动，都不能清。</p>
+     */
+    static boolean shouldPreserveCleanChunkOnPlace(boolean wasUnsaved, boolean pureFluid) {
+        return !wasUnsaved && !pureFluid;
+    }
+
+    /**
+     * 拆除后是否可以清掉区块脏标记：仅"原本干净 + 六邻无流体"的干燥尾迹拆除。
+     * 带邻接回流的拆除会改世界，不能清。
+     */
+    static boolean shouldPreserveCleanChunkOnRemove(boolean wasUnsaved, boolean adjacentFluid) {
+        return !wasUnsaved && !adjacentFluid;
     }
 
     /**
@@ -569,15 +598,22 @@ public final class VoidFitApplier {
         int x = pos.getX();
         int y = pos.getY();
         int z = pos.getZ();
-        LevelChunk centerChunk = level.getChunkSource().getChunkNow(x >> 4, z >> 4);
+        LevelChunk centerChunk = loadedChunkAt(level, x >> 4, z >> 4);
         if (centerChunk == null) {
             return false;
         }
         if (!centerChunk.getBlockState(pos).is(Blocks.STRUCTURE_VOID)) {
             return false;
         }
-        int flags = hasAdjacentFluid(level, centerChunk, x, y, z) ? REMOVE_FLAGS : REMOVE_FLAGS_DRY;
-        level.setBlock(pos, AIR, flags);
+        boolean adjacentFluid = hasAdjacentFluid(level, centerChunk, x, y, z);
+        int flags = adjacentFluid ? REMOVE_FLAGS : REMOVE_FLAGS_DRY;
+        // 同放置路径：磁盘上空位从未落盘（保存剥离），干燥尾迹拆回 AIR 不改变磁盘内容。
+        // 贴流体拆除会触发邻接回流改世界，原区块已脏则另有真实改动——都必须保持脏。
+        boolean wasUnsaved = centerChunk.isUnsaved();
+        level.setBlock(pos, Blocks.AIR.defaultBlockState(), flags);
+        if (shouldPreserveCleanChunkOnRemove(wasUnsaved, adjacentFluid)) {
+            centerChunk.setUnsaved(false);
+        }
         // 空位拆除 = 载具离开/投影收缩：压在它上面那一格的保留岩浆不再受闸门约束，
         // 立即解除（不等下一轮 refit；静止载具的 refit 最长可隔一个自愈周期）
         LavaFlowGuard.releaseCell(level.dimension(), BlockPos.asLong(x, y + 1, z));
@@ -613,7 +649,24 @@ public final class VoidFitApplier {
 
     @Nullable
     private static LevelChunk loadedChunkAt(ServerLevel level, BlockPos pos) {
-        return level.getChunkSource().getChunkNow(pos.getX() >> 4, pos.getZ() >> 4);
+        return loadedChunkAt(level, pos.getX() >> 4, pos.getZ() >> 4);
+    }
+
+    /**
+     * 非阻塞取世界侧已加载 FULL 区块，并显式排除 Sable plot 区块（{@code getChunkHolder != null}）：
+     * 拟合空位只属于主世界投影空间，绝不进入子层级 plot 区块，也绝不清除 plot 区块的脏标记。
+     */
+    @Nullable
+    private static LevelChunk loadedChunkAt(ServerLevel level, int cx, int cz) {
+        LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
+        if (chunk == null) {
+            return null;
+        }
+        ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
+        if (container != null && container.getChunkHolder(chunk.getPos()) != null) {
+            return null;
+        }
+        return chunk;
     }
 
     /**

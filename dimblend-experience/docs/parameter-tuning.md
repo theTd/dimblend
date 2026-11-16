@@ -456,9 +456,13 @@ largest tick stall first, from the 2026-10 TrainTripWorld spark captures.
 | FiniteWater mod | server | `finite_water` installed | — (remove the jar) |
 | Overworld can unload | server | game rule `spawnChunkRadius` > 0 (the spawn-chunk ticket keeps a 7×7 full area plus a partly loaded ring in memory all session), or chunks force-loaded with `/forceload` | sets `spawnChunkRadius` to 0 (the rule callback drops the ticket at once); force-loaded chunks: guidance only |
 | Simulation distance | singleplayer client; dedicated server | > 8 | singleplayer: sets the option to 8 (the integrated server follows it live); dedicated: guidance for `server.properties` |
+| Mob spawn caps | server | a live per-chunk `MobCategory` cap still keeps the spawner retrying every chunk: monsters > 40, ambient > 6, water ambient > 8 (vanilla is 70 / 15 / 20), and `easy_mob_spawn_control` is loaded | lowers monster / creature / ambient / axolotls / underground_water_creature / water_creature / water_ambient through that mod's own config; it applies to `MobCategory.max` in memory at once, so no restart is needed (without the mod the step is `INFO` and only explains how to install it) |
+| Random tick speed | server | game rule `randomTickSpeed` > 3 (vanilla) | sets the rule to 3 |
+| Ticking Create chutes | server | `create` and `create_connected` are loaded and more than 16 `create:chute` / `create:smart_chute` block entities are ticking (each asks create_connected for its inventories every tick) | — (guidance: replace chained chutes with a funnel or vault, and do not keep empty bases loaded with `/forceload`) |
 | Render distance | client | > 12 | sets the option to 12 |
-| Sable physics settings | server | informational: shows sub-steps / iterations / interval versus Sable's defaults | opens the Sable page |
+| Sable physics settings | server | informational: shows sub-steps / iterations / interval versus Sable's defaults; the 30-minute capture put the defaults at ~13.5 % of server tick time (~3.0 ms/tick), and `1` sub-step + `12` solver iterations cuts about half of it | opens the Sable page |
 | Sable smoothing buffer | client | `sub_level_snapshot_interpolation_delay_ticks` < 3 | sets 3 (applies immediately) |
+| ImmediatelyFast | client | `immediatelyfast` missing (`INFO`, so it never counts as a warning) | — (install the client-side batching mod) |
 
 The JVM steps run in the process they describe: in singleplayer only the
 server's results are shown (same JVM); a client connected to a remote server
@@ -468,6 +472,29 @@ the same permission gate as the panel (level 2) and travel on two extra payloads
 protocol version (now `27`, see above). The thresholds live in `PerfRules` and are unit-tested;
 `PerfChecklistTranslationsTest` checks both languages cover every step, advice
 and fix label.
+
+The three server steps added in the 2026-11 batch come from spark profile
+`i708Ci2hF3` (30-minute TrainTripWorld travel): `NaturalSpawner.spawnForChunk`
+was 26.2 % of server tick time (5.74 ms/tick) because the vanilla per-chunk caps
+rarely fill across several biome mods, `ChuteBlockEntity.tick` plus
+create_connected's `InventoryAccessHandler` cost 15.56 s (0.47 ms/tick), and
+Sable physics took ~13.5 % (~3.0 ms/tick) at its defaults. `MOB_SPAWN_CAPS` and
+`RANDOM_TICK_SPEED` carry one-click fixes; `CHUTE_CONTRAPTION_SCAN` is guidance
+only. The chute count reads `Level.blockEntityTickers` (its Mojmap runtime field
+name) and only accepts `create:chute` / `create:smart_chute` ticker types, so it
+loads no chunks and references no Create class; when the field cannot be read the
+step reports itself as not applicable for the rest of the session.
+
+The mob-cap fix (`EasyMobSpawnControlBridge`) calls the mod's
+`CommonConfig.saveSpawnCaps` and `reload`, then
+`HandleServerAboutToStart.onServerAboutToStart(null)`, which re-applies
+`MobCategory.max` in memory — the handler never dereferences its event. Each
+category keeps `min(existing, target)` (a `-1` entry is treated as "unset", so it
+takes the target), and `misc` stays `-1`. The mod's `spawnRates` path is
+deliberately not used: cancelling `FinalizeSpawnEvent` keeps the caps from
+filling and makes the spawner work harder. Without the mod the step is `INFO`
+with installation guidance rather than a fixable warning.
+`PerfChecklistTranslationsTest` also requires the newest steps' keys in `zh_tw`.
 
 ## Verification
 
