@@ -24,6 +24,13 @@ public interface TrainBrakeService {
     /** True when the consist containing {@code carriage} is currently latched. */
     boolean isLatched(ServerLevel level, UUID carriage);
 
+    /**
+     * Plays the normal train brake sound once to every player in {@code level}, without distance
+     * attenuation (used when a chase brake car couples onto the player's train).
+     */
+    default void playGlobalNormalBrakeSound(ServerLevel level) {
+    }
+
     TrainBrakeService NONE = new TrainBrakeService() {
         @Override
         public boolean latch(ServerLevel level, UUID carriage) {

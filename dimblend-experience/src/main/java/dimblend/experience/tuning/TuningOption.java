@@ -54,10 +54,10 @@ public enum TuningOption {
     OBSERVER_BLAZE_RADIUS("observer_blaze_radius", 32.0D, 16.0D, 64.0D, 0, "sable", Section.SABLE),
     // 默认值镜像 Config.STATION_CARRIAGE_LIMIT（6），由 TuningOptionTest 钉死；宽度 3-11、精度 1
     STATION_CARRIAGE_LIMIT("station_carriage_limit", 6.0D, 3.0D, 11.0D, 0, ""),
-    // 末影龙追逐（requirements.md §3.1）：八项一一镜像 dimblend-dragonchase 的
+    // 末影龙追逐（requirements.md §3.1）：九项一一镜像 dimblend-dragonchase 的
     // api.DragonChaseTuning.Option，读写都经 DragonChaseTuningBridge 转交给那个 mod 的 server
     // config（默认值/范围/步进与那边逐项相同，由 DragonChaseTuning 自己再校验一次）。
-    // 步进一律走显式 step 构造器：8 项里有 4 项的步进不是 10 的负幂（0.5 / 0.2 / 16 / 4）。
+    // 步进一律走显式 step 构造器：多数步进不是 10 的负幂（0.5 / 0.2 / 16 / 4 / 8）。
     DRAGON_CHASE_SPEED_FLOOR_ENABLED("dragon_chase_speed_floor_enabled", 1.0D, "dimblend_dragonchase",
             Section.DRAGON_CHASE),
     DRAGON_CHASE_GENERATION_SPEED_STEP("dragon_chase_generation_speed_step", 1.0D, 0.0D, 8.0D, 1,
@@ -73,7 +73,9 @@ public enum TuningOption {
     DRAGON_CHASE_FIREBALL_DAMAGE_THRESHOLD("dragon_chase_fireball_damage_threshold", 32.0D, 4.0D, 64.0D, 0,
             "dimblend_dragonchase", Section.DRAGON_CHASE, 4.0D),
     DRAGON_CHASE_DAMAGE_CAP_PERCENT("dragon_chase_damage_cap_percent", 2.0D, 0.5D, 10.0D, 1,
-            "dimblend_dragonchase", Section.DRAGON_CHASE, 0.5D);
+            "dimblend_dragonchase", Section.DRAGON_CHASE, 0.5D),
+    DRAGON_CHASE_KEEP_AWAY_DISTANCE("dragon_chase_keep_away_distance", 96.0D, 32.0D, 256.0D, 0,
+            "dimblend_dragonchase", Section.DRAGON_CHASE, 8.0D);
 
     /** Maximum UTF-8 character length for option identifiers on the tuning wire. */
     public static final int MAX_ID_LENGTH = 64;

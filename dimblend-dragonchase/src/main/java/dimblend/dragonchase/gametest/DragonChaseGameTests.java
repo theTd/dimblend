@@ -40,6 +40,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
@@ -49,6 +50,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.RegisterGameTestsEvent;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
@@ -91,6 +93,8 @@ public final class DragonChaseGameTests {
     private static final int CRYSTAL_X = 1088;
     /** The dragon / fireball site. */
     private static final int DRAGON_X = 1536;
+    /** The retreat / forward-shot / catch-up site (spans RETREAT_X - 112 .. RETREAT_X + 16). */
+    private static final int RETREAT_X = 2048;
     /** A random-drawn region (the only kind an override may target) that no test has generated. */
     private static final int BARREN_REGION = 90;
 
@@ -507,6 +511,90 @@ public final class DragonChaseGameTests {
                 reloaded.discard();
                 forceSite(level, DRAGON_X, false);
                 helper.succeed();
+            });
+        });
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // 5. Retreat-to-shoot, forward heading, reload hold (P1-1) and gradual catch-up
+    // ------------------------------------------------------------------------------------------
+
+    /**
+     * Proves the remade chase dragon:
+     * <ol>
+     *   <li>accepts {@code fireFireballAt} by entering {@code CHASE_FIREBALL} and rejects an
+     *       overlapping {@code breatheOnto} so the director keeps thresholds queued,</li>
+     *   <li>holds {@code CHASE_FIREBALL} on the first entity tick after an NBT reload before
+     *       {@code LevelTickEvent.Post} supplies {@code nestCenter} (P1-1 regression),</li>
+     *   <li>pulls back toward the player-train reference without turning backwards, fires forward
+     *       along +X, and enters {@code CHASE_CATCH_UP} to gradually close back on the nest.</li>
+     * </ol>
+     */
+    @GameTest(template = "empty", templateNamespace = DimBlendDragonChase.MODID,
+            batch = "dc_retreat", timeoutTicks = 250)
+    public static void dragonRetreatsWithoutTurningReloadsAndCatchesUp(GameTestHelper helper) {
+        ServerLevel level = rotating(helper);
+        for (int site = RETREAT_X - 128; site <= RETREAT_X; site += 32) {
+            forceSite(level, site, true);
+        }
+
+        Vec3 nest = new Vec3(RETREAT_X, TRACK_Y, 0.0D);
+        Vec3 trainFront = new Vec3(RETREAT_X - 96.0D, TRACK_Y, 0.0D);
+        Vec3 spawn = new Vec3(RETREAT_X, 96.0D, 0.0D);
+        Vec3 retreatGoal = new Vec3(RETREAT_X - 88.0D, 84.0D, 0.0D);
+
+        whenEntityTicking(helper, level, BlockPos.containing(spawn), BlockPos.containing(retreatGoal), () -> {
+            ChaseDragon dragon = ChaseDragon.createChase(level, spawn, 400.0F);
+            helper.assertTrue(level.addFreshEntity(dragon), "the chase dragon spawns at the retreat site");
+            dragon.setChaseAnchors(nest, trainFront);
+
+            Vec3 landing = new Vec3(RETREAT_X - 12.0D, 65.0D, 0.0D);
+            helper.assertTrue(dragon.fireFireballAt(landing), "CHASE_FOLLOW accepts the fireball manoeuvre");
+            helper.assertTrue(dragon.mode() == ChaseDragonHandle.Mode.CHASE_FIREBALL,
+                    "fireFireballAt enters CHASE_FIREBALL, got " + dragon.mode());
+            helper.assertFalse(dragon.breatheOnto(
+                            new Vec3(RETREAT_X - 64.0D, 65.0D, 0.0D),
+                            new Vec3(RETREAT_X - 24.0D, 65.0D, 0.0D)),
+                    "an in-flight retreat rejects an overlapping breath so the threshold stays queued");
+
+            // P1-1: simulate a world reload where Entity#tick runs before ChaseDirector's Post tick.
+            CompoundTag saved = new CompoundTag();
+            dragon.addAdditionalSaveData(saved);
+            ChaseDragon reloaded = new ChaseDragon(DragonChaseRegistries.CHASE_DRAGON.get(), level);
+            reloaded.setPos(dragon.getX(), dragon.getY(), dragon.getZ());
+            reloaded.readAdditionalSaveData(saved);
+            reloaded.aiStep();
+            helper.assertTrue(reloaded.mode() == ChaseDragonHandle.Mode.CHASE_FIREBALL,
+                    "reload tick without anchors must preserve CHASE_FIREBALL (P1-1), got " + reloaded.mode());
+
+            helper.runAfterDelay(48, () -> {
+                helper.assertTrue(Math.abs(Mth.wrapDegrees(dragon.getYRot() - 90.0F)) < 35.0F,
+                        "the retreating dragon keeps facing +X instead of turning round, yaw " + dragon.getYRot());
+                double shotX = dragon.getX();
+                helper.assertTrue(shotX < RETREAT_X - 60.0D && shotX > RETREAT_X - 104.0D,
+                        "the dragon pulled back to the train-front reference without overshooting behind the cab, x " + shotX);
+                helper.assertTrue(dragon.mode() == ChaseDragonHandle.Mode.CHASE_CATCH_UP,
+                        "after firing the dragon switches to CHASE_CATCH_UP, got " + dragon.mode());
+                List<ChaseFireball> shots = level.getEntitiesOfClass(ChaseFireball.class,
+                        new AABB(RETREAT_X - 128.0D, 50.0D, -16.0D, RETREAT_X + 16.0D, 120.0D, 16.0D));
+                helper.assertTrue(!shots.isEmpty(), "the forward fireball was spawned toward the track");
+
+                helper.runAfterDelay(35, () -> {
+                    helper.assertTrue(dragon.getX() > shotX + 15.0D,
+                            "CHASE_CATCH_UP gradually closes back toward the nest, x "
+                                    + dragon.getX() + " vs shotX " + shotX);
+                    helper.assertTrue(Math.abs(Mth.wrapDegrees(dragon.getYRot() - 90.0F)) < 35.0F,
+                            "catch-up keeps facing +X smoothly, yaw " + dragon.getYRot());
+                    dragon.discardSilently();
+                    for (ChaseFireball fireball : level.getEntitiesOfClass(ChaseFireball.class,
+                            new AABB(RETREAT_X - 128.0D, 50.0D, -16.0D, RETREAT_X + 16.0D, 120.0D, 16.0D))) {
+                        fireball.discard();
+                    }
+                    for (int site = RETREAT_X - 128; site <= RETREAT_X; site += 32) {
+                        forceSite(level, site, false);
+                    }
+                    helper.succeed();
+                });
             });
         });
     }

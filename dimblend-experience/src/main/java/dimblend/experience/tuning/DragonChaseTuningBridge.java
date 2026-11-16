@@ -7,7 +7,7 @@ import java.util.Map;
 /**
  * Only loaded after the {@code dimblend_dragonchase} presence check ({@link TuningOption#modId()}).
  *
- * <p>Dragon Chase owns its eight server-config values; this bridge only routes the panel's options
+ * <p>Dragon Chase owns its nine server-config values; this bridge only routes the panel's options
  * to {@code dimblend.dragonchase.api.DragonChaseTuning} and never keeps a second copy. The panel's
  * ranges and steps match that mod's defaults (requirements.md §3.1) because the panel validates
  * first and the owning config validates again.
@@ -29,6 +29,7 @@ final class DragonChaseTuningBridge {
         map(TuningOption.DRAGON_CHASE_FIREBALL_DAMAGE_THRESHOLD,
                 DragonChaseTuning.Option.FIREBALL_DAMAGE_THRESHOLD);
         map(TuningOption.DRAGON_CHASE_DAMAGE_CAP_PERCENT, DragonChaseTuning.Option.DAMAGE_CAP_PERCENT);
+        map(TuningOption.DRAGON_CHASE_KEEP_AWAY_DISTANCE, DragonChaseTuning.Option.KEEP_AWAY_DISTANCE);
     }
 
     static boolean isLoaded() {

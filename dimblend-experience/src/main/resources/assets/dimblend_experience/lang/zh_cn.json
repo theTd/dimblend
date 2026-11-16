@@ -79,6 +79,8 @@
 	"screen.dimblend_experience.tuning.dragon_chase_fireball_damage_threshold.description": "默认：32 点。范围 4–64，步长 4；龙累计受到这么多伤害后清零并回头发射一颗龙息弹，之后冷却 8 秒。",
 	"screen.dimblend_experience.tuning.dragon_chase_damage_cap_percent": "每秒最大掉血（%）",
 	"screen.dimblend_experience.tuning.dragon_chase_damage_cap_percent.description": "默认：2.0%。范围 0.5–10.0，步长 0.5；龙每秒最多掉这么多百分比的最大生命，超出的伤害作废。",
+	"screen.dimblend_experience.tuning.dragon_chase_keep_away_distance": "龙巢最低保持距离",
+	"screen.dimblend_experience.tuning.dragon_chase_keep_away_distance.description": "追逐期间龙巢车厢与玩家列车保持的最低距离（格）",
 	"block.dndecor.andesite_frontlight": "安山列车探照灯",
 	"block.dndecor.brass_frontlight": "黄铜列车探照灯",
 	"block.dndecor.copper_frontlight": "铜列车探照灯",

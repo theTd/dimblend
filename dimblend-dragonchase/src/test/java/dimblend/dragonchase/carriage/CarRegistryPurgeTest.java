@@ -10,6 +10,7 @@ import dimblend.dragonchase.structure.CarKind;
 import java.util.Set;
 import java.util.UUID;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -64,6 +65,30 @@ class CarRegistryPurgeTest {
         CarRegistry loaded = CarRegistry.load(registry.save(new CompoundTag(), null));
 
         assertTrue(loaded.find(id).removed);
+    }
+
+    @Test
+    void coupledSoundFlagSurvivesASaveSoItPlaysOncePerCar() {
+        CarRegistry registry = new CarRegistry();
+        UUID played = UUID.randomUUID();
+        UUID fresh = UUID.randomUUID();
+        registry.register(played, CarKind.BRAKE).coupledSoundPlayed = true;
+        registry.register(fresh, CarKind.BRAKE);
+
+        CarRegistry loaded = CarRegistry.load(registry.save(new CompoundTag(), null));
+
+        assertTrue(loaded.find(played).coupledSoundPlayed, "a played car must not announce its coupling again");
+        assertFalse(loaded.find(fresh).coupledSoundPlayed);
+
+        // A save written before the flag existed has no key at all: that means "not played yet".
+        CompoundTag legacy = new CompoundTag();
+        CompoundTag entry = new CompoundTag();
+        entry.putUUID("id", fresh);
+        entry.putString("kind", CarKind.BRAKE.name());
+        ListTag cars = new ListTag();
+        cars.add(entry);
+        legacy.put("cars", cars);
+        assertFalse(CarRegistry.load(legacy).find(fresh).coupledSoundPlayed);
     }
 
     @Test

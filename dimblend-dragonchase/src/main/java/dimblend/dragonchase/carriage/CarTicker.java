@@ -3,6 +3,8 @@ package dimblend.dragonchase.carriage;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
+import dimblend.api.NonCrewCarriages;
+import dimblend.api.TrainBrakeService;
 import dimblend.dragonchase.DimBlendDragonChase;
 import dimblend.dragonchase.structure.CarKind;
 import dimblend.dragonchase.structure.CarMotion;
@@ -72,6 +74,10 @@ public final class CarTicker {
             return;
         }
         Set<UUID> forceLoaded = forceLoadedIds(container);
+        // The brake car's announcement is about coupling to the player's train. The chase's own cars
+        // are force-loaded as well, so they are excluded here; chewing still sees every car.
+        Set<UUID> crewForceLoaded = new HashSet<>(forceLoaded);
+        crewForceLoaded.removeAll(NonCrewCarriages.ids(level));
         boolean dirty = false;
         for (CarRegistry.Car record : registry.snapshot()) {
             if (record.removed) {
@@ -83,7 +89,7 @@ public final class CarTicker {
                 continue;
             }
             try {
-                dirty |= tickCar(level, container, forceLoaded, record, car);
+                dirty |= tickCar(level, container, forceLoaded, crewForceLoaded, record, car);
             } catch (RuntimeException failure) {
                 DimBlendDragonChase.LOGGER.warn("Dragon Chase car {} failed: {}", record.id, failure.toString());
             }
@@ -97,7 +103,7 @@ public final class CarTicker {
     }
 
     private static boolean tickCar(ServerLevel level, ServerSubLevelContainer container, Set<UUID> forceLoaded,
-            CarRegistry.Car record, ServerSubLevel car) {
+            Set<UUID> crewForceLoaded, CarRegistry.Car record, ServerSubLevel car) {
         long now = level.getGameTime();
         if (record.dissolvePhase != CarRules.NO_PHASE || record.fallPhase != CarRules.NO_PHASE) {
             // A removal in progress owns the car; no rule may fight it.
@@ -105,7 +111,7 @@ public final class CarTicker {
         }
         return switch (record.kind) {
             case NEST -> tickNest(level, record, car);
-            case BRAKE -> tickBrake(level, container, forceLoaded, record, car, now);
+            case BRAKE -> tickBrake(level, container, forceLoaded, crewForceLoaded, record, car, now);
             case CRYSTAL -> tickCrystal(level, container, forceLoaded, record, car, now);
         };
     }
@@ -130,11 +136,20 @@ public final class CarTicker {
     // ------------------------------------------------------------------ brake car
 
     private static boolean tickBrake(ServerLevel level, ServerSubLevelContainer container, Set<UUID> forceLoaded,
-            CarRegistry.Car record, ServerSubLevel car, long now) {
+            Set<UUID> crewForceLoaded, CarRegistry.Car record, ServerSubLevel car, long now) {
         AABB box = car.boundingBox().toMojang();
         boolean dirty = false;
 
         CarEffects.redDust(level, box, level.getRandom());
+
+        // requirements.md §3.5: a brake car that couples onto the player's train announces it once,
+        // map-wide. Checked every tick, deliberately outside the push-gated chew cadence; the nest
+        // and the chase's other cars are force-loaded too, so only crew cars count as a coupling.
+        if (!record.coupledSoundPlayed && CarChew.coupledToForceLoaded(level, car, CarKind.BRAKE, crewForceLoaded)) {
+            record.coupledSoundPlayed = true;
+            dirty = true;
+            TrainBrakeService.get().playGlobalNormalBrakeSound(level);
+        }
 
         CarPlans.Cell bogeyCell = CarPlans.of(CarKind.BRAKE).bogey();
         BlockPos redstonePos = CarMotion.plotPos(car, bogeyCell).above();

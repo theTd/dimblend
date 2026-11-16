@@ -15,9 +15,9 @@ import net.minecraft.world.phys.Vec3;
  * {@code ENTITY_TICKING} ticket on the nest sub-level's own 1-2 chunks. Because the chase gap is
  * 128-512+ blocks (8-32+ chunks, routinely beyond the server's {@code simulation-distance}), the
  * dragon (spawning 64 blocks behind the nest, swaying {@code z = +-32}, orbiting at {@code r =
- * 40..60}, or swooping toward the train) and its fireballs would otherwise leave
- * {@code DistanceManager#inEntityTickingRange} and stop ticking or unload to chunk NBT while the
- * nest keeps fleeing.
+ * 40..60}, retreating toward the train to attack, or catching back up) and its fireballs would
+ * otherwise leave {@code DistanceManager#inEntityTickingRange} and stop ticking or unload to chunk
+ * NBT while the nest keeps fleeing.
  *
  * <p>Radius 3 sets ticket level {@code 33 - 3 = 30}, keeping a 3x3 chunk window in
  * {@code ENTITY_TICKING} ({@code <= 31}) and a 7x7 ring in {@code FULL} ({@code <= 33}, satisfying

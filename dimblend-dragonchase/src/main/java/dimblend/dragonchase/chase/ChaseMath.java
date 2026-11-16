@@ -37,12 +37,29 @@ public final class ChaseMath {
 
     /** §3.3: a corridor car within this distance of the nest starts the chase. */
     public static final double CHASE_START_DISTANCE = 128.0;
-    /** §3.3/§3.4: the nest tries to keep at least this gap ahead of the chasing train. */
-    public static final double KEEP_AWAY_DISTANCE = 128.0;
-    /** How much slack above {@link #KEEP_AWAY_DISTANCE} the nest aims for before it slows down. */
+    /**
+     * §3.3/§3.4: the default gap the nest keeps ahead of the chasing train (the live value is
+     * {@code DragonChaseTuning.keepAwayDistance()}, tunable 32-256 in steps of 8).
+     */
+    public static final double DEFAULT_KEEP_AWAY_DISTANCE = 96.0;
+    /** How much slack above the keep-away distance the nest aims for before it slows down. */
     public static final double KEEP_AWAY_MARGIN = 32.0;
     /** Gain of the gap-closing term, so the nest reacts without overshooting. */
     public static final double KEEP_AWAY_GAIN = 0.5;
+    /**
+     * §3.4: the most the nest may add on top of the leader's speed to widen the gap. Without this
+     * cap a 256-block keep-away distance starting the chase at a 128-block gap would ask for
+     * {@code 0.5 * (288 - 128) = 80 m/s} and fling the nest past both the speed cap and any dragon.
+     */
+    public static final double KEEP_AWAY_MAX_BOOST = 24.0D;
+    /**
+     * §3.4: half-width of the white line's train band ({@code |z| <= 7}). The band locator counts
+     * only these cars as "the train", so this is also the band the dragon retreats into before it
+     * shoots. Kept here as a number because {@code dimblend.band.BandTrainMath.TRAIN_HALF_WIDTH}
+     * is implementation layer and this module may only import {@code dimblend.api}. Keep the two
+     * equal.
+     */
+    public static final double WHITE_LINE_HALF_WIDTH = 7.0;
     /** §3.3: the 2 m/s floor every force-loaded sub-level gets while a nest exists. */
     public static final double SPEED_FLOOR = 2.0;
     /** §3.4: minimum nest speed starts here. */
@@ -118,16 +135,22 @@ public final class ChaseMath {
 
     /**
      * §3.4 nest target speed: never below {@code minSpeed}, and when the gap to the leading car
-     * shrinks below {@link #KEEP_AWAY_DISTANCE} + {@link #KEEP_AWAY_MARGIN} the nest speeds up by
-     * {@link #KEEP_AWAY_GAIN} times the missing gap on top of the leader's own speed.
+     * shrinks below {@code keepAwayDistance} + {@link #KEEP_AWAY_MARGIN} the nest speeds up by
+     * {@link #KEEP_AWAY_GAIN} times the missing gap on top of the leader's own speed — capped at
+     * {@link #KEEP_AWAY_MAX_BOOST} so a large keep-away distance cannot fling it at unrealistic
+     * speeds.
+     *
+     * @param keepAwayDistance the live tuning value ({@code DragonChaseTuning.keepAwayDistance()})
      */
-    public static double nestTargetSpeed(double minSpeed, double nestX, double leaderX, double leaderSpeed) {
+    public static double nestTargetSpeed(double minSpeed, double keepAwayDistance, double nestX, double leaderX,
+            double leaderSpeed) {
         double gap = nestX - leaderX;
-        double desired = KEEP_AWAY_DISTANCE + KEEP_AWAY_MARGIN;
+        double desired = keepAwayDistance + KEEP_AWAY_MARGIN;
         if (gap >= desired) {
             return minSpeed;
         }
-        return Math.max(minSpeed, leaderSpeed + KEEP_AWAY_GAIN * (desired - gap));
+        double boost = Math.min(KEEP_AWAY_MAX_BOOST, KEEP_AWAY_GAIN * (desired - gap));
+        return Math.max(minSpeed, leaderSpeed + boost);
     }
 
     /** Velocity delta that reaches {@code targetVx} without ever decelerating. */

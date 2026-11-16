@@ -5,7 +5,7 @@ import java.util.EnumMap;
 import java.util.Map;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
-/** Server config: the eight tuning values (requirements.md §3.1). File: {@code dimblend_dragonchase-server.toml}. */
+/** Server config: the nine tuning values (requirements.md §3.1). File: {@code dimblend_dragonchase-server.toml}. */
 public final class Config {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
     private static final Map<Option, ModConfigSpec.DoubleValue> VALUES = new EnumMap<>(Option.class);
