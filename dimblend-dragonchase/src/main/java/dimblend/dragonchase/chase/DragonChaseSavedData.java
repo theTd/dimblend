@@ -1,5 +1,6 @@
 package dimblend.dragonchase.chase;
 
+import dimblend.dragonchase.music.ChaseMusicPhase;
 import dimblend.dragonchase.structure.CarKind;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -84,6 +85,22 @@ public final class DragonChaseSavedData extends SavedData {
     /** §3.4: one flag per {@link ChaseMath#HEALTH_THRESHOLDS} entry, so each breath fires once. */
     public final boolean[] breathFired = new boolean[ChaseMath.HEALTH_THRESHOLDS.length];
 
+    /**
+     * Phase of the chase BGM (Phase A on {@code startChase}, Phase B at the first drop below 50% HP,
+     * {@link ChaseMusicPhase#IDLE} once the chase ends). Persisted so a restart mid-chase resumes the
+     * same phase and track and every reconnect gets the same answer.
+     */
+    public ChaseMusicPhase musicPhase = ChaseMusicPhase.IDLE;
+    /** Index 0..3 of the rolled Phase A track; -1 before the chase starts. */
+    public int phaseATrack = -1;
+    /** Index 0..3 of the rolled Phase B track; -1 until the 50% drop. */
+    public int phaseBTrack = -1;
+    /**
+     * One-way Phase B latch: set at the first drop below 50% HP and never cleared while the chase
+     * runs, so crystal healing back above 50% can neither revert Phase A nor re-trigger Phase B.
+     */
+    public boolean phaseBTriggered;
+
     /** §3.4: one lingering breath cloud on the track, until a car (never the nest) crosses it. */
     public record BreathZone(double minX, double maxX) {
         public BreathZone {
@@ -151,6 +168,10 @@ public final class DragonChaseSavedData extends SavedData {
         this.fireballAccumulator = 0.0D;
         this.fireballCooldownUntil = 0L;
         java.util.Arrays.fill(this.breathFired, false);
+        this.musicPhase = ChaseMusicPhase.IDLE;
+        this.phaseATrack = -1;
+        this.phaseBTrack = -1;
+        this.phaseBTriggered = false;
         this.breathZones.clear();
         this.pendingCarKind = null;
         this.pendingCarX = 0;
@@ -225,6 +246,11 @@ public final class DragonChaseSavedData extends SavedData {
         }
         tag.put("breath_fired", thresholds);
 
+        tag.putString("music_phase", this.musicPhase.name());
+        tag.putInt("music_phase_a_track", this.phaseATrack);
+        tag.putInt("music_phase_b_track", this.phaseBTrack);
+        tag.putBoolean("music_phase_b_triggered", this.phaseBTriggered);
+
         ListTag zones = new ListTag();
         for (BreathZone zone : this.breathZones) {
             CompoundTag entry = new CompoundTag();
@@ -292,6 +318,12 @@ public final class DragonChaseSavedData extends SavedData {
             data.breathFired[i] = thresholds.getBoolean(Integer.toString(i));
         }
 
+        data.musicPhase = musicPhaseOf(tag.getString("music_phase"));
+        // Pre-music saves carry neither key; -1 (not 0) is "no track rolled yet".
+        data.phaseATrack = tag.contains("music_phase_a_track") ? tag.getInt("music_phase_a_track") : -1;
+        data.phaseBTrack = tag.contains("music_phase_b_track") ? tag.getInt("music_phase_b_track") : -1;
+        data.phaseBTriggered = tag.getBoolean("music_phase_b_triggered");
+
         ListTag zones = tag.getList("breath_zones", Tag.TAG_COMPOUND);
         for (int i = 0; i < zones.size(); i++) {
             CompoundTag entry = zones.getCompound(i);
@@ -317,6 +349,14 @@ public final class DragonChaseSavedData extends SavedData {
             return Phase.valueOf(name);
         } catch (IllegalArgumentException unknown) {
             return Phase.IDLE;
+        }
+    }
+
+    private static ChaseMusicPhase musicPhaseOf(String name) {
+        try {
+            return ChaseMusicPhase.valueOf(name);
+        } catch (IllegalArgumentException unknown) {
+            return ChaseMusicPhase.IDLE;
         }
     }
 

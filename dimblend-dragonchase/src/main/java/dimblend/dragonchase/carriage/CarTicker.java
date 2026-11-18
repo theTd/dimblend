@@ -66,18 +66,17 @@ public final class CarTicker {
     /** One server tick of every registered car in this level. */
     public static void tick(ServerLevel level) {
         CarRegistry registry = CarRegistry.get(level);
-        if (!registry.hasCars()) {
-            return;
-        }
         ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
-        if (container == null) {
+        if (!registry.hasCars() || container == null) {
+            // No car can be mounted without a container; the empty list also clears a client that
+            // still holds entity ids from before the chase ended.
+            CrystalMountsSync.tick(level, container, registry);
             return;
         }
         Set<UUID> forceLoaded = forceLoadedIds(container);
-        // The brake car's announcement is about coupling to the player's train. The chase's own cars
-        // are force-loaded as well, so they are excluded here; chewing still sees every car.
-        Set<UUID> crewForceLoaded = new HashSet<>(forceLoaded);
-        crewForceLoaded.removeAll(NonCrewCarriages.ids(level));
+        // The brake car's announcement is about coupling to the player's train, not to the chase's
+        // own cars. Chewing still sees every force-loaded car.
+        Set<UUID> nonCrew = NonCrewCarriages.ids(level);
         boolean dirty = false;
         for (CarRegistry.Car record : registry.snapshot()) {
             if (record.removed) {
@@ -89,7 +88,7 @@ public final class CarTicker {
                 continue;
             }
             try {
-                dirty |= tickCar(level, container, forceLoaded, crewForceLoaded, record, car);
+                dirty |= tickCar(level, container, forceLoaded, nonCrew, record, car);
             } catch (RuntimeException failure) {
                 DimBlendDragonChase.LOGGER.warn("Dragon Chase car {} failed: {}", record.id, failure.toString());
             }
@@ -100,10 +99,13 @@ public final class CarTicker {
         // A removed car whose sub-level no longer exists cannot come back; forgetting it keeps the
         // registry (and its NBT) from growing by three records per chase, forever.
         registry.pruneRemoved(id -> resolve(container, id) != null);
+        // After the rules: a crystal that died this tick is already out of the record, so the
+        // broadcast that follows never resurrects it on a client.
+        CrystalMountsSync.tick(level, container, registry);
     }
 
     private static boolean tickCar(ServerLevel level, ServerSubLevelContainer container, Set<UUID> forceLoaded,
-            Set<UUID> crewForceLoaded, CarRegistry.Car record, ServerSubLevel car) {
+            Set<UUID> nonCrew, CarRegistry.Car record, ServerSubLevel car) {
         long now = level.getGameTime();
         if (record.dissolvePhase != CarRules.NO_PHASE || record.fallPhase != CarRules.NO_PHASE) {
             // A removal in progress owns the car; no rule may fight it.
@@ -111,7 +113,7 @@ public final class CarTicker {
         }
         return switch (record.kind) {
             case NEST -> tickNest(level, record, car);
-            case BRAKE -> tickBrake(level, container, forceLoaded, crewForceLoaded, record, car, now);
+            case BRAKE -> tickBrake(level, container, forceLoaded, nonCrew, record, car, now);
             case CRYSTAL -> tickCrystal(level, container, forceLoaded, record, car, now);
         };
     }
@@ -136,16 +138,18 @@ public final class CarTicker {
     // ------------------------------------------------------------------ brake car
 
     private static boolean tickBrake(ServerLevel level, ServerSubLevelContainer container, Set<UUID> forceLoaded,
-            Set<UUID> crewForceLoaded, CarRegistry.Car record, ServerSubLevel car, long now) {
+            Set<UUID> nonCrew, CarRegistry.Car record, ServerSubLevel car, long now) {
         AABB box = car.boundingBox().toMojang();
         boolean dirty = false;
 
         CarEffects.redDust(level, box, level.getRandom());
 
         // requirements.md §3.5: a brake car that couples onto the player's train announces it once,
-        // map-wide. Checked every tick, deliberately outside the push-gated chew cadence; the nest
-        // and the chase's other cars are force-loaded too, so only crew cars count as a coupling.
-        if (!record.coupledSoundPlayed && CarChew.coupledToForceLoaded(level, car, CarKind.BRAKE, crewForceLoaded)) {
+        // map-wide. Checked every tick, deliberately outside the push-gated chew cadence. The answer
+        // is "a coupler's partner is not one of the chase's own cars and not an idle depot spare";
+        // it must not depend on a force-load ticket, because a train that has none (or whose ticket
+        // chain has not formed yet this tick) never couples by that test and the sound never plays.
+        if (!record.coupledSoundPlayed && CarChew.coupledToPlayerTrain(level, car, CarKind.BRAKE, nonCrew)) {
             record.coupledSoundPlayed = true;
             dirty = true;
             TrainBrakeService.get().playGlobalNormalBrakeSound(level);
@@ -232,6 +236,11 @@ public final class CarTicker {
             if (entity instanceof EndCrystal crystal) {
                 if (crystal.position().distanceToSqr(target) > 1.0E-4) {
                     crystal.setPos(target.x, target.y, target.z);
+                    // EndCrystal's entity type has updateInterval(Integer.MAX_VALUE), so ServerEntity
+                    // never reaches its "send a position" branch on its own: the client would keep the
+                    // crystal frozen where it spawned. hasImpulse is the field that branch also reads
+                    // (ServerEntity#tick), and it is cleared again once the packet is out.
+                    crystal.hasImpulse = true;
                 }
                 alive.add(slot);
             }

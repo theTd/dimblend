@@ -7,6 +7,7 @@ import dev.ryanhcode.sable.api.sublevel.ticket.SubLevelLoadingTicketType;
 import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dimblend.dragonchase.DimBlendDragonChase;
+import dimblend.dragonchase.block.DragonChaseBlocks;
 import dimblend.dragonchase.carriage.CarRegistry;
 import dimblend.dragonchase.carriage.DragonCarriages;
 import java.util.ArrayList;
@@ -158,6 +159,12 @@ public final class CarAssembler {
             // Sable's plot has its own light engine and assembly never fills it; without this the
             // car renders and reloads fully black (see PlotRelight).
             PlotRelight.relight(level, car);
+            if (kind == CarKind.BRAKE) {
+                // requirements.md §3.5: the brake car's redstone circuit must drive full braking. The
+                // marker makes the bogey bypass the player tune cap (dimblend-experience); it is set on
+                // the plot block entity, after assembly, so a copied or moved block entity cannot drop it.
+                CarBlocks.markBrakeBogey(level, plotPos(car, plan.bogey()));
+            }
             if (kind == CarKind.NEST) {
                 // requirements.md §3.3: the nest is force-loaded. The brake and crystal cars are
                 // deliberately not (§3.5), so simply no ticket for them.
@@ -216,6 +223,12 @@ public final class CarAssembler {
     /**
      * Spawns the crystal car's 1-4 end crystals and records them for the runtime rules.
      *
+     * <p><b>A crying-obsidian soul campfire under each one</b> ({@code DragonChaseBlocks}), written
+     * into the plot cell the deck slab occupied. It is the vanilla campfire model dressed in crying
+     * obsidian with a soul-ember bed and soul fire, seven sixteenths high, light 10; the car's own
+     * block has no fire damage so boarding players never burn. The plot's light engine is not fed by
+     * plot writes ({@link PlotRelight}), so it is relit once after all pedestals are placed.
+     *
      * <p><b>No bottom plate</b> ({@code EndCrystal#setShowBottom(false)}) — the requirement draws
      * bare crystals on the deck.
      *
@@ -240,7 +253,10 @@ public final class CarAssembler {
         CarRegistry.Car record = CarRegistry.get(level).find(car.getUniqueId());
         for (int i = 0; i < count; i++) {
             CarPlans.Cell cell = ends.get(i);
-            BlockPos plotPos = plotPos(car, cell).above();
+            BlockPos base = plotPos(car, cell);
+            level.setBlock(base, DragonChaseBlocks.OBSIDIAN_SOUL_CAMPFIRE.get().defaultBlockState(),
+                    Block.UPDATE_ALL);
+            BlockPos plotPos = base.above();
             Vec3 world = CarMotion.worldOf(car, plotPos);
             EndCrystal crystal = new EndCrystal(level, world.x, world.y, world.z);
             crystal.setShowBottom(false);
@@ -253,6 +269,7 @@ public final class CarAssembler {
                         cell.dx(), cell.dy() + 1, cell.dz()));
             }
         }
+        PlotRelight.relight(level, car);
         if (record != null) {
             CarRegistry.get(level).setDirty();
         }

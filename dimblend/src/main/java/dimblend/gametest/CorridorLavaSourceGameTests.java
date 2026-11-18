@@ -37,7 +37,7 @@ public final class CorridorLavaSourceGameTests {
 
     @GameTest(template = TEMPLATE, templateNamespace = "dimblend", batch = BATCH, timeoutTicks = 40)
     public static void eachHorizontalDirectionAndDownCanTrigger(GameTestHelper helper) {
-        BlockPos source = new BlockPos(8, 70, 0);
+        BlockPos source = new BlockPos(8, 70, 11);
         for (Direction direction : new Direction[]{Direction.NORTH, Direction.SOUTH,
                 Direction.WEST, Direction.EAST, Direction.DOWN}) {
             Map<BlockPos, BlockState> states = new HashMap<>();
@@ -46,15 +46,15 @@ public final class CorridorLavaSourceGameTests {
             Fixture original = new Fixture(states);
             helper.assertTrue(CorridorLavaSources.canFlowOut(original, source), "outlet " + direction);
             CorridorLavaPlan plan = CorridorLavaSources.plan(original, List.of(source));
-            helper.assertTrue(plan.clears(new CorridorLavaPlan.Cell(8, 66, 0)), "inclusive floor " + direction);
-            helper.assertTrue(!plan.clears(new CorridorLavaPlan.Cell(8, 70, 0)), "own source unchanged " + direction);
+            helper.assertTrue(plan.clears(new CorridorLavaPlan.Cell(8, 66, 11)), "inclusive floor " + direction);
+            helper.assertTrue(!plan.clears(new CorridorLavaPlan.Cell(8, 70, 11)), "own source unchanged " + direction);
         }
         helper.succeed();
     }
 
     @GameTest(template = TEMPLATE, templateNamespace = "dimblend", batch = BATCH, timeoutTicks = 40)
     public static void sealedSourceAndNonAirFluidBarriersDoNotTrigger(GameTestHelper helper) {
-        BlockPos source = new BlockPos(8, 70, 0);
+        BlockPos source = new BlockPos(8, 70, 11);
         Map<BlockPos, BlockState> states = new HashMap<>();
         states.put(source, Blocks.LAVA.defaultBlockState());
         states.put(source.above(), Blocks.AIR.defaultBlockState());
@@ -66,14 +66,14 @@ public final class CorridorLavaSourceGameTests {
             Fixture original = new Fixture(states);
             helper.assertTrue(!CorridorLavaSources.canFlowOut(original, source), "real fluid barrier " + barrier);
             helper.assertTrue(!CorridorLavaSources.plan(original, List.of(source))
-                    .clears(new CorridorLavaPlan.Cell(8, 66, 0)), "sealed source must be unchanged");
+                    .clears(new CorridorLavaPlan.Cell(8, 66, 11)), "sealed source must be unchanged");
         }
         helper.succeed();
     }
 
     @GameTest(template = TEMPLATE, templateNamespace = "dimblend", batch = BATCH, timeoutTicks = 40)
     public static void replaceablePlantTriggersButOnlyAirGetsGlass(GameTestHelper helper) {
-        BlockPos source = new BlockPos(8, 70, 0);
+        BlockPos source = new BlockPos(8, 70, 11);
         Map<BlockPos, BlockState> states = new HashMap<>();
         states.put(source, Blocks.LAVA.defaultBlockState());
         states.put(source.east(), Blocks.SHORT_GRASS.defaultBlockState());
@@ -86,7 +86,7 @@ public final class CorridorLavaSourceGameTests {
         states.put(source.west(), Blocks.CAVE_AIR.defaultBlockState());
         CorridorLavaPlan withAir = CorridorLavaSources.plan(new Fixture(states), List.of(source));
         withAir.forEachGlass(cell -> {
-            helper.assertTrue(cell.equals(new CorridorLavaPlan.Cell(7, 70, 0)), "only cave air becomes glass");
+            helper.assertTrue(cell.equals(new CorridorLavaPlan.Cell(7, 70, 11)), "only cave air becomes glass");
             glass[0]++;
         });
         helper.assertTrue(glass[0] == 1, "one air neighbor");
@@ -95,8 +95,8 @@ public final class CorridorLavaSourceGameTests {
 
     @GameTest(template = TEMPLATE, templateNamespace = "dimblend", batch = BATCH, timeoutTicks = 40)
     public static void stackedSourcesUseSnapshotAndShaftDeletesLowerSource(GameTestHelper helper) {
-        BlockPos upper = new BlockPos(8, 75, 0);
-        BlockPos lower = new BlockPos(8, 70, 0);
+        BlockPos upper = new BlockPos(8, 75, 11);
+        BlockPos lower = new BlockPos(8, 70, 11);
         Map<BlockPos, BlockState> states = new HashMap<>();
         states.put(upper, Blocks.LAVA.defaultBlockState());
         states.put(lower, Blocks.LAVA.defaultBlockState());
@@ -104,14 +104,14 @@ public final class CorridorLavaSourceGameTests {
         states.put(lower.west(), Blocks.AIR.defaultBlockState());
         ProtoChunk chunk = proto(helper, 0, 0);
         states.forEach((pos, state) -> chunk.setBlockState(pos, state, false));
-        BlockPos chest = new BlockPos(8, 68, 0);
+        BlockPos chest = new BlockPos(8, 68, 11);
         chunk.setBlockState(chest, Blocks.CHEST.defaultBlockState(), false);
         chunk.setBlockEntity(new ChestBlockEntity(chest, Blocks.CHEST.defaultBlockState()));
         CorridorLavaPlan plan = CorridorLavaSources.plan(new Fixture(states), List.of(upper, lower));
         apply(chunk, plan);
         helper.assertTrue(chunk.getBlockState(upper).is(Blocks.LAVA), "upper source itself survives");
         for (int y = 66; y < 75; y++) {
-            helper.assertTrue(chunk.getBlockState(new BlockPos(8, y, 0)).isAir(), "entire shaft including lower source " + y);
+            helper.assertTrue(chunk.getBlockState(new BlockPos(8, y, 11)).isAir(), "entire shaft including lower source " + y);
         }
         helper.assertTrue(chunk.getBlockState(lower.west()).is(Blocks.RED_STAINED_GLASS), "lower source was judged before deletion");
         helper.assertTrue(chunk.getBlockEntity(chest) == null, "cleared proto chest leaves no block entity");
@@ -121,7 +121,16 @@ public final class CorridorLavaSourceGameTests {
 
     @GameTest(template = TEMPLATE, templateNamespace = "dimblend", batch = BATCH, timeoutTicks = 40)
     public static void flowAndOutOfRangeSourcesDoNothing(GameTestHelper helper) {
-        for (BlockPos source : List.of(new BlockPos(8, 66, 0), new BlockPos(8, 70, 65), new BlockPos(8, 70, -65))) {
+        for (int z : new int[]{-48, -11, 11, 48}) {
+            BlockPos source = new BlockPos(8, 70, z);
+            Fixture original = new Fixture(Map.of(source, Blocks.LAVA.defaultBlockState(),
+                    source.east(), Blocks.AIR.defaultBlockState()));
+            helper.assertTrue(CorridorLavaSources.plan(original, List.of(source))
+                    .clears(new CorridorLavaPlan.Cell(8, 66, z)), "band edge must hollow, z=" + z);
+        }
+        for (BlockPos source : List.of(new BlockPos(8, 66, 0), new BlockPos(8, 70, -49),
+                new BlockPos(8, 70, -10), new BlockPos(8, 70, 0), new BlockPos(8, 70, 10),
+                new BlockPos(8, 70, 49), new BlockPos(8, 70, 65), new BlockPos(8, 70, -65))) {
             Fixture original = new Fixture(Map.of(source, Blocks.LAVA.defaultBlockState(),
                     source.east(), Blocks.AIR.defaultBlockState()));
             int[] writes = {0};
@@ -130,11 +139,11 @@ public final class CorridorLavaSourceGameTests {
             plan.forEachGlass(cell -> writes[0]++);
             helper.assertTrue(writes[0] == 0, "out of source range " + source);
         }
-        BlockPos source = new BlockPos(8, 70, 0);
+        BlockPos source = new BlockPos(8, 70, 11);
         Fixture flowing = new Fixture(Map.of(source, Fluids.FLOWING_LAVA.getFlowing(7, false).createLegacyBlock(),
                 source.east(), Blocks.AIR.defaultBlockState()));
         helper.assertTrue(!CorridorLavaSources.plan(flowing, List.of(source))
-                .clears(new CorridorLavaPlan.Cell(8, 66, 0)), "flowing lava is not a source");
+                .clears(new CorridorLavaPlan.Cell(8, 66, 11)), "flowing lava is not a source");
         helper.succeed();
     }
 
@@ -222,7 +231,7 @@ public final class CorridorLavaSourceGameTests {
     @GameTest(template = TEMPLATE, templateNamespace = "dimblend", batch = BATCH, timeoutTicks = 40)
     public static void protoSerializationRetainsOriginalSourceAndPendingOperations(GameTestHelper helper) {
         ProtoChunk before = proto(helper, 0, 0);
-        BlockPos source = new BlockPos(8, 70, 0);
+        BlockPos source = new BlockPos(8, 70, 11);
         BlockPos glass = source.east();
         before.setBlockState(source, Blocks.LAVA.defaultBlockState(), false);
         CorridorLavaSources.applyToNewProto(before, source, Blocks.AIR.defaultBlockState());

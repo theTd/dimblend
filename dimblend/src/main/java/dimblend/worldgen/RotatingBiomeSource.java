@@ -6,6 +6,9 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import java.util.List;
 import java.util.stream.Stream;
 import net.minecraft.core.Holder;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.Biomes;
@@ -17,11 +20,20 @@ public final class RotatingBiomeSource extends BiomeSource {
             Codec.INT.optionalFieldOf("band_size", BandIndex.DEFAULT_BAND_SIZE).forGetter(source -> source.bandSize)
     ).apply(instance, RotatingBiomeSource::new));
 
+    /** BOP 的腐化群系只注册在 highlands 池里；走廊内退回 vanilla highlands。 */
+    private static final ResourceKey<Biome> BOP_END_CORRUPTION = ResourceKey.create(
+            Registries.BIOME, ResourceLocation.fromNamespaceAndPath("biomesoplenty", "end_corruption"));
+    /** {@code |quartZ| <= 35} 覆盖 {@code |z| <= 128} 加上 BOP feature 的 7 格外溢。 */
+    private static final int END_CORRUPTION_FILTER_QUART_Z = 35;
+
     private final List<BiomeSource> sources;
     private final int bandSize;
     @javax.annotation.Nullable
     private volatile Holder<Biome> barrens;
     private volatile boolean barrensResolved;
+    @javax.annotation.Nullable
+    private volatile Holder<Biome> endHighlands;
+    private volatile boolean endHighlandsResolved;
     @javax.annotation.Nullable
     private RotatingChunkGenerator generator;
 
@@ -68,17 +80,48 @@ public final class RotatingBiomeSource extends BiomeSource {
         BandLayout layout = rotating == null ? null : rotating.layoutOrNull();
         if (layout == null) {
             int index = rotating == null ? 0 : BandLayout.fixedDelegateIndex(region, rotating.delegates());
-            return this.sources.get(index).getNoiseBiome(x, y, z, sampler);
+            return filterEndCorruption(this.sources.get(index).getNoiseBiome(x, y, z, sampler), z);
         }
         if (layout.touchesSurfaceTwilightSeam(blockX, this.bandSize)) {
             float overworldWeight = layout.surfaceTwilightSeamWeight(blockX, this.bandSize);
             int index = overworldWeight >= 0.5f
                     ? layout.surfaceDelegateForSeam(blockX, this.bandSize)
                     : layout.twilightDelegateForSeam(blockX, this.bandSize);
-            return this.sources.get(index).getNoiseBiome(x, y, z, sampler);
+            return filterEndCorruption(this.sources.get(index).getNoiseBiome(x, y, z, sampler), z);
         }
         int index = layout.delegateIndex(region);
-        return this.sources.get(index).getNoiseBiome(x, y, z, sampler);
+        return filterEndCorruption(this.sources.get(index).getNoiseBiome(x, y, z, sampler), z);
+    }
+
+    /**
+     * 末地走廊 {@code |z| <= 128}（{@code |quartZ| <= 35}）内不允许 BOP 腐化群系：
+     * 它是 highlands 池成员，这里换成 vanilla {@code end_highlands}。找不到 highlands 时
+     * 保留 delegate 答案，mock 或非末地布局不因本过滤而崩溃。
+     */
+    private Holder<Biome> filterEndCorruption(Holder<Biome> answer, int quartZ) {
+        if (quartZ < -END_CORRUPTION_FILTER_QUART_Z || quartZ > END_CORRUPTION_FILTER_QUART_Z
+                || !answer.is(BOP_END_CORRUPTION)) {
+            return answer;
+        }
+        Holder<Biome> highlands = this.endHighlandsBiome();
+        return highlands != null ? highlands : answer;
+    }
+
+    /** 同 {@link #barrenBiome()}：只扫一次，先写字段再写标志。 */
+    @javax.annotation.Nullable
+    private Holder<Biome> endHighlandsBiome() {
+        if (!this.endHighlandsResolved) {
+            Holder<Biome> found = null;
+            for (Holder<Biome> candidate : this.possibleBiomes()) {
+                if (candidate.is(Biomes.END_HIGHLANDS)) {
+                    found = candidate;
+                    break;
+                }
+            }
+            this.endHighlands = found;
+            this.endHighlandsResolved = true;
+        }
+        return this.endHighlands;
     }
 
     /**

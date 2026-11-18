@@ -1,6 +1,7 @@
 package dimblend.dragonchase.entity;
 
 import dimblend.dragonchase.DragonChaseRegistries;
+import dimblend.dragonchase.carriage.CarEffects;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
@@ -75,6 +76,11 @@ public class ChaseFireball extends DragonFireball {
         this.level()
                 .playSound(null, this.targetPos.x, this.targetPos.y, this.targetPos.z, SoundEvents.DRAGON_FIREBALL_EXPLODE,
                         SoundSource.HOSTILE, 16.0F, 1.0F);
+        if (this.level() instanceof ServerLevel serverLevel) {
+            // requirements.md §3.4: the impact is seen as well as heard. Particles only, no explosion
+            // (no damage, no knockback, no breath cloud).
+            CarEffects.impactBurst(serverLevel, this.targetPos);
+        }
         if (this.getOwner() instanceof ChaseDragonHandle dragon) {
             ChaseDragons.listener().onFireballImpact(dragon, this.targetPos);
         }

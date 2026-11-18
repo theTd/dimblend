@@ -3,7 +3,12 @@ package dimblend.experience.mixin.compat.tavern;
 import com.github.ysbbbbbb.kaleidoscopetavern.blockentity.brew.BarrelBlockEntity;
 import com.github.ysbbbbbb.kaleidoscopetavern.crafting.container.BarrelRecipeContainer;
 import com.github.ysbbbbbb.kaleidoscopetavern.crafting.recipe.BarrelRecipe;
+import dimblend.experience.compat.dirtywater.DirtyWaterCompat;
+import dimblend.experience.compat.dirtywater.DirtyWaterFeedback;
+import dimblend.experience.compat.dirtywater.DirtyWaterPurity;
 import dimblend.experience.compat.tavern.TavernBrewingRules;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Final;
@@ -14,11 +19,22 @@ import org.spongepowered.asm.mixin.injection.Constant;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyConstant;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Caps the unmatched-recipe Vinegar fallback to 4 items and holds fermentation idle when a
- * valid recipe is still below the 4-per-slot threshold in quarter-yield mode (so closing the
- * lid early never consumes 4 fluid buckets into Vinegar).
+ * valid recipe is still below the 4-per-slot threshold in quarter-yield mode (so closing
+ * the lid early never consumes 4 fluid buckets into Vinegar).
+ *
+ * <p>脏水（Purity 0）拒收也挂在这里：
+ * <ul>
+ *   <li>{@code addFluid}（盖子右键倒水）HEAD 拒收，hotbar 提示，不转移；</li>
+ *   <li>tick 里 {@code BarrelRecipeContainer} 构造前把整个 tick 掐掉——容器只保留
+ *       {@code Fluid}（{@code BarrelRecipeContainer#getFluid()} 丢掉组件），
+ *       {@code BarrelRecipe#matches} 只看 {@code Fluid.isSame}，纯度在配方层已经不可见，
+ *       所以"配方级保底"必须在构建容器之前做。酒桶没有方块流体能力，进罐只有
+ *       {@code addFluid} 这一条路，两道口子合起来就是全部入口。</li>
+ * </ul></p>
  */
 @Mixin(value = BarrelBlockEntity.class, remap = false)
 public abstract class BarrelBlockEntityMixin {
@@ -26,6 +42,19 @@ public abstract class BarrelBlockEntityMixin {
     @Shadow(remap = false)
     @Final
     private RecipeManager.CachedCheck<BarrelRecipeContainer, BarrelRecipe> quickCheck;
+
+    @Inject(method = "addFluid(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/item/ItemStack;)Z",
+            at = @At("HEAD"), cancellable = true, remap = false, require = 1, allow = 1)
+    private void dimblend$rejectDirtyWater(LivingEntity user, ItemStack stack, CallbackInfoReturnable<Boolean> cir) {
+        if (!DirtyWaterCompat.purityAvailable() || !DirtyWaterPurity.isDirtyWaterItem(stack)) {
+            return;
+        }
+        Level level = ((BarrelBlockEntity) (Object) this).getLevel();
+        if (level != null && !level.isClientSide) {
+            DirtyWaterFeedback.notify(user);
+        }
+        cir.setReturnValue(false);
+    }
 
     @Inject(
             method = "tick(Lnet/minecraft/world/level/Level;)V",
@@ -37,8 +66,11 @@ public abstract class BarrelBlockEntityMixin {
             require = 1,
             allow = 1)
     private void dimblend$holdIncompleteQuarterBatch(Level level, CallbackInfo ci) {
-        if (TavernBrewingRules.shouldHoldIncompleteRecipeBatch(
-                (BarrelBlockEntity) (Object) this, this.quickCheck, level)) {
+        BarrelBlockEntity self = (BarrelBlockEntity) (Object) this;
+        boolean holdsDirtyWater = DirtyWaterCompat.purityAvailable()
+                && DirtyWaterPurity.isDirtyWaterFluid(self.getFluid().getFluid());
+        if (holdsDirtyWater
+                || TavernBrewingRules.shouldHoldIncompleteRecipeBatch(self, this.quickCheck, level)) {
             ci.cancel();
         }
     }

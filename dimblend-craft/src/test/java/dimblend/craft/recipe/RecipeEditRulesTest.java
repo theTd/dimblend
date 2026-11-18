@@ -756,8 +756,50 @@ class RecipeEditRulesTest {
     }
 
     /**
-     * 2026-11-14：补删 Create Recycle Everything 的蓝冰 / 浮冰 1->9 粉碎拆解配方，
-     * 保留本 mod 随包 1->3 粉碎配方。
+     * 2026-11-18：红石阀门无序合成的材料 {@code #c:dusts/redstone} + {@code create:fluid_pipe}
+     * 改为 {@code create:electron_tube} + {@code create:fluid_pipe}；三通阀不受影响。
+     */
+    @Test
+    void redstoneValveUsesElectronTubeInsteadOfRedstoneDust() {
+        ResourceLocation recipeId = ResourceLocation.parse("fluid:redstone_valve");
+        ResourceLocation tripleValveId = ResourceLocation.parse("fluid:redstone_triple_valve");
+        RecipeEdit.ModifyRecipeFields rule = fieldRuleById(recipeId);
+        assertNotNull(rule, "缺少对 fluid:redstone_valve 的字段改写规则");
+        assertEquals(Set.of(recipeId), rule.recipeIds(), "规则必须只命中 fluid:redstone_valve");
+        assertNull(fieldRuleById(tripleValveId), "三通阀配方不得受本次改写影响");
+
+        JsonObject fixture = json("""
+                {
+                  "type": "minecraft:crafting_shapeless",
+                  "category": "misc",
+                  "ingredients": [
+                    { "tag": "c:dusts/redstone" },
+                    { "item": "create:fluid_pipe" }
+                  ],
+                  "result": {
+                    "count": 1,
+                    "id": "fluid:redstone_valve"
+                  }
+                }
+                """).getAsJsonObject();
+
+        JsonObject edited = applyFieldEdits(fixture, rule.fieldEdits());
+        assertEquals("minecraft:crafting_shapeless", edited.get("type").getAsString(),
+                "无序配方类型必须保持不变");
+        assertEquals("misc", edited.get("category").getAsString(), "category 不在本次需求内");
+        assertResultUnchanged(fixture, edited);
+
+        List<String> ingredients = new ArrayList<>();
+        for (JsonElement element : edited.getAsJsonArray("ingredients")) {
+            ingredients.add(describeIngredient(element));
+        }
+        assertEquals(List.of("create:electron_tube", "create:fluid_pipe"), ingredients,
+                "红石阀门必须是 电子管 + 流体管道");
+    }
+
+    /**
+     * 2026-11-14：补删 Create Recycle Everything 的蓝冰 / 浮冰 1->9 粉碎拆解配方；
+     * 2026-11-18 随包 1->3 配方已移除，这条防御性删除规则继续保留。
      */
     @Test
     void recycleEverythingIceCrushingRecipesAreDefensivelyDeleted() {

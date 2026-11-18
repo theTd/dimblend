@@ -15,7 +15,7 @@ public enum ThermolithMode implements StringRepresentable {
 
     /** 原版行为：Cold Sweat 每 20 tick 按温度线性输出 0–15。 */
     NORMAL("normal"),
-    /** 冰模式：仅当温度高于 40 °C 时输出满 15。 */
+    /** 冰模式：仅当温度高于 30 °C 时输出满 15。 */
     ICE("ice"),
     /** 熔岩模式：仅当温度低于 10 °C 时输出满 15。 */
     MAGMA("magma");

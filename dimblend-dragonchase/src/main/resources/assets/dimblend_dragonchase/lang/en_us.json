@@ -15,5 +15,6 @@
   "command.dimblend_dragonchase.no_dragon": "No chase dragon is active.",
   "command.dimblend_dragonchase.no_chase": "No chase is running.",
   "command.dimblend_dragonchase.no_train": "No force-loaded sub-level nearby.",
-  "command.dimblend_dragonchase.no_level": "The rotating dimension is not loaded."
+  "command.dimblend_dragonchase.no_level": "The rotating dimension is not loaded.",
+  "block.dimblend_dragonchase.obsidian_soul_campfire": "Crying Obsidian Soul Campfire"
 }

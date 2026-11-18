@@ -2,8 +2,10 @@ package dimblend.dragonchase.structure;
 
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dimblend.dragonchase.DimBlendDragonChase;
+import dimblend.dragonchase.carriage.CarEffects;
 import dimblend.dragonchase.carriage.CarRegistry;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -59,6 +61,7 @@ public final class DragonCars {
             return null;
         }
         CarAssembler.primeBrakeSignal(level, car);
+        CarEffects.impactBurst(level, new Vec3(centerX, CarAssembler.DECK_Y, 0.0));
         return car;
     }
 
@@ -74,6 +77,7 @@ public final class DragonCars {
             return null;
         }
         CarAssembler.plantCrystals(level, car);
+        CarEffects.impactBurst(level, new Vec3(centerX, CarAssembler.DECK_Y, 0.0));
         return car;
     }
 

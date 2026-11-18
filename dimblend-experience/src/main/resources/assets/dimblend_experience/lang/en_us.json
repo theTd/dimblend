@@ -365,5 +365,7 @@
   "tooltip.dimblend_experience.camera.line3": "Pictures also record where they were taken so you can find your way back",
   "tooltip.dimblend_experience.crystalborn_catalyst.mode": "Redstone signal starts normal mining; adjacent Redstone Block mines peripheral blocks matching the block below",
   "tooltip.dimblend_experience.thermolith.mode": "Right-click with Ice / Magma Block to set operating mode",
+  "tooltip.dimblend_experience.thermolith.redstone_stop": "Stops working while receiving a redstone signal",
+  "message.dimblend_experience.dirty_water_rejected": "Too dirty — filter it at least once",
   "pack.dimblend_experience.thermolith_override": "DimBlend Thermolith Mode Textures"
 }

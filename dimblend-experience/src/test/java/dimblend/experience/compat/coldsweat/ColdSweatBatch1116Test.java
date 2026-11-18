@@ -19,6 +19,7 @@ import java.util.Set;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import net.minecraft.core.Direction;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -90,20 +91,20 @@ class ColdSweatBatch1116Test {
     /** Celsius → MC 与 Cold Sweat 的 C→MC 分支一致（÷25）。 */
     @Test
     void celsiusToMcMatchesThresholds() {
-        assertEquals(1.6, ThermolithModeRules.celsiusToMc(40.0), EPSILON);
+        assertEquals(1.2, ThermolithModeRules.celsiusToMc(30.0), EPSILON);
         assertEquals(0.4, ThermolithModeRules.celsiusToMc(10.0), EPSILON);
-        assertEquals(ThermolithModeRules.ICE_THRESHOLD_MC, ThermolithModeRules.celsiusToMc(40.0), EPSILON);
+        assertEquals(ThermolithModeRules.ICE_THRESHOLD_MC, ThermolithModeRules.celsiusToMc(30.0), EPSILON);
         assertEquals(ThermolithModeRules.MAGMA_THRESHOLD_MC, ThermolithModeRules.celsiusToMc(10.0), EPSILON);
         assertEquals(15, ThermolithModeRules.FULL_SIGNAL);
     }
 
-    /** 冰模式：严格高于 40 °C（1.6 MC）才满 15；正好 40 °C 不输出。 */
+    /** 冰模式：严格高于 30 °C（1.2 MC）才满 15；正好 30 °C 不输出。 */
     @Test
-    void iceModeSignalsOnlyAboveFortyCelsius() {
-        double threshold = ThermolithModeRules.celsiusToMc(40.0);
+    void iceModeSignalsOnlyAboveThirtyCelsius() {
+        double threshold = ThermolithModeRules.celsiusToMc(30.0);
         assertEquals(0, ThermolithModeRules.signalFor(ThermolithMode.ICE, threshold));
         assertEquals(0, ThermolithModeRules.signalFor(ThermolithMode.ICE, threshold - 1.0E-9));
-        assertEquals(15, ThermolithModeRules.signalFor(ThermolithMode.ICE, ThermolithModeRules.celsiusToMc(40.1)));
+        assertEquals(15, ThermolithModeRules.signalFor(ThermolithMode.ICE, ThermolithModeRules.celsiusToMc(30.1)));
         assertEquals(15, ThermolithModeRules.signalFor(ThermolithMode.ICE, ThermolithModeRules.celsiusToMc(100.0)));
         // 冷端一律不输出
         assertEquals(0, ThermolithModeRules.signalFor(ThermolithMode.ICE, ThermolithModeRules.celsiusToMc(0.0)));
@@ -123,13 +124,54 @@ class ColdSweatBatch1116Test {
         assertEquals(0, ThermolithModeRules.signalFor(ThermolithMode.MAGMA, ThermolithModeRules.celsiusToMc(100.0)));
     }
 
-    /** NORMAL 由原版 tick 负责，模式重算永远不接管。 */
+    /**
+     * NORMAL 走原版线性插值（{@code ThermolithModeRules#tick} 里复刻同一公式），
+     * {@link ThermolithModeRules#signalFor} 本身永远不参与 NORMAL 的模式信号。
+     */
     @Test
     void normalModeNeverDrivesTheModeSignal() {
         assertEquals(0, ThermolithModeRules.signalFor(ThermolithMode.NORMAL, -100.0));
         assertEquals(0, ThermolithModeRules.signalFor(ThermolithMode.NORMAL, 0.0));
-        assertEquals(0, ThermolithModeRules.signalFor(ThermolithMode.NORMAL, 1.6));
+        assertEquals(0, ThermolithModeRules.signalFor(ThermolithMode.NORMAL, 1.2));
         assertEquals(0, ThermolithModeRules.signalFor(ThermolithMode.NORMAL, 100.0));
+    }
+
+    // ---------------------------------------------------------------- 红石抑制
+
+    /** 输出侧红石粉回放的是温石自己的 15：整侧忽略，不构成抑制。 */
+    @Test
+    void suppressionIgnoresTheRedstoneWireOnItsOwnOutputFace() {
+        int[] signals = new int[Direction.values().length];
+        signals[Direction.NORTH.get3DDataValue()] = 15;
+        assertFalse(ThermolithModeRules.isSuppressed(signals, Direction.NORTH, true));
+    }
+
+    /** 输出侧不是红石粉时（红石块/火把/拉杆/朝内中继器）照样算外源。 */
+    @Test
+    void suppressionHonoursNonWireSignalOnTheOutputFace() {
+        int[] signals = new int[Direction.values().length];
+        signals[Direction.NORTH.get3DDataValue()] = 15;
+        assertTrue(ThermolithModeRules.isSuppressed(signals, Direction.NORTH, false));
+    }
+
+    /** 其余五面任意一面有信号都抑制，包括正下方与正上方。 */
+    @Test
+    void suppressionReadsAllFiveNonOutputFaces() {
+        for (Direction direction : Direction.values()) {
+            if (direction == Direction.NORTH) {
+                continue;
+            }
+            int[] signals = new int[Direction.values().length];
+            signals[direction.get3DDataValue()] = 1;
+            assertTrue(ThermolithModeRules.isSuppressed(signals, Direction.NORTH, true), direction.name());
+        }
+    }
+
+    @Test
+    void noSignalMeansNoSuppression() {
+        int[] signals = new int[Direction.values().length];
+        assertFalse(ThermolithModeRules.isSuppressed(signals, Direction.NORTH, true));
+        assertFalse(ThermolithModeRules.isSuppressed(signals, Direction.NORTH, false));
     }
 
     // ---------------------------------------------------------------- 交互口径
@@ -195,9 +237,12 @@ class ColdSweatBatch1116Test {
 
     // ---------------------------------------------------------------- 覆盖资源包
 
-    /** 24 个变体键齐全：3 模式 × 2 通电 × 4 朝向，且朝向→旋转、模式→模型都对上。 */
+    /**
+     * 48 个变体键齐全：3 模式 × 2 通电 × 4 朝向 × 2 抑制，且朝向→旋转、模式→模型都对上；
+     * 抑制态一律用未通电（{@code off}）模型。
+     */
     @Test
-    void blockstateOverrideCoversAllTwentyFourVariants() {
+    void blockstateOverrideCoversAllFortyEightVariants() {
         JsonObject root = readJson("/thermolith_override_pack/assets/cold_sweat/blockstates/thermolith.json");
         JsonObject variants = root.getAsJsonObject("variants");
         assertNotNull(variants, "blockstates/thermolith.json 缺 variants");
@@ -206,7 +251,10 @@ class ColdSweatBatch1116Test {
         for (String mode : List.of("normal", "ice", "magma")) {
             for (String powered : List.of("false", "true")) {
                 for (String facing : List.of("north", "east", "south", "west")) {
-                    expected.add("dimblend_mode=" + mode + ",powered=" + powered + ",facing=" + facing);
+                    for (String suppressed : List.of("false", "true")) {
+                        expected.add("dimblend_mode=" + mode + ",powered=" + powered
+                                + ",facing=" + facing + ",dimblend_suppressed=" + suppressed);
+                    }
                 }
             }
         }
@@ -218,14 +266,16 @@ class ColdSweatBatch1116Test {
             JsonObject variant = variants.getAsJsonObject(key);
             String mode = key.split(",")[0].substring("dimblend_mode=".length());
             boolean powered = key.contains("powered=true");
-            String facing = key.substring(key.indexOf("facing=") + "facing=".length());
+            boolean suppressed = key.endsWith("dimblend_suppressed=true");
+            String facing = key.split(",")[2].substring("facing=".length());
 
             String prefix = switch (mode) {
                 case "ice" -> "dimblend_experience:block/thermolith_ice_";
                 case "magma" -> "dimblend_experience:block/thermolith_magma_";
                 default -> "cold_sweat:block/thermolith_";
             };
-            assertEquals(prefix + (powered ? "on" : "off"), variant.get("model").getAsString(), key);
+            boolean lit = powered && !suppressed;
+            assertEquals(prefix + (lit ? "on" : "off"), variant.get("model").getAsString(), key);
 
             int y = switch (facing) {
                 case "east" -> 90;

@@ -28,6 +28,9 @@ import org.spongepowered.asm.mixin.Unique;
  * {@code worldPosition.getX() → i2f → r.nextFloat() → fadd → f2d}，四颗碎屑在 plot 坐标
  * （{@code ≥ 2^24}，ULP = 2.0）下会被压到同一个整数格角上：抖动全丢、奇数坐标再整体挪 1 格，
  * 表现为「磨轮旁边固定位置冒碎屑，挪一格才换位置」。判据与数值见 {@link CrushingParticleMath}。</p>
+ *
+ * <p>现在<b>凡是 Sable 子层级上的方块实体都走 double 口径</b>（不再按坐标阈值放行），
+ * 避免旧存档的小 plot 坐标在子层级世界位姿换算中被放大成整格偏移。</p>
  */
 @Mixin(CrushingWheelControllerBlockEntity.class)
 public abstract class CrushingWheelControllerBeParticleMixin extends SmartBlockEntity {
@@ -50,12 +53,9 @@ public abstract class CrushingWheelControllerBeParticleMixin extends SmartBlockE
         }
         CrushingWheelParticleScope.enter();
         try {
-            if (CrushingParticleMath.needsExactDouble(
-                    this.worldPosition.getX(), this.worldPosition.getY(), this.worldPosition.getZ())) {
-                this.dimblend$spawnExactParticles(stack);
-                return;
-            }
-            original.call(stack);
+            // 同 CrushingWheelControllerParticleMixin：子层级上一律走 double 口径，避免旧存档
+            // 的小 plot 坐标在 Sable 位姿换算中被 float 量化放大成整格偏移。
+            this.dimblend$spawnExactParticles(stack);
         } finally {
             CrushingWheelParticleScope.exit();
         }

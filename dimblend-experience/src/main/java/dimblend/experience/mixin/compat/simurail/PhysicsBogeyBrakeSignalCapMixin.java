@@ -1,9 +1,17 @@
 package dimblend.experience.mixin.compat.simurail;
 
+import com.crystaelix.simurail.api.util.ChunkAvailability;
 import com.crystaelix.simurail.content.bogey.PhysicsBogeyBlockEntity;
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import dimblend.experience.Config;
+import dimblend.experience.compat.simurail.ChaseBrakeBogeyProbe;
+import dimblend.experience.compat.simurail.ChaseBrakeSignalRules;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
+import net.neoforged.fml.ModList;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 
 /**
@@ -26,6 +34,13 @@ import org.spongepowered.asm.mixin.injection.At;
  * （{@code PhysicsBogeyAxle}）与 E3/E4 沿检测
  * （{@link PhysicsBogeyBrakeSoundMixin} 读 {@code getBrakeStrength}）自动一致。</p>
  *
+ * <p><b>I20 刹车车厢例外</b>（{@link ChaseBrakeSignalRules}）：追逐的刹车车厢靠红石块
+ * 提供 15 级信号，若也按上限 1 压到 1/15，整节车只剩 6.7% 制动力，且 1..15 级完全不可调。
+ * 识别先读 {@link ChaseBrakeBogeyMarker}（建车时置位、NBT 持久），未标记时回落到
+ * 「正上方红石块 + 再上方红石灯」的建车电路特征（旧存档里已生成的刹车车厢）。例外分支对任意
+ * 正信号返回 1.0（满刹），0 信号仍返回 0；方块读取与 {@code getSignalSafe} 同用
+ * {@code ChunkAvailability} 守卫，物理线程上不会同步加载区块。</p>
+ *
  * <p>注意反控模式二阶后果（接受项）：刹车恒 ≥(15−上限)/15 不归零，
  * E3/E4 施闸/松闸沿不再触发。</p>
  *
@@ -40,7 +55,32 @@ public abstract class PhysicsBogeyBrakeSignalCapMixin {
         if (original <= 0.0) {
             return original;
         }
-        double cap = Config.TRAIN_BRAKE_SIGNAL_CAP.get() / 15.0;
-        return Math.min(original, cap);
+        boolean chaseBrakeBogey = ModList.get().isLoaded("dimblend")
+                && ChaseBrakeBogeyProbe.isMarked(this);
+        if (!chaseBrakeBogey) {
+            chaseBrakeBogey = this.dimblend$isBrakeCarCircuit();
+        }
+        return ChaseBrakeSignalRules.applyCap(original, Config.TRAIN_BRAKE_SIGNAL_CAP.get(), chaseBrakeBogey);
+    }
+
+    /**
+     * 旧存档兜底：建车流程（{@code CarPlans}）在转向架正上方放红石块、再上方放红石灯。
+     * 两格都读到才算——单红石块也是普通转向架的正常手动通电方式。
+     */
+    @Unique
+    private boolean dimblend$isBrakeCarCircuit() {
+        PhysicsBogeyBlockEntity self = (PhysicsBogeyBlockEntity) (Object) this;
+        Level level = self.getLevel();
+        if (level == null || level.isClientSide()) {
+            return false;
+        }
+        BlockPos above = self.getBlockPos().above();
+        BlockPos aboveAbove = above.above();
+        if (!ChunkAvailability.areChunksLoaded(level, above, aboveAbove)) {
+            return false;
+        }
+        return ChaseBrakeSignalRules.isChaseBrakeCircuit(
+                level.getBlockState(above).is(Blocks.REDSTONE_BLOCK),
+                level.getBlockState(aboveAbove).is(Blocks.REDSTONE_LAMP));
     }
 }

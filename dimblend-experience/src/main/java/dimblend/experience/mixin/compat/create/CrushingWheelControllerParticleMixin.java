@@ -23,6 +23,9 @@ import org.spongepowered.asm.mixin.Unique;
  * （已越过 {@code 2^24}，{@code float} ULP = 2.0），于是整数坐标先被挪最多 1 格、子格抖动再被整体舍掉，
  * 粒子固定落在格角上——正是玩家报的「大石磨轮粒子位置固定偏移，挪动轮子才换地方」。
  * 判据与数值见 {@link CrushingParticleMath}。</p>
+ *
+ * <p>现在<b>凡是 Sable 子层级上的控制器都走 double 口径</b>（不再按坐标阈值放行）：旧存档的 plot
+ * 坐标可能小于 {@code 2^23}，但随后还要经过子层级世界位姿的换算，float 量化仍会被放大成整格偏移。</p>
  */
 @Mixin(CrushingWheelControllerBlock.class)
 public abstract class CrushingWheelControllerParticleMixin {
@@ -43,11 +46,9 @@ public abstract class CrushingWheelControllerParticleMixin {
         }
         CrushingWheelParticleScope.enter();
         try {
-            if (CrushingParticleMath.needsExactDouble(pos.getX(), pos.getY(), pos.getZ())) {
-                this.dimblend$spawnExactCritParticles(state, level, pos, random);
-                return;
-            }
-            original.call(state, level, pos, random);
+            // 凡是 Sable ClientSubLevel 上的控制器都走 double 口径：plot 坐标在旧存档里也可能
+            // 小于 2^23，但子层级的位姿换算仍会把 float 量化放大成整格偏移，不再按坐标阈值放行。
+            this.dimblend$spawnExactCritParticles(state, level, pos, random);
         } finally {
             CrushingWheelParticleScope.exit();
         }

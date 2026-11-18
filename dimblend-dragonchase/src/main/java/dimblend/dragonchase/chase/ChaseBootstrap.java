@@ -27,6 +27,10 @@ public final class ChaseBootstrap {
         // LOWEST: no later listener may re-enable a spawn this rule denied (§4).
         NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, ChaseSpawnRule::onFinalizeSpawn);
         NeoForge.EVENT_BUS.addListener(ChaseDirector::onServerStopped);
+        // Chase BGM sync: a reconnect or a dimension change must start/stop the current track on
+        // that player's client without waiting for the next phase transition.
+        NeoForge.EVENT_BUS.addListener(ChaseDirector::onPlayerLoggedIn);
+        NeoForge.EVENT_BUS.addListener(ChaseDirector::onPlayerChangedDimension);
         NeoForge.EVENT_BUS.addListener(DragonChaseCommand::register);
         NonCrewCarriages.installUnticketGuard(ChaseDirector::isNestForceLoadProtected);
     }

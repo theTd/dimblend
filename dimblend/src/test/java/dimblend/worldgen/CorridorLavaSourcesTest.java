@@ -14,22 +14,52 @@ import org.junit.jupiter.api.Test;
 
 class CorridorLavaSourcesTest {
     @Test
-    void sourceBoundsIncludeBothZEdgesAndExcludeY66() {
-        for (int z : new int[]{-64, 0, 64}) {
-            assertTrue(CorridorLavaPlan.inSourceRange(67, z));
-            assertTrue(CorridorLavaPlan.inSourceRange(319, z));
-            assertFalse(CorridorLavaPlan.inSourceRange(66, z));
+    void sourceBoundsIncludeBandEdgesAndExcludeCentralCorridor() {
+        for (int z : new int[]{-48, -11, 11, 48}) {
+            assertTrue(CorridorLavaPlan.inSourceRange(67, z), "band edge z=" + z);
+            assertTrue(CorridorLavaPlan.inSourceRange(319, z), "band edge z=" + z);
+            assertFalse(CorridorLavaPlan.inSourceRange(66, z), "y=66 is never a source, z=" + z);
+        }
+        for (int z : new int[]{-49, -10, 0, 10, 49}) {
+            assertFalse(CorridorLavaPlan.inSourceRange(100, z), "outside both bands, z=" + z);
         }
         assertFalse(CorridorLavaPlan.inSourceRange(100, -65));
         assertFalse(CorridorLavaPlan.inSourceRange(100, 65));
     }
 
     @Test
-    void outputRangeIncludesGlassOverhangInBothDirections() {
-        assertTrue(CorridorLavaPlan.touchesOutput(64, 79));
-        assertTrue(CorridorLavaPlan.touchesOutput(-80, -65));
+    void outputRangeTouchesBothBandsAndTheirOneBlockOverhangs() {
+        assertTrue(CorridorLavaPlan.touchesOutput(-64, -49), "lower outer overhang -49");
+        assertTrue(CorridorLavaPlan.touchesOutput(-48, -33), "lower band");
+        assertTrue(CorridorLavaPlan.touchesOutput(-16, -1), "lower inner overhang -10");
+        assertTrue(CorridorLavaPlan.touchesOutput(0, 15), "upper inner overhang 10");
+        assertTrue(CorridorLavaPlan.touchesOutput(16, 31), "upper band");
+        assertTrue(CorridorLavaPlan.touchesOutput(32, 47), "upper band");
+        assertTrue(CorridorLavaPlan.touchesOutput(48, 63), "upper outer overhang 49");
+        assertFalse(CorridorLavaPlan.touchesOutput(-80, -65), "old outer edge is gone");
+        assertFalse(CorridorLavaPlan.touchesOutput(64, 79), "old outer edge is gone");
         assertFalse(CorridorLavaPlan.touchesOutput(80, 95));
         assertFalse(CorridorLavaPlan.touchesOutput(-96, -81));
+    }
+
+    @Test
+    void sourceBandIntersectionIgnoresOverhangOnlyChunks() {
+        assertTrue(CorridorLavaPlan.intersectsSourceBand(-16, -1), "lower band starts at -11");
+        assertTrue(CorridorLavaPlan.intersectsSourceBand(0, 15), "upper band starts at 11");
+        assertTrue(CorridorLavaPlan.intersectsSourceBand(48, 63), "upper band ends at 48");
+        assertFalse(CorridorLavaPlan.intersectsSourceBand(-64, -49), "only the -49 overhang");
+        assertFalse(CorridorLavaPlan.intersectsSourceBand(64, 79), "only the 49 overhang");
+        assertFalse(CorridorLavaPlan.intersectsSourceBand(-9, 9), "central corridor has no sources");
+    }
+
+    @Test
+    void innerBandEdgeSourceKeepsOneBlockGlassSealInsideTheCorridor() {
+        CorridorLavaPlan plan = new CorridorLavaPlan();
+        plan.openSource(new Cell(3, 70, 11), List.of(new Cell(3, 70, 10)));
+        plan.openSource(new Cell(-3, 70, -11), List.of(new Cell(-3, 70, -10)));
+
+        assertEquals(Set.of(new Cell(3, 70, 10), new Cell(-3, 70, -10)), glass(plan),
+                "z=-10/10 may receive the one-block seal adjacent to a band source");
     }
 
     @Test

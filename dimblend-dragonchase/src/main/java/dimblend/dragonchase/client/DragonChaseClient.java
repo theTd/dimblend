@@ -1,6 +1,7 @@
 package dimblend.dragonchase.client;
 
 import dimblend.dragonchase.DragonChaseRegistries;
+import dimblend.dragonchase.client.music.ClientChaseMusicController;
 import net.minecraft.client.renderer.entity.DragonFireballRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
@@ -16,8 +17,14 @@ import net.neoforged.neoforge.common.NeoForge;
  */
 public final class DragonChaseClient {
     public static void init(IEventBus modEventBus) {
+        ClientChaseMusicController.init();
         modEventBus.addListener(DragonChaseClient::onRegisterRenderers);
-        NeoForge.EVENT_BUS.addListener((ClientPlayerNetworkEvent.LoggingOut event) -> ClientCrystalBeams.reset());
+        NeoForge.EVENT_BUS.addListener(ClientCrystalMounts::onClientTick);
+        NeoForge.EVENT_BUS.addListener(ClientCrystalMounts::onRenderLevelStage);
+        NeoForge.EVENT_BUS.addListener((ClientPlayerNetworkEvent.LoggingOut event) -> {
+            ClientCrystalBeams.reset();
+            ClientCrystalMounts.reset();
+        });
     }
 
     private static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {

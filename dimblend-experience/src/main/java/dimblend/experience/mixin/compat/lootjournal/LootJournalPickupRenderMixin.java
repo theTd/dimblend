@@ -3,6 +3,7 @@ package dimblend.experience.mixin.compat.lootjournal;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dimblend.experience.compat.lootjournal.LootJournalIconDiagnostics;
+import dimblend.experience.compat.lootjournal.LootJournalLayoutRepair;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.gui.GuiGraphics;
 import org.spongepowered.asm.mixin.Mixin;
@@ -30,6 +31,7 @@ public abstract class LootJournalPickupRenderMixin {
             require = 1, allow = 1)
     private static void dimblend$sampleIconState(GuiGraphics graphics, DeltaTracker deltaTracker,
             Operation<Void> original) {
+        LootJournalLayoutRepair.ensureLayoutResolved();
         LootJournalIconDiagnostics.sample(graphics);
         original.call(graphics, deltaTracker);
     }

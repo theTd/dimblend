@@ -154,6 +154,9 @@ public final class TrainDeadmanBrake {
         next.addAll(consist.carriageIds());
         if (!next.equals(previous)) {
             applyLatch(level, next);
+            // I22：锁存集合真正变化的那一 tick 播一次末影刹车播报（0.5 音调、全服、无速度门控）。
+            // 已在锁存中的编组再穿云不会重复播——上面这个等值判断就是「每编组一次」的持久位。
+            TrainBrakeServiceImpl.playGlobalEnderBrakeSound(level);
         }
         for (PhysicsBogeyBlockEntity bogey : bogeysIn(level, consist.carriageIds())) {
             forceImpact(bogey);

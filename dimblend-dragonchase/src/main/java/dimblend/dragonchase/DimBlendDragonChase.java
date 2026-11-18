@@ -1,9 +1,11 @@
 package dimblend.dragonchase;
 
 import com.mojang.logging.LogUtils;
+import dimblend.dragonchase.block.DragonChaseBlocks;
 import dimblend.dragonchase.carriage.CarriageBootstrap;
 import dimblend.dragonchase.chase.ChaseBootstrap;
 import dimblend.dragonchase.client.DragonChaseClient;
+import dimblend.dragonchase.music.DragonChaseSounds;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -29,6 +31,8 @@ public class DimBlendDragonChase {
     public DimBlendDragonChase(IEventBus modEventBus, ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.SERVER, Config.SPEC);
         DragonChaseRegistries.register(modEventBus);
+        DragonChaseBlocks.register(modEventBus);
+        DragonChaseSounds.register(modEventBus);
         CarriageBootstrap.init(modEventBus);
         ChaseBootstrap.init(modEventBus);
         // GameTests live behind their own fixture (-PwithDragonChaseGameTest): the run sets this

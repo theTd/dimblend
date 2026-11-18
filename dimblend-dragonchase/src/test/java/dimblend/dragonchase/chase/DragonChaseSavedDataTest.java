@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dimblend.dragonchase.music.ChaseMusicPhase;
 import java.util.List;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -132,5 +133,61 @@ class DragonChaseSavedDataTest {
         assertEquals(1, zones.size());
         assertEquals(1.0D, zones.getCompound(0).getDouble("min_x"), 0.0D);
         assertEquals(2.0D, zones.getCompound(0).getDouble("max_x"), 0.0D);
+    }
+
+    @Test
+    void musicStateRoundTripsSoARestartResumesTheSameTrack() {
+        DragonChaseSavedData data = new DragonChaseSavedData();
+        data.musicPhase = ChaseMusicPhase.PHASE_B;
+        data.phaseATrack = 2;
+        data.phaseBTrack = 3;
+        data.phaseBTriggered = true;
+
+        DragonChaseSavedData loaded = DragonChaseSavedData.load(save(data));
+
+        assertEquals(ChaseMusicPhase.PHASE_B, loaded.musicPhase);
+        assertEquals(2, loaded.phaseATrack);
+        assertEquals(3, loaded.phaseBTrack);
+        assertTrue(loaded.phaseBTriggered,
+                "the one-way Phase B latch must survive a reload, or crystal healing could re-trigger it");
+    }
+
+    @Test
+    void preMusicSavesLoadAsIdleWithNoRolledTrack() {
+        CompoundTag oldSave = new CompoundTag();
+        oldSave.putString("phase", DragonChaseSavedData.Phase.ACTIVE.name());
+        oldSave.putFloat("max_health", 400.0F);
+
+        DragonChaseSavedData loaded = DragonChaseSavedData.load(oldSave);
+
+        assertEquals(ChaseMusicPhase.IDLE, loaded.musicPhase);
+        // -1, not 0: track 0 is a real track, so a missing key must not pretend one was rolled.
+        assertEquals(-1, loaded.phaseATrack);
+        assertEquals(-1, loaded.phaseBTrack);
+        assertFalse(loaded.phaseBTriggered);
+    }
+
+    @Test
+    void unknownMusicPhaseNameLoadsAsIdle() {
+        CompoundTag tag = new CompoundTag();
+        tag.putString("music_phase", "PHASE_C");
+
+        assertEquals(ChaseMusicPhase.IDLE, DragonChaseSavedData.load(tag).musicPhase);
+    }
+
+    @Test
+    void forgetChaseClearsTheMusicStateOfTheFinishedChase() {
+        DragonChaseSavedData data = new DragonChaseSavedData();
+        data.musicPhase = ChaseMusicPhase.PHASE_B;
+        data.phaseATrack = 1;
+        data.phaseBTrack = 0;
+        data.phaseBTriggered = true;
+
+        data.forgetChase();
+
+        assertEquals(ChaseMusicPhase.IDLE, data.musicPhase);
+        assertEquals(-1, data.phaseATrack);
+        assertEquals(-1, data.phaseBTrack);
+        assertFalse(data.phaseBTriggered, "the next chase rolls both tracks again");
     }
 }

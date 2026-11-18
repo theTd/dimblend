@@ -47,6 +47,10 @@ final class ChaseListener implements ChaseDragonListener {
         if (data.nestId != null) {
             ChaseDirector.tryDispatchDragonActions(data, dragon, data.nestCenterX, now);
         }
+        // I27: Phase B starts at the first drop below 50% HP. The callback fires before
+        // startDying(), so the persisted latch plus its health>0 guard keeps a killing blow from
+        // starting Phase B. The director repeats this check every tick as a safety net.
+        ChaseDirector.maybeTriggerPhaseB(level, data, dragon);
         data.setDirty();
     }
 

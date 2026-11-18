@@ -25,6 +25,11 @@ import net.minecraft.sounds.SoundSource;
  */
 public final class TrainBrakeServiceImpl implements TrainBrakeService {
 
+    /** Announcement volume of the chase brake car coupling (I21). */
+    private static final float NORMAL_VOLUME = 0.5F;
+    /** Ender brake announcement volume; slightly louder than the ordinary one (I22). */
+    private static final float ENDER_VOLUME = 0.65F;
+
     /** Called next to {@code TrainDeadmanBrake.register()} behind the same Simurail gate. */
     public static void register() {
         TrainBrakeService.register(new TrainBrakeServiceImpl());
@@ -41,14 +46,39 @@ public final class TrainBrakeServiceImpl implements TrainBrakeService {
     }
 
     /**
-     * One ordinary brake application heard by every player in the level.
+     * One ordinary brake application heard by every player on the server (I21).
      *
-     * <p>{@code level.playSound} only reaches clients within the sound's linear range (about 16
-     * blocks), so this sends the packet to each player at their own position with a shared seed:
-     * the volume does not fall off with distance and everyone hears the same one-shot.
+     * <p>User decision of 2026-11-18: "whole map" is literally every online player in every
+     * dimension ({@code existing_low_pitch_all_dims}), not only the players of the level the car
+     * coupled in. {@code level.playSound} only reaches clients within the sound's linear range
+     * (about 16 blocks), so this sends the packet to each player at their own position with a
+     * shared seed: the volume does not fall off with distance and everyone hears the same
+     * one-shot.</p>
      */
     @Override
     public void playGlobalNormalBrakeSound(ServerLevel level) {
+        broadcast(level, NORMAL_VOLUME, TrainSpeedGateMath.NORMAL_BRAKE_PITCH);
+    }
+
+    /**
+     * I22: the ender brake announcement, played exactly once per newly latched consist
+     * ({@link TrainDeadmanBrake#latchConsist} on the {@code !next.equals(previous)} edge).
+     *
+     * <p>Deliberately <b>not</b> gated on speed: the train may already be stopped by the latch,
+     * yet the debuff must still be audible. Uses the ordinary {@code train_brake} event at the
+     * emergency pitch {@link TrainSpeedGateMath#EMERGENCY_BRAKE_PITCH} (0.5), at a slightly
+     * higher volume than an ordinary application so the latch announcement is distinguishable
+     * from the bogey's own edge sound.</p>
+     */
+    public static void playGlobalEnderBrakeSound(ServerLevel level) {
+        broadcast(level, ENDER_VOLUME, TrainSpeedGateMath.EMERGENCY_BRAKE_PITCH);
+    }
+
+    /**
+     * One {@code train_brake} one-shot for the whole server, each listener's own position as the
+     * source and a shared seed; config / missing sound gate applies.
+     */
+    private static void broadcast(ServerLevel level, float volume, float pitch) {
         if (!Config.TRAIN_SOUNDS.get()) {
             return;
         }
@@ -56,13 +86,12 @@ public final class TrainBrakeServiceImpl implements TrainBrakeService {
             return;
         }
         long seed = level.getRandom().nextLong();
-        for (ServerPlayer player : level.players()) {
+        for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
             if (player.connection == null) {
                 continue;
             }
             player.connection.send(new ClientboundSoundPacket(ModSounds.TRAIN_BRAKE, SoundSource.BLOCKS,
-                    player.getX(), player.getY(), player.getZ(), 0.5F,
-                    TrainSpeedGateMath.NORMAL_BRAKE_PITCH, seed));
+                    player.getX(), player.getY(), player.getZ(), volume, pitch, seed));
         }
     }
 
