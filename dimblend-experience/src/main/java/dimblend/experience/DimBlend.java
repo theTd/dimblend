@@ -73,6 +73,9 @@ public class DimBlend {
         // 探索限制板块的数据附件（远行诅咒层级、村民职业记录等）
         ExplorationAttachments.ATTACHMENTS.register(modEventBus);
 
+        // 自研空中二段跳（脚底 cloud 粒子 + 服务端/客户端同步重置摔落高度）
+        dimblend.experience.jump.MidAirJumpNetwork.register(modEventBus);
+
         // B 板块：CDG 发动机运行态附件与新生成区块油田折算记录，仅 CDG 在场时注册
         if (ModList.get().isLoaded("createdieselgenerators")) {
             CdgAttachments.ATTACHMENTS.register(modEventBus);

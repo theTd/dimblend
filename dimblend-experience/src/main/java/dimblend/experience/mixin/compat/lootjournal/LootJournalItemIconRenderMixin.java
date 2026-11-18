@@ -82,14 +82,22 @@ public abstract class LootJournalItemIconRenderMixin {
                 this.dimblend$savedShaderGreen,
                 this.dimblend$savedShaderBlue,
                 this.dimblend$savedShaderAlpha);
+        // 两个分支都显式落地：renderIcon 内部（或它调用的 TaCZ 瞄准镜路径）可能把某些开关
+        // 反着开回来，只“恢复成开”不够，入口是关的必须关回去，否则状态会泄漏给后续 GUI。
         if (this.dimblend$depthWasEnabled) {
             RenderSystem.enableDepthTest();
+        } else {
+            RenderSystem.disableDepthTest();
         }
         if (this.dimblend$cullWasEnabled) {
             RenderSystem.enableCull();
+        } else {
+            RenderSystem.disableCull();
         }
         if (this.dimblend$stencilWasEnabled) {
             GL11.glEnable(GL11.GL_STENCIL_TEST);
+        } else {
+            GL11.glDisable(GL11.GL_STENCIL_TEST);
         }
     }
 }

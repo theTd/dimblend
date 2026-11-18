@@ -35,6 +35,10 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
             return isLoaded("sable") && isLoaded("veil") && !isLoaded("iris")
                     && classPresent("foundry.veil.impl.client.render.framebuffer.LegacyAdvancedFboImpl");
         }
+        if (mixinClassName.endsWith(".client.VeilDsaFboStencilClearMixin")) {
+            return isLoaded("sable") && isLoaded("veil") && !isLoaded("iris")
+                    && classPresent("foundry.veil.impl.client.render.framebuffer.DSAAdvancedFboImpl");
+        }
         if (mixinClassName.endsWith(".compat.tacz.TaCzScopeStencilCleanupMixin")) {
             return isLoaded("tacz")
                     && classPresent("com.tacz.guns.client.model.BedrockAttachmentModel");
@@ -47,17 +51,10 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
             return isLoaded("toolbelt")
                     && classPresent("dev.gigaherz.toolbelt.client.ClientEvents");
         }
-        if (mixinClassName.endsWith(".compat.doublejump.DoubleJumpClientMixin")) {
-            return isLoaded("double_jump_plus")
-                    && classPresent("net.foufakirby.double_jump.client.DoubleJumpClient");
-        }
-        if (mixinClassName.endsWith(".compat.doublejump.DoubleJumpHandlerMixin")) {
-            return isLoaded("double_jump_plus")
-                    && classPresent("net.foufakirby.double_jump.common.DoubleJumpHandler");
-        }
-        if (mixinClassName.endsWith(".compat.doublejump.ServerEventsNeoForgeMixin")) {
-            return isLoaded("double_jump_plus")
-                    && classPresent("net.foufakirby.double_jump.neoforge.ServerEventsNeoForge");
+        if (mixinClassName.endsWith(".compat.sophisticated.SmithingUpgradeContainerMixin")) {
+            return isLoaded("sophisticatedcore")
+                    && isLoaded("sophisticatedbackpacks")
+                    && classPresent("net.p3pp3rf1y.sophisticatedbackpacks.upgrades.smithing.SmithingUpgradeContainer");
         }
         if (mixinClassName.contains(".compat.sophisticated.")) {
             return isLoaded("sophisticatedcore")
