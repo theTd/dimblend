@@ -5,6 +5,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
@@ -31,6 +32,8 @@ public final class CarEffects {
     public static final double DISSOLVE_RADIUS = 5.0;
     /** The vanilla mob-death particle count. */
     public static final int DISSOLVE_PARTICLES = 20;
+    /** How far from the impact a player still sees the burst, in blocks. */
+    public static final double IMPACT_RADIUS = 512.0;
 
     private CarEffects() {
     }
@@ -72,7 +75,36 @@ public final class CarEffects {
     }
 
     /**
-     * The fall-away explosion, which is an effect and nothing else: no damage, no block damage
+     * The fireball impact and the car spawn burst: vanilla's big explosion plus a cloud of dragon
+     * breath and poof, sent per player with {@code overrideLimiter}.
+     *
+     * <p><b>Why per player.</b> {@code ServerLevel#sendParticles} without a player culls at 32 blocks
+     * ({@code ServerLevel.java:1233-1245}: {@code closerToCenterThan(..., overrideLimiter ? 512 : 32)}),
+     * and the chase gap between the dragon and the players is 128-160+ blocks — a level-wide call is
+     * invisible. {@code ChaseDragon#emitBreathParticles} and {@code ChaseBreathZones#emit} already use
+     * the same overload. The 512-block guard matches the sender's own limit.
+     *
+     * <p><b>An effect, never an explosion.</b> No {@code level.explode} of any interaction: requirements
+     * §3.4 asks for the sound and particles with no damage, no knockback and no dragon-breath cloud.
+     */
+    public static void impactBurst(ServerLevel level, Vec3 centre) {
+        double radiusSq = IMPACT_RADIUS * IMPACT_RADIUS;
+        for (ServerPlayer player : level.players()) {
+            double dx = player.getX() - centre.x;
+            double dz = player.getZ() - centre.z;
+            if (dx * dx + dz * dz > radiusSq) {
+                continue;
+            }
+            level.sendParticles(player, ParticleTypes.EXPLOSION_EMITTER, true,
+                    centre.x, centre.y, centre.z, 1, 0.0, 0.0, 0.0, 0.0);
+            level.sendParticles(player, ParticleTypes.DRAGON_BREATH, true,
+                    centre.x, centre.y, centre.z, 28, 2.0, 1.5, 2.0, 0.03);
+            level.sendParticles(player, ParticleTypes.POOF, true,
+                    centre.x, centre.y, centre.z, 16, 1.5, 1.0, 1.5, 0.03);
+        }
+    }
+
+    /** The fall-away explosion, which is an effect and nothing else: no damage, no block damage
      * (decision fall-style). {@code EXPLOSION_EMITTER} is the vanilla "big" explosion visual and
      * {@code GENERIC_EXPLODE} its sound.
      */

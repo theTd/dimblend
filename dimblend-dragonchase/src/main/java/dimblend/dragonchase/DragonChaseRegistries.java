@@ -3,12 +3,15 @@ package dimblend.dragonchase;
 import dimblend.dragonchase.entity.ChaseDragon;
 import dimblend.dragonchase.entity.ChaseFireball;
 import dimblend.dragonchase.entity.CrystalBeams;
+import dimblend.dragonchase.entity.CrystalMountsPayload;
+import dimblend.dragonchase.music.ChaseMusicStatePayload;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
+import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import org.jetbrains.annotations.Nullable;
@@ -62,7 +65,11 @@ public final class DragonChaseRegistries {
     }
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
-        event.registrar("1").playToClient(CrystalBeams.TYPE, CrystalBeams.STREAM_CODEC, CrystalBeams::handle);
+        PayloadRegistrar registrar = event.registrar("1");
+        registrar.playToClient(CrystalBeams.TYPE, CrystalBeams.STREAM_CODEC, CrystalBeams::handle);
+        CrystalMountsPayload.register(registrar);
+        registrar.playToClient(
+                ChaseMusicStatePayload.TYPE, ChaseMusicStatePayload.STREAM_CODEC, ChaseMusicStatePayload::handle);
     }
 
     /** {@code null} while the deferred holder is not bound yet (during early entity construction). */

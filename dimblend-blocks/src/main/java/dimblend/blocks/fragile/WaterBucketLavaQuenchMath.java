@@ -23,7 +23,8 @@ import net.minecraft.core.Direction;
  *   <li>命中格为<b>岩浆流</b>：沿上游回溯源头：
  *     <ul>
  *       <li>源头在 {@value #MAX_SOLIDIFY_TRACE_STEPS} 格以内（含）：源头变为黑曜石，从右键位置追溯到源头前的岩浆流变为易碎石头；</li>
- *       <li>源头在 {@value #MAX_SOLIDIFY_TRACE_STEPS} 格以外：不固化方块，从右键位置沿途至源头依次播放烟雾粒子与火焰熄灭音效。</li>
+ *       <li>源头在 {@value #MAX_SOLIDIFY_TRACE_STEPS} 格以外：不固化方块，从右键位置沿途至源头依次播放烟雾粒子与火焰熄灭音效；
+ *           其中最先 {@value #OVER_16_CUT_LIMIT} 格纯岩浆流在效果播放后被直接删除（紧急截断）。</li>
  *     </ul>
  *   </li>
  * </ul>
@@ -38,6 +39,9 @@ public final class WaterBucketLavaQuenchMath {
 
     /** 超过 16 格时沿途播放烟雾的最大回溯步数上限（防止极端大瀑布无界搜索）。 */
     public static final int MAX_SMOKE_TRACE_STEPS = 128;
+
+    /** 超过 16 格时，从右键格向源头追溯途中最先被直接删除的岩浆流格数。 */
+    public static final int OVER_16_CUT_LIMIT = 8;
 
     /**
      * 决策开关（{@code lava-over-16-consume}）：源头超出 16 格、仅播放沿途烟雾与熄灭音效时，
@@ -238,6 +242,20 @@ public final class WaterBucketLavaQuenchMath {
             return false;
         }
         return !sourceOver16 || CONSUME_WHEN_SOURCE_OVER_16;
+    }
+
+    /**
+     * 源头超出 16 格时的紧急截断：从右键格（步 0）向源头追溯，前 {@code deleteFirstCount}
+     * 格里的纯岩浆流被删除。源头本身与更远的岩浆流不动。
+     *
+     * @param stepIndex        回溯步数（右键格为 0，逐步向源头递增）
+     * @param deleteFirstCount 允许删除的前缀长度，生产路径使用 {@link #OVER_16_CUT_LIMIT}
+     * @param isLavaFluid      该格流体是岩浆且方块本体是液体方块
+     * @param isSource         该格是岩浆源头
+     */
+    public static boolean shouldDeleteOnOver16Trail(int stepIndex, int deleteFirstCount,
+            boolean isLavaFluid, boolean isSource) {
+        return stepIndex >= 0 && stepIndex < deleteFirstCount && isLavaFluid && !isSource;
     }
 
     private WaterBucketLavaQuenchMath() {

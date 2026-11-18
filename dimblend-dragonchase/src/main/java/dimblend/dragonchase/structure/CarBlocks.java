@@ -9,6 +9,7 @@ import com.crystaelix.simurail.content.bogey.PhysicsBogeyBlockEntity;
 import com.crystaelix.simurail.content.bogey.PhysicsBogeyControlMode;
 import com.simibubi.create.content.trains.track.ITrackBlock;
 import com.simibubi.create.content.trains.track.TrackMaterial.TrackType;
+import dimblend.api.ChaseBrakeBogeyMarker;
 import dimblend.dragonchase.DimBlendDragonChase;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -16,6 +17,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.SlabType;
@@ -141,6 +143,29 @@ public final class CarBlocks {
         options.renderBackConnector = true;
         // setOptions copies field by field, pokes both axles and sends the data packet.
         bogey.setOptions(options);
+    }
+
+    /**
+     * Marks the brake car's bogey so its redstone signal bypasses the player tune brake cap
+     * ({@code trainBrakeSignalCap}).
+     *
+     * <p>The cap is a mixin in {@code dimblend-experience}
+     * ({@code PhysicsBogeyBrakeSignalCapMixin#dimblend$clampSignalStrength}) that clamps every bogey's
+     * {@code getControlStrength}; the brake car is not a player's tune and must brake at the signal
+     * it reads (a redstone block, 15/15). The marker is
+     * {@code dimblend.api.ChaseBrakeBogeyMarker}, mixed onto Simurail's block entity by that module;
+     * the {@code instanceof} keeps this a no-op when the mixin is absent instead of failing the build.
+     *
+     * <p><b>After assembly, not before.</b> The blocks and their block entities move into the plot
+     * during {@code SubLevelAssemblyHelper#assembleBlocks}; a field set on the world block entity
+     * could be lost in the move, so this writes the plot block entity.
+     */
+    public static void markBrakeBogey(ServerLevel level, BlockPos pos) {
+        BlockEntity blockEntity = level.getBlockEntity(pos);
+        if (blockEntity instanceof ChaseBrakeBogeyMarker marker) {
+            marker.dimblend$setChaseBrakeBogey(true);
+            blockEntity.setChanged();
+        }
     }
 
     /**

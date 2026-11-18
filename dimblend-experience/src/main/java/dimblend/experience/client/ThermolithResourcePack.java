@@ -18,7 +18,7 @@ import net.neoforged.neoforgespi.language.IModFileInfo;
 /**
  * 把 {@code thermolith_override_pack} 作为内置资源包塞到最高优先级：
  * 我们的 {@code assets/cold_sweat/blockstates/thermolith.json} 覆盖 Cold Sweat 自己那份，
- * 让 {@code dimblend_mode} 的 24 个变体（4 朝向 × 2 通电 × 3 模式）能解析到冰/熔岩贴图。
+ * 让 {@code dimblend_mode} × {@code dimblend_suppressed} 的 48 个变体（4 朝向 × 2 通电 × 3 模式 × 2 抑制）能解析到冰/熔岩贴图。
  *
  * <p>为什么要一个独立资源包而不是直接往 {@code assets/cold_sweat/} 里放文件：同一个
  * 命名空间/路径在多个包之间只取优先级最高的那份，模组自带的资源包（NeoForge 的

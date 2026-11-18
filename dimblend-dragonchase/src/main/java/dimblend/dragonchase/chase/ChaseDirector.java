@@ -12,6 +12,9 @@ import dimblend.dragonchase.carriage.DragonCarriages;
 import dimblend.dragonchase.entity.ChaseDragonHandle;
 import dimblend.dragonchase.entity.ChaseDragons;
 import dimblend.dragonchase.entity.ChaseEntityTickets;
+import dimblend.dragonchase.music.ChaseMusicMath;
+import dimblend.dragonchase.music.ChaseMusicPhase;
+import dimblend.dragonchase.music.ChaseMusicStatePayload;
 import dimblend.dragonchase.structure.CarKind;
 import dimblend.dragonchase.structure.DragonCars;
 import java.util.ArrayList;
@@ -28,8 +31,9 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.event.tick.LevelTickEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
+import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 import org.joml.Vector3d;
 
@@ -451,6 +455,9 @@ public final class ChaseDirector {
                 // §3.4: one place decides when the dragon shoots or breathes, retried every tick so
                 // a threshold reached while it was busy is never swallowed.
                 tryDispatchDragonActions(data, dragon, nestX, now);
+                // BGM: same retried-every-tick treatment for the 50% drop, so a chase loaded from a
+                // save whose dragon is already below half health still starts Phase B exactly once.
+                maybeTriggerPhaseB(level, data, dragon);
             }
         }
 
@@ -500,7 +507,15 @@ public final class ChaseDirector {
         Arrays.fill(data.breathFired, false);
         data.fireballAccumulator = 0.0D;
         data.fireballCooldownUntil = 0L;
+        // BGM: one random Phase A track for the whole chase, identical for every player and
+        // persisted so a server restart mid-chase resumes the same track. Phase B is rolled later,
+        // at the first drop below 50% HP.
+        data.musicPhase = ChaseMusicPhase.PHASE_A;
+        data.phaseATrack = level.random.nextInt(ChaseMusicMath.TRACK_COUNT);
+        data.phaseBTrack = -1;
+        data.phaseBTriggered = false;
         data.setDirty();
+        ChaseMusicStatePayload.broadcast(level, ChaseMusicPhase.PHASE_A, data.phaseATrack, false);
     }
 
     /** §3.4: passing local 1024 of the nest's region forces the next region to barren End, once. */
@@ -604,6 +619,101 @@ public final class ChaseDirector {
         }
     }
 
+    // ---------------------------------------------------------------- chase BGM
+
+    /**
+     * The one-way Phase B transition, called both from the damage callback and from every chase
+     * tick: whoever sees the first drop below 50% HP flips the persisted latch, rolls the Phase B
+     * track and tells the clients to crossfade.
+     *
+     * <p>The latch is persisted, so crystal healing back above 50% changes nothing and a reloaded
+     * chase cannot re-roll its music. A killing blow is not a drop: health must stay strictly above
+     * zero, and a dragon already in its death animation is ignored outright.
+     */
+    static void maybeTriggerPhaseB(ServerLevel level, DragonChaseSavedData data, ChaseDragonHandle dragon) {
+        if (dragon.mode() == ChaseDragonHandle.Mode.DYING) {
+            return;
+        }
+        if (!ChaseMusicMath.shouldTriggerPhaseB(data.phaseBTriggered,
+                data.phase == DragonChaseSavedData.Phase.ACTIVE, dragon.getHealth(), dragon.getMaxHealth())) {
+            return;
+        }
+        data.phaseBTriggered = true;
+        data.musicPhase = ChaseMusicPhase.PHASE_B;
+        data.phaseBTrack = level.random.nextInt(ChaseMusicMath.TRACK_COUNT);
+        data.setDirty();
+        ChaseMusicStatePayload.broadcast(level, ChaseMusicPhase.PHASE_B, data.phaseBTrack, true);
+    }
+
+    /**
+     * Ends the chase BGM: the clients fade the audible track out over 16 s and then release their
+     * MUSIC block. Idempotent — every chase-ending path calls it, and several of them run for the
+     * same chase (e.g. {@code discardSilently} removes the dragon before {@code forgetChase}).
+     */
+    private static void endChaseMusic(ServerLevel level, DragonChaseSavedData data) {
+        boolean wasAudible = data.musicPhase != ChaseMusicPhase.IDLE;
+        data.musicPhase = ChaseMusicPhase.IDLE;
+        if (wasAudible) {
+            data.setDirty();
+            ChaseMusicStatePayload.broadcast(level, ChaseMusicPhase.IDLE, -1, false);
+        }
+    }
+
+    /**
+     * {@code ChaseDragon.remove} funnel: the chase dragon was destroyed. This is the only signal
+     * {@code /kill} leaves — vanilla's {@code EnderDragon.kill()} removes the entity with
+     * {@code RemovalReason.KILLED} and never runs the death path, so {@code startDying} and
+     * {@code onKilled -> killChase} are bypassed. The music still has to end.
+     *
+     * <p>Chunk unloading does not reach here ({@code UNLOADED_TO_CHUNK} goes through
+     * {@code setRemoved}, not {@code remove}); the caller filters on {@code shouldDestroy()} and on
+     * the mode anyway, so a prologue dragon never ends a chase's music.
+     */
+    public static void onChaseDragonRemoved(UUID dragonId) {
+        ServerLevel level = rotatingLevel();
+        if (level == null || dragonId == null) {
+            return;
+        }
+        DragonChaseSavedData data = DragonChaseSavedData.get(level);
+        if (data.dragonId == null || !data.dragonId.equals(dragonId)) {
+            return;
+        }
+        endChaseMusic(level, data);
+    }
+
+    /** Login / reconnect: a player entering the chase dimension mid-run must get the current track. */
+    public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            syncMusic(player);
+        }
+    }
+
+    /** Dimension change: entering {@code dimblend:rotating} resumes the track, leaving ends it. */
+    public static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            syncMusic(player);
+        }
+    }
+
+    private static void syncMusic(ServerPlayer player) {
+        if (!player.level().dimension().equals(DimBlendRegistries.ROTATING_LEVEL)) {
+            // The client resets on its own when the dimension differs; this is the explicit
+            // "leaving the chase" signal the brief asks for.
+            ChaseMusicStatePayload.send(player, ChaseMusicPhase.IDLE, -1, false);
+            return;
+        }
+        DragonChaseSavedData data = DragonChaseSavedData.get(player.serverLevel());
+        ChaseMusicPhase phase = ChaseMusicStatePayload.audiblePhase(data.musicPhase,
+                data.phase == DragonChaseSavedData.Phase.ACTIVE);
+        if (phase == ChaseMusicPhase.IDLE) {
+            ChaseMusicStatePayload.send(player, ChaseMusicPhase.IDLE, -1, false);
+            return;
+        }
+        int track = phase == ChaseMusicPhase.PHASE_B ? data.phaseBTrack : data.phaseATrack;
+        // Not a crossfade: a joining client starts the current track cleanly.
+        ChaseMusicStatePayload.send(player, phase, track, false);
+    }
+
     // ---------------------------------------------------------------- transition helpers
 
     /** §3.3/§3.6: discard the dragon (if alive), clear the marker and forget the chase. */
@@ -611,6 +721,7 @@ public final class ChaseDirector {
         discardDragon(level, data);
         DragonCarriages.retireHealing(level);
         clearMarker(data);
+        endChaseMusic(level, data);
         data.forgetChase();
         ChaseSpawnRule.publish(false, 0.0D, 0.0D);
     }
@@ -627,6 +738,7 @@ public final class ChaseDirector {
             DragonCarriages.removeNow(level, nest);
         }
         clearMarker(data);
+        endChaseMusic(level, data);
         data.forgetChase();
         ChaseSpawnRule.publish(false, 0.0D, 0.0D);
     }
@@ -639,6 +751,8 @@ public final class ChaseDirector {
         DragonCarriages.retireHealing(level);
         ServerSubLevel nest = ChaseTrackScan.byId(level, data.nestId);
         data.phase = DragonChaseSavedData.Phase.WON;
+        // The 16 s fade starts at the killing blow, not when the 200-tick corpse disappears.
+        endChaseMusic(level, data);
         if (nest != null) {
             double nestX = centerX(nest);
             double nestZ = centerZ(nest);
@@ -710,6 +824,7 @@ public final class ChaseDirector {
             DragonCarriages.removeNow(level, old);
         }
         clearMarker(data);
+        endChaseMusic(level, data);
         data.forgetChase();
 
         ChaseTrackScan.Car nearest = nearest(ChaseTrackScan.corridor(level, ChaseTrackScan.forceLoaded(level)), nearX, nearZ);
@@ -792,6 +907,7 @@ public final class ChaseDirector {
             prologue.discardSilently();
         }
         clearMarker(data);
+        endChaseMusic(level, data);
         data.forgetEverything();
         ChaseSpawnRule.publish(false, 0.0D, 0.0D);
     }

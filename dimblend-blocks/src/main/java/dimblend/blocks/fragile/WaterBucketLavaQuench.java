@@ -43,7 +43,8 @@ import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
  * <ul>
  *   <li>命中岩浆源头：固化 {@code 3x3x3} 范围内的所有岩浆源头为黑曜石；</li>
  *   <li>命中岩浆流：回溯上游源头——16 格内将源头变为黑曜石、回溯路径上的岩浆流变为易碎石头；
- *       16 格以外不固化方块，从右键位置沿途至源头依次播放烟雾粒子与火焰熄灭音效；</li>
+ *       16 格以外不固化源头，从右键位置沿途至源头依次播放烟雾粒子与火焰熄灭音效，
+ *       并把最先 {@value WaterBucketLavaQuenchMath#OVER_16_CUT_LIMIT} 格纯岩浆流删除（紧急截断列车前方的岩浆）；</li>
  *   <li>生存/冒险下消耗水桶中的水（变回空桶）或消耗 1 个蓝冰；永不放水或放置蓝冰方块。</li>
  * </ul>
  */
@@ -263,7 +264,7 @@ public final class WaterBucketLavaQuench {
                 yield QuenchOutcome.SOLIDIFIED;
             }
             case SOURCE_OVER_16 -> {
-                LavaQuenchSmokeTrail.schedule(level, path);
+                LavaQuenchSmokeTrail.schedule(level, path, WaterBucketLavaQuenchMath.OVER_16_CUT_LIMIT);
                 yield QuenchOutcome.SMOKE_OVER_16;
             }
         };

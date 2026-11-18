@@ -121,7 +121,8 @@ import com.google.gson.JsonPrimitive;
  *       {@code create:crushing/misc/scrap_blue_ice} / {@code scrap_packed_ice}），与随包的
  *       {@code dimblend_craft:blue_ice_crushing} / {@code packed_ice_crushing}（{@code 1 -> 3}）并存冲突。
  *       按精确配方 ID 标 {@code defensive = true} 删除：装有该附属时命中删除，未装该附属的开发实例
- *       按预期降级为 {@code INFO} 不刷假 {@code WARN}；随包 {@code 1 -> 3} 配方与原版/Create 洗涤冰配方保留不动。</li>
+ *       按预期降级为 {@code INFO} 不刷假 {@code WARN}。随包的 {@code 1 -> 3} 配方（2026-11-18 用户要求）
+ *       已从 {@code dimblend_craft} 资源里移除，原版/Create 洗涤冰配方保留不动。</li>
  * </ul>
  */
 public final class RecipeEditRules {
@@ -205,6 +206,15 @@ public final class RecipeEditRules {
         // 铜水槽中央水桶改为空桶；无限水仍由 experience 的 /dbx 开关控制。
         edits.add(modify("铜水槽", "fluid:copper_sink")
                 .slot(5, RecipeIngredient.item("minecraft:bucket"))
+                .build());
+        // 红石阀门（2026-11-18）：普通无序合成，原为 #c:dusts/redstone + create:fluid_pipe；
+        // 整合包里该标签只解析为红石粉，材料整段改成 电子管 + 流体管道。
+        // 消费红石阀门的三通阀 fluid:redstone_triple_valve 不在本次需求内，不得一起改写。
+        edits.add(modifyFields("红石阀门电子管替换", "fluid:redstone_valve")
+                .setJson("ingredients", "["
+                        + "{\"item\": \"create:electron_tube\"},"
+                        + "{\"item\": \"create:fluid_pipe\"}"
+                        + "]")
                 .build());
 
         // —— 3.8 TACZ ——
@@ -502,8 +512,9 @@ public final class RecipeEditRules {
 
         // —— 3.22 蓝冰与浮冰原拆解粉碎配方（2026-11-14 补删） ——
         // 玩家端 PCL 实例安装了 Create Recycle Everything (Continued) 1.1（create_recycle_everything），
-        // 自带 1 蓝冰 -> 9 浮冰、1 浮冰 -> 9 冰（100 tick）的粉碎拆解配方，与本 mod 随包的 1 -> 3
-        // 粉碎配方并存；一并覆盖 1.0.x 同源移植版的 create:crushing/misc/scrap_*_ice 两条 ID。
+        // 自带 1 蓝冰 -> 9 浮冰、1 浮冰 -> 9 冰（100 tick）的粉碎拆解配方；一并覆盖 1.0.x
+        // 同源移植版的 create:crushing/misc/scrap_*_ice 两条 ID。随包 1 -> 3 粉碎配方已于
+        // 2026-11-18 按用户要求移除（资源文件删除），本规则只负责上游 1 -> 9 的防御性删除。
         // 本机开发实例未安装该附属，标 defensive = true 避免空转假 WARN。
         edits.add(new RecipeEdit.DeleteByRecipeId("蓝冰与浮冰原拆解粉碎配方",
                 Set.of(ResourceLocation.parse("create_recycle_everything:crushing/vanilla/scrap_blue_ice"),

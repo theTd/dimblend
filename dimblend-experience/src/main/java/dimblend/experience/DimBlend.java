@@ -80,6 +80,7 @@ public class DimBlend {
         }
         if (ModList.get().isLoaded("yet_another_thirst")) {
             modEventBus.addListener(dimblend.experience.compat.yat.ThirstFilterBalance::setup);
+            dimblend.experience.compat.yat.EdibleThirstOverrides.register();
         }
         if (ModList.get().isLoaded("cold_sweat")) {
             dimblend.experience.compat.coldsweat.ColdSweatHeatSources.register();

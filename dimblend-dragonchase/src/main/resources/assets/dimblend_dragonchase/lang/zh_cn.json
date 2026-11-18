@@ -15,5 +15,6 @@
   "command.dimblend_dragonchase.no_dragon": "当前没有追逐龙。",
   "command.dimblend_dragonchase.no_chase": "当前没有进行中的追逐。",
   "command.dimblend_dragonchase.no_train": "附近没有常加载车体。",
-  "command.dimblend_dragonchase.no_level": "找不到旋转维度。"
+  "command.dimblend_dragonchase.no_level": "找不到旋转维度。",
+  "block.dimblend_dragonchase.obsidian_soul_campfire": "哭泣黑曜石灵魂营火"
 }

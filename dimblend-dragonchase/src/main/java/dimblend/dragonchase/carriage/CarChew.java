@@ -5,6 +5,7 @@ import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.companion.math.BoundingBox3d;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
+import dimblend.api.DepotCarQuery;
 import dimblend.dragonchase.DimBlendDragonChase;
 import dimblend.dragonchase.structure.CarKind;
 import dimblend.dragonchase.structure.CarMotion;
@@ -70,8 +71,12 @@ public final class CarChew {
      * answer to "who is on the other end": it resolves the stored partner sub-level id (a partner
      * whose chunk is not loaded resolves to null and simply does not count). Force-loaded means the
      * partner is in {@code ServerSubLevelContainer#collectForceLoadedSubLevels}, which already
-     * includes sub-levels pulled in through the dependency chain — a car coupled to a train is
-     * force-loaded by that same chain, so this answers "attached to the player's train".
+     * includes sub-levels pulled in through the dependency chain.
+     *
+     * <p><b>This is the chewing question, not the announcement one.</b> "Would something that is
+     * being force-loaded hold on to me" is exactly what prevents a car from eating its pusher; the
+     * brake car's map-wide sound instead asks whether the coupling is the player's train
+     * ({@link #coupledToPlayerTrain}), because a train with no ticket still couples.
      */
     public static boolean coupledToForceLoaded(ServerLevel level, ServerSubLevel car, CarKind kind,
             Set<UUID> forceLoaded) {
@@ -85,6 +90,37 @@ public final class CarChew {
             }
             for (SubLevel partner : coupler.sable$getConnectionDependencies()) {
                 if (partner != null && forceLoaded.contains(partner.getUniqueId())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * True when one of the car's couplers is connected to the player's train.
+     *
+     * <p>{@code AutomaticCouplerBlockEntity#sable$getConnectionDependencies} is Simurail's public
+     * answer to "who is on the other end": it resolves the stored partner sub-level id (a partner
+     * whose chunk is not loaded resolves to null and simply does not count). The chase's own cars
+     * are excluded by id, and an idle station-depot spare is not a train anyone coupled to
+     * ({@code DepotCarQuery}), so what is left is the consist the player drives.
+     *
+     * <p><b>No force-load ticket required.</b> The earlier version of this rule asked whether the
+     * partner was in {@code collectForceLoadedSubLevels}; a train without its own ticket (or a
+     * ticket chain that had not formed yet) then never matched and the brake car's one-shot sound
+     * never played.
+     */
+    public static boolean coupledToPlayerTrain(ServerLevel level, ServerSubLevel car, CarKind kind,
+            Set<UUID> nonCrew) {
+        for (CarPlans.Cell cell : CarPlans.of(kind).couplers()) {
+            BlockPos pos = CarMotion.plotPos(car, cell);
+            if (!(level.getBlockEntity(pos) instanceof AutomaticCouplerBlockEntity coupler)) {
+                continue;
+            }
+            for (SubLevel partner : coupler.sable$getConnectionDependencies()) {
+                if (partner != null && CarRules.isPlayerTrainPartner(partner.getUniqueId(), nonCrew,
+                        DepotCarQuery.get().isIdleDepotCar(level, partner.getUniqueId()))) {
                     return true;
                 }
             }

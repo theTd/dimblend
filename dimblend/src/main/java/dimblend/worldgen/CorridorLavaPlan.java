@@ -10,7 +10,12 @@ import java.util.function.Consumer;
 public final class CorridorLavaPlan {
     public static final int MIN_SOURCE_Y = 67;
     public static final int CLEAR_FLOOR_Y = 66;
-    public static final int HALF_WIDTH = 64;
+    /** Negative-side source band; the central corridor {@code z in [-10, 10]} is never hollowed. */
+    public static final int LOWER_BAND_MIN_Z = -48;
+    public static final int LOWER_BAND_MAX_Z = -11;
+    /** Positive-side source band; the central corridor {@code z in [-10, 10]} is never hollowed. */
+    public static final int UPPER_BAND_MIN_Z = 11;
+    public static final int UPPER_BAND_MAX_Z = 48;
 
     public record Cell(int x, int y, int z) {
         public Cell offset(int dx, int dy, int dz) {
@@ -24,12 +29,21 @@ public final class CorridorLavaPlan {
     private final Map<Column, Integer> clearCeilings = new HashMap<>();
 
     public static boolean inSourceRange(int y, int z) {
-        return y >= MIN_SOURCE_Y && z >= -HALF_WIDTH && z <= HALF_WIDTH;
+        return y >= MIN_SOURCE_Y
+                && ((z >= LOWER_BAND_MIN_Z && z <= LOWER_BAND_MAX_Z)
+                    || (z >= UPPER_BAND_MIN_Z && z <= UPPER_BAND_MAX_Z));
     }
 
-    /** Includes the one-block glass overhang at z=+-65. */
+    /** Whether a chunk's {@code [minZ, maxZ]} touches either band's one-block glass overhang. */
     public static boolean touchesOutput(int minZ, int maxZ) {
-        return minZ <= HALF_WIDTH + 1 && maxZ >= -HALF_WIDTH - 1;
+        return (maxZ >= LOWER_BAND_MIN_Z - 1 && minZ <= LOWER_BAND_MAX_Z + 1)
+                || (maxZ >= UPPER_BAND_MIN_Z - 1 && minZ <= UPPER_BAND_MAX_Z + 1);
+    }
+
+    /** Whether a chunk's {@code [minZ, maxZ]} can contain a source at all (no overhang). */
+    public static boolean intersectsSourceBand(int minZ, int maxZ) {
+        return (maxZ >= LOWER_BAND_MIN_Z && minZ <= LOWER_BAND_MAX_Z)
+                || (maxZ >= UPPER_BAND_MIN_Z && minZ <= UPPER_BAND_MAX_Z);
     }
 
     public void openSource(Cell source, Iterable<Cell> originalHorizontalAir) {

@@ -83,9 +83,10 @@ public final class CorridorLavaSources {
         for (ChunkAccess chunk : chunks.values()) {
             // Old FULL chunks can provide collision context, never sources or writes.
             if (!isNewProto(chunk)) continue;
-            int minZ = Math.max(-CorridorLavaPlan.HALF_WIDTH, chunk.getPos().getMinBlockZ());
-            int maxZ = Math.min(CorridorLavaPlan.HALF_WIDTH, chunk.getPos().getMaxBlockZ());
-            if (minZ > maxZ) continue;
+            // Only chunks that can contain a source in either band need a palette scan; the
+            // central corridor and its overhang chunks are handled by cross-edge requests.
+            if (!CorridorLavaPlan.intersectsSourceBand(
+                    chunk.getPos().getMinBlockZ(), chunk.getPos().getMaxBlockZ())) continue;
             boolean eligibleLane = false;
             for (int x = chunk.getPos().getMinBlockX(); x <= chunk.getPos().getMaxBlockX(); x++) {
                 if (lane.test(x)) {

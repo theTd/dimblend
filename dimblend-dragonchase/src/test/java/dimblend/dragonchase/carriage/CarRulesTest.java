@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dimblend.dragonchase.structure.CarKind;
+import java.util.Set;
 import java.util.UUID;
 import net.minecraft.nbt.CompoundTag;
 import org.junit.jupiter.api.Test;
@@ -69,6 +70,31 @@ class CarRulesTest {
     void theBogeyAndTheCouplersAreNeverChewed() {
         assertFalse(CarRules.chewable(1.5F, BOGEY), "the bogey keeps the car on the rails");
         assertFalse(CarRules.chewable(1.5F, COUPLER), "the coupler is how it would have held on");
+    }
+
+    // ------------------------------------------------------------------ coupling (I21)
+
+    @Test
+    void aCouplingPartnerIsThePlayerTrainUnlessItIsAChaseCarOrAnIdleDepotSpare() {
+        UUID train = UUID.fromString("00000000-0000-0000-0000-0000000000f1");
+        UUID chaseCar = UUID.fromString("00000000-0000-0000-0000-0000000000f2");
+        Set<UUID> nonCrew = Set.of(chaseCar);
+
+        assertTrue(CarRules.isPlayerTrainPartner(train, nonCrew, false),
+                "the player's consist is neither one of our cars nor an idle spare");
+        assertFalse(CarRules.isPlayerTrainPartner(chaseCar, nonCrew, false),
+                "the nest and the other chase cars are not the player");
+        assertFalse(CarRules.isPlayerTrainPartner(train, nonCrew, true),
+                "an idle station-depot spare is not a train anyone coupled to");
+        assertFalse(CarRules.isPlayerTrainPartner(null, nonCrew, false),
+                "an unresolved partner (chunk not loaded) is never a coupling");
+    }
+
+    @Test
+    void anEmptyChaseCarSetStillAcceptsTheTrain() {
+        UUID train = UUID.fromString("00000000-0000-0000-0000-0000000000f3");
+        assertTrue(CarRules.isPlayerTrainPartner(train, Set.of(), false),
+                "before any car is registered there is nothing to exclude");
     }
 
     @Test

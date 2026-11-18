@@ -1,0 +1,66 @@
+{
+  "music.phase_a_1": {
+    "sounds": [
+      {
+        "name": "dimblend_dragonchase:music/phase_a_1",
+        "stream": true
+      }
+    ]
+  },
+  "music.phase_a_2": {
+    "sounds": [
+      {
+        "name": "dimblend_dragonchase:music/phase_a_2",
+        "stream": true
+      }
+    ]
+  },
+  "music.phase_a_3": {
+    "sounds": [
+      {
+        "name": "dimblend_dragonchase:music/phase_a_3",
+        "stream": true
+      }
+    ]
+  },
+  "music.phase_a_4": {
+    "sounds": [
+      {
+        "name": "dimblend_dragonchase:music/phase_a_4",
+        "stream": true
+      }
+    ]
+  },
+  "music.phase_b_1": {
+    "sounds": [
+      {
+        "name": "dimblend_dragonchase:music/phase_b_1",
+        "stream": true
+      }
+    ]
+  },
+  "music.phase_b_2": {
+    "sounds": [
+      {
+        "name": "dimblend_dragonchase:music/phase_b_2",
+        "stream": true
+      }
+    ]
+  },
+  "music.phase_b_3": {
+    "sounds": [
+      {
+        "name": "dimblend_dragonchase:music/phase_b_3",
+        "stream": true
+      }
+    ]
+  },
+  "music.phase_b_4": {
+    "sounds": [
+      {
+        "name": "dimblend_dragonchase:music/phase_b_4",
+        "stream": true
+      }
+    ]
+  }
+}

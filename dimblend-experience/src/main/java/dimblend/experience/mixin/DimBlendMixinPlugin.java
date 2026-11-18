@@ -31,6 +31,57 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".client.VeilWrappedDepthStencilMixin")) {
             return isLoaded("sable") && isLoaded("veil") && !isLoaded("iris");
         }
+        if (mixinClassName.endsWith(".client.VeilFboStencilClearMixin")) {
+            return isLoaded("sable") && isLoaded("veil") && !isLoaded("iris")
+                    && classPresent("foundry.veil.impl.client.render.framebuffer.LegacyAdvancedFboImpl");
+        }
+        if (mixinClassName.endsWith(".compat.tacz.TaCzScopeStencilCleanupMixin")) {
+            return isLoaded("tacz")
+                    && classPresent("com.tacz.guns.client.model.BedrockAttachmentModel");
+        }
+        if (mixinClassName.endsWith(".compat.toolbelt.ToolBeltConfigBackpackGuardMixin")) {
+            return isLoaded("toolbelt")
+                    && classPresent("dev.gigaherz.toolbelt.ConfigData");
+        }
+        if (mixinClassName.endsWith(".compat.toolbelt.ToolBeltRadialMenuBackpackGuardMixin")) {
+            return isLoaded("toolbelt")
+                    && classPresent("dev.gigaherz.toolbelt.client.ClientEvents");
+        }
+        if (mixinClassName.endsWith(".compat.doublejump.DoubleJumpClientMixin")) {
+            return isLoaded("double_jump_plus")
+                    && classPresent("net.foufakirby.double_jump.client.DoubleJumpClient");
+        }
+        if (mixinClassName.endsWith(".compat.doublejump.DoubleJumpHandlerMixin")) {
+            return isLoaded("double_jump_plus")
+                    && classPresent("net.foufakirby.double_jump.common.DoubleJumpHandler");
+        }
+        if (mixinClassName.endsWith(".compat.doublejump.ServerEventsNeoForgeMixin")) {
+            return isLoaded("double_jump_plus")
+                    && classPresent("net.foufakirby.double_jump.neoforge.ServerEventsNeoForge");
+        }
+        if (mixinClassName.contains(".compat.sophisticated.")) {
+            return isLoaded("sophisticatedcore")
+                    && classPresent("net.p3pp3rf1y.sophisticatedcore.common.gui.StorageContainerMenuBase");
+        }
+        if (mixinClassName.contains(".compat.dirtywater.")) {
+            if (!isLoaded("yet_another_thirst")) {
+                return false;
+            }
+            if (mixinClassName.endsWith(".BasinBlockEntityDirtyWaterMixin")
+                    || mixinClassName.endsWith(".BasinRecipeDirtyWaterMixin")
+                    || mixinClassName.endsWith(".GenericItemEmptyingDirtyWaterMixin")
+                    || mixinClassName.endsWith(".FluidHelperBasinHandDirtyWaterMixin")) {
+                return isLoaded("create");
+            }
+            if (mixinClassName.contains(".Stockpot") || mixinClassName.contains(".Teapot")) {
+                return isLoaded("kaleidoscope_cookery");
+            }
+            return true;
+        }
+        if (mixinClassName.endsWith(".compat.railways.PhantomSpriteManagerMixin")) {
+            return isLoaded("railways") && isLoaded("dimblend")
+                    && classPresent("com.railwayteam.railways.content.custom_tracks.phantom.PhantomSpriteManager");
+        }
         // Sable 的 vanilla 子层级区块网格需要补 Sodium 的动画贴图活跃标记；Sable 缺席时
         // 目标类不存在，mixin 不应用（Sodium 自身的动画剔除也就不影响任何子层级）。
         // 同一门控的两个粒子 mixin：绘制时按 renderPose 对齐被 Sable 子层级追踪的粒子
@@ -59,6 +110,10 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.endsWith(".compat.lootjournal.LootJournalLayoutSanitizerMixin")) {
             return isLoaded("loot_journal")
                     && classPresent("dev.obscuria.lootjournal.client.renderer.layout.LayoutParser");
+        }
+        if (mixinClassName.endsWith(".compat.lootjournal.LootJournalItemIconRenderMixin")) {
+            return isLoaded("loot_journal")
+                    && classPresent("dev.obscuria.lootjournal.client.events.ItemPickupEvent");
         }
         if (mixinClassName.endsWith(".compat.connected.KineticBatteryLifecycleMixin")
                 || mixinClassName.endsWith(".compat.connected.LinkHandlerEventHitMixin")
@@ -171,6 +226,12 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         // NoClassDefFoundError（横切约定：单独安装本模组不崩）。
         if (mixinClassName.endsWith(".compat.coldsweat.RainWetnessShelterMixin")) {
             return isLoaded("cold_sweat") && classPresent("dev.ryanhcode.sable.util.SubLevelRainColumn");
+        }
+        if (mixinClassName.endsWith(".compat.simurail.PhysicsBogeyChaseBrakeMarkerMixin")) {
+            return isLoaded("simurail") && isLoaded("dimblend");
+        }
+        if (mixinClassName.endsWith(".compat.create.StockKeeperRequestScreenOrderMixin")) {
+            return isLoaded("create");
         }
         // simurail 硬性依赖 sable（mods.toml required），在场性蕴含 sable 在场
         if (mixinClassName.endsWith(".compat.simurail.PhysicsBogeyInteractionMixin")

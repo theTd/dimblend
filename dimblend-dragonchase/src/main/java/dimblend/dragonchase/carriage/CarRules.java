@@ -1,6 +1,9 @@
 package dimblend.dragonchase.carriage;
 
 import dimblend.dragonchase.structure.CarBlocks;
+import java.util.Set;
+import java.util.UUID;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * The car rules that are decisions rather than world access: thresholds, phase durations, the launch
@@ -80,6 +83,23 @@ public final class CarRules {
     public static double[] launchVelocity(double vx, int side) {
         double component = LAUNCH_SPEED_MPS * Math.sin(Math.PI / 4.0);
         return new double[] {vx, component, side >= 0 ? component : -component};
+    }
+
+    /**
+     * True when a coupling partner counts as the player's train.
+     *
+     * <p>Two exclusions, both pure answers so the unit tests pin them without a level:
+     * <ul>
+     *   <li>the chase's own cars ({@code nonCrew}, i.e. {@code dimblend.api.NonCrewCarriages#ids}) —
+     *       a nest or a crystal car touching the brake car is not a player;</li>
+     *   <li>an idle station-depot spare, which sits on the corridor sidings and couples to anything
+     *       that rolls past without being anyone's train ({@code DepotCarQuery#isIdleDepotCar}).</li>
+     * </ul>
+     * Everything else is a consist a player assembled, whether or not it carries a force-load
+     * ticket.
+     */
+    public static boolean isPlayerTrainPartner(@Nullable UUID partnerId, Set<UUID> nonCrew, boolean idleDepotCar) {
+        return partnerId != null && !nonCrew.contains(partnerId) && !idleDepotCar;
     }
 
     /**

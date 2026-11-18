@@ -14,6 +14,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
@@ -21,7 +22,8 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 /**
  * 当右键的岩浆流源头超出 16 格时，从右键位置沿上游路径至源头逐 tick 依次播放
- * 烟雾粒子效果（{@link ParticleTypes#LARGE_SMOKE}）与火焰熄灭音效（{@link SoundEvents#FIRE_EXTINGUISH}）。
+ * 烟雾粒子效果（{@link ParticleTypes#LARGE_SMOKE}）与火焰熄灭音效（{@link SoundEvents#FIRE_EXTINGUISH}），
+ * 并把最先 {@link WaterBucketLavaQuenchMath#OVER_16_CUT_LIMIT} 格纯岩浆流删除，紧急截断仍在蔓延的岩浆。
  */
 @EventBusSubscriber(modid = DimBlendBlocks.MODID)
 public final class LavaQuenchSmokeTrail {
@@ -32,26 +34,32 @@ public final class LavaQuenchSmokeTrail {
     private static final class ActiveTrail {
         final ResourceKey<Level> dimension;
         final List<BlockPos> path;
+        final int deleteFirstCount;
         int nextIndex;
 
-        ActiveTrail(ResourceKey<Level> dimension, List<BlockPos> path, int nextIndex) {
+        ActiveTrail(ResourceKey<Level> dimension, List<BlockPos> path, int deleteFirstCount, int nextIndex) {
             this.dimension = dimension;
             this.path = path;
+            this.deleteFirstCount = deleteFirstCount;
             this.nextIndex = nextIndex;
         }
     }
 
     /**
      * 登记一条从右键格到源头的烟雾回溯轨迹：首格当场播放，后续格每服务端 tick 推进一格。
+     *
+     * @param deleteFirstCount 前多少格纯岩浆流在效果播放后被删除（生产路径为
+     *                         {@link WaterBucketLavaQuenchMath#OVER_16_CUT_LIMIT}）
      */
-    public static void schedule(ServerLevel level, List<BlockPos> pathFromClickedToSource) {
+    public static void schedule(ServerLevel level, List<BlockPos> pathFromClickedToSource, int deleteFirstCount) {
         if (pathFromClickedToSource.isEmpty()) {
             return;
         }
         List<BlockPos> copy = List.copyOf(pathFromClickedToSource);
-        emitStep(level, copy.get(0));
+        int limit = Math.max(0, deleteFirstCount);
+        emitStep(level, copy.get(0), 0, limit);
         if (copy.size() > 1) {
-            ACTIVE_TRAILS.add(new ActiveTrail(level.dimension(), copy, 1));
+            ACTIVE_TRAILS.add(new ActiveTrail(level.dimension(), copy, limit, 1));
         }
     }
 
@@ -70,7 +78,7 @@ public final class LavaQuenchSmokeTrail {
                 continue;
             }
             BlockPos pos = trail.path.get(trail.nextIndex);
-            emitStep(level, pos);
+            emitStep(level, pos, trail.nextIndex, trail.deleteFirstCount);
             trail.nextIndex++;
             if (trail.nextIndex >= trail.path.size()) {
                 it.remove();
@@ -93,7 +101,7 @@ public final class LavaQuenchSmokeTrail {
         ACTIVE_TRAILS.clear();
     }
 
-    private static void emitStep(ServerLevel level, BlockPos pos) {
+    private static void emitStep(ServerLevel level, BlockPos pos, int stepIndex, int deleteFirstCount) {
         if (level.getChunkSource().getChunkNow(pos.getX() >> 4, pos.getZ() >> 4) == null) {
             return;
         }
@@ -111,6 +119,13 @@ public final class LavaQuenchSmokeTrail {
                 0.25D,
                 0.01D
         );
+        // 效果先播再删；只删纯岩浆流，源头与更远的岩浆流保留。
+        boolean lavaCell = WaterBucketLavaQuench.isPureLavaCell(level, pos);
+        boolean source = lavaCell && level.getFluidState(pos).isSource();
+        if (WaterBucketLavaQuenchMath.shouldDeleteOnOver16Trail(
+                stepIndex, deleteFirstCount, lavaCell, source)) {
+            level.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState());
+        }
     }
 
     private LavaQuenchSmokeTrail() {

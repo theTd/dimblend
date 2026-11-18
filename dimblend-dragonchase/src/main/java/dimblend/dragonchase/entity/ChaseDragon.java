@@ -2,6 +2,7 @@ package dimblend.dragonchase.entity;
 
 import dimblend.dragonchase.DragonChaseRegistries;
 import dimblend.dragonchase.api.DragonChaseTuning;
+import dimblend.dragonchase.chase.ChaseDirector;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -553,12 +554,28 @@ public class ChaseDragon extends EnderDragon implements ChaseDragonHandle {
 
     @Override
     public void remove(Entity.RemovalReason reason) {
-        if (!this.level().isClientSide) {
+        boolean serverSide = !this.level().isClientSide;
+        if (serverSide) {
             this.bossBar.setVisible(false);
             this.bossBar.removeAllPlayers();
             this.bossBarShown = false;
         }
         super.remove(reason);
+        // I25: `/kill` never runs startDying()/onKilled() — vanilla EnderDragon.kill() calls
+        // remove(KILLED) directly — so this funnel is the only "the dragon is gone" signal a chase
+        // BGM gets. Chunk unloads use setRemoved(UNLOADED_TO_CHUNK) and never reach here, and a
+        // prologue dragon must not end a chase's music.
+        if (serverSide && reason.shouldDestroy() && endsChaseMusicOnRemoval()) {
+            ChaseDirector.onChaseDragonRemoved(this.getUUID());
+        }
+    }
+
+    /** True for the five modes of a spawned chase dragon; false for the prologue's two. */
+    private boolean endsChaseMusicOnRemoval() {
+        return switch (this.mode) {
+            case PROLOGUE_ORBIT, PROLOGUE_DEPART -> false;
+            case CHASE_FOLLOW, CHASE_FIREBALL, CHASE_BREATH, CHASE_CATCH_UP, DYING -> true;
+        };
     }
 
     // ------------------------------------------------------------------------------------------

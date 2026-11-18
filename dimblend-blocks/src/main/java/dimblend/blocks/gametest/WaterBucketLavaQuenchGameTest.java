@@ -141,7 +141,7 @@ public final class WaterBucketLavaQuenchGameTest {
     }
 
     @GameTest(template = "empty_9x5x9", templateNamespace = "dimblend_blocks")
-    public static void flowOver16SchedulesSmokeWithoutSolidifying(GameTestHelper helper) {
+    public static void flowOver16TruncatesFirstEightFlowingCellsAndKeepsSource(GameTestHelper helper) {
         clearWorkspace(helper);
         LavaQuenchSmokeTrail.clearActiveTrails();
         ServerLevel level = helper.getLevel();
@@ -166,8 +166,9 @@ public final class WaterBucketLavaQuenchGameTest {
             NeoForge.EVENT_BUS.post(event);
 
             assertIntercepted(event);
-            if (!level.getBlockState(clickedAbs).is(Blocks.LAVA) || !level.getBlockState(sourceAbs).is(Blocks.LAVA)) {
-                throw new GameTestAssertException("超出 16 格的岩浆流与源头都不应被固化");
+            // 步 0（右键格）在登记时立即播放效果并删除。
+            if (!level.getBlockState(clickedAbs).isAir()) {
+                throw new GameTestAssertException("超出 16 格时右键格应先播效果再被截断删除");
             }
             if (LavaQuenchSmokeTrail.activeTrailCount() < 1) {
                 throw new GameTestAssertException("超出 16 格时应登记沿途烟雾与熄灭音效轨迹");
@@ -178,13 +179,33 @@ public final class WaterBucketLavaQuenchGameTest {
             if (!player.getItemInHand(InteractionHand.MAIN_HAND).is(expected.getItem())) {
                 throw new GameTestAssertException("超出 16 格时桶状态不符合预期");
             }
-        } finally {
+            // 轨迹每 tick 推进一格：8 tick 后步 0..7 全部删除，第 8 格与源头保留。
+            helper.runAfterDelay(WaterBucketLavaQuenchMath.OVER_16_CUT_LIMIT, () -> {
+                try {
+                    for (int step = 1; step < WaterBucketLavaQuenchMath.OVER_16_CUT_LIMIT; step++) {
+                        if (!level.getBlockState(clickedAbs.above(step)).isAir()) {
+                            throw new GameTestAssertException("截断段 step " + step + " 应为空气");
+                        }
+                    }
+                    if (!level.getBlockState(clickedAbs.above(8)).is(Blocks.LAVA)
+                            || !level.getBlockState(sourceAbs).is(Blocks.LAVA)) {
+                        throw new GameTestAssertException("第 8 格及更远与源头都不应被删除");
+                    }
+                } finally {
+                    LavaQuenchSmokeTrail.clearActiveTrails();
+                    for (int dy = 0; dy <= 18; dy++) {
+                        level.setBlockAndUpdate(clickedAbs.above(dy), Blocks.AIR.defaultBlockState());
+                    }
+                }
+                helper.succeed();
+            });
+        } catch (RuntimeException e) {
             LavaQuenchSmokeTrail.clearActiveTrails();
             for (int dy = 0; dy <= 18; dy++) {
                 level.setBlockAndUpdate(clickedAbs.above(dy), Blocks.AIR.defaultBlockState());
             }
+            throw e;
         }
-        helper.succeed();
     }
 
     @GameTest(template = "empty_9x5x9", templateNamespace = "dimblend_blocks")

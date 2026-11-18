@@ -138,4 +138,23 @@ Recorded from `dimblend-batch-1116` (`generated: 2026-11-16T05:56:39.750Z`, 3 lo
 
 3. **`thermolith-mode-control` [OVERRIDE] (`vanilla_ice_break_only_reset`)**: **仅原版冰/熔岩块单向设模式；仅拆掉重放恢复默认**
    - `ThermolithModeRules.ACTIVE_POLICY = InteractionPolicy.VANILLA_ICE_BREAK_ONLY_RESET` (enforced by `ColdSweatBatch1116Test#vanillaIceBreakOnlyResetPolicyIsLockedAndOnlyPlainIceCounts`).
-   - Only `minecraft:ice` (`> 40 °C` → `15`) and `minecraft:magma_block` (`< 10 °C` → `15`) set `cold_sweat:thermolith` operating mode without consuming the held block; repeated right-clicks are idempotent and breaking + re-placing restores default `NORMAL` mode.
+   - Only `minecraft:ice` (`> 30 °C` → `15`, updated from `40 °C` in `batch-1118`) and `minecraft:magma_block` (`< 10 °C` → `15`) set `cold_sweat:thermolith` operating mode without consuming the held block; repeated right-clicks are idempotent and breaking + re-placing restores default `NORMAL` mode.
+
+---
+
+# DimBlend Experience & Dragon Chase — Batch 1118 Gameplay Decisions (2026-11-18)
+
+Recorded from `dimblend-batch-1118` (`11` locked decisions: `9` defaults kept + `2` user overrides):
+
+1. **`thirst-unmatched-edibles` [OVERRIDE] (`strict_rule_only`)**: Only edibles matching the water or fruit rules (`254` items in `thirst_edible_overrides.json`) are added/overridden; unmatched edibles keep YAT's existing config value if present and remain unconfigured otherwise.
+2. **`thirst-fruit-drinks-and-dough` (`fruit_drink_3_direct_water`)**: Direct water / stockpot default water / spout tea counts as water (`6` thirst / `8` quenched for drinks, `4` / `5` for foods); fruit-only drinks restore `3` / `4`; fruits & fruit-only foods restore `1` / `1`; dough water does not carry into dry baked bread/cookies.
+3. **`canola-compacting-fluid` (`createaddition_seed_oil`)**: `1x kaleidoscope_grilling:canola_seeds` → unheated `create:compacting` → `200 mB createaddition:seed_oil`.
+4. **`dirty-water-purity-and-basin` (`purity0_basin_default_block`)**: Reject only `Purity == 0` dirty water across crafting grids, stockpot, teapot, tavern barrel, Copper Tap, and Create Basin (allowing `Purity == 0` into Basin only when its filter or contents match a potion or non-food industrial recipe); handheld rejection shows hotbar `"太脏了 至少先过滤一下"`.
+5. **`thermolith-signal-modes` (`all_modes`)**: Ice mode threshold lowered to strictly `> 30 °C`; external neighbor redstone signal suppresses output (`0`), emits red dust particles, and appends tooltip `"通入信号停止工作"` across all 3 modes (`NORMAL`, `ICE`, `MAGMA`), ignoring self-feedback from front-face `RedStoneWireBlock`.
+6. **`crystal-car-design` (`entity_sync_with_obsidian_campfire`)**: Keep native `EndCrystal` entity with `hasImpulse = true` server sync + per-frame `ClientSubLevel#renderPose(partialTick)` client lock (`CrystalMountsPayload`), and place zero-damage `dimblend_dragonchase:obsidian_soul_campfire` pedestals beneath crystals.
+7. **`brake-and-ender-sounds` (`existing_low_pitch_all_dims`)**: Broadcast Brake Car coupling (`1.0` pitch) and newly latched Ender Brake (`0.5` pitch, zero speed gate) `train_brake` announcements to all online players across all dimensions.
+8. **`phantom-track-visibility` (`chase_active_only`)**: Force `railways` phantom tracks visible strictly while an Ender Dragon chase is active in `dimblend:rotating` (`PhantomSpriteManagerMixin`).
+9. **`end-corruption-boundary` (`no_corrupt_blocks_in_128`)**: Filter `biomesoplenty:end_corruption` → `minecraft:end_highlands` for `|quartZ| <= 35` in `RotatingBiomeSource` so `|z| <= 128` contains zero corrupt blocks.
+10. **`dragon-music-trigger-and-loop` (`chase_start_single_loop`)**: Start chase BGM on `ChaseDirector.startChase` (real chase only, not Region-32 prologue), server-roll 1 random track (`0..3`) per phase for single-track looping, and fade out over `16 s` (`320` ticks) on dragon death or removal.
+11. **`dragon-music-channel-and-transition` [OVERRIDE] (`records_channel_crossfade_4s`)**: Play chase BGM on `SoundSource.RECORDS` while blocking/stopping `100%` of `SoundSource.MUSIC` until the `16 s` fade-out ends; on first drop strictly `< 50%` HP (`> 0`), execute a `4 s` (`80`-tick) overlapping crossfade from Phase A to Phase B.
+
