@@ -9,6 +9,7 @@ import net.minecraft.server.level.ServerLevel;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -48,6 +49,7 @@ public abstract class PhysicsBogeyZeroHoldMixin {
         handle.addLinearAndAngularVelocity(new Vector3d(linear).negate(), negateAngular(handle));
     }
 
+    @Unique
     private static Vector3d negateAngular(RigidBodyHandle handle) {
         Vector3dc angular = handle.getAngularVelocity();
         return angular == null ? new Vector3d() : new Vector3d(angular).negate();

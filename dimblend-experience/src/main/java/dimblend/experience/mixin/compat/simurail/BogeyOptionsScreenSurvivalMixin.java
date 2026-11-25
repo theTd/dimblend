@@ -5,9 +5,11 @@ import com.crystaelix.simurail.gui.SLabel;
 import com.simibubi.create.foundation.gui.widget.ScrollInput;
 import com.simibubi.create.foundation.gui.widget.SelectionScrollInput;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -19,10 +21,20 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * 应力条保留可调。创造模式完全不受影响：无论哪种模式，服务端另有一道合并闸
  * （{@code PhysicsBogeySetOptionsPacket} 的 mixin），客户端界面只是"别让玩家点到
  * 改了也不生效的开关"。</p>
+ *
+ * <p>移除控件走<b>继承</b>而不是 {@code @Shadow}：{@code PhysicsBogeyOptionsScreen}
+ * （extends {@code PhysicsBogeyScreen} extends {@code AbstractSimiScreen} extends {@code Screen}）
+ * 自己并没有声明 {@code removeWidget}，它继承自 {@link Screen}，所以
+ * {@code @Shadow protected abstract void removeWidget(GuiEventListener)} 会抛
+ * {@code InvalidMixinException}（目标类里找不到该成员）。这里让 mixin 类直接
+ * {@code extends Screen}（与 {@code GunsmithAnvilMenuMixin extends ItemCombinerMenu} 同型），
+ * {@code this.removeWidget(input)} 就落回 {@code Screen#removeWidget}——它会同时清理
+ * {@code renderables} / {@code narratables} / {@code children} 三份表，零反射。</p>
  */
 @Mixin(value = PhysicsBogeyOptionsScreen.class, remap = false)
-public abstract class BogeyOptionsScreenSurvivalMixin {
+public abstract class BogeyOptionsScreenSurvivalMixin extends Screen {
 
+    @Unique
     private static final int GREYED_LABEL_COLOR = 0x9A9A9A;
 
     @Shadow
@@ -51,8 +63,9 @@ public abstract class BogeyOptionsScreenSurvivalMixin {
     @Shadow
     private SelectionScrollInput connectorInput;
 
-    @Shadow
-    protected abstract void removeWidget(GuiEventListener listener);
+    protected BogeyOptionsScreenSurvivalMixin(Component title) {
+        super(title);
+    }
 
     @Inject(method = "init", at = @At("TAIL"), require = 1, allow = 1)
     private void dimblend$restrictSurvivalOptions(CallbackInfo ci) {
@@ -67,6 +80,7 @@ public abstract class BogeyOptionsScreenSurvivalMixin {
         dimblend$hide(connectorInput, connectorLabel);
     }
 
+    @Unique
     private void dimblend$hide(ScrollInput input, SLabel label) {
         if (input != null) {
             removeWidget(input);
@@ -76,6 +90,7 @@ public abstract class BogeyOptionsScreenSurvivalMixin {
         }
     }
 
+    @Unique
     private static boolean dimblend$isCreative() {
         Minecraft minecraft = Minecraft.getInstance();
         return minecraft.player != null && minecraft.player.isCreative();

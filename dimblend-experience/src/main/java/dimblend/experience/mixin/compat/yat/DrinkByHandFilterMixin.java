@@ -16,6 +16,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
 
 /**
@@ -51,6 +52,7 @@ import org.spongepowered.asm.mixin.injection.At;
  * 所以在 {@code player()} 这一点把玩家塞进共享槽，到 {@code distanceToSqr} 再取出来算
  * {@code level}。两处都钉 {@code require = 1, allow = 1}。</p>
  */
+@Pseudo
 @Mixin(targets = "dev.minhnh.yetanotherthirst.NeoForgeNetwork$DrinkByHandPacket", remap = false)
 public abstract class DrinkByHandFilterMixin {
 

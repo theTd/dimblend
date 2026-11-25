@@ -27,7 +27,7 @@ import org.spongepowered.asm.mixin.Shadow;
 public abstract class FluidDrainingBehaviourPurityMixin {
 
     @Shadow(remap = false)
-    public com.simibubi.create.foundation.blockEntity.SmartBlockEntity blockEntity;
+    private com.simibubi.create.foundation.blockEntity.SmartBlockEntity blockEntity;
 
     @WrapMethod(method = "getDrainableFluid", remap = false, require = 1, allow = 1)
     private FluidStack dimblend$stampDrainableWater(BlockPos pos, Operation<FluidStack> original) {

@@ -43,20 +43,29 @@ import org.spongepowered.asm.mixin.injection.At;
 @Mixin(PhysicsBogeyAxle.class)
 public abstract class PhysicsBogeyAxleBrakeHoldMixin {
 
+    @Unique
     private static final String TRACK_FORCES =
             "updateTrackForces(Ldev/ryanhcode/sable/sublevel/ServerSubLevel;Ldev/ryanhcode/sable/api/physics/handle/RigidBodyHandle;D)V";
+    @Unique
     private static final String WORLD_FORCES =
             "updateWorldForces(Ldev/ryanhcode/sable/sublevel/ServerSubLevel;Ldev/ryanhcode/sable/api/physics/handle/RigidBodyHandle;D)V";
+    @Unique
     private static final String STRESS_CALL =
             "Lcom/crystaelix/simurail/content/bogey/PhysicsBogeyBlockEntity;calculateStressApplied()F";
 
+    /**
+     * MixinExtras 的形参顺序是「被包裹调用的目标形参 → {@code Operation} → 捕获的外层方法形参」，
+     * 所以 {@code Operation<Float> original} 必须紧跟接收者 {@code bogey}，不能放到最后：
+     * 放到最后时 Mixin 会把 {@code ServerSubLevel} 当成 {@code Operation} 的槽位，首次加载
+     * 直接抛 {@code InvalidInjectionException}。
+     */
     @WrapOperation(
             method = TRACK_FORCES,
             at = @At(value = "INVOKE", target = STRESS_CALL),
             require = 1,
             allow = 1)
-    private float dimblend$cutTrackDrive(PhysicsBogeyBlockEntity bogey, ServerSubLevel subLevel,
-                                         RigidBodyHandle handle, double timeStep, Operation<Float> original) {
+    private float dimblend$cutTrackDrive(PhysicsBogeyBlockEntity bogey, Operation<Float> original,
+                                         ServerSubLevel subLevel, RigidBodyHandle handle, double timeStep) {
         return dimblend$driveStress(bogey, subLevel, handle, original.call(bogey));
     }
 
@@ -65,8 +74,8 @@ public abstract class PhysicsBogeyAxleBrakeHoldMixin {
             at = @At(value = "INVOKE", target = STRESS_CALL),
             require = 1,
             allow = 1)
-    private float dimblend$cutWorldDrive(PhysicsBogeyBlockEntity bogey, ServerSubLevel subLevel,
-                                         RigidBodyHandle handle, double timeStep, Operation<Float> original) {
+    private float dimblend$cutWorldDrive(PhysicsBogeyBlockEntity bogey, Operation<Float> original,
+                                         ServerSubLevel subLevel, RigidBodyHandle handle, double timeStep) {
         return dimblend$driveStress(bogey, subLevel, handle, original.call(bogey));
     }
 
