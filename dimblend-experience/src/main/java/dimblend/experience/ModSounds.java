@@ -21,6 +21,9 @@ public final class ModSounds {
     /** E3：施加刹车（刹车强度 0→正 沿）。 */
     public static final DeferredHolder<SoundEvent, SoundEvent> TRAIN_BRAKE =
             register("train_brake");
+    /** E3'：施闸持续鸣响（75% 音节交叉淡化循环，真 PCM 流）。 */
+    public static final DeferredHolder<SoundEvent, SoundEvent> TRAIN_BRAKE_SUSTAIN =
+            register("train_brake_sustain");
     /** E4：松闸泄气（刹车强度 正→0 沿）。 */
     public static final DeferredHolder<SoundEvent, SoundEvent> BRAKE_RELEASE =
             register("brake_release");

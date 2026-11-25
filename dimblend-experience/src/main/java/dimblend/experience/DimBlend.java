@@ -80,14 +80,19 @@ public class DimBlend {
         if (ModList.get().isLoaded("createdieselgenerators")) {
             CdgAttachments.ATTACHMENTS.register(modEventBus);
             dimblend.experience.compat.cdg.CdgNewOilChunksSavedData.register();
+            dimblend.experience.compat.cdg.CdgEngineDamageEvents.register();
         }
         if (ModList.get().isLoaded("yet_another_thirst")) {
             modEventBus.addListener(dimblend.experience.compat.yat.ThirstFilterBalance::setup);
+            dimblend.experience.compat.yat.ThirstFilterBalance.register();
             dimblend.experience.compat.yat.EdibleThirstOverrides.register();
         }
         if (ModList.get().isLoaded("cold_sweat")) {
             dimblend.experience.compat.coldsweat.ColdSweatHeatSources.register();
             dimblend.experience.compat.coldsweat.ThermolithModeRules.register();
+            if (ModList.get().isLoaded("dimblend_blocks")) {
+                dimblend.experience.compat.coldsweat.HotIceColdSweatFuel.register(modEventBus);
+            }
         }
 
         // CameraCapture 相纸/耐久：默认组件改 MAX_DAMAGE/DAMAGE，背包内纸张右键装填。
@@ -112,6 +117,7 @@ public class DimBlend {
                 dimblend.experience.chassis.DepotCarQueryImpl.register();
             }
             dimblend.experience.compat.simurail.TrainLateralShakeScheduler.register();
+            dimblend.experience.compat.simurail.MinimumSpeedSync.register();
         }
         if (ModList.get().isLoaded("create") && ModList.get().isLoaded("simurail")) {
             dimblend.experience.compat.simurail.TractionDisplaySources.register(modEventBus);
@@ -147,6 +153,13 @@ public class DimBlend {
             // 显示连接器读取保险库存量（物品保险库 / 纵向物品保险库 / 集装箱）：
             // addon 的方块实体类型按注册名挂接，addon 缺席时该模块照常启动。
             dimblend.experience.compat.create.vault.VaultDisplaySources.register(modEventBus);
+            // 蒸汽引擎 32 秒排气期防破坏 / 防爆 / 防扳手拆卸守卫
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(
+                    dimblend.experience.compat.create.SteamEngineExhaustGuard.class);
+            if (ModList.get().isLoaded("create_connected")) {
+                dimblend.experience.compat.connected.mobdisplay.MobDisplayCatalystBlocks.register(modEventBus);
+                dimblend.experience.compat.connected.mobdisplay.MobDisplayCatalystInteraction.register();
+            }
         }
 
         // 探索规则都在服务端执行，走 SERVER 配置
@@ -157,6 +170,9 @@ public class DimBlend {
 
     private void commonSetup(FMLCommonSetupEvent event) {
         LOGGER.info("DimBlend Experience common setup");
+        if (ModList.get().isLoaded("create") && ModList.get().isLoaded("hardcore_nvg")) {
+            event.enqueueWork(dimblend.experience.compat.create.NvgGogglesCompat::register);
+        }
     }
 
     private static void onRegisterGameTests(RegisterGameTestsEvent event) {

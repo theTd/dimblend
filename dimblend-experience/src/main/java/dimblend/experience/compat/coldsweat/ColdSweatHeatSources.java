@@ -94,8 +94,29 @@ public final class ColdSweatHeatSources {
             "kaleidoscope_end:end_stove");
 
     /**
-     * 一份 {@code BlockTemp} 的完整参数（顺序与 {@code BlockTemp} 的 7 参构造一致：
-     * minEffect, maxEffect, minTemperature, maxTemperature, range, fade）。
+     * 岩浆等价热源（{@code world.toml:242} 的 {@code minecraft:lava} 同一组数）：
+     * 温度 30/45、range 7.0、minEffect −200/45、maxEffect 200/45、
+     * minTemp −∞、maxTemp (1000 − 32)/45、fade true、<b>logarithmic true</b>。
+     *
+     * <p>用在"过热断轴的蒸汽引擎"身上（{@link #Create}）：32 秒排气窗口里它就是一个岩浆级热源。
+     * {@code logarithmic} 只有这里为 true——岩浆的距离衰减是对数的，线性衰减会让贴着引擎
+     * 的玩家瞬间中暑。</p>
+     */
+    public static final HeatProfile LAVA_EQUIVALENT = new HeatProfile(
+            fahrenheitToMc(30.0, false),
+            7.0,
+            -fahrenheitToMc(200.0, false),
+            fahrenheitToMc(200.0, false),
+            Double.NEGATIVE_INFINITY,
+            fahrenheitToMc(1000.0, true),
+            true,
+            true);
+
+    /**
+     * 一份 {@code BlockTemp} 的完整参数（顺序与 {@code BlockTemp} 的 8 参构造一致：
+     * minEffect, maxEffect, minTemperature, maxTemperature, range, fade, logarithmic）。
+     *
+     * <p>7 参便捷构造默认 {@code logarithmic = false}（烈焰人炉/炉灶那条线沿用线性衰减）。</p>
      */
     public record HeatProfile(double temperatureMc,
                               double range,
@@ -103,7 +124,19 @@ public final class ColdSweatHeatSources {
                               double maxEffectMc,
                               double minTemperatureMc,
                               double maxTemperatureMc,
-                              boolean fade) {
+                              boolean fade,
+                              boolean logarithmic) {
+
+        public HeatProfile(double temperatureMc,
+                           double range,
+                           double minEffectMc,
+                           double maxEffectMc,
+                           double minTemperatureMc,
+                           double maxTemperatureMc,
+                           boolean fade) {
+            this(temperatureMc, range, minEffectMc, maxEffectMc, minTemperatureMc, maxTemperatureMc,
+                    fade, false);
+        }
     }
 
     /** 某方块此刻是否算"点着/在转"（{@code BlockTemp#isValid} 的口径）。 */
@@ -146,6 +179,11 @@ public final class ColdSweatHeatSources {
         // CDG 类型只在这个内部类的方法体里出现：模组缺席时 Cdg 类不会被加载。
         if (ModList.get().isLoaded("createdieselgenerators")) {
             Cdg.register(event);
+        }
+
+        // 同理：Create 类型只在 Create 内部类里出现。
+        if (ModList.get().isLoaded("create")) {
+            Create.register(event);
         }
     }
 
@@ -236,6 +274,33 @@ public final class ColdSweatHeatSources {
 
     private static Block block(ResourceLocation id) {
         return BuiltInRegistries.BLOCK.containsKey(id) ? BuiltInRegistries.BLOCK.get(id) : null;
+    }
+
+    /**
+     * Create 蒸汽引擎热源。整类只在 {@code create} 在场时被加载。
+     *
+     * <p>只有<b>排气窗口</b>（过热 → 断轴之后那 32 秒）的引擎算热源，而且是岩浆级
+     * （{@link #LAVA_EQUIVALENT}）：断轴的引擎在喷高温蒸汽，玩家贴上去要付出中暑代价。
+     * 正常运转/停转的引擎<b>不</b>发热（蒸汽机不等于锅炉炉膛）。</p>
+     *
+     * <p>判据走 {@code isExhaustingAt}（{@code getChunkNow} 非阻塞），不直接
+     * {@code level.getBlockEntity}——本方法在玩家每次温度扫描时被调用，不能临场加载区块。</p>
+     */
+    private static final class Create {
+
+        private static void register(BlockTempRegisterEvent event) {
+            Block engine = block("create", "steam_engine");
+            if (engine != null) {
+                event.register(ColdSweatHeatBlockTemps.lavaEquivalent(Create::exhaustingEngine, engine));
+            }
+        }
+
+        private static boolean exhaustingEngine(Level level, BlockPos pos, BlockState state) {
+            return dimblend.experience.compat.create.SteamEngineExhaustAccess.isExhaustingAt(level, pos);
+        }
+
+        private Create() {
+        }
     }
 
     /**
@@ -352,6 +417,11 @@ final class ColdSweatHeatBlockTemps {
         return new Gated(ColdSweatHeatSources.SEETHING, gate, blocks);
     }
 
+    /** 岩浆等价（{@link ColdSweatHeatSources#LAVA_EQUIVALENT}，logarithmic）。 */
+    static BlockTemp lavaEquivalent(ColdSweatHeatSources.StateGate gate, Block... blocks) {
+        return new Gated(ColdSweatHeatSources.LAVA_EQUIVALENT, gate, blocks);
+    }
+
     private static final class Gated extends BlockTemp {
 
         private final double temperatureMc;
@@ -359,10 +429,10 @@ final class ColdSweatHeatBlockTemps {
 
         private Gated(ColdSweatHeatSources.HeatProfile profile, ColdSweatHeatSources.StateGate gate,
                 Block... blocks) {
-            // BlockTemp(minEffect, maxEffect, minTemperature, maxTemperature, range, fade, blocks...)
+            // BlockTemp(minEffect, maxEffect, minTemperature, maxTemperature, range, fade, logarithmic, blocks...)
             super(profile.minEffectMc(), profile.maxEffectMc(),
                     profile.minTemperatureMc(), profile.maxTemperatureMc(),
-                    profile.range(), profile.fade(), blocks);
+                    profile.range(), profile.fade(), profile.logarithmic(), blocks);
             this.temperatureMc = profile.temperatureMc();
             this.gate = gate;
         }

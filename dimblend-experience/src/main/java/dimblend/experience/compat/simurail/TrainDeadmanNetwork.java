@@ -17,6 +17,8 @@ public final class TrainDeadmanNetwork {
         PayloadRegistrar registrar = event.registrar("2");
         registrar.playToClient(DeadmanLatchPayload.TYPE, DeadmanLatchPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> DeadmanLatchPayload.applyOnClient(payload)));
+        MinimumSpeedSync.registerPayloads(event, registrar);
+        TrainBrakeSoundSync.registerPayloads(registrar);
     }
 
     private TrainDeadmanNetwork() {

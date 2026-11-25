@@ -37,6 +37,13 @@ public final class DimBlendClient {
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(SupplementTooltips::onItemTooltip));
         // CameraCapture 相机提示（同样只按注册名判定，不解析第三方类型）
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(CameraTooltips::onItemTooltip));
+        event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(NvgTooltips::onItemTooltip));
+        event.enqueueWork(() -> {
+            if (net.neoforged.fml.ModList.get().isLoaded("cold_sweat")) {
+                net.minecraft.client.Minecraft.getInstance().execute(
+                        dimblend.experience.compat.coldsweat.SoulspringLampClientOverrides::register);
+            }
+        });
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(
                 dimblend.experience.compat.starlight.CrystalbornCatalystTooltips::onItemTooltip));
         event.enqueueWork(() -> NeoForge.EVENT_BUS.addListener(
@@ -54,7 +61,11 @@ public final class DimBlendClient {
                 (ClientPlayerNetworkEvent.LoggingOut logout) -> {
                     ClientFarCurseTier.reset();
                     ClientDeadmanLatch.reset();
+                    dimblend.experience.compat.simurail.ClientMinimumSpeedState.reset();
                     TrainHornClient.reset();
+                    if (net.neoforged.fml.ModList.get().isLoaded("simurail")) {
+                        dimblend.experience.compat.simurail.client.TrainBrakeSoundClient.reset();
+                    }
                     dimblend.experience.compat.connected.LinkedTransmitterDiagnostics.reset();
                 }));
     }
@@ -71,6 +82,12 @@ public final class DimBlendClient {
             event.registerBlockEntityRenderer(
                     dimblend.experience.compat.dolls.DollKeeperSeats.BLOCK_ENTITY.get(),
                     dimblend.experience.client.dolls.DollKeeperSeatRenderer::new);
+            if (net.neoforged.fml.ModList.get().isLoaded("create_connected")) {
+                event.registerBlockEntityRenderer(
+                        dimblend.experience.compat.connected.mobdisplay.MobDisplayCatalystBlocks
+                                .MOB_DISPLAY_CATALYST_ENTITY.get(),
+                        dimblend.experience.compat.connected.mobdisplay.MobDisplayCatalystRenderer::new);
+            }
         }
     }
 

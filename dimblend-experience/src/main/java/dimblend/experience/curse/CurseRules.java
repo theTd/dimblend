@@ -42,6 +42,17 @@ public final class CurseRules {
     }
 
     /**
+     * 绑定诅咒的检查范围：只认四盔甲槽（{@link EquipmentSlot.Type#HUMANOID_ARMOR}）。
+     *
+     * <p>用户口径（2026-11-25）：绑定诅咒只对"穿在身上的护甲"生效——手持物品（主/副手）换手
+     * 不该把诅咒挂到玩家身上，动物鞍甲（{@code BODY}）也不归玩家。{@link #isCursedEquipmentSlot}
+     * 是消失诅咒的口径（四甲 + 双手），<b>不得</b>收窄成这里的样子，两者各管各的。</p>
+     */
+    public static boolean isBindingCurseArmorSlot(EquipmentSlot slot) {
+        return slot != null && slot.getType() == EquipmentSlot.Type.HUMANOID_ARMOR;
+    }
+
+    /**
      * 消失诅咒：非创造模式、该件带消失诅咒，且这一次掷骰落在 [0, {@link #VANISH_CHANCE_PER_CLICK}) 内。
      */
     public static boolean shouldVanishOnClick(boolean creative, boolean hasVanishingCurse, double roll) {

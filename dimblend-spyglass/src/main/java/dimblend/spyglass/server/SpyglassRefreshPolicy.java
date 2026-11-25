@@ -36,21 +36,33 @@ final class SpyglassRefreshPolicy {
     }
 
     /**
-     * @param failureNanos {@code System.nanoTime()} of the last failed scan, or {@code 0} when no
-     *                     scan failed since the request was submitted
+     * @param requestRegion {@code RegionLanes.regionOfBlockX} of the last request's block X, or
+     *                      {@code null} when the last request's region is unknown (no request yet)
+     * @param currentRegion {@code RegionLanes.regionOfBlockX} of the position being asked about
+     * @param failureNanos  {@code System.nanoTime()} of the last failed scan, or {@code 0} when no
+     *                      scan failed since the request was submitted
      */
     static boolean isRefreshDue(
             @Nullable Vec3 requestPosition,
             @Nullable ResourceKey<Level> requestDimension,
+            @Nullable Integer requestRegion,
             long requestNanos,
             long failureNanos,
             ResourceKey<Level> dimension,
+            int currentRegion,
             Vec3 position,
             long nowNanos) {
         if (requestPosition == null || requestDimension == null) {
             return true;
         }
         if (!requestDimension.location().equals(dimension.location())) {
+            return true;
+        }
+        if (requestRegion != null && requestRegion != currentRegion) {
+            // A region border is a hard edge: everything the snapshot was built from belongs to the
+            // lane the player just left, and the new lane's structures were never asked for. Neither
+            // the 32-block movement threshold (a border can be stepped over inside one block) nor
+            // the 30 s interval applies.
             return true;
         }
         if (requestPosition.distanceToSqr(position) >= MOVE_THRESHOLD_BLOCKS * MOVE_THRESHOLD_BLOCKS) {

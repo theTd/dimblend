@@ -1,0 +1,11 @@
+{
+  "parent": "create:block/funnel/item",
+  "textures": {
+    "base": "dimblend_blocks:block/funnel/dump_funnel",
+    "block": "dimblend_blocks:block/funnel/dump_funnel_block",
+    "direction": "dimblend_blocks:block/funnel/dump_funnel_neutral",
+    "redstone": "dimblend_blocks:block/funnel/dump_funnel_unpowered",
+    "particle": "dimblend_blocks:block/funnel/dump_funnel_block",
+    "back": "dimblend_blocks:block/funnel/dump_funnel_back"
+  }
+}

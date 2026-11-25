@@ -8,11 +8,14 @@ import dimblend.experience.compat.sable.SableWorldPosition;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BiomeTags;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.material.Fluids;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.common.Tags;
 import net.neoforged.neoforge.fluids.FluidStack;
@@ -23,15 +26,15 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler.FluidAction;
  * N6 分液池下界蒸发（全局功能，不限维度；与水/下界群系有关，与催熟/保湿/回注互不依赖）。
  *
  * <p>规则（需求口径）：分液池位于<b>下界群系</b>时，池内存水以
- * `itemDrainNetherEvaporationMbPerSecond`（默认 50 mB/s，范围 0–1500，0=不蒸发）
+ * `itemDrainNetherEvaporationRateMbPerSecond`（默认 1 mB/s，范围 0–1500，0=不蒸发）
  * 的速度持续蒸发，直到完全排空；<b>只蒸发水</b>（{@code stored.is(Fluids.WATER)}，
  * 与保湿/催熟同一判据），岩浆等其它流体原样保留。管道回注与蒸发可同时进行——
  * 蒸发只是每拍从当拍实存水里扣，回注把水补回来即继续扣，互不阻断。</p>
  *
  * <p>节拍：调用方（{@code ItemDrainNetherEvaporationMixin} 挂
  * `ItemDrainBlockEntity.tick()V` HEAD）保证服务端、开关已开、每 10 tick 调一次。
- * 10 tick = 0.5 秒，故默认 50 mB/s 每拍恰扣 25 mB。配置值不是 2 的倍数时用
- * 余数累加器保证长期平均仍为配置速率（例：1 mB/s 每两拍扣 1 mB），
+ * 10 tick = 0.5 秒，故默认 1 mB/s 每两拍扣 1 mB（余数累加）。配置值不是 2 的倍数时用
+ * 余数累加器保证长期平均仍为配置速率（例：3 mB/s 单拍 1.5 mB → 1、2 交替），
  * 而不是每拍向下取整永远为 0。单拍扣量上限 = 当拍实存水量，排空即止。</p>
  *
  * <p>扣水口径与 N2 催熟一致：DOWN 面公开 capability、SIMULATE 先验再 EXECUTE、
@@ -87,7 +90,7 @@ public final class ItemDrainNetherEvaporation {
      * 非下界群系/非水/空池直接跳过；速率 0 也不扣。每次只扣当拍实存水量以内的部分。
      */
     public static void tick(ServerLevel level, ItemDrainBlockEntity be, State state) {
-        int mbPerSecond = Config.ITEM_DRAIN_NETHER_EVAPORATION_MB_PER_SECOND.get();
+        int mbPerSecond = Config.ITEM_DRAIN_NETHER_EVAPORATION_RATE_MB_PER_SECOND.get();
         if (mbPerSecond <= 0) {
             state.remainder = 0;
             return;
@@ -156,6 +159,47 @@ public final class ItemDrainNetherEvaporation {
     /** 复位（开关关闭/BE 销毁时调用，多次调用安全）。 */
     public static void reset(State state) {
         state.remainder = 0;
+    }
+
+    /** 每 tick 冒出云粒子的概率（稀疏，避免形成"烟囱"）。 */
+    public static final float CLIENT_PARTICLE_CHANCE = 0.08F;
+    /** 云粒子竖直初速。 */
+    private static final double CLIENT_PARTICLE_VY = 0.03;
+
+    /**
+     * 客户端蒸发表现：下界群系 + 池内有水 + 开关开 + 速率 &gt; 0 时，每 tick 以
+     * {@link #CLIENT_PARTICLE_CHANCE} 的概率在池面（y + 0.85）吐一朵上飘 {@code CLOUD}。
+     *
+     * <p>坐标先经 {@link SableWorldPosition#project} 投影到世界坐标再出粒子：Sable 结构上的
+     * 池子坐标是 plot 坐标（千万级），直接喂给 {@code addParticle} 的 float 会在 ULP 上
+     * 丢精度、粒子飘到几格外。世界坐标幂等（非 Sable 原样返回）。</p>
+     *
+     * <p>调用方：{@code ItemDrainNetherEvaporationMixin} 在客户端每 tick 调一次；
+     * 内部读的是客户端 ConfigSync 副本，未加载（{@code Config.isLoaded()} false）直接跳过。</p>
+     */
+    public static void clientParticleTick(Level level, BlockPos pos, int waterMb) {
+        if (level == null || waterMb <= 0 || !level.isClientSide) {
+            return;
+        }
+        if (!Config.isLoaded() || !Config.ITEM_DRAIN_NETHER_EVAPORATION.get()) {
+            return;
+        }
+        if (Config.ITEM_DRAIN_NETHER_EVAPORATION_RATE_MB_PER_SECOND.get() <= 0) {
+            return;
+        }
+        if (!isNetherBiome(level, pos)) {
+            return;
+        }
+        RandomSource random = level.getRandom();
+        if (random.nextFloat() >= CLIENT_PARTICLE_CHANCE) {
+            return;
+        }
+        Vec3 origin = SableWorldPosition.project(level, Vec3.atCenterOf(pos));
+        level.addParticle(ParticleTypes.CLOUD,
+                origin.x + (random.nextDouble() - 0.5) * 0.4,
+                origin.y + 0.35,
+                origin.z + (random.nextDouble() - 0.5) * 0.4,
+                0.0, CLIENT_PARTICLE_VY, 0.0);
     }
 
     private ItemDrainNetherEvaporation() {

@@ -123,6 +123,24 @@ import com.google.gson.JsonPrimitive;
  *       按精确配方 ID 标 {@code defensive = true} 删除：装有该附属时命中删除，未装该附属的开发实例
  *       按预期降级为 {@code INFO} 不刷假 {@code WARN}。随包的 {@code 1 -> 3} 配方（2026-11-18 用户要求）
  *       已从 {@code dimblend_craft} 资源里移除，原版/Create 洗涤冰配方保留不动。</li>
+ *   <li>2026-11-25 批次（决议 9/10/11/14/21）：
+ *       <ul>
+ *         <li>冰升级断源：只删 {@code minecraft:packed_ice}、{@code minecraft:blue_ice}、
+ *             {@code create:splashing/ice} 三条，10 条 1:1 冷冻配方（fluid /
+ *             create_dragons_plus / dndesires / kaleidoscope_chinesefood / aether 各 2 条）
+ *             全部保留 —— 这也是必须按配方 ID 而不能按产物 ID 删除的原因；</li>
+ *         <li>动力合成器产量 3 -> 1；</li>
+ *         <li>电动马达（{@code create:mechanical_crafting}，图案 4 行 5 列）的 key.A
+ *             安山合金 -> 琥珀金锭：图案超 3×3，网格规则会拒绝且会丢掉
+ *             {@code create:mechanical_crafting} 类型，只能改符号表；</li>
+ *         <li>铂机壳 {@code item_application} 与 {@code deploying} 两条都把第二个材料
+ *             铂锭改铂粒（{@code asDeploying} 只在 JEI 展示时生效，删 deploying 那条
+ *             会让机械臂失效）；</li>
+ *         <li>幽匿酒桶配方追加啤酒花；硬核夜视仪 8 色合成第 2 格皮革改工程师护目镜。</li>
+ *       </ul>
+ *       TACZ 枪械工作台（66 条枪械配方追加精密构件）不在这张表里：产物在重载阶段
+ *       还未初始化（{@code GunSmithTableResult.encode} 还会抛异常），只能反射改写，
+ *       见 {@link TaczGunRecipeEditor}。</li>
  * </ul>
  */
 public final class RecipeEditRules {
@@ -155,6 +173,10 @@ public final class RecipeEditRules {
         edits.add(modify("动力搅拌器", "create:mechanical_mixer")
                 .slots(Set.of(4, 6), RecipeIngredient.item("minecraft:redstone"))
                 .build());
+        // 2026-11-25：动力合成器一次产出 3 个改为 1 个（配方 B/C/R 三格竖排，只改产量）。
+        edits.add(modify("动力合成器", "create:mechanical_crafter")
+                .resultCount(1)
+                .build());
 
         // —— 3.2 Create Addon（Create Crafts & Additions） ——
         edits.add(modify("蓄电池", "createaddition:accumulator", "createaddition:modular_accumulator")
@@ -163,6 +185,14 @@ public final class RecipeEditRules {
                 .build());
         edits.add(modify("电容", "createaddition:capacitor")
                 .slots(Set.of(4, 6), RecipeIngredient.item("eternal_starlight:deepsilver_ingot"))
+                .build());
+        // 2026-11-25：电动马达（create:mechanical_crafting，图案 4 行 5 列）的
+        // 安山合金（key.A）改琥珀金锭。图案超出 3×3，ShapedGridEditor 会直接拒绝，
+        // 且它会重建成普通 ShapedRecipe 丢掉 create:mechanical_crafting 类型
+        // （机械动力合成台只匹配 MechanicalCraftingRecipe），所以只能改 key 符号表。
+        edits.add(modifyFields("电动马达安山合金改琥珀金锭",
+                "createaddition:mechanical_crafting/electric_motor")
+                .setJson("key.A", "{\"item\": \"createaddition:electrum_ingot\"}")
                 .build());
 
         // —— 3.3 Create Connected ——
@@ -263,6 +293,19 @@ public final class RecipeEditRules {
         edits.add(modifyFields("粉碎粗铂洗涤产物", "createpropulsion:splashing/crushed_raw_platinum")
                 .set("results.0.count", 2)
                 .set("results.2.chance", 0.25)
+                .build());
+        // 2026-11-25：铂机壳的第二个材料 铂锭 -> 铂粒。
+        // 两条配方是同一件事的两条执行路径，必须一起改：
+        //   createpropulsion:item_application/platinum_casing —— 玩家手持右键涂覆；
+        //   createpropulsion:deploying/platinum_casing       —— 机械臂/部署器自动涂覆。
+        // Create 6.0.10 的 ManualApplicationRecipe#asDeploying 只在 JEI 展示时把前者
+        // 转成 deploying 配方（CreateJEI.java:265 是它唯一的调用点，运行期不会生效），
+        // 所以删掉 deploying 那条等于让机械臂再也做不出铂机壳 —— 两条都改。
+        // 用按配方 ID 的字段改写而不是全局材料替换：铂锭是全包常见材料。
+        edits.add(modifyFields("铂机壳铂锭改铂粒",
+                "createpropulsion:item_application/platinum_casing",
+                "createpropulsion:deploying/platinum_casing")
+                .setJson("ingredients.1", "{\"item\": \"createpropulsion:platinum_nugget\"}")
                 .build());
         // 铂矿及其变种、粗铂、粉碎粗铂的烧炼/高炉产物 铂锭 x1 -> 铂粒 x2（批量熔炼走同一配方）
         edits.add(modifyFields("铂烧炼产物改铂粒",
@@ -522,6 +565,45 @@ public final class RecipeEditRules {
                         ResourceLocation.parse("create:crushing/misc/scrap_blue_ice"),
                         ResourceLocation.parse("create:crushing/misc/scrap_packed_ice")),
                 true));
+
+        // —— 3.23 2026-11-25 批次：冰升级断源 / 幽匿酒桶加啤酒花 / 硬核夜视仪护目镜 ——
+        // 3.23.1 冰升级断源（决议 10「只删这三条」）：删掉浮冰/蓝冰的原版 9 -> 1 压缩合成
+        // 与 Create 的洗涤升级（冰 -> 浮冰）。10 条「1:1 冷冻（鼓风机细雪 / 冰柜 / 冷冻机）」
+        // 配方全部保留（fluid / create_dragons_plus / dndesires / kaleidoscope_chinesefood /
+        // aether 各 2 条），所以本规则<b>只能按配方 ID</b>：按产物 ID 的删除会把那 10 条一起杀掉。
+        // 三条都随本体提供，不属于防御性规则。
+        edits.add(new RecipeEdit.DeleteByRecipeId("冰升级（压缩 / 洗涤）配方",
+                Set.of(ResourceLocation.parse("minecraft:packed_ice"),
+                        ResourceLocation.parse("minecraft:blue_ice"),
+                        ResourceLocation.parse("create:splashing/ice"))));
+
+        // 3.23.2 幽匿酒桶加啤酒花（kaleidoscope_tavern:barrel，材料本只有幽匿块 1 条）：
+        // 追加啤酒花 #c:hops 唯一成员 kaleidoscope_dim_wine:hop 作为第二个材料槽
+        //（酒桶 1 格材料 = 16 个，与上游桶装量一致）。材料列表要整段重写：字段编辑没有
+        //「往数组尾部追加」语义（RecipeJsonEditor 的下标写入要求下标已存在）。
+        edits.add(modifyFields("幽匿酒桶加啤酒花", "kaleidoscope_sculk:barrel/sculk_brew")
+                .setJson("ingredients", "["
+                        + "{\"item\": \"minecraft:sculk\"},"
+                        + "{\"item\": \"kaleidoscope_dim_wine:hop\"}"
+                        + "]")
+                .build());
+
+        // 3.23.3 硬核夜视仪 8 种颜色：图案统一为 aba/cdc/b b（a 红石、b 皮革、c 玻璃板、
+        // d 紫水晶碎片），第 2 格（第 1 行中间）的皮革改工程师护目镜。
+        // 规则按产物 ID 匹配：8 条 *_repair 修复配方是 crafting_shapeless，不是 ShapedRecipe，
+        // 执行器只在 ShapedRecipe 上应用网格规则，因此不会被这 8 个产物 ID 波及
+        //（它们在 JSON 里同样产出 hardcore_nvg:<颜色>）。
+        edits.add(modify("硬核夜视仪护目镜",
+                "hardcore_nvg:nvg",
+                "hardcore_nvg:blue_nvg",
+                "hardcore_nvg:orange_nvg",
+                "hardcore_nvg:pink_nvg",
+                "hardcore_nvg:purple_nvg",
+                "hardcore_nvg:red_nvg",
+                "hardcore_nvg:white_nvg",
+                "hardcore_nvg:yellow_nvg")
+                .slot(2, RecipeIngredient.item("create:goggles"))
+                .build());
 
         return edits.build();
     }

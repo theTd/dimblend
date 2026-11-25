@@ -38,24 +38,27 @@ final class ChassisGrimeQuads {
     }
 
     /**
-     * 上方一格（y+1）的碎石：上方为空气时不贴；为非透明实心方块时贴其四个侧面与顶面（整张），
+     * 上方一格（y+1）的碎石：上方为空气时不贴；为非透明实心方块时贴其四个侧面（整张），
      * 其余情况贴该格的四个侧面（去上半）。贴面沿法线微微外移（{@link #SURFACE_OFFSET}），
      * 不与该格方块自身的面叠在同一平面，避免 z-fighting。
+     *
+     * <p>不贴顶面：整面朝上的四边形是压在 y+1 格顶面上的第二层，玩家从高处俯视时看到的是贴图
+     * 而不是那块实心方块自己的顶面（半透明贴图会透出下面的方块，边缘还会和方块自身的面互相
+     * 闪），而脏污本来就只该出现在与车架相接的表面上。
      */
     static void addGravel(List<BakedQuad> out, ChassisGrimeVisual visual, ChassisGrimeRenderData.Above above,
             ChassisGrimeSprites.Resolved sprites) {
         if (!visual.hasGravel() || above == ChassisGrimeRenderData.Above.AIR) {
             return;
         }
-        boolean opaque = above == ChassisGrimeRenderData.Above.OPAQUE;
+        // 上半透明的“非实心”情况仍用去上半的贴图；实心情况四个侧面用整张。两种情况都只有侧面。
+        TextureAtlasSprite[] sideSet = above == ChassisGrimeRenderData.Above.OPAQUE
+                ? sprites.gravelFull()
+                : sprites.gravelLower();
         int variant = visual.gravelVariant();
-        TextureAtlasSprite[] sideSet = opaque ? sprites.gravelFull() : sprites.gravelLower();
         QuadBakingVertexConsumer baker = new QuadBakingVertexConsumer();
         for (Direction side : SIDES) {
             out.add(bakeAboveFace(baker, side, sideSet[spriteIndex(variant, side)]));
-        }
-        if (opaque) {
-            out.add(bakeAboveFace(baker, Direction.UP, sprites.gravelFull()[spriteIndex(variant, Direction.UP)]));
         }
     }
 

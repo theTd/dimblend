@@ -1,0 +1,47 @@
+{
+	"neoforge:conditions": [
+		{
+			"type": "neoforge:mod_loaded",
+			"modid": "create"
+		},
+		{
+			"type": "neoforge:mod_loaded",
+			"modid": "sable"
+		}
+	],
+	"type": "minecraft:crafting_shapeless",
+	"category": "misc",
+	"ingredients": [
+		{
+			"item": "create:fluid_pipe"
+		},
+		{
+			"item": "create:fluid_pipe"
+		},
+		{
+			"item": "create:fluid_pipe"
+		},
+		{
+			"item": "create:fluid_pipe"
+		},
+		{
+			"item": "create:fluid_pipe"
+		},
+		{
+			"item": "create:fluid_pipe"
+		},
+		{
+			"item": "create:fluid_pipe"
+		},
+		{
+			"item": "create:fluid_pipe"
+		},
+		{
+			"item": "create:sturdy_sheet"
+		}
+	],
+	"result": {
+		"count": 8,
+		"id": "dimblend_blocks:train_pressured_tube"
+	}
+}

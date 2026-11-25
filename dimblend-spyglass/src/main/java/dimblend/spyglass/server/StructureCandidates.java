@@ -1,5 +1,6 @@
 package dimblend.spyglass.server;
 
+import dimblend.api.RegionLanes;
 import dimblend.spyglass.structure.SpyglassDistance;
 import dimblend.worldgen.StructureStateBand;
 import dimblend.worldgen.StructureStateProvider;
@@ -48,9 +49,11 @@ final class StructureCandidates {
     /**
      * Server thread only: resolves the generator's structure states for the scan window together
      * with the chunk range each state owns.
+     *
+     * <p>The window never leaves the player's own region (see {@link #clampToRegion}).
      */
     static List<StructureStateBand> bandsFor(ServerLevel level, int centerChunkX, int centerChunkZ, int radius) {
-        ChunkWindow window = windowFor(centerChunkX, centerChunkZ, radius);
+        ChunkWindow window = clampToRegion(level, windowFor(centerChunkX, centerChunkZ, radius), centerChunkX);
         ChunkGenerator generator = level.getChunkSource().getGenerator();
         if (generator instanceof StructureStateProvider provider) {
             return provider.structureStatesFor(window.minX(), window.minZ(), window.maxX(), window.maxZ());
@@ -61,6 +64,35 @@ final class StructureCandidates {
                 window.minZ(),
                 window.maxX(),
                 window.maxZ()));
+    }
+
+    /**
+     * Clamps the X half of the window to the chunk span of the region the player stands in.
+     *
+     * <p>A rotating region is one lane of trips, and its structures are built with that lane's
+     * biomes and terrain: an outline harvested from the next region names a place the player
+     * cannot reach without the world rotating under them, and the snapshot ring would draw it as
+     * a normal nearby structure. {@link RegionLanes#regionMinChunkX}/{@code regionMaxChunkX}
+     * supply the span; outside the rotating dimension (or before the band size is known) the
+     * window is returned untouched, because there is a single region there.
+     *
+     * <p>Z is left alone: the corridor runs along X, and every lane spans the same Z range.
+     */
+    static ChunkWindow clampToRegion(ServerLevel level, ChunkWindow window, int centerChunkX) {
+        if (RegionLanes.bandSize(level) <= 0) {
+            return window;
+        }
+        // The window is centred on the player's chunk, so the chunk's centre column is a block X
+        // that belongs to the player's region.
+        int playerBlockX = centerChunkX * 16 + 8;
+        int minChunkX = Math.max(window.minX(), RegionLanes.regionMinChunkX(level, playerBlockX));
+        int maxChunkX = Math.min(window.maxX(), RegionLanes.regionMaxChunkX(level, playerBlockX));
+        if (minChunkX > maxChunkX) {
+            // Not reachable while the window is centred on the player's own chunk; keep the record
+            // valid rather than letting its constructor throw on an inverted range.
+            maxChunkX = minChunkX;
+        }
+        return new ChunkWindow(minChunkX, window.minZ(), maxChunkX, window.maxZ());
     }
 
     static ChunkWindow windowFor(int centerChunkX, int centerChunkZ, int radius) {

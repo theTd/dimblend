@@ -13,8 +13,8 @@ package dimblend.experience.compat.create;
  * <li><b>作物不长</b>（{@link #suppressesGrowth}）：自然 randomTick 生长与池子
  * 自身骨粉催熟（{@link #growthBoostAllowed}）都停。</li>
  * <li><b>种不下去</b>（{@link #suppressesPlanting}）：右键播种/种下界疣被取消并提示。</li>
- * <li><b>管道灌不进</b>（{@link #pipeIntakeAllowed}）：维持原版 {@code forbidInsertion}
- * 与 UP 面无接口；<b>但桶右键倒水照旧可用</b>——桶走的是
+ * <li><b>管道灌不进</b>（{@link #pipeIntakeAllowed}）：下界不再禁管道注水（2026-11-25
+ * 裁定取消该限制，开关开启时下界同样允许管道注水）；<b>桶右键倒水照旧可用</b>——桶走的是
  * {@code ItemDrainBlock#useItemOn} 自己开的注水窗口，与管道那条全 tick 门控无关
  * （证据见 {@link ItemDrainPipeRefill} 的说明）。</li>
  * </ol>
@@ -47,9 +47,9 @@ public final class ItemDrainNetherHeat {
         return nether && inCoverage && plantableOnTarget;
     }
 
-    /** ④ 管道注水是否放开：开关开<b>且</b>不在下界（下界一律维持原版禁止）。 */
-    public static boolean pipeIntakeAllowed(boolean switchOn, boolean nether) {
-        return switchOn && !nether;
+    /** ④ 管道注水是否放开：只看开关——下界不再禁管道注水（2026-11-25 裁定）。 */
+    public static boolean pipeIntakeAllowed(boolean switchOn, boolean drainInNether) {
+        return switchOn;
     }
 
     /** ② 的 N2 侧：下界内池子不再骨粉催熟（也不再抽水）。 */

@@ -1,0 +1,25 @@
+{
+  "type": "createdieselgenerators:bulk_fermenting",
+  "processing_time": 200,
+  "ingredients": [
+    {
+      "tag": "c:hops"
+    }
+  ],
+  "results": [
+    {
+      "id": "createdieselgenerators:ethanol",
+      "amount": 100
+    }
+  ],
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "createdieselgenerators"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "kaleidoscope_dim_wine"
+    }
+  ]
+}

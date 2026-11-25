@@ -31,7 +31,9 @@ public final class RecipeEditReloadListener extends SimplePreparableReloadListen
 
     @Override
     protected void apply(Void prepared, ResourceManager resourceManager, ProfilerFiller profiler) {
-        RecipeEditApplicator.apply(this.recipeManager, this.registries, RecipeEditRules.edits());
+        // 枪械工作台配方只能在本阶段改写：产物初始化要等 tacz 的 TagsUpdatedEvent，
+        // 而重复追加会把材料数量加成 2（见 TaczGunRecipeEditor 类注释）。
+        RecipeEditApplicator.apply(this.recipeManager, this.registries, RecipeEditRules.edits(), true);
         RecipeIngredientReloadFilter.defer(this.recipeManager, this.registries);
     }
 }

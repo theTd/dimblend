@@ -349,7 +349,7 @@
 	"screen.dimblend_experience.spyglass_sources.status.invalid_source": "Invalid source",
 	"screen.dimblend_experience.spyglass_sources.status.unknown_source": "Unknown source",
 	"item.dimblend_experience.supplement.totem": "Keep in your inventory to protect experience and extra health",
-	"item.dimblend_experience.supplement.wrench": "On a coupler: temporarily uncouple once in a safe region",
+	"item.dimblend_experience.supplement.wrench": "On a coupler: temporarily uncouple once while vehicle speed is below 1 m/s",
 	"item.dimblend_experience.supplement.levitite_bucket": "Effectively lightens trains without adding drag",
 	"item.dimblend_experience.supplement.doll": "It would also make a capable stock keeper",
 	"dimblend_experience.display_source.traction_efficiency": "Traction Efficiency",
@@ -367,5 +367,18 @@
   "tooltip.dimblend_experience.thermolith.mode": "Right-click with Ice / Magma Block to set operating mode",
   "tooltip.dimblend_experience.thermolith.redstone_stop": "Stops working while receiving a redstone signal",
   "message.dimblend_experience.dirty_water_rejected": "Too dirty — filter it at least once",
-  "pack.dimblend_experience.thermolith_override": "DimBlend Thermolith Mode Textures"
+  "pack.dimblend_experience.thermolith_override": "DimBlend Thermolith Mode Textures",
+  "dimblend_experience.bogey.survival_styles": "Survival Styles",
+  "hud.dimblend_experience.item_drain.evaporating": "Evaporating (%1$s×%2$s)",
+  "item.dimblend_experience.supplement.tap_for_brew_barrel": "For Brew Barrels only",
+  "item.dimblend_experience.supplement.filter_core_pocket": "In your inventory: filters the water you drink",
+  "item.dimblend_experience.supplement.filter_core_frame": "Or place in a filter frame: filters piped water",
+  "item.dimblend_experience.supplement.filter_frame": "Filters piped water with filter cores; pressure on both ends",
+  "item.dimblend_experience.supplement.fan_catalyst": "Can also hold a captured mob for display",
+  "block.dimblend_experience.mob_display_catalyst": "Mob Display Catalyst",
+  "message.dimblend_experience.steam_engine_exhausting": "Steam engine is exhausting and cannot be dismantled yet",
+  "tooltip.dimblend_experience.diesel_engine_piston_damaged": "Damaged – replace the engine piston",
+  "tooltip.dimblend_experience.diesel_engine_piston_repaired": "Piston replaced – the engine can be relit",
+  "tooltip.dimblend_experience.diesel_engine_piston_wrench_denied": "Damaged – replace the engine piston (wrench removal blocked)",
+  "tooltip.dimblend_experience.nvg.handcrafted": "Handcrafted - requires periodic lens replacement"
 }

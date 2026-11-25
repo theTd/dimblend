@@ -7,6 +7,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dimblend.experience.Config;
 import dimblend.experience.compat.cdg.CdgAttachments;
 import dimblend.experience.compat.cdg.CdgBoostMath;
+import dimblend.experience.compat.cdg.CdgEngineDamage;
 import dimblend.experience.compat.cdg.CdgEngineState;
 import dimblend.experience.compat.cdg.CdgFluctuationMath;
 import dimblend.experience.compat.cdg.CdgKineticOverload;
@@ -46,10 +47,11 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
  * 点引信后播完不掐。确认后先摘轴侧登记（否则轴残留末速空转），再点引信——出力归零，
  * 引信期间每 tick 播 large_smoke（delta 0.2,0.2,0.2 / speed 0 / count 10）；
  * 实时不过载不累计（确认进度不跨存档携带）。4 秒（80 tick 引信，2026-10-15 拍板
- * 再延后 2 秒）后爆音 1 次 + 爆炸粒子
- * （delta 1,1,1 / speed 0 / count 100），再 {@code destroyBlock(pos, true)}
- * 破坏本体掉落（余油不返还、无真实爆炸伤害）。红石关停/燃尽/负载恢复都不取消引信。
- * 自毁破坏失败（极端情况）才回退闩锁等重新加油。燃尽走原版停机（不干预）。</p>
+ * 再延后 2 秒）后爆音 1 次（音量 4.0）+ 爆炸粒子
+ * （delta 1,1,1 / speed 0 / count 100），<b>2026-11-25 起不再 {@code destroyBlock}</b>，
+ * 而是摘轴登记 + 把本机打成"活塞损坏"（{@link CdgEngineDamage}：出力 0、不烧油、每 5 tick 黑烟、
+ * 右键 {@code engine_piston} 换活塞修复）。红石关停/燃尽/负载恢复都不取消引信。
+ * 燃尽走原版停机（不干预）。</p>
  *
  * <p>状态复用 {@link CdgEngineState} 附件（rampTicks/fluct 系 + 引信，持久化）；
  * 全部 handler 先行 ServerLevel 守卫，仅服务端读 SERVER 配置。</p>
@@ -89,6 +91,10 @@ public abstract class HugeDieselEngineMixin {
             return rated;
         }
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
+        // 2026-11-25 活塞损坏：转轴输出恒 0（enabled() 也已为 false，这里是双保险）
+        if (Config.DIESEL_ENGINE_OVERLOAD.get() && state.pistonDamaged) {
+            return 0.0F;
+        }
         if (Config.DIESEL_ENGINE_OVERLOAD.get() && state.overloadLatched) {
             return 0.0F;
         }
@@ -126,6 +132,16 @@ public abstract class HugeDieselEngineMixin {
             return;
         }
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
+        if (Config.DIESEL_ENGINE_OVERLOAD.get() && state.pistonDamaged) {
+            // 2026-11-25 活塞损坏：不烧油、不爬梯、不点引信，只每 5 tick 冒一缕黑烟等玩家换活塞
+            // （巨型机是 3×3，每格的 BE 各自登记到轴、各自吃自己的油，所以"哪格烧坏就哪格停"，
+            // 换掉那格的活塞即恢复；轴侧登记由原版 tick 的 enabled()==false 分支摘掉）
+            CdgEngineDamage.tickDamagedSmoke(level, self.getBlockPos());
+            state.rampTicks = 0;
+            state.fluctTicksLeft = 0;
+            state.boostConsumed = false;
+            return;
+        }
         if (!Config.DIESEL_ENGINE_OVERLOAD.get()) {
             // 关开关=未进不可挽回：累计中的警告音掐掉，再清闩锁/引信字段
             CdgOverloadFuse.clearConfirmation(level, state);
@@ -140,23 +156,19 @@ public abstract class HugeDieselEngineMixin {
             if (loadGrace) {
                 return; // 读档宽限：倒计时暂停，宽限过后接着走
             }
-            // B6 引信优先且不可中断：只推进倒计时；到时爆音+粒子+自毁
-            // （自毁前重摘一次登记——倒计时内轴登记可能被别的引擎 tick 覆盖写回；
-            // 轴已不在时跳过摘登记直接自毁，不停摆）。
-            // BE 存活守卫：本体已被手拆时 level.getBlockEntity(pos) 不再是 self，
-            // 不再自毁，只清引信（警告音/爆炸音已播完，不追回）。
+            // B6 引信优先且不可中断：只推进倒计时；到时爆音+粒子，
+            // 然后把本机打成"活塞损坏"（2026-11-25 口径：不再 destroyBlock）。
+            // 自毁前重摘一次登记——倒计时内轴登记可能被别的引擎 tick 覆盖写回；
+            // BE 存活守卫：本体已被手拆时 level.getBlockEntity(pos) 不再是 self，只清引信。
             BlockPos pos = self.getBlockPos();
             if (CdgOverloadFuse.tickFuse(level, pos, state, () -> {
                 if (level.getBlockEntity(pos) != (Object) self) {
-                    return true;
+                    return;
                 }
-                PoweredEngineShaftBlockEntity s = self.getShaft();
-                if (s != null) {
-                    s.removeGenerator(pos);
-                }
-                return level.destroyBlock(pos, true);
+                CdgEngineDamage.detachHugeShaft(self);
+                CdgEngineDamage.markDamaged(self);
             })) {
-                state.overloadLatched = true;
+                // 引信归零：markDamaged 已把损坏位置上并清了闩锁/引信/爬梯
                 state.rampTicks = 0;
                 state.fluctTicksLeft = 0;
                 state.boostConsumed = false;

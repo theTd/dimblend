@@ -12,7 +12,7 @@
   "type": "create:mixing",
   "ingredients": [
     {
-      "type": "fluid_stack",
+      "type": "neoforge:single",
       "amount": 1000,
       "fluid": "fluid:powder_snow"
     },
@@ -23,7 +23,10 @@
   "results": [
     {
       "amount": 1000,
-      "id": "minecraft:water"
+      "id": "minecraft:water",
+      "components": {
+        "minecraft:custom_data": "{Purity:2}"
+      }
     },
     {
       "count": 1,

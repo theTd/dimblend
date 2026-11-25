@@ -47,6 +47,11 @@ public final class PortalBan {
         if (!(entity.level() instanceof ServerLevel level) || !RotatingDimension.is(level)) {
             return;
         }
+        // 末影珍珠等原地传送会把「同维度」也当作一次维度旅行：目的地与出发维度相同不是
+        // 跨维度旅行，放行（否则旋转维度内投珍珠会被静默掐掉，玩家看不到任何反馈）。
+        if (PortalBanRules.isSameDimension(level.dimension(), event.getDimension())) {
+            return;
+        }
         event.setCanceled(true);
     }
 

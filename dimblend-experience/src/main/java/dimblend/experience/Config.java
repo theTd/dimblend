@@ -371,16 +371,18 @@ public final class Config {
 
     public static final ModConfigSpec.BooleanValue ITEM_DRAIN_NETHER_EVAPORATION = BUILDER
             .comment("N6 分液池下界蒸发（全局功能，不限维度）：分液池位于下界群系（原版 #minecraft:is_nether"
-                    + " 或 NeoForge #c:is_nether）时，池内存水按 itemDrainNetherEvaporationMbPerSecond 持续蒸发到空；"
+                    + " 或 NeoForge #c:is_nether）时，池内存水按 itemDrainNetherEvaporationRateMbPerSecond 持续蒸发到空；"
                     + "只蒸发水，岩浆等其它流体不动；管道回注与蒸发可同时进行（回注补多少就扣多少）；"
                     + "Sable 结构上的分液池按载具当前世界位置的群系判定（列车开进旋转维度下界带同样生效）")
             .define("itemDrainNetherEvaporation", true);
 
-    public static final ModConfigSpec.IntValue ITEM_DRAIN_NETHER_EVAPORATION_MB_PER_SECOND = BUILDER
-            .comment("N6 配套：下界群系分液池的蒸发速率（mB/秒，默认 50，范围 0-1500）；"
+    // 键名由 itemDrainNetherEvaporationMbPerSecond（旧默认 50）改为 itemDrainNetherEvaporationRateMbPerSecond（新默认 1），
+    // 确保旧存档自动清理老值并切换至 1 mB/s 新口径
+    public static final ModConfigSpec.IntValue ITEM_DRAIN_NETHER_EVAPORATION_RATE_MB_PER_SECOND = BUILDER
+            .comment("N6 配套：下界群系分液池的蒸发速率（mB/秒，默认 1，范围 0-1500）；"
                     + "0=不蒸发；每 10 tick 结算一次，不足整拍 1 mB 的余数跨拍累加，长期平均恰为配置值；"
                     + "单拍最多扣当拍实存水量，不会扣成负数")
-            .defineInRange("itemDrainNetherEvaporationMbPerSecond", 50, 0, 1500);
+            .defineInRange("itemDrainNetherEvaporationRateMbPerSecond", 1, 0, 1500);
 
     public static final ModConfigSpec.ConfigValue<String> ROTATING_DIMENSION_ID = BUILDER
             .comment("探索限制规则（A1-A6）生效的维度 id，必须带命名空间（缺命名空间将回退默认 dimblend:rotating 并记错误日志）")

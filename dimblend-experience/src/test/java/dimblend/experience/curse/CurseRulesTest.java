@@ -67,9 +67,31 @@ class CurseRulesTest {
         assertFalse(CurseRules.isCursedEquipmentSlot(EquipmentSlot.BODY));
     }
 
+    // ---- 绑定诅咒：只认盔甲槽（2026-11-25 口径）----
+
     @Test
-    void vanishChanceIsFiveInTenThousandPerClick() {
-        assertEquals(0.0005D, CurseRules.VANISH_CHANCE_PER_CLICK);
+    void bindingCurseScopeIsFourArmorSlotsOnly() {
+        for (EquipmentSlot slot : new EquipmentSlot[] {
+                EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+            assertTrue(CurseRules.isBindingCurseArmorSlot(slot), slot.getName());
+        }
+        for (EquipmentSlot slot : new EquipmentSlot[] {
+                EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND, EquipmentSlot.BODY}) {
+            assertFalse(CurseRules.isBindingCurseArmorSlot(slot), slot.getName());
+        }
+        assertFalse(CurseRules.isBindingCurseArmorSlot(null));
+    }
+
+    @Test
+    void bindingCurseNarrowsTheVanishingScopeInsteadOfReplacingIt() {
+        // 消失诅咒的口径（四甲 + 双手）必须原样保留：绑定诅咒的收窄不能连带砍掉它。
+        assertTrue(CurseRules.isCursedEquipmentSlot(EquipmentSlot.MAINHAND));
+        assertTrue(CurseRules.isCursedEquipmentSlot(EquipmentSlot.OFFHAND));
+        assertFalse(CurseRules.isBindingCurseArmorSlot(EquipmentSlot.MAINHAND));
+    }
+
+    @Test
+    void vanishChanceIsFiveInTenThousandPerClick() {        assertEquals(0.0005D, CurseRules.VANISH_CHANCE_PER_CLICK);
     }
 
     @Test

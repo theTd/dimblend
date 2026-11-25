@@ -36,6 +36,51 @@ public final class RegionLanes {
     }
 
     /**
+     * Region width in blocks as both sides can see it: the server generator, or the synced
+     * {@link KnownBandSize} on a client. 0 means "not the rotating dimension" or "size not known yet".
+     */
+    public static int regionBandSize(Level level) {
+        if (!level.dimension().equals(DimBlendRegistries.ROTATING_LEVEL)) {
+            return 0;
+        }
+        return level.isClientSide ? KnownBandSize.raw() : bandSize(level);
+    }
+
+    /**
+     * First chunk column of the region that contains {@code blockX}, inclusive.
+     *
+     * <p>A region is {@code [region * bandSize, (region + 1) * bandSize - 1]}, so its chunk span
+     * follows from flooring both block bounds into chunk columns — {@code Math.floorDiv}, not
+     * {@code >>}, because regions left of spawn are negative and a non-16-aligned band size
+     * would otherwise round the wrong way. Outside the rotating dimension the answer is the
+     * column's own chunk, which makes a clamp against it a no-op.
+     */
+    public static int regionMinChunkX(Level level, int blockX) {
+        return regionMinChunkX(regionBandSize(level), blockX);
+    }
+
+    /** Last chunk column of the region that contains {@code blockX}, inclusive; see {@link #regionMinChunkX}. */
+    public static int regionMaxChunkX(Level level, int blockX) {
+        return regionMaxChunkX(regionBandSize(level), blockX);
+    }
+
+    /** Pure form of {@link #regionMinChunkX(Level, int)}; {@code bandSize <= 0} means "one region". */
+    static int regionMinChunkX(int bandSize, int blockX) {
+        if (bandSize <= 0) {
+            return Math.floorDiv(blockX, 16);
+        }
+        return Math.floorDiv(BandLayout.regionOfBlockX(blockX, bandSize) * bandSize, 16);
+    }
+
+    /** Pure form of {@link #regionMaxChunkX(Level, int)}; {@code bandSize <= 0} means "one region". */
+    static int regionMaxChunkX(int bandSize, int blockX) {
+        if (bandSize <= 0) {
+            return Math.floorDiv(blockX, 16);
+        }
+        return Math.floorDiv((BandLayout.regionOfBlockX(blockX, bandSize) + 1) * bandSize - 1, 16);
+    }
+
+    /**
      * Lane name of {@code region}, or the empty string outside the rotating dimension and before
      * the seeded layout exists.
      *
@@ -74,6 +119,18 @@ public final class RegionLanes {
                 ? (level.isClientSide ? KnownBandSize.raw() : bandSize(level))
                 : 0;
         return sameRegion(sameDimension, rotatingDimension, bandSize, originBlockX, currentBlockX);
+    }
+
+    /**
+     * Pure form of {@link #sameRegion(Level, ResourceLocation, int, int)} for callers that already
+     * know the region width and cannot touch a level (the spyglass region scan runs on an
+     * executor): true only when {@code bandSize > 0} and both columns floor into the same region.
+     * An unknown size answers false, the same "do not guess" rule the level form applies.
+     */
+    public static boolean sameRegion(int bandSize, int originBlockX, int currentBlockX) {
+        return bandSize > 0
+                && BandLayout.regionOfBlockX(originBlockX, bandSize)
+                        == BandLayout.regionOfBlockX(currentBlockX, bandSize);
     }
 
     /** Pure form of {@link #sameRegion(Level, ResourceLocation, int, int)}; tested without a level. */

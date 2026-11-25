@@ -10,6 +10,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.CanContinueSleepingEvent;
@@ -20,6 +21,12 @@ import net.neoforged.neoforge.event.entity.player.CanPlayerSleepEvent;
  * rotating exception (2026-10-23): night/thunder sleep skips to morning vanilla-style again
  * (daytime naps stay rest-only); the write lands on the shared overworld clock through
  * RotatingLevelData. See {@link BedRestRules#suppressesTimeSkip(Level)}.
+ *
+ * <p>2026-11-25 (LOCKED #5 {@code bed_surface_only_skip}): in {@code dimblend:rotating} only the
+ * Overworld {@code surface} band may still skip night/thunder. Every time-locked band
+ * (twilight / aether / nether / end / starlight / deeperdarker / voidscape / underground) always
+ * suppresses the skip so the full 8s healing rest plays out. The band of a bed on a Sable vehicle
+ * is judged at its <b>projected world position</b>.</p>
  */
 @EventBusSubscriber(modid = DimBlend.MODID)
 public final class BedRestRules {
@@ -55,22 +62,58 @@ public final class BedRestRules {
     }
 
     /**
-     * 跳夜抑制口径（2026-10-23 起 rotating 恢复夜晚跳夜）：主世界永不跳夜（纯休息式睡眠）；
-     * rotating 白天非雷雨时抑制（白天小睡只休息，不带着跳一整天），夜晚/雷雨按原版语义
-     * 跳到早晨、强制起床、清天气——写时间经 RotatingLevelData 穿透到主世界共享时钟。
-     * 其余维度不动原版行为。
+     * 跳夜抑制口径（2026-11-25 LOCKED #5 重写）：主世界永不跳夜（纯休息式睡眠）；
+     * rotating 里<b>只有 surface 带的床</b>保留原版的「夜晚/雷雨跳早晨」语义，
+     * 其余所有时间锁带（twilight/aether/nether/end/starlight/deeperdarker/voidscape/underground）
+     * 一律抑制跳夜，让 8 秒回血休息完整跑完。其余维度不动原版行为。
      */
     public static boolean suppressesTimeSkip(Level level) {
         boolean overworld = level.dimension().equals(Level.OVERWORLD);
         boolean rotating = Config.isLoaded() && RotatingDimension.is(level);
-        return suppressesTimeSkip(overworld, rotating, level.isDay(), level.isThundering());
+        boolean surfaceSleeper = rotating && hasSleepingPlayerOnSurface(level);
+        return suppressesTimeSkip(overworld, rotating, level.isDay(), level.isThundering(), surfaceSleeper);
     }
 
-    /** 纯判定核心，与 Level 解耦便于单测。 */
-    static boolean suppressesTimeSkip(boolean overworld, boolean rotating, boolean isDay, boolean thundering) {
+    /**
+     * 纯判定核心，与 Level 解耦便于单测。
+     *
+     * @param surfaceSleeper rotating 内是否有睡在 surface 带（或真实世界地面）的玩家
+     */
+    public static boolean suppressesTimeSkip(boolean overworld, boolean rotating, boolean isDay,
+            boolean thundering, boolean surfaceSleeper) {
         if (overworld) return true;
-        if (rotating) return isDay && !thundering;
+        if (rotating) {
+            // 没有 surface 带的睡眠者 = 全在时间锁带：一律不跳夜，保证 8 秒休息完整。
+            if (!surfaceSleeper) return true;
+            return isDay && !thundering;
+        }
         return false;
+    }
+
+    /** 当前维度里是否至少有一名玩家睡在 surface 带（坐标按 Sable 世界投影计）。 */
+    private static boolean hasSleepingPlayerOnSurface(Level level) {
+        if (!(level instanceof ServerLevel server)) {
+            return false;
+        }
+        for (Player player : server.players()) {
+            if (!player.isSleeping()) {
+                continue;
+            }
+            if (isOnSurfaceBand(level, player)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isOnSurfaceBand(Level level, Player player) {
+        BlockPos worldPos = SableWorldPosition.projectBlock(level, player.blockPosition());
+        // 核心模组缺席时没有任何"surface 带"概念：判据退化为"不在 surface"，
+        // 于是所有时间锁带口径保持一致（一律抑制跳夜），不会因缺核心而崩。
+        if (!net.neoforged.fml.ModList.get().isLoaded("dimblend")) {
+            return false;
+        }
+        return CoreRegionBands.isSurface(level, worldPos);
     }
 
     public static boolean isResting(Player player) {
@@ -105,7 +148,11 @@ public final class BedRestRules {
         return SableWorldPosition.project(level, footCenter);
     }
 
-    @SubscribeEvent
+    /**
+     * HIGH 优先级（2026-11-25 LOCKED #5）：让 Cold Sweat 的温度判定先跑，
+     * 本类只清掉「不是夜晚/不安全」两个问题，白天与夜晚的处理因此一致。
+     */
+    @SubscribeEvent(priority = EventPriority.HIGH)
     public static void onSleepAttempt(CanPlayerSleepEvent event) {
         if (!applies(event.getLevel())) return;
         var problem = event.getProblem();
@@ -120,6 +167,13 @@ public final class BedRestRules {
         if (event.getEntity() instanceof Player player && applies(player.level())
                 && event.getProblem() == Player.BedSleepingProblem.NOT_POSSIBLE_NOW) {
             event.setContinueSleeping(true);
+        }
+    }
+
+    /** Loaded only behind the core-mod guard; the experience mod can run without core. */
+    private static final class CoreRegionBands {
+        private static boolean isSurface(Level level, BlockPos worldPos) {
+            return dimblend.api.RegionLanes.isSurface(level, worldPos);
         }
     }
 

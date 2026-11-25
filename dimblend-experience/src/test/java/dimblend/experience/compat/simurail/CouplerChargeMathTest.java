@@ -15,6 +15,8 @@ import org.junit.jupiter.api.Test;
  *   <li>「扳手充能的车勾在断钩 且 附近2格内没有其他sable的车钩后 会自动取消充能」——
  *       判定本体是 {@link CouplerChargeMath#shouldDecharge}，本类钉死它。</li>
  * </ul>
+ *
+ * <p>2026-11-25 追加：<b>取消「只在地面区域充能」</b>，改为「编组速度 &lt; 1 m/s 才能临时断钩」。
  */
 class CouplerChargeMathTest {
 
@@ -61,5 +63,30 @@ class CouplerChargeMathTest {
         assertTrue(CouplerChargeMath.isWithin(3.999999D, 2.0D));
         assertFalse(CouplerChargeMath.isWithin(4.000001D, 2.0D));
         assertFalse(CouplerChargeMath.isWithin(9.0D, 2.0D));
+    }
+
+    // ---- 2026-11-25：取消地面区域限制，改为 1 m/s 速度门槛 ----
+
+    /** 口径是「< 1 m/s」：0.999 通过、1.0 与更快一律静默失败。 */
+    @Test
+    void uncouplingNeedsStrictlyLessThanOneMetrePerSecond() {
+        assertTrue(CouplerChargeMath.allowsWrenchToggle(false, 0.0D), "未组装/静止的车钩速度按 0");
+        assertTrue(CouplerChargeMath.allowsWrenchToggle(false, 0.5D));
+        assertTrue(CouplerChargeMath.allowsWrenchToggle(false, 0.999999D));
+        assertFalse(CouplerChargeMath.allowsWrenchToggle(false, 1.0D), "等于 1 m/s 已经不达阈值");
+        assertFalse(CouplerChargeMath.allowsWrenchToggle(false, 3.2D));
+    }
+
+    /** 取消充能（回到已解锁的常态）不受速度限制：跑起来的编组也必须能解除充能。 */
+    @Test
+    void dechargingIgnoresSpeed() {
+        assertTrue(CouplerChargeMath.allowsWrenchToggle(true, 0.0D));
+        assertTrue(CouplerChargeMath.allowsWrenchToggle(true, 12.5D));
+    }
+
+    /** 阈值改动必须有用户新口径。 */
+    @Test
+    void speedGateIsTheOneMetrePerSecondTheUserAskedFor() {
+        assertTrue(CouplerChargeMath.UNCOUPLE_MAX_SPEED == 1.0D);
     }
 }

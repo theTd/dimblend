@@ -12,6 +12,16 @@
     "category": "blocks",
     "sounds": ["dimblend_experience:train_brake"]
   },
+  "train_brake_sustain": {
+    "category": "blocks",
+    "sounds": [
+      {
+        "name": "dimblend_experience:train_brake",
+        "attenuation_distance": 32,
+        "stream": true
+      }
+    ]
+  },
   "brake_release": {
     "category": "blocks",
     "sounds": ["dimblend_experience:brake_release"]

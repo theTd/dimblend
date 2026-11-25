@@ -1,6 +1,7 @@
 package dimblend;
 
 import dimblend.api.BandTrainMarker;
+import dimblend.api.MinimumSpeedState;
 import dimblend.api.WarpGateColumns;
 import dimblend.band.BandInfoPayload;
 import dimblend.band.BandInfoSync;
@@ -30,6 +31,7 @@ import dimblend.worldgen.RegionOverrideStore;
 import dimblend.worldgen.WarpGateColumnsImpl;
 import dimblend.worldgen.WarpGatePassageGuard;
 import dimblend.worldgen.WarpGateSableCrossing;
+import net.minecraft.server.level.ServerLevel;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
@@ -40,6 +42,7 @@ import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.RegisterGameTestsEvent;
+import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
@@ -90,6 +93,7 @@ public final class DimBlend {
         NeoForge.EVENT_BUS.addListener(RegionBoundaryWallProtector::onPistonPre);
         NeoForge.EVENT_BUS.addListener(WarpGatePassageGuard::onEntityTickPost);
         NeoForge.EVENT_BUS.addListener(WarpGateSableCrossing::onLevelTick);
+        NeoForge.EVENT_BUS.addListener(DimBlend::onLevelUnload);
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, VoidscapeNetherDezombify::onSpawnPlacementCheck);
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, VoidscapeNetherDezombify::onFinalizeSpawn);
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, VoidscapeBand::onPlayerTickEnter);
@@ -130,6 +134,14 @@ public final class DimBlend {
     /** Server-scoped static state must not survive into the next world of the same client session. */
     private static void onServerStopped(ServerStoppedEvent event) {
         BandTrainMarker.clear();
+        MinimumSpeedState.clearAll();
+    }
+
+    /** Minimum-speed marks are keyed by dimension and stamped with that level's game time. */
+    private static void onLevelUnload(LevelEvent.Unload event) {
+        if (event.getLevel() instanceof ServerLevel level) {
+            MinimumSpeedState.clear(level.dimension());
+        }
     }
 
     private static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {

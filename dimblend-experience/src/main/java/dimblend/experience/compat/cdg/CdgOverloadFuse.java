@@ -9,8 +9,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 
-import java.util.function.BooleanSupplier;
-
 /**
  * B6 过载警告与引信（确认窗口见 {@link CdgOverloadMath}，引信不可中断，三类柴油机共用）：
  * 运转中过载确认累计的首个 tick 即播 {@code diesel_overstress} 警告音（{@link #startWarning}，
@@ -22,10 +20,10 @@ import java.util.function.BooleanSupplier;
  * 倒计时期间每 tick 在引擎中心播 {@code minecraft:large_smoke}
  * （delta 0.2,0.2,0.2 / speed 0 / count 10），持续整个 4 秒；
  * 80 tick（4 秒，2026-10-15 拍板：2 秒引信偏早，再延后 2 秒引爆；
- * 较最初 6 秒口径仍提前 2 秒）到时播放
- * {@code entity.generic.explode} 一次 + 爆炸粒子
- * （{@code minecraft:explosion}，delta 1,1,1 / speed 0 / count 100），再破坏自毁掉落。
- * 仅自毁掉落，无地形/实体伤害（不调 {@code level.explode}）。
+ * 较最初 6 秒口径仍提前 2 秒）到时播放 {@code entity.generic.explode} 一次（音量 4.0）
+ * + 爆炸粒子（{@code minecraft:explosion}，delta 1,1,1 / speed 0 / count 100）。
+ * <b>2026-11-25 起</b>到点不再破坏自毁掉落，改为把引擎置为"活塞损坏"（见 {@link CdgEngineDamage}）；
+ * 依然无地形/实体伤害（不调 {@code level.explode}）。
  */
 public final class CdgOverloadFuse {
 
@@ -79,12 +77,17 @@ public final class CdgOverloadFuse {
     }
 
     /**
-     * 推进引信 1 tick：先播一次引信烟雾；到时播放爆炸声 + 粒子并调 destroy 自毁。
+     * 推进引信 1 tick：先播一次引信烟雾；到时播放爆炸声 + 粒子并执行收尾动作。
      *
-     * @param destroy 调用方提供的自毁动作（含巨型机的摘轴 + BE 存活守卫），返回是否破坏成功
-     * @return 自毁失败回退（引信清除、闩锁保留）时为 true，调用方需 setChanged；其余 false
+     * <p><b>2026-11-25 口径变更（LOCKED）</b>：引信到 0 <b>不再</b> {@code destroyBlock} 炸掉整机，
+     * 而是把引擎打成"活塞损坏"状态（调用方在 {@code onDetonate} 里
+     * {@link CdgEngineDamage#markDamaged}）。爆炸声与粒子照旧保留——听感上仍然"炸了一下"，
+     * 只是机器没被抹掉，玩家换活塞就能修。</p>
+     *
+     * @param onDetonate 到点时的收尾动作（巨型机摘轴侧登记 + 三机标记损坏），不可为 null
+     * @return 引信恰好在本次 tick 归零（调用方据此标脏并 return）时 true
      */
-    public static boolean tickFuse(ServerLevel level, BlockPos pos, CdgEngineState state, BooleanSupplier destroy) {
+    public static boolean tickFuse(ServerLevel level, BlockPos pos, CdgEngineState state, Runnable onDetonate) {
         // 引信期烟雾：倒计时内每 tick 一次（含到时 tick，与爆炸粒子同帧无冲突）
         level.sendParticles(ParticleTypes.LARGE_SMOKE,
                 pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5,
@@ -92,16 +95,14 @@ public final class CdgOverloadFuse {
         if (--state.fuseTicksLeft > 0) {
             return false;
         }
-        level.playSound(null, pos, SoundEvents.GENERIC_EXPLODE.value(), SoundSource.BLOCKS, 1.0F, 1.0F);
+        // volume 4.0：远一点也听得见"这下炸了"，但没有任何地形/实体伤害（不调 level.explode）
+        level.playSound(null, pos, SoundEvents.GENERIC_EXPLODE.value(), SoundSource.BLOCKS, 4.0F, 1.0F);
         level.sendParticles(ParticleTypes.EXPLOSION,
                 pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5,
                 DETONATE_PARTICLE_COUNT, 1.0, 1.0, 1.0, 0.0);
         state.fuseActive = false;
         state.fuseTicksLeft = 0;
-        if (destroy.getAsBoolean()) {
-            return false;
-        }
-        // 破坏失败（极端情况）回退闩锁：停机等重新加油，不再重试爆炸
+        onDetonate.run();
         return true;
     }
 }

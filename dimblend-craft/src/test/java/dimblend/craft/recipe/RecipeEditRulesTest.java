@@ -814,6 +814,137 @@ class RecipeEditRulesTest {
         assertTrue(rule.defensive(), "create_recycle_everything 为玩家端可选附属，必须标防御性");
     }
 
+    // —— 2026-11-25 批次：动力合成器 / 电动马达 / 铂机壳 / 幽匿酒桶 / 硬核夜视仪 ——
+
+    private static final ResourceLocation MECHANICAL_CRAFTER =
+            ResourceLocation.parse("create:mechanical_crafter");
+    private static final ResourceLocation ELECTRIC_MOTOR =
+            ResourceLocation.parse("createaddition:mechanical_crafting/electric_motor");
+    private static final ResourceLocation PLATINUM_CASING_APPLICATION =
+            ResourceLocation.parse("createpropulsion:item_application/platinum_casing");
+    private static final ResourceLocation PLATINUM_CASING_DEPLOYING =
+            ResourceLocation.parse("createpropulsion:deploying/platinum_casing");
+    private static final ResourceLocation PLATINUM_NUGGET =
+            ResourceLocation.parse("createpropulsion:platinum_nugget");
+    private static final ResourceLocation SCULK_BREW =
+            ResourceLocation.parse("kaleidoscope_sculk:barrel/sculk_brew");
+    private static final ResourceLocation DIM_WINE_HOP =
+            ResourceLocation.parse("kaleidoscope_dim_wine:hop");
+    private static final ResourceLocation CREATE_GOGGLES = ResourceLocation.parse("create:goggles");
+
+    /** 硬核夜视仪的 8 种颜色（同一个 hardcore_nvg jar 的 8 条 *_recipe 配方）。 */
+    private static final Set<ResourceLocation> HARDCORE_NVG_OUTPUTS = Set.of(
+            ResourceLocation.parse("hardcore_nvg:nvg"),
+            ResourceLocation.parse("hardcore_nvg:blue_nvg"),
+            ResourceLocation.parse("hardcore_nvg:orange_nvg"),
+            ResourceLocation.parse("hardcore_nvg:pink_nvg"),
+            ResourceLocation.parse("hardcore_nvg:purple_nvg"),
+            ResourceLocation.parse("hardcore_nvg:red_nvg"),
+            ResourceLocation.parse("hardcore_nvg:white_nvg"),
+            ResourceLocation.parse("hardcore_nvg:yellow_nvg"));
+
+    /** 需求：动力合成器一次产出 3 个 -> 1 个（材料不动）。 */
+    @Test
+    void mechanicalCrafterDropsToSingleOutput() {
+        RecipeEdit.ModifyShapedGrid rule = gridRuleByResult(MECHANICAL_CRAFTER);
+        assertNotNull(rule, "缺少产物为 create:mechanical_crafter 的网格规则");
+        assertEquals("动力合成器", rule.label(), "规则名必须与需求一致");
+        assertEquals(Set.of(MECHANICAL_CRAFTER), rule.resultTargets(),
+                "规则只能命中动力合成器一条配方，实际 " + rule.resultTargets());
+        assertTrue(rule.slotEdits().isEmpty(),
+                "只改产量，不得改材料：" + rule.slotEdits().keySet());
+        assertEquals(Integer.valueOf(1), rule.newResultCount(), "上游 B/C/R 竖排配方产出 3 个，必须降到 1 个");
+    }
+
+    /**
+     * 需求：铂机壳的第二个材料铂锭 -> 铂粒，{@code item_application} 与 {@code deploying} 两条都改。
+     *
+     * <p>{@code ManualApplicationRecipe#asDeploying} 只在 JEI 展示时把 item_application
+     * 转成 deploying 配方（{@code CreateJEI.java:265} 是唯一调用点），运行期部署器只认
+     * 真正的 {@code create:deploying} 配方 —— 删掉那条会让机械臂再也做不出铂机壳。</p>
+     */
+    @Test
+    void platinumCasingUsesNuggetInBothApplicationPaths() {
+        RecipeEdit.ModifyRecipeFields rule = fieldRuleById(PLATINUM_CASING_APPLICATION);
+        assertNotNull(rule, "缺少对 createpropulsion:item_application/platinum_casing 的字段改写规则");
+        assertEquals("铂机壳铂锭改铂粒", rule.label(), "规则名必须与需求一致");
+        assertEquals(Set.of(PLATINUM_CASING_APPLICATION, PLATINUM_CASING_DEPLOYING), rule.recipeIds(),
+                "两条涂覆路径必须由同一条规则一起改，实际 " + rule.recipeIds());
+        assertEquals(1, rule.fieldEdits().size(), "只允许改第二个材料一个字段，实际 " + rule.fieldEdits().keySet());
+
+        JsonElement second = rule.fieldEdits().get("ingredients.1");
+        assertNotNull(second, "缺少 ingredients.1 字段改写（第二条材料是铂锭）");
+        assertTrue(second.isJsonObject(), "材料必须写成材料对象");
+        assertEquals(PLATINUM_NUGGET.toString(), second.getAsJsonObject().get("item").getAsString(),
+                "第二个材料必须改成 createpropulsion:platinum_nugget");
+        assertFalse(second.getAsJsonObject().has("tag"), "材料只能写 item，不得同时保留 tag");
+    }
+
+    /**
+     * 需求：电动马达的安山合金 -> 琥珀金锭。
+     *
+     * <p>该配方是 {@code create:mechanical_crafting}，图案 {@code "  A  "/" BSB "/"BSRSB"/" BCB "}
+     * 共 4 行 5 列：网格编辑器会因超出 3×3 直接拒绝，而且重建出来的是普通 {@code ShapedRecipe}，
+     * 会丢掉 MechanicalCraftingRecipe 类型（机械动力合成台只匹配它）。因此只能改 {@code key.A}。</p>
+     */
+    @Test
+    void electricMotorReplacesAndesiteAlloyWithElectrumIngot() {
+        RecipeEdit.ModifyRecipeFields rule = fieldRuleById(ELECTRIC_MOTOR);
+        assertNotNull(rule, "缺少对 createaddition:mechanical_crafting/electric_motor 的字段改写规则");
+        assertEquals(Set.of(ELECTRIC_MOTOR), rule.recipeIds(), "规则只能命中电动马达一条配方");
+        JsonElement slotA = rule.fieldEdits().get("key.A");
+        assertNotNull(slotA, "缺少 key.A 字段改写（安山合金位）");
+        assertEquals("createaddition:electrum_ingot", slotA.getAsJsonObject().get("item").getAsString(),
+                "key.A 必须改成琥珀金锭");
+        assertEquals(1, rule.fieldEdits().size(),
+                "只改 key.A：图案与其他材料（黄铜板/电容/铁杆/铜线轴）保持原样，实际 "
+                        + rule.fieldEdits().keySet());
+        for (RecipeEdit edit : RecipeEditRules.edits()) {
+            if (edit instanceof RecipeEdit.ModifyShapedGrid grid) {
+                assertFalse(grid.resultTargets().contains(ResourceLocation.parse("createaddition:electric_motor")),
+                        "电动马达不得用网格规则改写（图案 4×5 超范围且会丢失 mechanical_crafting 类型）");
+            }
+        }
+    }
+
+    /** 需求：幽匿酒桶配方在保留幽匿块的基础上追加啤酒花（1 格材料 = 16 个）。 */
+    @Test
+    void sculkBrewKeepsSculkAndAddsHop() {
+        RecipeEdit.ModifyRecipeFields rule = fieldRuleById(SCULK_BREW);
+        assertNotNull(rule, "缺少对 kaleidoscope_sculk:barrel/sculk_brew 的字段改写规则");
+        assertEquals(Set.of(SCULK_BREW), rule.recipeIds(), "规则只能命中幽匿酒桶一条配方");
+        JsonElement ingredients = rule.fieldEdits().get("ingredients");
+        assertNotNull(ingredients, "酒桶材料列表必须整段重写（字段编辑没有数组追加语义）");
+        assertTrue(ingredients.isJsonArray(), "ingredients 必须是 JSON 数组");
+        JsonArray list = ingredients.getAsJsonArray();
+        assertEquals(2, list.size(), "原 1 条材料 + 啤酒花 = 2，实际 " + list);
+        assertEquals("minecraft:sculk", list.get(0).getAsJsonObject().get("item").getAsString(),
+                "第一条必须仍是幽匿块");
+        assertEquals(DIM_WINE_HOP.toString(), list.get(1).getAsJsonObject().get("item").getAsString(),
+                "第二条必须是啤酒花 kaleidoscope_dim_wine:hop");
+    }
+
+    /**
+     * 需求：硬核夜视仪 8 色合成的第 2 格（第 1 行中间）皮革改工程师护目镜。
+     *
+     * <p>8 条 <em>_repair</em> 修复配方产出的物品与这 8 条完全相同，但它们是
+     * {@code minecraft:crafting_shapeless}；执行器只在 {@code ShapedRecipe} 上应用网格规则，
+     * 所以按产物匹配不会波及修复配方 —— 这正是本规则敢用产物匹配的前提。</p>
+     */
+    @Test
+    void hardcoreNvgSlotTwoBecomesGoggles() {
+        RecipeEdit.ModifyShapedGrid rule = gridRuleByResult(ResourceLocation.parse("hardcore_nvg:nvg"));
+        assertNotNull(rule, "缺少产物为 hardcore_nvg:nvg 的网格规则");
+        assertEquals("硬核夜视仪护目镜", rule.label(), "规则名必须与需求一致");
+        assertEquals(HARDCORE_NVG_OUTPUTS, rule.resultTargets(),
+                "8 种颜色必须用同一条规则覆盖，实际 " + rule.resultTargets());
+        assertEquals(Set.of(2), rule.slotEdits().keySet(),
+                "aba/cdc/b b 中第一行的 b（皮革）落在槽位 2，实际 " + rule.slotEdits().keySet());
+        assertEquals(RecipeIngredient.item(CREATE_GOGGLES.toString()), rule.slotEdits().get(2),
+                "槽位 2 必须改成 create:goggles");
+        assertNull(rule.newResultCount(), "只换材料，不得改产物数量");
+    }
+
     /** 取出命中给定配方 ID 的字段改写规则；不存在即断言失败。 */
     private static RecipeEdit.FieldModify fieldRuleFor(List<RecipeEdit> edits, ResourceLocation recipeId) {
         for (RecipeEdit edit : edits) {

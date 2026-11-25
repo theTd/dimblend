@@ -14,9 +14,10 @@ import net.neoforged.neoforge.network.PacketDistributor;
  * Server side of the jukebox tuning screen: opening it, and applying an edit.
  *
  * <p><b>Everything is re-checked here.</b> The screen's own greying-out of controls is a
- * convenience for the player; the server decides. Two things it refuses: a position where no
- * jukebox is, and a player without the same permission the old panel required. A client can send
- * any {@code BlockPos} it likes, so neither test may live only on the client.
+ * convenience for the player; the server decides. Three things it refuses when opening: a
+ * position where no jukebox is, a position that is not a running radio, and a request from a
+ * player holding an item (the screen is for an empty-main-hand right-click). A client can send
+ * any {@code BlockPos} and any moment it likes, so none of these tests may live only on the client.
  *
  * <p><b>Why the radio must be running to open it.</b> The requirement says "在唱片机进入电台状态后
  * 右键唱片机打开" — the screen belongs to a radio, so a jukebox that is not one has nothing to
@@ -31,6 +32,11 @@ public final class RadioTuneService {
     /** Answers a {@link RadioTunePayloads.Request} by sending the snapshot that opens the screen. */
     public static void open(ServerPlayer player, RadioTunePayloads.Request request) {
         if (!(player.level() instanceof ServerLevel level)) {
+            return;
+        }
+        // The screen belongs to an empty-main-hand right-click (JukeboxTuneMixin); a client that
+        // asks while holding something is not asking about the thing it is holding.
+        if (!player.getMainHandItem().isEmpty()) {
             return;
         }
         BlockPos pos = request.pos();

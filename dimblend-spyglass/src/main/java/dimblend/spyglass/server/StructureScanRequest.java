@@ -18,12 +18,18 @@ import net.minecraft.world.level.Level;
  * <p>{@code prediction} carries the generators and registries a seed-only replay needs, resolved on
  * the server thread; {@code null} disables prediction for this request (a generator whose structure
  * state is not available, or a level without structure generation). See {@link StructurePredictor}.
+ *
+ * <p>{@code bandSize} is the rotating region width the request was built under, captured on the
+ * server thread so the scan executor can keep every outline inside the player's own region
+ * without touching a {@code Level} (see {@link dimblend.api.RegionLanes}); {@code 0} means "not the
+ * rotating dimension, every position is the same region".
  */
 record StructureScanRequest(
         UUID playerId,
         long sequence,
         double playerX,
         double playerZ,
+        int bandSize,
         RegionReadContext region,
         List<StructureTarget> targets,
         List<StructureStateBand> bands,

@@ -8,10 +8,8 @@ import dimblend.experience.chassis.ChassisPreset;
 import dimblend.experience.compat.camerapture.CameraFilmRules;
 import dimblend.experience.compat.camerapture.PhotoOriginHud;
 import dimblend.experience.compat.dragonsplus.FluidHatchRules;
-import dimblend.experience.compat.firefightingadd.HighPressurePumpTuning;
 import dimblend.experience.compat.fluid.CookeryCopperTapSupport;
 import dimblend.experience.water.SurvivalWaterlogRules;
-import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 class Batch1115FluidAndPumpRulesTest {
@@ -55,27 +53,5 @@ class Batch1115FluidAndPumpRulesTest {
         assertFalse(SurvivalWaterlogRules.shouldBlockWaterlog(true, true, true), "创造模式允许正常含水");
         assertFalse(SurvivalWaterlogRules.shouldBlockWaterlog(false, false, true), "岩浆桶/空桶不受含水拦截");
         assertFalse(SurvivalWaterlogRules.shouldBlockWaterlog(false, true, false), "普通不可含水方块不受拦截");
-    }
-
-    @Test
-    void highPressurePumpScalesRangeAndStressSixteenFold() {
-        assertEquals(512, HighPressurePumpTuning.scalePumpRange(32));
-        assertEquals(512, HighPressurePumpTuning.scalePipeWakeRange(16));
-        assertEquals(
-                128.0D,
-                HighPressurePumpTuning.scaleBlockStressImpact(
-                        ResourceLocation.fromNamespaceAndPath("createfirefightingadd", "high_pressure_pump"),
-                        8.0D
-                ),
-                1e-6D
-        );
-        assertEquals(
-                4.0D,
-                HighPressurePumpTuning.scaleBlockStressImpact(
-                        ResourceLocation.fromNamespaceAndPath("create", "mechanical_pump"),
-                        4.0D
-                ),
-                1e-6D
-        );
     }
 }

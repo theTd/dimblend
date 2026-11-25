@@ -21,7 +21,7 @@ public final class ChassisGrimeSprites {
     static final ResourceLocation DIRT_FULL = DimBlendCarwash.id("block/grime/dirt_full_");
     /** 泥，去下半：车架四个侧面。 */
     static final ResourceLocation DIRT_UPPER = DimBlendCarwash.id("block/grime/dirt_upper_");
-    /** 碎石，整张：上方实心方块的侧面与顶面。 */
+    /** 碎石，整张：上方实心方块的四个侧面（不贴顶面）。 */
     static final ResourceLocation GRAVEL_FULL = DimBlendCarwash.id("block/grime/gravel_full_");
     /** 碎石，去上半：上方非实心格的四个侧面。 */
     static final ResourceLocation GRAVEL_LOWER = DimBlendCarwash.id("block/grime/gravel_lower_");

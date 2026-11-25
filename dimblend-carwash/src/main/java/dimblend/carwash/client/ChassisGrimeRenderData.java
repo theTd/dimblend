@@ -11,7 +11,7 @@ public record ChassisGrimeRenderData(ChassisGrimeVisual visual, Above above) {
     public enum Above {
         /** 空气：不贴碎石。 */
         AIR,
-        /** 非透明实心方块：贴其四个侧面与顶面（整张）。 */
+        /** 非透明实心方块：贴其四个侧面（整张，不贴顶面）。 */
         OPAQUE,
         /** 其余（透明或非整方块）：贴四个侧面，去掉上半。 */
         OTHER

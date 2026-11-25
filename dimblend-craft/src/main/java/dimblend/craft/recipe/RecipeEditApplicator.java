@@ -30,6 +30,10 @@ import dimblend.craft.DimblendCraft;
  * /reload）与服务器启动后（{@code DimblendCraft.onServerStarted}，处理上游在重载之外
  * 动态注入的配方）；两个阶段各传各的规则子集。执行器本身无状态：规则是纯数据，
  * 每次应用都从零重放，天然幂等。目标 mod 缺失的规则不产生任何改动，只输出未命中告警。</p>
+ *
+ * <p>除规则表之外，重载阶段还会顺带跑一次 {@link TaczGunRecipeEditor}（TACZ 枪械工作台
+ * 配方追加精密构件）：它是反射改写而非规则行，只在重载阶段启用，见
+ * {@link #apply(RecipeManager, HolderLookup.Provider, List, boolean)}。</p>
  */
 public final class RecipeEditApplicator {
 
@@ -38,6 +42,21 @@ public final class RecipeEditApplicator {
 
     public static void apply(RecipeManager recipeManager, HolderLookup.Provider registries,
             List<RecipeEdit> edits) {
+        apply(recipeManager, registries, edits, false);
+    }
+
+    /**
+     * 同上，并决定本轮是否顺带跑「枪械工作台配方追加精密构件」。
+     *
+     * <p>它是反射改写（不依赖规则表），只在数据包重载阶段跑一次：tacz 会在重载末尾的
+     * {@code TagsUpdatedEvent} 里初始化产物，而重跑一遍会把材料数量加成 2（见
+     * {@link TaczGunRecipeEditor} 类注释）。因此 {@code ServerStartedEvent} 的晚期规则
+     * 走三参数重载，恒为 false。</p>
+     *
+     * @param appendGunCrafts 是否执行 {@link TaczGunRecipeEditor}
+     */
+    public static void apply(RecipeManager recipeManager, HolderLookup.Provider registries,
+            List<RecipeEdit> edits, boolean appendGunCrafts) {
         Map<RecipeEdit, Stats> statsByIdentity = new IdentityHashMap<>();
         edits.forEach(edit -> statsByIdentity.put(edit, new Stats()));
         // 通用内容替换规则（材料 / 产物）与配方 ID 无关，先取出避免内层循环反复做类型判断。
@@ -51,6 +70,7 @@ public final class RecipeEditApplicator {
         List<RecipeHolder<?>> keptRecipes = new ArrayList<>(recipeManager.getRecipes().size());
         int removedCount = 0;
         int modifiedCount = 0;
+        int gunCraftCount = 0;
         // 通用内容替换需要把配方编码成 JSON 才能看清材料/产物写法；少数序列化器不可编码时
         // 在这里记账，整轮结束后汇总一条 WARN，避免每条配方刷一条错误日志。
         List<ResourceLocation> unencodableRecipes = new ArrayList<>(0);
@@ -128,6 +148,19 @@ public final class RecipeEditApplicator {
                 }
             }
 
+            // 枪械工作台配方追加精密构件（反射改写，与规则表无关；只在重载阶段启用）。
+            // 必须排在通用内容替换之前：GunSmithTableResult 不可编码，落到内容替换只会
+            // 被记进「无法检查」名单，永远改不动。
+            if (appendGunCrafts) {
+                Optional<Recipe<?>> gunEdited = TaczGunRecipeEditor.edit(holder);
+                if (gunEdited.isPresent()) {
+                    gunCraftCount++;
+                    modifiedCount++;
+                    keptRecipes.add(new RecipeHolder<>(holder.id(), gunEdited.get()));
+                    continue;
+                }
+            }
+
             if (!contentEdits.isEmpty()) {
                 RecipeHolder<?> edited = applyContentEdits(holder, recipe, contentEdits, registries,
                         statsByIdentity, unencodableRecipes);
@@ -153,6 +186,10 @@ public final class RecipeEditApplicator {
             recipeManager.replaceRecipes(keptRecipes);
             DimblendCraft.LOGGER.info("[配方] 本轮编辑完成：删除 {} 条，修改 {} 条，排序 {} 条",
                     removedCount, modifiedCount, movedCount);
+        }
+        if (gunCraftCount > 0) {
+            DimblendCraft.LOGGER.info("[配方] {}：{} 条（含在「修改」计数内）",
+                    GunSmithTableMechanism.LABEL, gunCraftCount);
         }
         warnUnmatched(edits, statsByIdentity);
         warnUnencodable(unencodableRecipes);

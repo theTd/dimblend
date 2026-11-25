@@ -1,0 +1,12 @@
+{
+  "parent": "create:block/belt_funnel/block_retracted",
+  "textures": {
+    "base": "dimblend_blocks:block/funnel/dump_funnel",
+    "block": "dimblend_blocks:block/funnel/dump_funnel_block",
+    "direction": "dimblend_blocks:block/funnel/dump_funnel_neutral",
+    "particle": "dimblend_blocks:block/funnel/dump_funnel_block",
+    "redstone": "dimblend_blocks:block/funnel/dump_funnel_powered",
+    "back": "dimblend_blocks:block/funnel/dump_funnel_back",
+    "frame": "dimblend_blocks:block/funnel/dump_funnel_frame"
+  }
+}

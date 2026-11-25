@@ -71,6 +71,25 @@ public final class CdgOverloadMath {
         return graceTicks > 0 && serverTick < graceTicks;
     }
 
+    /**
+     * 损坏态冒烟间隔：每 5 服务端 tick 一缕（2026-11-25 口径）。
+     * 比引信期的每 tick 浓烟稀得多，是"停机待修"的持续信号而不是"马上要炸"。
+     */
+    public static final int DAMAGED_SMOKE_INTERVAL_TICKS = 5;
+
+    /** 损坏态是否该在这一 tick 冒烟。 */
+    public static boolean shouldEmitDamagedSmoke(long gameTime) {
+        return gameTime % DAMAGED_SMOKE_INTERVAL_TICKS == 0;
+    }
+
+    /**
+     * 损坏态这一缕用不用大烟：与 {@code minecraft:smoke} 交替，
+     * 单用普通烟太淡、单用大烟太浓，交替出现才有"黑烟一缕一缕"的层次。
+     */
+    public static boolean useLargeSmoke(long gameTime) {
+        return (gameTime / DAMAGED_SMOKE_INTERVAL_TICKS) % 2 == 0;
+    }
+
     private CdgOverloadMath() {
     }
 }

@@ -17,7 +17,7 @@
   "results": [
     {
       "id": "minecraft:water",
-      "amount": 500,
+      "amount": 1000,
       "components": {
         "minecraft:custom_data": "{Purity:2}"
       }

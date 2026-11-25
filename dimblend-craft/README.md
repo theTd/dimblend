@@ -19,6 +19,10 @@ TACZ** 的配方做批量修改与删除。规则明细见 `docs/配方修改需
 - 「新增」类需求（如超热黄铜搅拌、铂粒塑形）以随包数据包配方 JSON 提供
   （`data/dimblend_craft/recipe/`，带 `neoforge:mod_loaded` 条件），不经过运行时编辑。
 - 数据包规则按产物 ID / 配方 ID 匹配，目标 mod 缺失时自然空转并输出「未命中」告警。
+- TACZ 枪械工作台配方（66 条枪械配方追加 `create:precision_mechanism` ×1）不在这张规则表里：
+  该类配方的产物在重载阶段尚未初始化，且 `GunSmithTableResult.encode` 直接抛异常，只能反射改写。
+  判定/合并规则在 `GunSmithTableMechanism`（纯逻辑，可离线单测），反射改写与阶段约束在
+  `TaczGunRecipeEditor`，只在重载阶段执行一次（重复执行会把材料数量加成 2）。
 - 森罗石磨配方精简也归本模块：原生与 Create 动态兜底共用过滤，机械动力小石磨保持不变。
   仅此可选兼容使用森罗厨房编译期依赖，由本模块 mixin plugin 门控；不依赖 experience。
   规则和验证边界见 `docs/millstone-recipes.md`。
@@ -60,6 +64,8 @@ src/main/java/dimblend/craft/
     RecipeJsonEditor.java         # 机器配方字段编辑（Codec 编码 → 写入 → 解码往返）
     RecipeEditApplicator.java     # 单趟执行器：删除/修改 + 日志 + 未命中告警
     RecipeEditReloadListener.java # AddReloadListenerEvent → apply 阶段执行规则
+    GunSmithTableMechanism.java   # TACZ 枪械工作台加料的纯规则（认枪 / 已有则合并）
+    TaczGunRecipeEditor.java      # 上述规则的反射实现（只在重载阶段跑一次）
 src/main/resources/
   META-INF/neoforge.mods.toml     # 由 gradle.properties 变量展开，切勿手写版本号
   data/c/tags/item/shulker_boxes.json  # 本 mod 提供的 c:shulker_boxes 标签（17 种潜影盒）
@@ -98,6 +104,10 @@ docs/配方修改需求.md              # 需求冻结文档（规则表的唯�
 `src/test/java/dimblend/craft/recipe/RecipeEditRulesTest.java` 钉死规则表的不变量：黄铜加热版
 必须保留并改写成 8+8 粒、不得被删除或排序规则触碰；任何被删除的配方不得再被其它规则改写或当作
 排序锚点 —— 这类矛盾在运行期只留一条 WARN 日志，游戏里完全看不出异常，只能靠单测兜住。
+
+同目录下的 `Batch1125RecipesTest` 逐字段自检随包配方（新增 / 改写的 9 条，含加载条件与已删资源不存在）、
+`IceCrushingRecipesTest` 钉死「只删三条冰升级、10 条 1:1 冷冻配方一条不动」、
+`TaczGunRecipeEditorTest` 覆盖枪械配方的类型判定与「已有精密构件则合并」的规划（反射部分只能实机验证）。
 
 ## 许可
 

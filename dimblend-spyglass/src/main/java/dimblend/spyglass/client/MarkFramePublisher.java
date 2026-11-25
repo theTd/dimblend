@@ -1,10 +1,12 @@
 package dimblend.spyglass.client;
 
+import dimblend.api.RegionLanes;
 import dimblend.spyglass.DimBlendSpyglass;
 import dimblend.spyglass.api.HudWorldMarkers;
 import dimblend.spyglass.structure.StructureOutline;
 import java.util.List;
 import net.minecraft.client.Minecraft;
+import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -55,6 +57,10 @@ public final class MarkFramePublisher {
         // can drop a mark the player already picked, so the distance check always runs.
         StructureSelection.pruneOutOfRange(
                 minecraft.player.getX(), minecraft.player.getZ(), scoping ? revealEnabled : true);
+        // A region border drops the selection whatever the fog says: the lane it was made in is
+        // behind the player now (see StructureSelection#pruneOutOfRegion).
+        StructureSelection.pruneOutOfRegion(
+                RegionLanes.regionBandSize(minecraft.level), Mth.floor(minecraft.player.getX()));
         List<StructureOutline> structures =
                 scoping ? SpyglassClientState.currentStructures() : List.of();
 

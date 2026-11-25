@@ -12,6 +12,22 @@
     {
       "id": "aeronautics:pearlescent_levitite",
       "required": false
+    },
+    {
+      "id": "#create_item_drawers:drawers",
+      "required": false
+    },
+    {
+      "id": "create_item_drawers:item_drawer_single",
+      "required": false
+    },
+    {
+      "id": "create_item_drawers:item_drawer_double",
+      "required": false
+    },
+    {
+      "id": "create_item_drawers:item_drawer_quad",
+      "required": false
     }
   ]
 }

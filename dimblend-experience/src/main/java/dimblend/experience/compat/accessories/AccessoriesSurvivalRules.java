@@ -4,6 +4,8 @@ import io.wispforest.owo.ui.layers.Layer;
 import java.util.function.Consumer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
 import org.jetbrains.annotations.Nullable;
 
@@ -16,6 +18,25 @@ public final class AccessoriesSurvivalRules {
 
     public static boolean isSurvivalMode(@Nullable GameType mode) {
         return mode == GameType.SURVIVAL;
+    }
+
+    /**
+     * 服务端/容器用的生存判定（2026-11-25 口径，与 {@link #isSurvivalMode(GameType)} 同一 GameType.SURVIVAL）：
+     *
+     * <ul>
+     *   <li>服务端玩家：直接读 {@code ServerPlayerGameMode#getGameModeForPlayer()}，冒险模式不算生存；</li>
+     *   <li>客户端玩家：拿不到 GameType，用 {@code !isCreative() && !isSpectator()} 近似——
+     *       客户端本地玩家的"生存"就是非创造非旁观（创造模式物品栏/活动槽的面板也一样该放行）。</li>
+     * </ul>
+     */
+    public static boolean isSurvival(@Nullable Player player) {
+        if (player == null) {
+            return false;
+        }
+        if (player instanceof ServerPlayer serverPlayer) {
+            return isSurvivalMode(serverPlayer.gameMode.getGameModeForPlayer());
+        }
+        return !player.isCreative() && !player.isSpectator();
     }
 
     public static boolean isClientSurvival() {

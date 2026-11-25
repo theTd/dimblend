@@ -63,13 +63,25 @@ public final class RadioTuneScreen extends Screen {
      * <p>A snapshot that arrives while the screen is already open is applied in place, not by
      * opening a second screen: two screens would stack, and closing one would reveal a stale
      * copy underneath.
+     *
+     * <p>A snapshot carrying a message is a refusal or an edit report. The message always goes to
+     * the chat bar, where the player sees it even if no screen opened. When the screen is <b>not</b>
+     * already open, a message means the click was never about a radio (a plain jukebox, a position
+     * with no jukebox, a hand that is not empty) — opening a tuning screen over vanilla's own
+     * right-click there was the bug; the chat line is the whole answer. An edit made from an
+     * already-open screen must still redraw it, or the value the server just accepted would stay
+     * showing the old number.
      */
     public static void receive(RadioTunePayloads.Snapshot snapshot) {
         var minecraft = net.minecraft.client.Minecraft.getInstance();
+        boolean alreadyOpen = minecraft.screen instanceof RadioTuneScreen;
         if (!snapshot.message().isEmpty()) {
             // A refusal or a save report: say it on the chat bar, where the player will see it even
             // if the screen failed to open at all.
             minecraft.gui.setNowPlaying(Component.translatable(KEY + snapshot.message()));
+            if (!alreadyOpen) {
+                return;
+            }
         }
         minecraft.setScreen(new RadioTuneScreen(snapshot));
     }

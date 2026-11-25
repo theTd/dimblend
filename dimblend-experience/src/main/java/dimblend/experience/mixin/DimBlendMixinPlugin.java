@@ -27,17 +27,28 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.endsWith(".compat.dndecor.FrontlightSpotlightStateMixin")) {
             return isLoaded("dndecor");
         }
-        if (mixinClassName.endsWith(".client.FrontlightBlockChangeMixin")
-                || mixinClassName.endsWith(".client.VeilWrappedDepthStencilMixin")) {
+        if (mixinClassName.endsWith(".client.FrontlightBlockChangeMixin")) {
             return isLoaded("sable") && isLoaded("veil") && !isLoaded("iris");
         }
+        // Slice 7A：模板口径修正不再被 Iris 拦下（装 Iris 时同样需要给 sable+veil 的 FBO 补齐模板位与解绑逻辑）。
+        if (mixinClassName.endsWith(".client.VeilWrappedDepthStencilMixin")) {
+            return isLoaded("sable") && isLoaded("veil");
+        }
         if (mixinClassName.endsWith(".client.VeilFboStencilClearMixin")) {
-            return isLoaded("sable") && isLoaded("veil") && !isLoaded("iris")
+            return isLoaded("sable") && isLoaded("veil")
                     && classPresent("foundry.veil.impl.client.render.framebuffer.LegacyAdvancedFboImpl");
         }
         if (mixinClassName.endsWith(".client.VeilDsaFboStencilClearMixin")) {
-            return isLoaded("sable") && isLoaded("veil") && !isLoaded("iris")
+            return isLoaded("sable") && isLoaded("veil")
                     && classPresent("foundry.veil.impl.client.render.framebuffer.DSAAdvancedFboImpl");
+        }
+        if (mixinClassName.endsWith(".client.VeilVanillaWrapperStencilMixin")) {
+            return isLoaded("sable") && isLoaded("veil")
+                    && classPresent("foundry.veil.impl.client.render.wrapper.VanillaAdvancedFboWrapper");
+        }
+        if (mixinClassName.endsWith(".client.VeilMutableDepthStencilDetachMixin")) {
+            return isLoaded("sable") && isLoaded("veil")
+                    && classPresent("foundry.veil.impl.client.render.framebuffer.AdvancedFboMutableTextureAttachment");
         }
         if (mixinClassName.endsWith(".compat.tacz.TaCzScopeStencilCleanupMixin")) {
             return isLoaded("tacz")
@@ -290,8 +301,143 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".compat.fluid.CopperTapLeakMixin")
                 // R13 细雪桶排空不消耗内容：目标是 fluid 的嵌套类
                 // PowderSnowBucketHandler$PowderSnowBucketFluidHandler，按模组在场性过滤
-                || mixinClassName.endsWith(".compat.fluid.PowderSnowBucketDrainMixin")) {
+                || mixinClassName.endsWith(".compat.fluid.PowderSnowBucketDrainMixin")
+                || mixinClassName.endsWith(".compat.fluid.CopperSinkTooltipSummaryMixin")) {
             return isLoaded("fluid");
+        }
+        // ---- 2026-11-25 批次新增门控（Slices 4 / 4B / 5 / 5B / 6 / 7C） ----
+        if (mixinClassName.endsWith(".compat.sable.CreateGeneratorPlacementBanMixin")
+                || mixinClassName.endsWith(".compat.create.CreateWindmillBearingSableGuardMixin")
+                || mixinClassName.endsWith(".compat.create.CreateWaterWheelSableGuardMixin")) {
+            return isLoaded("create") && isLoaded("sable");
+        }
+        if (mixinClassName.endsWith(".compat.create.FluidValveBlockEntityMixin")
+                || mixinClassName.endsWith(".compat.create.FluidValveVisualMixin")
+                || mixinClassName.endsWith(".compat.create.SmartBlockEntityExhaustNbtMixin")
+                || mixinClassName.endsWith(".compat.create.PoweredShaftBlockExhaustMixin")
+                || mixinClassName.endsWith(".compat.create.SteamEngineExhaustGuardMixin")
+                || mixinClassName.endsWith(".compat.create.AndesiteFunnelRedstoneMixin")
+                || mixinClassName.endsWith(".compat.create.AndesiteFunnelPlacementMixin")
+                || mixinClassName.endsWith(".compat.create.AndesiteFunnelInsertMixin")
+                || mixinClassName.endsWith(".compat.create.AndesiteFunnelModeMixin")) {
+            return isLoaded("create");
+        }
+        if (mixinClassName.endsWith(".compat.cdg.CdgBurnerAudioMixin")
+                || mixinClassName.endsWith(".compat.cdg.CdgEnginePistonRepairMixin")
+                || mixinClassName.endsWith(".compat.cdg.CdgPistonDamageDropMixin")
+                || mixinClassName.endsWith(".compat.cdg.CdgPistonDamageRestoreMixin")
+                || mixinClassName.endsWith(".compat.cdg.CdgPistonDamagedSyncMixin")) {
+            return isLoaded("createdieselgenerators");
+        }
+        if (mixinClassName.endsWith(".compat.cca.LiquidBlazeBurnerSoundMixin")) {
+            return isLoaded("createaddition");
+        }
+        if (mixinClassName.endsWith(".compat.cca.LiquidBlazeBurnerFuelMixin")) {
+            return isLoaded("createaddition")
+                    && classPresent("com.mrh0.createaddition.blocks.liquid_blaze_burner.LiquidBlazeBurnerBlockEntity");
+        }
+        if (mixinClassName.endsWith(".compat.cca.SubLevelWireDistanceMixin")) {
+            return isLoaded("createaddition") && isLoaded("sable")
+                    && classPresent("dev.codex.sablecreateadditioncompat.SubLevelWireTransforms");
+        }
+        if (mixinClassName.endsWith(".compat.simurail.AutomaticCouplerWireBreakMixin")) {
+            return isLoaded("simurail") && isLoaded("createaddition");
+        }
+        if (mixinClassName.endsWith(".compat.simurail.PhysicsBogeyZeroHoldMixin")
+                || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyAxleBrakeHoldMixin")
+                || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyMinimumSpeedParticleMixin")
+                || mixinClassName.endsWith(".compat.simurail.BogeySetOptionsSurvivalMixin")
+                || mixinClassName.endsWith(".compat.simurail.BogeyOptionsScreenSurvivalMixin")
+                || mixinClassName.endsWith(".compat.simurail.BogeyMenuScreenSurvivalMixin")) {
+            return isLoaded("simurail");
+        }
+        if (mixinClassName.endsWith(".compat.cookery.TeapotJeiCategoryMixin")) {
+            return isLoaded("kaleidoscope_cookery") && isLoaded("jei");
+        }
+        if (mixinClassName.endsWith(".compat.cookery.TeapotEmiRecipeMixin")) {
+            return isLoaded("kaleidoscope_cookery") && isLoaded("emi");
+        }
+        if (mixinClassName.endsWith(".compat.cookery.TeapotReiCategoryMixin")) {
+            return isLoaded("kaleidoscope_cookery") && isLoaded("roughlyenoughitems");
+        }
+        if (mixinClassName.contains(".compat.cookery.")) {
+            return isLoaded("kaleidoscope_cookery");
+        }
+        if (mixinClassName.endsWith(".compat.coldsweat.WaterskinDrinkPurityMixin")
+                || mixinClassName.endsWith(".compat.coldsweat.WaterskinPurityMixin")) {
+            return isLoaded("cold_sweat") && isLoaded("yet_another_thirst");
+        }
+        if (mixinClassName.endsWith(".compat.coldsweat.SoulspringLampDataMixin")
+                || mixinClassName.endsWith(".compat.coldsweat.SoulspringLampItemMixin")
+                || mixinClassName.endsWith(".compat.coldsweat.SoulLampTempModifierMixin")
+                || mixinClassName.endsWith(".client.compat.coldsweat.SoulspringLampTooltipMixin")
+                || mixinClassName.endsWith(".client.compat.coldsweat.SoulspringLampRendererMixin")) {
+            return isLoaded("cold_sweat")
+                    && classPresent("com.momosoftworks.coldsweat.common.item.SoulspringLampItem");
+        }
+        if (mixinClassName.endsWith(".compat.firefighting.WaterIntakePurityMixin")) {
+            return isLoaded("createfirefightingadd") && isLoaded("yet_another_thirst");
+        }
+        if (mixinClassName.contains(".compat.sophisticatedcore.")) {
+            return isLoaded("sophisticatedcore") && isLoaded("yet_another_thirst");
+        }
+        if (mixinClassName.endsWith(".compat.yat.CauldronFluidHandlerPurityMixin")
+                || mixinClassName.endsWith(".compat.yat.CopperTapCauldronPurityMixin")
+                || mixinClassName.endsWith(".compat.yat.CopperTapWaterloggedPurityMixin")
+                || mixinClassName.endsWith(".compat.yat.GutterOutletPurityMixin")
+                || mixinClassName.endsWith(".compat.yat.GutterDrainerPurityMixin")) {
+            return isLoaded("fluid") && isLoaded("create") && isLoaded("yet_another_thirst");
+        }
+        if (mixinClassName.endsWith(".compat.yat.VanillaFluidTargetsPurityMixin")
+                || mixinClassName.endsWith(".compat.yat.FluidDrainingBehaviourPurityMixin")
+                || mixinClassName.endsWith(".compat.yat.HosePulleyFluidHandlerPurityMixin")
+                || mixinClassName.endsWith(".compat.yat.OpenEndedPipePurityMixin")) {
+            return isLoaded("create") && isLoaded("yet_another_thirst");
+        }
+        if (mixinClassName.endsWith(".compat.yat.BucketPickupPurityMixin")
+                || mixinClassName.endsWith(".compat.yat.CauldronPurityMixin")
+                || mixinClassName.endsWith(".compat.yat.DispenseWaterPurityMixin")
+                || mixinClassName.endsWith(".compat.yat.DrinkByHandFilterMixin")
+                || mixinClassName.endsWith(".compat.yat.WaterPurityBlockPosMixin")
+                || mixinClassName.endsWith(".compat.yat.WaterPurityDrinkFilterMixin")) {
+            return isLoaded("yet_another_thirst");
+        }
+        if (mixinClassName.endsWith(".compat.disenchantingtable.DisenchantmentHelperCurseMixin")) {
+            return isLoaded("disenchanting_table")
+                    && classPresent("neoforge.com.cursee.disenchanting_table.core.util.DisenchantmentHelper");
+        }
+        if (mixinClassName.endsWith(".compat.cosmeticarmor.CosmeticArmorBackpackBanMixin")) {
+            return isLoaded("cosmeticarmorreworked")
+                    && classPresent("lain.mods.cos.impl.inventory.ContainerCosArmor$3");
+        }
+        if (mixinClassName.endsWith(".compat.curios.CuriosContainerSurvivalMixin")) {
+            return isLoaded("curios");
+        }
+        if (mixinClassName.endsWith(".client.compat.curios.CuriosScreenSurvivalMixin")) {
+            return isLoaded("curios")
+                    && classPresent("top.theillusivec4.curios.client.gui.CuriosScreen");
+        }
+        if (mixinClassName.contains(".compat.gunsmith.")) {
+            if (!isLoaded("tacz") || !isLoaded("gundb")) {
+                return false;
+            }
+            if (mixinClassName.endsWith(".JeiGunsmithRepairPluginMixin")) {
+                return isLoaded("jei") && classPresent("mod.cdv.gdb.jei.JeiRepairPlugin");
+            }
+            if (mixinClassName.endsWith(".AttachmentNoRepairMixin")) {
+                return classPresent("mod.cdv.gdb.mixin.AttachmentItemMixin");
+            }
+            if (mixinClassName.endsWith(".GunsmithGunNoRepairMixin")
+                    || mixinClassName.endsWith(".GunsmithReloadMagDurabilityMixin")) {
+                return classPresent("mod.cdv.gdb.mixin.ModernKineticGunMixin");
+            }
+            if (mixinClassName.endsWith(".GunDurabilityFireMixin")) {
+                return classPresent("mod.cdv.gdb.GunDurability");
+            }
+            if (mixinClassName.endsWith(".GunsmithUnjamSpeedMixin")) {
+                return classPresent("mod.cdv.gdb.network.StartJamWorkerPacket");
+            }
+            return true;
         }
         return true;
     }

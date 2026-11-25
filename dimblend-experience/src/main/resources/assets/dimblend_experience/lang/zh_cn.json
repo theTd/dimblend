@@ -349,7 +349,7 @@
 	"screen.dimblend_experience.spyglass_sources.status.invalid_source": "来源无效",
 	"screen.dimblend_experience.spyglass_sources.status.unknown_source": "来源不存在",
 	"item.dimblend_experience.supplement.totem": "放进背包里可保护经验和额外生命值",
-	"item.dimblend_experience.supplement.wrench": "对车钩使用时：可在安全区域临时解除车钩一次",
+	"item.dimblend_experience.supplement.wrench": "对车钩使用时：载具速度低于 1 m/s 时可临时解除车钩一次",
 	"item.dimblend_experience.supplement.levitite_bucket": "用于列车时 可有效减重 且不产生阻力",
 	"item.dimblend_experience.supplement.doll": "它也会是称职的仓库管理员",
 	"dimblend_experience.display_source.traction_efficiency": "牵引效率",
@@ -367,5 +367,18 @@
 	"tooltip.dimblend_experience.thermolith.mode": "使用 冰/熔岩块 右键设置工作模式",
 	"tooltip.dimblend_experience.thermolith.redstone_stop": "通入信号停止工作",
 	"message.dimblend_experience.dirty_water_rejected": "太脏了 至少先过滤一下",
-	"pack.dimblend_experience.thermolith_override": "DimBlend 温石模式贴图"
+	"pack.dimblend_experience.thermolith_override": "DimBlend 温石模式贴图",
+	"dimblend_experience.bogey.survival_styles": "生存可用样式",
+	"hud.dimblend_experience.item_drain.evaporating": "蒸发中（%1$s×%2$s）",
+	"item.dimblend_experience.supplement.tap_for_brew_barrel": "酒桶专用",
+	"item.dimblend_experience.supplement.filter_core_pocket": "位于背包时 可过滤喝下去的水",
+	"item.dimblend_experience.supplement.filter_core_frame": "或放入净水器框架 过滤管路的水",
+	"item.dimblend_experience.supplement.filter_frame": "配合滤芯 过滤管路水 两端需加压",
+	"item.dimblend_experience.supplement.fan_catalyst": "也可将抓到的生物放入其中展示",
+	"block.dimblend_experience.mob_display_catalyst": "生物展示触媒",
+	"message.dimblend_experience.steam_engine_exhausting": "蒸汽引擎正在排气，暂时无法拆卸",
+	"tooltip.dimblend_experience.diesel_engine_piston_damaged": "已损坏 需更换活塞",
+	"tooltip.dimblend_experience.diesel_engine_piston_repaired": "已更换活塞，引擎可重新点火",
+	"tooltip.dimblend_experience.diesel_engine_piston_wrench_denied": "已损坏 需更换活塞（扳手拆不走）",
+	"tooltip.dimblend_experience.nvg.handcrafted": "纯手搓 需要定期更换镜片"
 }
