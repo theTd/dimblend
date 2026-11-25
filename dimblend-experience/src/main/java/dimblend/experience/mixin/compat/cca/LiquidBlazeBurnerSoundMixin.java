@@ -4,6 +4,7 @@ import com.mrh0.createaddition.blocks.liquid_blaze_burner.LiquidBlazeBurnerBlock
 import dimblend.experience.compat.sable.SableWorldPosition;
 import net.minecraft.core.BlockPos;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 
@@ -16,6 +17,7 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
  * 装在载具上时声音留在原地、载具开走仍在响。这里把 BlockPos 参数投影成真实世界位置。
  * 每处各用一个 {@code @ModifyArg(require=1, allow=1)}，避免"整体不匹配却静默放行"。</p>
  */
+@Pseudo
 @Mixin(value = LiquidBlazeBurnerBlockEntity.class, remap = false)
 public abstract class LiquidBlazeBurnerSoundMixin {
 

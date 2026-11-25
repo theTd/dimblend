@@ -10,6 +10,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -25,8 +26,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(PhysicsBogeyBlockEntity.class)
 public abstract class PhysicsBogeyMinimumSpeedParticleMixin {
 
+    @Unique
     private static final double PARTICLE_LIFT = 0.3;
+    @Unique
     private static final float DENSITY = 0.12F;
+    @Unique
     private static final double RISE_SPEED = 0.02;
 
     @Inject(method = "tick()V", at = @At("RETURN"), remap = false, require = 1, allow = 1)

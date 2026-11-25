@@ -13,6 +13,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.Fluids;
 import net.neoforged.neoforge.fluids.FluidStack;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Pseudo;
 
 /**
  * 缺口 2：Create 开口管（{@code OpenEndedPipe#removeFluidFromSpace}）与
@@ -24,6 +25,7 @@ import org.spongepowered.asm.mixin.Mixin;
  *
  * <p>两处都只对水生效；非水（例如 Create 的巧克力）不动。</p>
  */
+@Pseudo
 @Mixin(targets = "com.simibubi.create.content.fluids.pipes.VanillaFluidTargets", remap = false)
 public abstract class VanillaFluidTargetsPurityMixin {
 

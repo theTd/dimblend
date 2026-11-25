@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Constant;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.ModifyConstant;
 
 import com.momosoftworks.coldsweat.common.item.SoulspringLampItem;
@@ -20,9 +21,14 @@ import net.minecraft.world.level.Level;
  * <p>{@code javap -c}/{@code -p} 核实的常量分布（每处都注明 {@code require}，多一处就让启动变红）：</p>
  * <ul>
  *   <li>{@code getDefaultInstance} —— {@code setFuel(stack, 64.0)}，默认实例满燃料；</li>
- *   <li>{@code addFuel(ItemStack, double)} —— {@code Math.min(64.0, ...)}，加燃料的上限；</li>
+ *   <li>{@code addFuel(ItemStack, double)} —— {@code Math.min(64.0, ...)}，加燃料的上限；
+ *       <b>必须写全描述符</b>，否则 {@code addFuel} 会连同 {@code addFuel(ItemStack, ItemStack)}
+ *       重载一起匹配；</li>
  *   <li>{@code onEntityHit} —— {@code getFuel(stack) < 64.0}，抽取生物热量的门槛；</li>
- *   <li>{@code appendHoverText} —— 字面量 {@code " / 64"}，悬浮提示；</li>
+ *   <li>{@code appendHoverText} —— 提示串由 {@code invokedynamic}
+ *       {@code makeConcatWithConstants} 拼出（recipe 是 {@code "Fuel: \u0001 / 64"}），
+ *       {@code " / 64"} <b>不是</b> {@code ldc} 字符串常量，所以 {@code @Constant(stringValue = ...)}
+ *       一处都扫不到；改为在唯一的 {@code Component.literal(String)} 调用点上改实参；</li>
  *   <li>{@code overrideOtherStackedOnMe} —— 两处 {@code 64.0}（比较 + {@code (64.0 - currentFuel)} 的扣减量）。</li>
  * </ul>
  *
@@ -43,7 +49,8 @@ public abstract class SoulspringLampItemMixin {
         return SoulspringLampRules.CAPACITY;
     }
 
-    @ModifyConstant(method = "addFuel", constant = @Constant(doubleValue = 64.0D),
+    @ModifyConstant(method = "addFuel(Lnet/minecraft/world/item/ItemStack;D)V",
+            constant = @Constant(doubleValue = 64.0D),
             remap = false, require = 1, allow = 1)
     private static double dimblend$addFuelCap(double original) {
         return SoulspringLampRules.CAPACITY;
@@ -55,10 +62,12 @@ public abstract class SoulspringLampItemMixin {
         return SoulspringLampRules.CAPACITY;
     }
 
-    @ModifyConstant(method = "appendHoverText", constant = @Constant(stringValue = " / 64"),
-            remap = false, require = 1, allow = 1)
+    @ModifyArg(method = "appendHoverText",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/network/chat/Component;literal(Ljava/lang/String;)Lnet/minecraft/network/chat/MutableComponent;"),
+            index = 0, remap = false, require = 1, allow = 1)
     private static String dimblend$hoverCapacityLabel(String original) {
-        return " / 256";
+        return original.replace(" / 64", " / 256");
     }
 
     @ModifyConstant(method = "overrideOtherStackedOnMe", constant = @Constant(doubleValue = 64.0D),

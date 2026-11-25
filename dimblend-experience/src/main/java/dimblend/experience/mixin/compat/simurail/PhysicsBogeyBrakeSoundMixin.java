@@ -60,8 +60,10 @@ public abstract class PhysicsBogeyBrakeSoundMixin {
     @Shadow(remap = false)
     protected double visualSpeed;
 
+    @Unique
     private static final double EDGE_EPSILON = 1.0E-6;
     /** 松闸音量：维持原参数。 */
+    @Unique
     private static final float RELEASE_VOLUME = 1.0F;
 
     @Unique

@@ -23,7 +23,7 @@ import org.spongepowered.asm.mixin.injection.At;
 public abstract class PlayerLadderClimbMixin {
 
     @Shadow
-    protected boolean jumping;
+    private boolean jumping;
 
     @ModifyExpressionValue(
             method = "handleRelativeFrictionAndCalculateMovement",

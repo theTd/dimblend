@@ -14,7 +14,7 @@ import dimblend.experience.compat.coldsweat.SoulspringLampRules;
  * 灵魂之泉灯的燃料条宽度（客户端 tooltip）。
  *
  * <p>{@code renderImage} 里有三处 {@code blit}（同一描述符
- * {@code (Lnet/minecraft/resources/ResourceLocation;IIIIFFIIII)V}）：底条 30px、燃料条
+ * {@code (Lnet/minecraft/resources/ResourceLocation;IIIFFIIII)V}）：底条 30px、燃料条
  * {@code (int)(fuel / 2.1333)}、高对比度模式的 16px 小图标。参数位：tex=0, x=1, y=2,
  * 偏移=3, u=4, v=5, <b>width=6</b>, height=7, texW=8, texH=9。</p>
  *
@@ -38,7 +38,7 @@ public abstract class SoulspringLampTooltipMixin {
 
     @ModifyArg(method = "renderImage",
             at = @At(value = "INVOKE",
-                    target = "Lnet/minecraft/client/gui/GuiGraphics;blit(Lnet/minecraft/resources/ResourceLocation;IIIIFFIIII)V"),
+                    target = "Lnet/minecraft/client/gui/GuiGraphics;blit(Lnet/minecraft/resources/ResourceLocation;IIIFFIIII)V"),
             index = 6, remap = false, require = 3, allow = 3)
     private static int dimblend$clampBarWidth(int width) {
         return Math.min(SoulspringLampRules.TOOLTIP_MAX_WIDTH, Math.max(0, width));

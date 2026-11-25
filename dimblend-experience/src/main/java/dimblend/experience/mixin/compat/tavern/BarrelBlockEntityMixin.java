@@ -89,13 +89,18 @@ public abstract class BarrelBlockEntityMixin {
     /**
      * 倒进桶里的水一律灭菌（{@code Purity: 2}）。
      *
-     * <p>{@code addFluid} 有两个 return（参数校验早退 + 真正倒水），{@code allow = 3} 覆盖
-     * 全部；只有真正倒成功（{@code true}）才打标。{@code emptyItem} 走的是
+     * <p>{@code addFluid} 有 <b>4</b> 个 {@code ireturn}（运行 jar
+     * {@code kaleidoscopetavern-1.2.0-neoforge+mc1.21.1.jar} 字节码偏移 8 / 17 / 54 / 83）：
+     * 桶未打开、正在酿造、配方槽位非空（这三条都返回 {@code false}，早于倒水短路），
+     * 以及最后返回 {@code FluidUtils.emptyItem(...)} 的倒水结果。{@code allow = 4} 把四条
+     * 返回点全部覆盖（{@code require = 1} 表示只要有一个方法内匹配成立就应用），随后
+     * 只有真正倒成功（{@code true}）才打标。{@code emptyItem} 走的是
      * {@code FluidBucketWrapper}，进桶的 FluidStack 不带组件，不补的话桶里就是"脏水"，
-     * 会把 {@code dimblend$holdIncompleteQuarterBatch} 与配方匹配一起带偏。</p>
+     * 会把 {@code dimblend$holdIncompleteQuarterBatch} 与配方匹配一起带偏。
+     * </p>
      */
     @ModifyReturnValue(method = "addFluid(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/item/ItemStack;)Z",
-            at = @At("RETURN"), remap = false, require = 1, allow = 3)
+            at = @At("RETURN"), remap = false, require = 1, allow = 4)
     private boolean dimblend$stampBarrelWater(boolean original) {
         if (original && DirtyWaterCompat.purityAvailable()) {
             BarrelBlockEntity self = (BarrelBlockEntity) (Object) this;

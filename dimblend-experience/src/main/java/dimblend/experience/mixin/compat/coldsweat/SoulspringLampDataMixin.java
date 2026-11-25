@@ -26,9 +26,14 @@ import dimblend.experience.compat.coldsweat.SoulspringLampRules;
 @Mixin(value = SoulspringLampData.class, remap = false)
 public abstract class SoulspringLampDataMixin {
 
+    /**
+     * 无参构造器委托 {@code this(64.0, false)}，常量 {@code 64.0} 在 {@code invokespecial <init>(DZ)V}
+     * 之前求值，此时 {@code this} 仍处于 {@code uninitializedThis} 状态——handler 必须为
+     * {@code private static}，否则实例调用 {@code aload_0} 触发 JVM {@code VerifyError}。
+     */
     @ModifyConstant(method = "<init>()V", constant = @Constant(doubleValue = 64.0D),
             remap = false, require = 1, allow = 1)
-    private double dimblend$defaultCapacity256(double original) {
+    private static double dimblend$defaultCapacity256(double original) {
         return SoulspringLampRules.CAPACITY;
     }
 

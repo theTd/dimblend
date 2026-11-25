@@ -27,7 +27,7 @@ import org.spongepowered.asm.mixin.Shadow;
 public abstract class GutterDrainerPurityMixin {
 
     @Shadow(remap = false)
-    public SmartBlockEntity blockEntity;
+    private SmartBlockEntity blockEntity;
 
     @WrapMethod(method = "getDrainableFluid", remap = false, require = 1, allow = 1)
     private FluidStack dimblend$stampGutterDrainedWater(BlockPos pos, Operation<FluidStack> original) {
