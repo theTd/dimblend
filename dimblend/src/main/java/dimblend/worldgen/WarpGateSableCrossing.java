@@ -7,6 +7,7 @@ import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.companion.SableCompanion;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dimblend.DimBlendRegistries;
+import dimblend.api.MinimumSpeedState;
 import dimblend.api.WarpGateMotion;
 import dimblend.api.WarpGateParticles;
 import java.util.ArrayList;
@@ -168,6 +169,15 @@ public final class WarpGateSableCrossing {
                 handle.addLinearAndAngularVelocity(
                         new Vector3d(deltaX, hold ? -velocity.y : 0.0, hold ? -velocity.z : 0.0),
                         new Vector3d(0.0, 0.0, 0.0));
+            }
+            if (action == WarpGateMotion.Action.PUSH_PLUS_X || action == WarpGateMotion.Action.TURN_PLUS_X) {
+                // Tell the parking brake that this gate is holding the consist above 0 m/s
+                // (MinimumSpeedState); a real impulse is reported as an active push so the
+                // bogey sparks and the Sable is exempt from the low-speed hold.
+                MinimumSpeedState.markGoverned(level, sub.getUniqueId());
+                if (deltaX > 0.0) {
+                    MinimumSpeedState.markActivelyPushing(level, sub.getUniqueId());
+                }
             }
             if (action == WarpGateMotion.Action.HOLD_STILL || action == WarpGateMotion.Action.TURN_PLUS_X) {
                 return;

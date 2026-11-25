@@ -1,5 +1,6 @@
 package dimblend.spyglass.server;
 
+import dimblend.api.RegionLanes;
 import dimblend.spyglass.DimBlendSpyglass;
 import dimblend.spyglass.net.SpyglassBusyPayload;
 import dimblend.spyglass.net.SpyglassSnapshotPayload;
@@ -30,6 +31,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelHeightAccessor;
@@ -58,6 +60,18 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 @EventBusSubscriber(modid = DimBlendSpyglass.MODID)
 public final class SpyglassServerService {
     private static final int EXECUTOR_QUEUE_CAPACITY = 64;
+    /**
+     * How many chained batches one poll may start before the scan is left to the normal refresh
+     * policy.
+     *
+     * <p>A batch that skipped chunks chains immediately (see {@code maybeContinue}), which is what
+     * drains a ring that is still generating. The count is per poll, not per session: a world that
+     * cannot generate the outer ring at all would otherwise re-scan the same 3200-block window
+     * forever, on one thread, while the pregenerator is also working. Twenty-four batches gives a
+     * full rotating-region scan enough runway to drain before lowering the {@code busy} indicator,
+     * while still bounding pathological worlds.
+     */
+    private static final int MAX_CHAINED_BATCHES = 24;
 
     private static Session current;
 
@@ -160,12 +174,15 @@ public final class SpyglassServerService {
                 state.scoping = true;
                 ResourceKey<Level> dimension = player.level().dimension();
                 Vec3 position = player.position();
+                int region = RegionLanes.regionOfBlockX(player.serverLevel(), Mth.floor(position.x));
                 if (SpyglassRefreshPolicy.isRefreshDue(
                         state.requestPosition,
                         state.requestDimension,
+                        state.requestRegion,
                         state.requestNanos,
                         state.failedNanos,
                         dimension,
+                        region,
                         position,
                         now)) {
                     try {
@@ -174,7 +191,12 @@ public final class SpyglassServerService {
                                 createRequest(player, sequence, dimension, position);
                         state.requestPosition = position;
                         state.requestDimension = dimension;
+                        state.requestRegion = region;
                         state.requestNanos = now;
+                        // A fresh poll starts a new chain budget; only continuations consume it.
+                        synchronized (state.lock) {
+                            state.chainedBatches = 0;
+                        }
                         submit(state, request);
                     } catch (RuntimeException exception) {
                         warnLimited(
@@ -199,8 +221,9 @@ public final class SpyglassServerService {
 
         /**
          * Sends the client-visible "a scan is in flight" flag when it differs from the last one sent
-         * for that player. Reading the state under its lock avoids reporting the transient
-         * {@code running == false} between two chained scans as a busy flicker.
+         * for that player. The flag now covers the <em>whole</em> lifecycle — worker running,
+         * {@code complete} queued on the server thread, and a chained continuation batch — so the
+         * client never sees "not scanning" between two batches of the same requested scan.
          */
         private void syncBusy() {
             if (this.closed) {
@@ -209,7 +232,7 @@ public final class SpyglassServerService {
             for (PlayerState state : this.states.values()) {
                 boolean busy;
                 synchronized (state.lock) {
-                    busy = state.scoping && state.running;
+                    busy = state.scoping && state.busy;
                 }
                 if (busy == state.busySent) {
                     continue;
@@ -264,6 +287,7 @@ public final class SpyglassServerService {
                     sequence,
                     position.x,
                     position.z,
+                    RegionLanes.bandSize(level),
                     region,
                     targets,
                     bands,
@@ -315,6 +339,7 @@ public final class SpyglassServerService {
                 start = !state.running;
                 if (start) {
                     state.running = true;
+                    state.busy = true;
                 }
             }
             if (start) {
@@ -327,6 +352,7 @@ public final class SpyglassServerService {
             synchronized (state.lock) {
                 if (!state.running && state.latest != null && state.scoping && !this.closed) {
                     state.running = true;
+                    state.busy = true;
                     start = true;
                 }
             }
@@ -339,6 +365,7 @@ public final class SpyglassServerService {
             if (this.closed) {
                 synchronized (state.lock) {
                     state.running = false;
+                    state.busy = false;
                     state.latest = null;
                 }
                 return;
@@ -348,6 +375,9 @@ public final class SpyglassServerService {
             } catch (RejectedExecutionException exception) {
                 synchronized (state.lock) {
                     state.running = false;
+                    // The request stays as `latest`, so the next poll retries it and re-raises the
+                    // flag; do not leave the client spinning on a scan that is not queued.
+                    state.busy = false;
                 }
                 if (!this.closed) {
                     warnLimited(
@@ -361,6 +391,7 @@ public final class SpyglassServerService {
 
         /** Scan executor: candidate enumeration, read-only scans and snapshot limiting. */
         private void runOne(PlayerState state) {
+            boolean posted = false;
             try {
                 StructureScanRequest request;
                 synchronized (state.lock) {
@@ -375,6 +406,7 @@ public final class SpyglassServerService {
                     if (!this.closed) {
                         try {
                             this.server.execute(() -> complete(state, request, outcome));
+                            posted = true;
                         } catch (RejectedExecutionException ignored) {
                         }
                     }
@@ -395,6 +427,10 @@ public final class SpyglassServerService {
                     if (!this.closed && state.scoping && state.latest != null) {
                         state.running = true;
                         restart = true;
+                    } else if (!posted) {
+                        // Nothing is on its way to the server thread, so this lifecycle ends here:
+                        // no request, a failure, a rejected handoff, or the session closing.
+                        state.busy = false;
                     }
                 }
                 if (restart) {
@@ -430,6 +466,14 @@ public final class SpyglassServerService {
                 // one kind of object; the flag travels with each outline.
                 outlines.addAll(prediction.outlines());
             }
+            int dropped = keepSameRegion(request, outlines);
+            if (dropped > 0) {
+                DimBlendSpyglass.LOGGER.debug(
+                        "Spyglass dropped {} out-of-region outlines for player={} region-band={}",
+                        dropped,
+                        request.playerId(),
+                        request.bandSize());
+            }
             long limitStarted = System.nanoTime();
             SpyglassSnapshotLimiter.LimitResult limited = SpyglassSnapshotLimiter.limit(
                     request.playerX(), request.playerZ(), outlines);
@@ -448,9 +492,32 @@ public final class SpyglassServerService {
             return new SpyglassScanOutcome(limited, errors.snapshot(), outlines.size(), prediction);
         }
 
+        /**
+         * Scan executor: keeps only the outlines whose own block X belongs to the player's region.
+         *
+         * <p>{@link StructureCandidates#clampToRegion} already keeps the <em>window</em> inside the
+         * region, but a structure whose start chunk is inside can extend its pieces over the border
+         * (and the predictor replays placements for the whole clamped window), so the union centre is
+         * the honest test — the same block X {@link RegionLanes#sameRegion(Level, ResourceLocation,
+         * int, int)} would compare on the server thread.
+         *
+         * @return how many outlines were dropped
+         */
+        private static int keepSameRegion(StructureScanRequest request, List<StructureOutline> outlines) {
+            if (request.bandSize() <= 0) {
+                return 0;
+            }
+            int playerBlockX = Mth.floor(request.playerX());
+            int before = outlines.size();
+            outlines.removeIf(outline -> !RegionLanes.sameRegion(
+                    request.bandSize(), Mth.floor(outline.bounds().centerX()), playerBlockX));
+            return before - outlines.size();
+        }
+
         private void complete(
                 PlayerState state, StructureScanRequest request, SpyglassScanOutcome outcome) {
             if (this.closed || current != this) {
+                releaseBusy(state);
                 return;
             }
             PlayerState latestState = this.states.get(state.playerId);
@@ -461,6 +528,7 @@ public final class SpyglassServerService {
                     || player == null
                     || !player.isScoping()
                     || !player.level().dimension().location().equals(request.dimension().location())) {
+                releaseBusy(state);
                 return;
             }
             try {
@@ -492,6 +560,96 @@ public final class SpyglassServerService {
                         "Failed to send spyglass structure snapshot to {}",
                         new Object[] {request.playerId()},
                         exception);
+                releaseBusy(state);
+                return;
+            }
+            maybeContinue(state, request, outcome);
+        }
+
+        /**
+         * Ends the busy flag unless a worker still owns this player's slot or a request is already
+         * queued behind it (that one will report the flag itself).
+         */
+        private void releaseBusy(PlayerState state) {
+            synchronized (state.lock) {
+                if (state.running || state.latest != null) {
+                    return;
+                }
+                state.busy = false;
+            }
+        }
+
+        /**
+         * Chained scanning: when a batch reported chunks it had to skip — the predictor's
+         * worker-local handoff, a rejected inner task, or a chunk that was still being generated —
+         * the scan is not over, only its current batch is. The normal poll would not try again for
+         * thirty seconds (or thirty-two blocks), and in a rotating world the player keeps entering
+         * fresh chunks the whole time, so the ring would stay permanently half-empty.
+         *
+         * <p>The continuation is enqueued immediately, at the player's <em>current</em> position,
+         * carrying the next sequence number; the busy flag is never lowered across the handoff, so
+         * the client keeps showing the scan as in flight. Skipped chunks therefore drain batch by
+         * batch until a batch comes back with none (or the player stops scoping, the scan fails, or
+         * a newer request already claimed the slot).
+         */
+        private void maybeContinue(PlayerState state, StructureScanRequest request, SpyglassScanOutcome outcome) {
+            ServerPlayer player = this.server.getPlayerList().getPlayer(state.playerId);
+            SpyglassBatchLifecycle.AfterBatch decision;
+            synchronized (state.lock) {
+                if (state.chainedBatches >= MAX_CHAINED_BATCHES) {
+                    // The chain budget for this poll is spent: a ring that keeps skipping is left to
+                    // the next poll rather than rescanning the same window on one thread forever.
+                    decision = SpyglassBatchLifecycle.AfterBatch.DROP_BUSY;
+                } else {
+                    decision = SpyglassBatchLifecycle.afterBatch(
+                            outcome.prediction().skippedChunks(),
+                            state.scoping,
+                            player != null && player.isScoping(),
+                            state.newestSequence != request.sequence(),
+                            state.running || state.latest != null);
+                }
+            }
+            if (decision == SpyglassBatchLifecycle.AfterBatch.KEEP_BUSY_FOR_QUEUED_REQUEST) {
+                // The worker/queued request that owns the slot reports the flag when it is done.
+                return;
+            }
+            if (decision != SpyglassBatchLifecycle.AfterBatch.CONTINUE_BATCH) {
+                releaseBusy(state);
+                return;
+            }
+            long sequence;
+            synchronized (state.lock) {
+                // A newer request (the poll, a source change, a region crossing) already owns the
+                // slot: its result supersedes this batch, so do not chain on top of it.
+                if (state.newestSequence != request.sequence() || state.latest != null) {
+                    decision = SpyglassBatchLifecycle.AfterBatch.DROP_BUSY;
+                    sequence = 0L;
+                } else {
+                    sequence = ++state.newestSequence;
+                    state.chainedBatches++;
+                }
+            }
+            if (decision != SpyglassBatchLifecycle.AfterBatch.CONTINUE_BATCH || player == null) {
+                releaseBusy(state);
+                return;
+            }
+            Vec3 position = player.position();
+            ResourceKey<Level> dimension = player.level().dimension();
+            try {
+                StructureScanRequest next = createRequest(player, sequence, dimension, position);
+                state.requestPosition = position;
+                state.requestDimension = dimension;
+                state.requestRegion = RegionLanes.regionOfBlockX(player.serverLevel(), Mth.floor(position.x));
+                state.requestNanos = System.nanoTime();
+                submit(state, next);
+            } catch (RuntimeException exception) {
+                state.failedNanos = System.nanoTime();
+                warnLimited(
+                        "continue",
+                        "Failed to prepare spyglass continuation scan for {}",
+                        new Object[] {state.playerId},
+                        exception);
+                releaseBusy(state);
             }
         }
 
@@ -558,9 +716,15 @@ public final class SpyglassServerService {
         private volatile boolean scoping;
         private StructureScanRequest latest;
         private boolean running;
+        /** A scan lifecycle is in flight: worker, queued complete, or chained continuation. */
+        private boolean busy;
+        /** Chained continuations started since the last poll, capped by {@code MAX_CHAINED_BATCHES}. */
+        private int chainedBatches;
         private long newestSequence;
         private Vec3 requestPosition;
         private ResourceKey<Level> requestDimension;
+        /** {@code RegionLanes.regionOfBlockX} of the last request, or null when unknown. */
+        private Integer requestRegion;
         private long requestNanos;
         /** Written by the scan executor, read by the tick thread: {@code 0} means no failure. */
         private volatile long failedNanos;
@@ -575,6 +739,7 @@ public final class SpyglassServerService {
         private void invalidate() {
             this.requestPosition = null;
             this.requestDimension = null;
+            this.requestRegion = null;
             this.requestNanos = 0L;
             this.failedNanos = 0L;
         }
@@ -582,11 +747,14 @@ public final class SpyglassServerService {
         /** Forces the next scoping tick to build a fresh snapshot. */
         private void stopScoping() {
             this.scoping = false;
+            this.busy = false;
             synchronized (this.lock) {
                 this.latest = null;
+                this.chainedBatches = 0;
             }
             this.requestPosition = null;
             this.requestDimension = null;
+            this.requestRegion = null;
             this.failedNanos = 0L;
         }
     }

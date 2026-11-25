@@ -19,6 +19,11 @@ public final class CreativeTabContents {
 
     @SubscribeEvent
     public static void onBuildContents(BuildCreativeModeTabContentsEvent event) {
+        if (event.getTabKey() == CreativeModeTabs.INGREDIENTS) {
+            // 热冰：无外部依赖，常驻登记
+            event.accept(HotIce.HOT_ICE);
+            return;
+        }
         if (event.getTabKey() != CreativeModeTabs.BUILDING_BLOCKS) {
             return;
         }
@@ -32,9 +37,19 @@ public final class CreativeTabContents {
         if (ModList.get().isLoaded("create")) {
             event.accept(CreativeKinetics.CREATIVE_SHAFT_ITEM);
             event.accept(CreativeKinetics.CREATIVE_COGWHEEL_ITEM);
+            // 卸料漏斗：Create 漏斗的卸料变体（双形态共用一个物品）
+            event.accept(dimblend.blocks.compat.create.funnel.DumpFunnels.DUMP_FUNNEL_ITEM);
+        }
+        if (ModList.get().isLoaded("create") && ModList.get().isLoaded("deployer")) {
+            // 卸料仪表：面板物品，走 Deployer 的自定义 PanelType
+            event.accept(dimblend.blocks.compat.deployer.DumpGauges.DUMP_GAUGE_ITEM);
         }
         if (ModList.get().isLoaded("enderstorage")) {
             event.accept(TrainEnderChests.TRAIN_ENDER_CHEST_ITEM);
+        }
+        if (ModList.get().isLoaded("create") && ModList.get().isLoaded("sable")) {
+            // 列车加压管道：依赖 Create 管道渲染基类 + Sable 子层级判定
+            event.accept(dimblend.blocks.compat.rail.TrainTubes.TUBE_ITEM);
         }
     }
 

@@ -42,7 +42,9 @@ public final class ThermolithResourcePack {
         if (event.getPackType() != PackType.CLIENT_RESOURCES) {
             return;
         }
-        if (!ModList.get().isLoaded("cold_sweat")) {
+        // 这个内置包同时承载两类覆盖：Cold Sweat 的恒温石 48 变体，以及 kaleidoscope_end
+        // 的可疑末地石 4 段裂纹强化贴图（2026-11-25 LOCKED #6）。任一方在场就挂载。
+        if (!ModList.get().isLoaded("cold_sweat") && !ModList.get().isLoaded("kaleidoscope_end")) {
             return;
         }
 

@@ -1,5 +1,6 @@
 package dimblend.spyglass.client;
 
+import dimblend.api.RegionLanes;
 import dimblend.spyglass.DimBlendSpyglass;
 import dimblend.spyglass.net.SpyglassBusyHandlers;
 import dimblend.spyglass.net.SpyglassSnapshotPayload;
@@ -8,6 +9,7 @@ import dimblend.spyglass.structure.StructureOutline;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.Mth;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -37,6 +39,8 @@ public final class SpyglassClientState {
     private static double memoPlayerX;
     private static double memoPlayerZ;
     private static boolean memoRevealEnabled;
+    /** Region width the memo was built with; a sync/change of the band size must re-filter. */
+    private static int memoBandSize;
     private static List<StructureOutline> memoStructures = List.of();
 
     public static void apply(SpyglassSnapshotPayload payload) {
@@ -95,11 +99,13 @@ public final class SpyglassClientState {
         boolean revealEnabled = SpyglassRevealState.isEnabled();
         double playerX = minecraft.player.getX();
         double playerZ = minecraft.player.getZ();
+        int bandSize = RegionLanes.regionBandSize(minecraft.level);
         long frame = minecraft.getFrameTimeNs();
         if (frame == memoFrame
                 && structures == memoSnapshot
                 && playerX == memoPlayerX
                 && playerZ == memoPlayerZ
+                && bandSize == memoBandSize
                 && revealEnabled == memoRevealEnabled) {
             return memoStructures;
         }
@@ -108,15 +114,26 @@ public final class SpyglassClientState {
             // No terrain fog pass yet, or an effect/fluid fog: the spyglass shows nothing at all.
             visible = List.of();
         } else {
+            int playerBlockX = Mth.floor(playerX);
             visible = structures.stream()
                     .filter(structure -> SpyglassDistance.inRange(
                             SpyglassDistance.horizontal(playerX, playerZ, structure)))
+                    // Region rule, mirrored from the server: an outline from another rotating lane
+                    // names a place the player cannot reach without the world rotating under them,
+                    // so it must not be drawn as if it were nearby. Outside the rotating dimension
+                    // the band size is 0 and this filter is the identity.
+                    .filter(structure -> bandSize <= 0
+                            || RegionLanes.sameRegion(
+                                    bandSize,
+                                    Mth.floor(structure.bounds().centerX()),
+                                    playerBlockX))
                     .toList();
         }
         memoFrame = frame;
         memoSnapshot = structures;
         memoPlayerX = playerX;
         memoPlayerZ = playerZ;
+        memoBandSize = bandSize;
         memoRevealEnabled = revealEnabled;
         memoStructures = visible;
         return visible;

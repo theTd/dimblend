@@ -44,4 +44,16 @@ class BindingCurseRulesTest {
             }
         }
     }
+
+    /**
+     * 2026-11-25 口径：绑定诅咒只挂四盔甲槽。这里钉住"槽位范围"这一层事实，
+     * 免得以后有人把 {@code isCursedEquipmentSlot}（消失诅咒口径）顺手拿去复用。
+     */
+    @Test
+    void bindingCurseOnlyAppliesToArmourSlots() {
+        for (net.minecraft.world.entity.EquipmentSlot slot : net.minecraft.world.entity.EquipmentSlot.values()) {
+            boolean armour = slot.getType() == net.minecraft.world.entity.EquipmentSlot.Type.HUMANOID_ARMOR;
+            assertTrue(CurseRules.isBindingCurseArmorSlot(slot) == armour, slot.getName());
+        }
+    }
 }

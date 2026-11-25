@@ -49,6 +49,15 @@ public class CdgEngineState {
      * 不序列化：确认进度不跨存档/区块重载携带。
      */
     public int overloadTicks;
+    /**
+     * B6'（2026-11-25）活塞损坏：引信到 0 不再炸掉整机，而是把引擎打成"已损坏"——
+     * 出力 0、燃油不再消耗、客户端声音停、冷热兼容不再当热源，直到玩家用
+     * {@code createdieselgenerators:engine_piston} 右键更换活塞。
+     *
+     * <p><b>序列化</b>（跨区块卸载/存档重启保持）并且随 {@code write(clientPacket=true)}
+     * 同步到客户端（护目镜红字要靠它）。只有"换活塞"能清掉它：重新加油、红石、燃尽都不行。</p>
+     */
+    public boolean pistonDamaged;
 
     public boolean clearOverload() {
         boolean changed = overloadLatched || fuseActive || fuseTicksLeft != 0 || overloadTicks != 0;
@@ -56,6 +65,41 @@ public class CdgEngineState {
         fuseActive = false;
         fuseTicksLeft = 0;
         overloadTicks = 0;
+        return changed;
+    }
+
+    /**
+     * 标记"活塞损坏"：清掉引信与闩锁（损坏本身接管了"出力归零"的语义）。
+     *
+     * @return 是否发生了状态变化（false = 本来就是坏的）
+     */
+    public boolean markPistonDamaged() {
+        boolean changed = !pistonDamaged;
+        pistonDamaged = true;
+        overloadLatched = false;
+        fuseActive = false;
+        fuseTicksLeft = 0;
+        overloadTicks = 0;
+        rampTicks = 0;
+        return changed;
+    }
+
+    /**
+     * 换活塞修复：损坏、闩锁、引信、爬梯、波动、boost 全部归零，等于一次全新点火。
+     *
+     * @return 是否发生了状态变化
+     */
+    public boolean repairPiston() {
+        boolean changed = pistonDamaged || overloadLatched || fuseActive || fuseTicksLeft != 0
+                || overloadTicks != 0 || rampTicks != 0 || boostConsumed;
+        pistonDamaged = false;
+        overloadLatched = false;
+        fuseActive = false;
+        fuseTicksLeft = 0;
+        overloadTicks = 0;
+        rampTicks = 0;
+        fluctTicksLeft = 0;
+        boostConsumed = false;
         return changed;
     }
 
@@ -68,11 +112,13 @@ public class CdgEngineState {
             Codec.INT.fieldOf("fluctTicksLeft").forGetter(s -> s.fluctTicksLeft),
             Codec.BOOL.fieldOf("fuseActive").forGetter(s -> s.fuseActive),
             Codec.INT.fieldOf("fuseTicksLeft").forGetter(s -> s.fuseTicksLeft),
-            Codec.BOOL.fieldOf("boostConsumed").forGetter(s -> s.boostConsumed))
+            Codec.BOOL.fieldOf("boostConsumed").forGetter(s -> s.boostConsumed),
+            Codec.BOOL.optionalFieldOf("pistonDamaged", false).forGetter(s -> s.pistonDamaged))
             .apply(instance, CdgEngineState::new));
 
     public CdgEngineState(int rampTicks, boolean overloadLatched, boolean fuelPresent, int lastFuelAmount,
-            float fluctFactor, int fluctTicksLeft, boolean fuseActive, int fuseTicksLeft, boolean boostConsumed) {
+            float fluctFactor, int fluctTicksLeft, boolean fuseActive, int fuseTicksLeft, boolean boostConsumed,
+            boolean pistonDamaged) {
         this.rampTicks = rampTicks;
         this.overloadLatched = overloadLatched;
         this.fuelPresent = fuelPresent;
@@ -82,6 +128,13 @@ public class CdgEngineState {
         this.fuseActive = fuseActive;
         this.fuseTicksLeft = fuseTicksLeft;
         this.boostConsumed = boostConsumed;
+        this.pistonDamaged = pistonDamaged;
+    }
+
+    public CdgEngineState(int rampTicks, boolean overloadLatched, boolean fuelPresent, int lastFuelAmount,
+            float fluctFactor, int fluctTicksLeft, boolean fuseActive, int fuseTicksLeft, boolean boostConsumed) {
+        this(rampTicks, overloadLatched, fuelPresent, lastFuelAmount, fluctFactor, fluctTicksLeft,
+                fuseActive, fuseTicksLeft, boostConsumed, false);
     }
 
     public CdgEngineState() {

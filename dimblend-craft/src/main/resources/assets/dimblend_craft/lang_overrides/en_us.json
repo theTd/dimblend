@@ -23,5 +23,7 @@
   "emi.category.kaleidoscope_cookery.millstone": "Soul Donkey Mill",
   "item.create.polished_rose_quartz": "Polished Charged Quartz",
   "item.create.rose_quartz": "Charged Quartz",
-  "item.twilightforest.berry_medley": "Twilight Berry Platter"
+  "item.twilightforest.berry_medley": "Twilight Berry Platter",
+  "yet_another_thirst.purity.acceptable": "Sterilized",
+  "yet_another_thirst.purity.slightly_dirty": "Filtered"
 }

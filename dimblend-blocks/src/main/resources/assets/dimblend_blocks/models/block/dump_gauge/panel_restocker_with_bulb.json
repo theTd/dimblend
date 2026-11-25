@@ -1,0 +1,7 @@
+{
+	"parent": "dimblend_blocks:block/dump_gauge/panel_with_bulb",
+	"textures": {
+		"0": "dimblend_blocks:block/dump_gauge/dump_panel_packager_mode",
+		"particle": "dimblend_blocks:block/dump_gauge/dump_panel_packager_mode"
+	}
+}

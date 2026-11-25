@@ -1,0 +1,17 @@
+{
+  "replace": false,
+  "values": [
+    {
+      "id": "kaleidoscope_cookery:sit",
+      "required": false
+    },
+    {
+      "id": "kaleidoscope_tavern:sit",
+      "required": false
+    },
+    {
+      "id": "kaleidoscope_world_liquor:chair",
+      "required": false
+    }
+  ]
+}

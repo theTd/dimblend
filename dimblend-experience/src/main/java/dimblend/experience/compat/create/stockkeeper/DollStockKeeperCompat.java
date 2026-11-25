@@ -69,10 +69,22 @@ public final class DollStockKeeperCompat {
                 && ticker.getLevel() == level && tickerPos.equals(ticker.getBlockPos());
     }
 
+    /**
+     * 随机音高（2026-11-25 用户口径：售货员玩偶每次吱一声的音高要有起伏，别每次都一样）：
+     * {@code randomUnit ∈ [0, 1)} 线性映射到 {@code [0.75, 1.25)}，中位 1.0。
+     *
+     * <p>纯函数，单测钉边界（0 → 0.75、1 → 1.25、0.5 → 1.0）。原版音高落在
+     * {@code 0.75~1.25} 这个区间内 IRL 不会失真，也仍在 {@code playSound} 的音高合法范围内。</p>
+     */
+    public static float computeSqueakPitch(float randomUnit) {
+        return 0.75F + randomUnit * 0.5F;
+    }
+
     /** One squeak, broadcast by the server; both keeper entries route their success through here. */
     public static void squeak(Level level, double x, double y, double z) {
+        float pitch = computeSqueakPitch(level.random.nextFloat());
         BuiltInRegistries.SOUND_EVENT.getOptional(SQUEAK).ifPresent(sound ->
-                level.playSound(null, x, y, z, sound, SoundSource.NEUTRAL, 1.0f, 1.0f));
+                level.playSound(null, x, y, z, sound, SoundSource.NEUTRAL, 1.0f, pitch));
     }
 
     /** The real DollEntity entry: a doll entity was right-clicked on a Create seat. */

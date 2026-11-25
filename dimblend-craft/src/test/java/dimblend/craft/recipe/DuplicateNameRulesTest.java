@@ -295,6 +295,36 @@ class DuplicateNameRulesTest {
         }
     }
 
+    /**
+     * 2026-11-25：YAT 净水纯度的两档显示名改叫「过滤 / 杀菌」。
+     *
+     * <p>这两档原来的中文名与 UI 上的动作（滤芯过滤、烈焰粉杀菌）不一致，玩家看不出
+     * 手里的水是哪一档。只改 {@code yet_another_thirst.purity.*} 这两个键，
+     * 不受其它覆盖键影响；三个语言文件的键集由 {@link #languageOverrideTablesShareOneKeySet}
+     * 钉死，缺一个键会让该语言静默回落到英文。</p>
+     */
+    @Test
+    void waterPurityNamesAreRenamed() {
+        Map<String, Map<String, String>> expected = new LinkedHashMap<>();
+        expected.put("zh_cn", Map.of(
+                "yet_another_thirst.purity.slightly_dirty", "过滤",
+                "yet_another_thirst.purity.acceptable", "杀菌"));
+        expected.put("zh_tw", Map.of(
+                "yet_another_thirst.purity.slightly_dirty", "過濾",
+                "yet_another_thirst.purity.acceptable", "殺菌"));
+        expected.put("en_us", Map.of(
+                "yet_another_thirst.purity.slightly_dirty", "Filtered",
+                "yet_another_thirst.purity.acceptable", "Sterilized"));
+
+        for (Map.Entry<String, Map<String, String>> entry : expected.entrySet()) {
+            Map<String, String> table = LanguageOverrides.load(entry.getKey());
+            for (Map.Entry<String, String> value : entry.getValue().entrySet()) {
+                assertEquals(value.getValue(), table.get(value.getKey()),
+                        entry.getKey() + " 的 " + value.getKey() + " 覆盖值不符");
+            }
+        }
+    }
+
     /** Voidscape 8 台机器的方块显示名：三个语言文件的覆盖值逐条钉死（名字由用户确认）。 */
     @Test
     void voidscapeMachineNamesAreConfirmedAcrossLocales() {

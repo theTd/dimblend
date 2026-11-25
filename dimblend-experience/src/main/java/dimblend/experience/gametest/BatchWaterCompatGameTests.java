@@ -19,7 +19,6 @@ import com.jesz.createdieselgenerators.content.diesel_engine.huge.HugeDieselEngi
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.minhnh.yetanotherthirst.compat.FluidPurityHelper;
-import dev.minhnh.yetanotherthirst.core.item.ModItems;
 import dev.minhnh.yetanotherthirst.core.purity.WaterPurity;
 import dimblend.experience.Config;
 import net.minecraft.core.BlockPos;
@@ -32,7 +31,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.level.GameType;
-import net.minecraft.world.item.crafting.SingleRecipeInput;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.material.Fluids;
@@ -158,18 +156,16 @@ public final class BatchWaterCompatGameTests {
                 "mixing purity predicate: " + input.ingredient().getClass().getSimpleName() + ", amount=" + input.amount()
                         + ", matches=" + input.ingredient().test(water(0, 1000)) + "/" + input.ingredient().test(water(1, 1000))
                         + "/" + input.ingredient().test(water(2, 1000)));
-        helper.assertTrue(recipe.getFluidResults().getFirst().getAmount() == 500
+        helper.assertTrue(recipe.getFluidResults().getFirst().getAmount() == 1000
                         && FluidPurityHelper.getPurity(recipe.getFluidResults().getFirst()) == 2,
-                "mixing must produce 500mB acceptable water");
+                "mixing must produce 1000mB acceptable water");
         helper.assertTrue(recipe.getIngredients().getFirst().test(new ItemStack(Items.BLAZE_POWDER))
                         && recipe.getRollableResults().getFirst().getStack().is(Items.BLAZE_POWDER),
                 "blaze powder must be required and returned");
-        var smoking = manager.byKey(ResourceLocation.parse("dimblend_craft:dirty_water_bottle_from_smoking")).orElseThrow().value();
-        var cooking = (net.minecraft.world.item.crafting.SmokingRecipe) smoking;
-        helper.assertTrue(cooking.matches(new SingleRecipeInput(WaterPurity.addPurity(WaterPurity.waterPotion(), 0)), helper.getLevel()),
-                "dirty water bottle must match smoking");
-        helper.assertTrue(!cooking.matches(new SingleRecipeInput(new ItemStack(ModItems.TERRACOTTA_WATER_BOWL.get())), helper.getLevel()),
-                "bowls must not participate in purification");
+        // 烟熏档"脏水瓶 → 可饮水瓶"的洗水捷径已在 2026-11-25 批次删除（决议 9/14），
+        // 这里断言它不在配方表里（原来是对它 orElseThrow()，一旦删除整条 GameTest 直接崩）。
+        helper.assertTrue(manager.byKey(ResourceLocation.parse("dimblend_craft:dirty_water_bottle_from_smoking")).isEmpty(),
+                "dirty water bottle smoking shortcut must stay removed");
         helper.setBlock(MID, AllBlocks.BASIN.getDefaultState());
         helper.runAfterDelay(2, () -> {
             var basin = (BasinBlockEntity) helper.getBlockEntity(MID);
@@ -183,9 +179,9 @@ public final class BatchWaterCompatGameTests {
                     "matching must not consume water or catalyst");
             helper.assertTrue(BasinRecipe.apply(basin, recipe), "the basin must execute purification");
             var output = basin.getTanks().getSecond().getPrimaryHandler().getFluid();
-            helper.assertTrue(basin.inputTank.isEmpty() && output.getAmount() == 500
+            helper.assertTrue(basin.inputTank.isEmpty() && output.getAmount() == 1000
                             && FluidPurityHelper.hasPurity(output) && FluidPurityHelper.getPurity(output) == 2,
-                    "actual basin output must be 500mB explicitly acceptable water: " + output);
+                    "actual basin output must be 1000mB explicitly acceptable water: " + output);
             int returnedCatalysts = 0;
             for (int slot = 0; slot < basin.getOutputInventory().getSlots(); slot++) {
                 var stack = basin.getOutputInventory().getStackInSlot(slot);
@@ -193,8 +189,8 @@ public final class BatchWaterCompatGameTests {
             }
             helper.assertTrue(basin.getInputInventory().isEmpty() && returnedCatalysts == 1,
                     "actual processing must return exactly one catalyst");
-            var extracted = basin.getTanks().getSecond().getCapability().drain(500, FluidAction.EXECUTE);
-            helper.assertTrue(extracted.getAmount() == 500 && FluidPurityHelper.getPurity(extracted) == 2
+            var extracted = basin.getTanks().getSecond().getCapability().drain(1000, FluidAction.EXECUTE);
+            helper.assertTrue(extracted.getAmount() == 1000 && FluidPurityHelper.getPurity(extracted) == 2
                             && basin.getTanks().getSecond().isEmpty(),
                     "fluid extraction must retain the produced purity and consume the stored output");
             helper.succeed();

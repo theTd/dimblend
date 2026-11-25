@@ -3,14 +3,19 @@ package dimblend.experience.mixin.compat.tavern;
 import com.github.ysbbbbbb.kaleidoscopetavern.blockentity.brew.BarrelBlockEntity;
 import com.github.ysbbbbbb.kaleidoscopetavern.crafting.container.BarrelRecipeContainer;
 import com.github.ysbbbbbb.kaleidoscopetavern.crafting.recipe.BarrelRecipe;
+import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import dimblend.experience.compat.dirtywater.DirtyWaterCompat;
 import dimblend.experience.compat.dirtywater.DirtyWaterFeedback;
 import dimblend.experience.compat.dirtywater.DirtyWaterPurity;
+import dimblend.experience.compat.tavern.BarrelWaterPurity;
 import dimblend.experience.compat.tavern.TavernBrewingRules;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.level.Level;
+import net.neoforged.neoforge.fluids.FluidStack;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -79,5 +84,44 @@ public abstract class BarrelBlockEntityMixin {
             remap = false, require = 1, allow = 1)
     private int dimblend$capFallbackVinegar(int original) {
         return TavernBrewingRules.outputCount();
+    }
+
+    /**
+     * 倒进桶里的水一律灭菌（{@code Purity: 2}）。
+     *
+     * <p>{@code addFluid} 有两个 return（参数校验早退 + 真正倒水），{@code allow = 3} 覆盖
+     * 全部；只有真正倒成功（{@code true}）才打标。{@code emptyItem} 走的是
+     * {@code FluidBucketWrapper}，进桶的 FluidStack 不带组件，不补的话桶里就是"脏水"，
+     * 会把 {@code dimblend$holdIncompleteQuarterBatch} 与配方匹配一起带偏。</p>
+     */
+    @ModifyReturnValue(method = "addFluid(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/item/ItemStack;)Z",
+            at = @At("RETURN"), remap = false, require = 1, allow = 3)
+    private boolean dimblend$stampBarrelWater(boolean original) {
+        if (original && DirtyWaterCompat.purityAvailable()) {
+            BarrelBlockEntity self = (BarrelBlockEntity) (Object) this;
+            FluidStack tank = self.getFluid().getFluid();
+            if (BarrelWaterPurity.isWater(tank)) {
+                BarrelWaterPurity.stampTank(tank);
+                self.setChanged();
+            }
+        }
+        return original;
+    }
+
+    /**
+     * 读档自愈：旧存档里桶中的水没有 Purity（或曾装过别的流体），
+     * 只要现在装的是水就补 {@code Purity: 2}（只改组件，不动数量）。
+     */
+    @Inject(method = "loadAdditional(Lnet/minecraft/nbt/CompoundTag;Lnet/minecraft/core/HolderLookup$Provider;)V",
+            at = @At("TAIL"), remap = false, require = 1, allow = 1)
+    private void dimblend$healLoadedBarrelWater(CallbackInfo ci) {
+        if (!DirtyWaterCompat.purityAvailable()) {
+            return;
+        }
+        BarrelBlockEntity self = (BarrelBlockEntity) (Object) this;
+        FluidStack tank = self.getFluid().getFluid();
+        if (BarrelWaterPurity.isWater(tank)) {
+            BarrelWaterPurity.stampTank(tank);
+        }
     }
 }

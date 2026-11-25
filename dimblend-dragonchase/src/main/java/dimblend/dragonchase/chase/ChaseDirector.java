@@ -3,6 +3,7 @@ package dimblend.dragonchase.chase;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dimblend.DimBlendRegistries;
 import dimblend.api.BandTrainMarker;
+import dimblend.api.MinimumSpeedState;
 import dimblend.api.RegionLanes;
 import dimblend.api.RegionOverrides;
 import dimblend.api.WarpGateColumns;
@@ -371,13 +372,20 @@ public final class ChaseDirector {
                     && car.id().equals(nestId)) {
                 continue;
             }
-            if (car.vx() >= ChaseMath.SPEED_FLOOR) {
-                continue;
-            }
             if (ChaseTrackScan.isIdleDepotCar(level, car.id()) || ChaseTrackScan.isBrakeLatched(level, car.id())) {
                 continue;
             }
-            ChaseTrackScan.topUp(car.sub(), ChaseMath.topUpDelta(car.vx(), ChaseMath.SPEED_FLOOR));
+            // MinimumSpeedState: this car is the floor's business this tick, and while it is below
+            // the floor the floor (not the parking brake) decides its speed.
+            MinimumSpeedState.markGoverned(level, car.id());
+            if (car.vx() >= ChaseMath.SPEED_FLOOR) {
+                continue;
+            }
+            double delta = ChaseMath.topUpDelta(car.vx(), ChaseMath.SPEED_FLOOR);
+            ChaseTrackScan.topUp(car.sub(), delta);
+            if (delta > 0.0D) {
+                MinimumSpeedState.markActivelyPushing(level, car.id());
+            }
         }
     }
 
@@ -447,7 +455,15 @@ public final class ChaseDirector {
                     ? minSpeed
                     : ChaseMath.nestTargetSpeed(minSpeed, DragonChaseTuning.keepAwayDistance(), nestX,
                             leader.centerX(), leader.vx());
-            ChaseTrackScan.topUp(nest, ChaseMath.topUpDelta(nestVx, target));
+
+            double nestDelta = ChaseMath.topUpDelta(nestVx, target);
+            ChaseTrackScan.topUp(nest, nestDelta);
+            // MinimumSpeedState: the nest is held at its own floor for the whole chase, so the
+            // parking brake must not pin it to 0 while the dragon is still being led.
+            MinimumSpeedState.markGoverned(level, nest.getUniqueId());
+            if (nestDelta > 0.0D) {
+                MinimumSpeedState.markActivelyPushing(level, nest.getUniqueId());
+            }
 
             forceBarrenEndAhead(level, data, nestX, bandSize);
 

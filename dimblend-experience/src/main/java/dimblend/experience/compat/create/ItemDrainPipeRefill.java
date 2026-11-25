@@ -6,7 +6,6 @@ import com.simibubi.create.foundation.blockEntity.behaviour.fluid.SmartFluidTank
 
 import dimblend.experience.Config;
 import net.minecraft.core.Direction;
-import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 
@@ -67,11 +66,8 @@ public final class ItemDrainPipeRefill {
      * 会抛 ISE）、非 UP 面、或查不到水箱 behaviour 时返回 null，落穿给 Create 自己的
      * 注册结果（即原版：UP 面无接口、其余面原门控）。
      *
-     * <p><b>「下界太热」④</b>：分液池在下界群系时，UP 面同样返回 null（恢复原版无接口），
-     * 与 {@code closeInsertion} 的逐拍门控一起把管道三条路径全关掉。群系判定用
-     * {@link ItemDrainNetherEvaporation#isNetherBiome(Level, BlockPos)} 的 {@code Level} 版：
-     * 能力查询双端都会发生，客户端也算同一口径；{@code getBiome} 是
-     * {@code LevelReader} 默认方法，不要求 {@code ServerLevel}。</p>
+     * <p><b>「下界太热」④ 已取消（2026-11-25）</b>：UP 面不再因下界群系返回 null，
+     * 是否放行只看开关（与 {@code closeInsertion} 的逐拍门控同一口径）。</p>
      */
     public static void registerCapabilities(RegisterCapabilitiesEvent event) {
         event.registerBlockEntity(
@@ -79,11 +75,6 @@ public final class ItemDrainPipeRefill {
                 AllBlockEntityTypes.ITEM_DRAIN.get(),
                 (be, context) -> {
                     if (context != Direction.UP || !Config.isLoaded() || !Config.ITEM_DRAIN_PIPE_REFILL.get()) {
-                        return null;
-                    }
-                    Level level = be.getLevel();
-                    if (level != null
-                            && ItemDrainNetherEvaporation.isNetherBiome(level, be.getBlockPos())) {
                         return null;
                     }
                     SmartFluidTankBehaviour tank = tankOf(be);

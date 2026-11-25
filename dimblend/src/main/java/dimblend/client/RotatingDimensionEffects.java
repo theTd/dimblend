@@ -3,6 +3,7 @@ package dimblend.client;
 import cn.leolezury.eternalstarlight.common.client.ESDimensionSpecialEffects;
 import cn.leolezury.eternalstarlight.common.client.renderer.world.ESSkyRenderer;
 import com.mojang.logging.LogUtils;
+import dimblend.compat.TwilightBand;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -72,6 +73,8 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
     private final DimensionSpecialEffects.NetherEffects nether = new DimensionSpecialEffects.NetherEffects();
     private static final ResourceLocation VOIDSCAPE_EFFECTS =
             ResourceLocation.fromNamespaceAndPath("voidscape", "void");
+    /** Matches {@code TFWeatherRenderer#isNearLockedBiome}'s {@code ±15} locked-biome probe. */
+    private static final int TWILIGHT_SEAM_PREVIEW_BLOCKS = 15;
     private static final Logger LOGGER = LogUtils.getLogger();
     private static boolean loggedMissingVoidscapeEffects;
 
@@ -145,13 +148,41 @@ public final class RotatingDimensionEffects extends DimensionSpecialEffects.Over
     @Override
     public boolean renderSnowAndRain(ClientLevel level, int ticks, float partialTick,
             LightTexture lightTexture, double camX, double camY, double camZ) {
-        return currentOverlay() == RotatingSkyOverlay.TWILIGHT
-                && twilight.renderSnowAndRain(level, ticks, partialTick, lightTexture, camX, camY, camZ);
+        if (!twilightCurtainsVisible(level, camX, camY, camZ)) {
+            return false;
+        }
+        return twilight.renderSnowAndRain(level, ticks, partialTick, lightTexture, camX, camY, camZ);
     }
 
     @Override
     public boolean tickRain(ClientLevel level, int ticks, Camera camera) {
         return currentOverlay() == RotatingSkyOverlay.TWILIGHT && twilight.tickRain(level, ticks, camera);
+    }
+
+    /**
+     * TF only draws a locked biome's curse curtains for a camera that is already standing in one
+     * of its biomes, but its own gate ({@code TFWeatherRenderer#isNearLockedBiome}) probes
+     * {@code ±15} blocks and paints a {@code range = 10} wall — the intent is that the player
+     * sees the blizzard / mosquitoes / acid rain ahead of the border and stays out.
+     *
+     * <p>In {@code dimblend:rotating} the surface seams are plain biome borders with no wall, so
+     * keying off the camera biome alone hides the wall until the player is already inside the
+     * curse. Widening the gate to 15 blocks outside the border on either side keeps the
+     * "see it before you step in" behaviour; the per-column biome test inside
+     * {@code renderLockedBiome} still paints only the columns that are actually locked.
+     */
+    private static boolean twilightCurtainsVisible(ClientLevel level, double camX, double camY, double camZ) {
+        if (currentOverlay() == RotatingSkyOverlay.TWILIGHT) {
+            return true;
+        }
+        if (!TwilightBand.isRotating(level)) {
+            return false;
+        }
+        BlockPos pos = BlockPos.containing(camX, camY, camZ);
+        int y = pos.getY();
+        int z = pos.getZ();
+        return isTwilightBiome(level, new BlockPos(pos.getX() - TWILIGHT_SEAM_PREVIEW_BLOCKS, y, z))
+                || isTwilightBiome(level, new BlockPos(pos.getX() + TWILIGHT_SEAM_PREVIEW_BLOCKS, y, z));
     }
 
     @Nullable

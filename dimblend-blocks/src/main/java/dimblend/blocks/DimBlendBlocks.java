@@ -51,6 +51,9 @@ public class DimBlendBlocks {
         // 贝壳标记：无外部依赖，常驻注册（藏宝箱 X 标记由 dimblend-experience 摆）
         ShellMarker.init();
 
+        // 热冰：无外部依赖的燃料物品，常驻注册
+        HotIce.init();
+
         // C 板块：创造模式伪装方块，仅 Copycats+ 在场时注册
         // （CreativeCopycats 类内硬引用其类型，必须经 isLoaded 守卫触达）
         if (ModList.get().isLoaded("copycats")) {
@@ -62,6 +65,24 @@ public class DimBlendBlocks {
         // 与 C 板块守卫独立——copycats 缺席时传动件仍应可用）
         if (ModList.get().isLoaded("create")) {
             CreativeKinetics.register(modEventBus);
+
+            // 卸料漏斗双形态（Create 漏斗子类 + 装置内卸料行为）
+            dimblend.blocks.compat.create.funnel.DumpFunnels.register(modEventBus);
+            if (FMLEnvironment.dist.isClient()) {
+                dimblend.blocks.compat.create.funnel.DumpFunnelClient.register(modEventBus);
+                // 思索插件：仅客户端登记归属标签，不注册场景
+                net.createmod.ponder.foundation.PonderIndex.addPlugin(
+                        new dimblend.blocks.compat.create.DimBlendBlocksPonderPlugin());
+            }
+
+            // 卸料仪表：Deployer 的自定义 PanelType + 面板物品（两张模组都在场才注册）
+            // 客户端另需在模型烘焙前登记暗钢蓝面板的 PartialModel
+            if (ModList.get().isLoaded("deployer")) {
+                dimblend.blocks.compat.deployer.DumpGauges.register(modEventBus);
+                if (FMLEnvironment.dist.isClient()) {
+                    dimblend.blocks.compat.deployer.client.DumpGaugeClient.register(modEventBus);
+                }
+            }
         }
 
         // 列车末影物流箱：仅 EnderStorage 在场时注册（硬引用 EnderStorage/CCL 类型，经 isLoaded 守卫触达）
@@ -70,6 +91,21 @@ public class DimBlendBlocks {
             if (FMLEnvironment.dist.isClient()) {
                 TrainEnderChestClient.register(modEventBus);
             }
+        }
+
+        // 列车加压管道：需要 Create（管道/支架）与 Sable（子层级/车钩）双在场
+        // （本包硬引用 Create 的 PipeBlock、Sable 的 SubLevel 与 companion 类型，必须经双重守卫触达）
+        if (ModList.get().isLoaded("create") && ModList.get().isLoaded("sable")) {
+            dimblend.blocks.compat.rail.TrainTubes.register(modEventBus);
+            if (FMLEnvironment.dist.isClient()) {
+                dimblend.blocks.compat.rail.client.TrainTubeClient.register(modEventBus);
+            }
+        }
+
+        // 消防模组喷头水雾浇岩浆：仅 createfirefightingadd 在场时注册
+        // （NozzleLavaQuench 硬引用消防模组 API 类型，必须经 isLoaded 守卫触达）
+        if (ModList.get().isLoaded("createfirefightingadd")) {
+            dimblend.blocks.compat.firefighting.NozzleLavaQuench.register();
         }
 
         modEventBus.addListener(DimBlendBlocks::onRegisterGameTests);

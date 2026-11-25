@@ -1,0 +1,7 @@
+{
+  "replace": false,
+  "values": [
+    { "id": "yet_another_thirst:filter_frame", "required": false },
+    { "id": "dimblend_experience:mob_display_catalyst", "required": false }
+  ]
+}

@@ -2,6 +2,7 @@ package dimblend.experience.mixin.compat.cdg;
 
 import com.jesz.createdieselgenerators.content.diesel_engine.IEngine;
 import dimblend.experience.Config;
+import dimblend.experience.compat.cdg.CdgAttachments;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -26,11 +27,21 @@ public interface EngineThrottleLockMixin {
         cir.setReturnValue(1.0F);
     }
 
-    /** Preserve the native fuel check while ignoring the redstone stop switch. */
+    /**
+     * Preserve the native fuel check while ignoring the redstone stop switch.
+     * 2026-11-25：活塞损坏优先——损坏的机器 {@code enabled()==false}，
+     * 于是原版 tick 里的"耗油 + 登记到轴"整块被跳过（出力 0 / 不烧油 / 客户端声音停）。
+     */
     @Inject(method = "enabled()Z", at = @At("HEAD"), cancellable = true, require = 1, allow = 1)
     private void dimblend$ignoreRedstoneStop(CallbackInfoReturnable<Boolean> cir) {
         if (!Config.isLoaded() || Config.DIESEL_ENGINE_BEHAVIOR.get()) {
-            cir.setReturnValue(((IEngine) this).validFS());
+            IEngine engine = (IEngine) this;
+            if (Config.DIESEL_ENGINE_OVERLOAD.get()
+                    && engine.self().getData(CdgAttachments.ENGINE_STATE).pistonDamaged) {
+                cir.setReturnValue(false);
+                return;
+            }
+            cir.setReturnValue(engine.validFS());
         }
     }
 }

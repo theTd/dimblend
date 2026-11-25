@@ -261,6 +261,11 @@ public final class SableLavaMelt {
             if (!touchesLava(level, lavaSections, wx, wy, wz, hx, hy, hz, columnTop)) {
                 return;
             }
+            // 只有真碰到熔岩时才查"大容量储存"（LOCKED DECISION #16）：非熔岩方块零开销。
+            // plotPos 是被复用的 MutableBlockPos，这里必须 immutable 之后再交给下游。
+            if (LargeStorageLavaImmunity.isImmune(level, plotPos.immutable(), state)) {
+                return;
+            }
             long key = plotPos.asLong();
             contacted.add(key);
             contacts.add(new Contact(key, wx, wy, wz));

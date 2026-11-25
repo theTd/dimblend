@@ -18,8 +18,18 @@ public final class SupplementTooltips {
         else if (id.equals(ResourceLocation.fromNamespaceAndPath("aeronautics", "levitite_blend_bucket"))) suffix = "levitite_bucket";
         else if (VanillaDollItems.contains(stack)) suffix = "doll";
         else if (Screen.hasShiftDown() && id.equals(ResourceLocation.fromNamespaceAndPath("create", "wrench"))) suffix = "wrench";
+        else if (id.equals(ResourceLocation.fromNamespaceAndPath("kaleidoscope_tavern", "tap"))) suffix = "tap_for_brew_barrel";
+        else if (id.equals(ResourceLocation.fromNamespaceAndPath("create_connected", "empty_fan_catalyst"))) suffix = "fan_catalyst";
+        else if (id.equals(ResourceLocation.fromNamespaceAndPath("yet_another_thirst", "filter_frame"))) suffix = "filter_frame";
         if (suffix != null) {
             event.getToolTip().add(Component.translatable("item.dimblend_experience.supplement." + suffix)
+                    .withStyle(ChatFormatting.GRAY));
+        } else if (id.equals(ResourceLocation.fromNamespaceAndPath("yet_another_thirst", "fabric_filter_core"))
+                || id.equals(ResourceLocation.fromNamespaceAndPath("yet_another_thirst", "sand_filter_core"))
+                || id.equals(ResourceLocation.fromNamespaceAndPath("yet_another_thirst", "carbon_filter_core"))) {
+            event.getToolTip().add(Component.translatable("item.dimblend_experience.supplement.filter_core_pocket")
+                    .withStyle(ChatFormatting.GRAY));
+            event.getToolTip().add(Component.translatable("item.dimblend_experience.supplement.filter_core_frame")
                     .withStyle(ChatFormatting.GRAY));
         }
     }

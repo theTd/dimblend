@@ -10,6 +10,7 @@ import com.simibubi.create.content.kinetics.base.GeneratingKineticBlockEntity;
 import dimblend.experience.Config;
 import dimblend.experience.compat.cdg.CdgAttachments;
 import dimblend.experience.compat.cdg.CdgBoostMath;
+import dimblend.experience.compat.cdg.CdgEngineDamage;
 import dimblend.experience.compat.cdg.CdgEngineState;
 import dimblend.experience.compat.cdg.CdgFluctuationMath;
 import dimblend.experience.compat.cdg.CdgKineticOverload;
@@ -44,13 +45,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * （delta 0.2,0.2,0.2 / speed 0 / count 10）；4 秒（80 tick，2026-10-15 拍板：
  * 2 秒偏早再延后 2 秒，较最初 6 秒口径仍提前 2 秒）后播
  * {@code entity.generic.explode} 1 次 + 爆炸粒子（delta 1,1,1 / speed 0 /
- * count 100），再破坏自毁掉落（余油不返还、无真实爆炸伤害）。确认口径三关
+ * count 100），<b>2026-11-25 起不再破坏自毁掉落</b>，改为把引擎打成"活塞损坏"
+ * （{@link CdgEngineDamage}：出力 0、不烧油、每 5 tick 一缕黑烟、右键 {@code engine_piston} 修复）。
+ * 确认口径三关
  * （2026-10-13 修订，见 {@code CdgKineticOverload}）：缓存位真 + 已加载成员
  * 实时账过载 + 已加载应力超出全网额定容量——粘位/unloaded 幻影账/爬梯波动可覆盖
  * 的缺额都不累计且<b>不冻结</b>爬梯（引擎照常爬回额定或触发整网重建清账）；
  * 确认进度不跨存档携带。
  * 确认累计期间（真过载）爬梯/波动计时冻结。红石关停/燃尽/负载恢复都不取消引信。
- * 自毁破坏失败（极端情况）才回退闩锁逻辑</li>
+ * 引信到 0 后转"活塞损坏"态（2026-11-25，不再炸机）</li>
  * </ul>
  * 目标：普通与组合式柴油机。巨型柴油机由 B5（HugeDieselEngineMixin）独立覆盖，
  * 本 mixin 不处理（cast 结构只接受 KineticBlockEntity）。
@@ -100,6 +103,12 @@ public abstract class DieselEngineRampMixin {
         }
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
         float vanilla = cir.getReturnValueF();
+        // 2026-11-25 活塞损坏：出力恒 0（enabled() 也已为 false，这里是双保险，
+        // 也覆盖"轴/护目镜直接读 getGeneratedSpeed"的路径）
+        if (Config.DIESEL_ENGINE_OVERLOAD.get() && state.pistonDamaged) {
+            cir.setReturnValue(0.0F);
+            return;
+        }
         if (Config.DIESEL_ENGINE_OVERLOAD.get() && state.overloadLatched) {
             cir.setReturnValue(0.0F);
             return;
@@ -147,6 +156,17 @@ public abstract class DieselEngineRampMixin {
         }
         IEngine engine = (IEngine) (Object) this;
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
+        // 组合式多块重组/拆散后，"活塞损坏"以 controller 为准：非 controller 部件每 tick 对齐一次
+        // （双向对齐：controller 修好了部件也得跟着好，否则换活塞后旧部件还僵在坏态）
+        dimblend$alignModularDamage(self, state);
+        if (Config.DIESEL_ENGINE_OVERLOAD.get() && state.pistonDamaged) {
+            // 2026-11-25 活塞损坏：不烧油、不爬梯、不点引信，只每 5 tick 冒一缕黑烟等玩家换活塞
+            CdgEngineDamage.tickDamagedSmoke(level, self.getBlockPos());
+            state.rampTicks = 0;
+            state.fluctTicksLeft = 0;
+            state.boostConsumed = false;
+            return;
+        }
         if (!Config.DIESEL_ENGINE_OVERLOAD.get()) {
             // 关开关=未进不可挽回：累计中的警告音掐掉，再清闩锁/引信字段
             CdgOverloadFuse.clearConfirmation(level, state);
@@ -171,8 +191,8 @@ public abstract class DieselEngineRampMixin {
                 return; // 读档宽限：倒计时暂停，宽限过后接着走
             }
             if (CdgOverloadFuse.tickFuse(level, self.getBlockPos(), state,
-                    () -> level.destroyBlock(self.getBlockPos(), true))) {
-                state.overloadLatched = true;
+                    () -> CdgEngineDamage.markDamaged(engine))) {
+                // 引信归零：markDamaged 已把损坏位置上并清了闩锁/引信/爬梯，这里只做收尾清态
                 state.rampTicks = 0;
                 state.fluctTicksLeft = 0;
                 state.boostConsumed = false;
@@ -286,6 +306,27 @@ public abstract class DieselEngineRampMixin {
         // 磁盘态不滞后）
         if (wasLatched != state.overloadLatched) {
             self.setChanged();
+        }
+    }
+
+    /**
+     * 组合式多块：非 controller 部件的损坏位与 controller 双向对齐。
+     * <p>损坏与修复都只发生在 controller（唯一有油的部件、唯一能点引信的部件），
+     * 部件自己的附件可能来自旧存档或上一次重组，所以每 tick 覆盖一次。
+     * 只动内存副本，不标脏/不 notify——部件不需要持久化这个位，持久值以 controller 为准。</p>
+     */
+    @Unique
+    private static void dimblend$alignModularDamage(KineticBlockEntity self, CdgEngineState state) {
+        if (!(self instanceof ModularDieselEngineBlockEntity modular) || modular.isController()) {
+            return;
+        }
+        ModularDieselEngineBlockEntity controller = modular.getControllerBE();
+        if (controller == null) {
+            return;
+        }
+        boolean controllerDamaged = controller.getData(CdgAttachments.ENGINE_STATE).pistonDamaged;
+        if (controllerDamaged != state.pistonDamaged) {
+            state.pistonDamaged = controllerDamaged;
         }
     }
 }

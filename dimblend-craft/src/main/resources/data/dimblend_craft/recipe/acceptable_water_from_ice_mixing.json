@@ -1,0 +1,34 @@
+{
+  "type": "create:mixing",
+  "ingredients": [
+    {
+      "item": "minecraft:ice"
+    },
+    {
+      "item": "minecraft:blaze_powder"
+    }
+  ],
+  "results": [
+    {
+      "id": "minecraft:water",
+      "amount": 1000,
+      "components": {
+        "minecraft:custom_data": "{Purity:2}"
+      }
+    },
+    {
+      "id": "minecraft:blaze_powder"
+    }
+  ],
+  "heat_requirement": "none",
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "create"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "yet_another_thirst"
+    }
+  ]
+}

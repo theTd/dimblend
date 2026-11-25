@@ -4,6 +4,18 @@
     {
       "id": "dimblend_blocks:train_ender_chest",
       "required": false
+    },
+    {
+      "id": "dimblend_blocks:train_pressured_tube",
+      "required": false
+    },
+    {
+      "id": "dimblend_blocks:dump_funnel",
+      "required": false
+    },
+    {
+      "id": "dimblend_blocks:dump_belt_funnel",
+      "required": false
     }
   ]
 }

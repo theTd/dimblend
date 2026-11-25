@@ -4,7 +4,6 @@
   "compatibilityLevel": "JAVA_21",
   "minVersion": "0.8",
   "mixins": [
-    "BedBlockMixin",
     "BetterCavesMasterControllerMixin",
     "BlockStateRandomTickMixin",
     "ConstantHeightMixin",
@@ -75,6 +74,7 @@
     "twilight.CapabilityEventsMixin",
     "twilight.EmptyMagicMapItemMixin",
     "twilight.EndermanTakeBlockGoalMixin",
+    "twilight.EnforcementMixin",
     "twilight.FinalCastleEntranceTowerMixin",
     "twilight.GrowingBeanstalkMixin",
     "twilight.HydraLairStructureMixin",
@@ -113,7 +113,9 @@
     "DimensionTypeClientMixin",
     "ShaderInstanceMixin",
     "twilight.ClientGameEventsMixin",
+    "twilight.LockedBiomeToastHandlerMixin",
     "twilight.TFDimensionClientMixin",
+    "twilight.TFWeatherRendererMixin",
     "twilight.TwilightForestRenderInfoMixin",
     "twilight.StructureProtectionPacketMixin",
     "voidscape.LevelUtilClientMixin"

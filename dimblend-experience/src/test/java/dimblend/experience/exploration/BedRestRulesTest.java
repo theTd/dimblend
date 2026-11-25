@@ -7,28 +7,34 @@ import org.junit.jupiter.api.Test;
 class BedRestRulesTest {
     @Test
     void overworldNeverSkipsNight() {
-        assertTrue(BedRestRules.suppressesTimeSkip(true, false, false, false));
-        assertTrue(BedRestRules.suppressesTimeSkip(true, false, true, false));
-        assertTrue(BedRestRules.suppressesTimeSkip(true, false, false, true));
+        assertTrue(BedRestRules.suppressesTimeSkip(true, false, false, false, true));
+        assertTrue(BedRestRules.suppressesTimeSkip(true, false, true, false, true));
+        assertTrue(BedRestRules.suppressesTimeSkip(true, false, false, true, false));
     }
 
     @Test
-    void rotatingDaytimeNapsRestWithoutSkipping() {
-        assertTrue(BedRestRules.suppressesTimeSkip(false, true, true, false));
+    void rotatingSurfaceBandKeepsVanillaSkip() {
+        // surface 带（LOCKED #5）：白天小睡仍只休息，夜晚/雷雨照原版跳到早晨。
+        assertTrue(BedRestRules.suppressesTimeSkip(false, true, true, false, true));
+        assertFalse(BedRestRules.suppressesTimeSkip(false, true, false, false, true));
+        assertFalse(BedRestRules.suppressesTimeSkip(false, true, false, true, true));
+        assertFalse(BedRestRules.suppressesTimeSkip(false, true, true, true, true));
     }
 
     @Test
-    void rotatingNightAndThunderSleepSkipsToMorning() {
-        assertFalse(BedRestRules.suppressesTimeSkip(false, true, false, false));
-        assertFalse(BedRestRules.suppressesTimeSkip(false, true, false, true));
-        // Vanilla lets beds work through daytime thunderstorms; the skip follows suit.
-        assertFalse(BedRestRules.suppressesTimeSkip(false, true, true, true));
+    void rotatingTimeLockedBandsAlwaysSuppressSkip() {
+        // 没有任何 surface 带睡眠者 = 全在时间锁带：白天/夜晚/雷雨一律不跳夜，
+        // 让 8 秒回血休息完整跑完（LOCKED #5 {@code bed_surface_only_skip}）。
+        assertTrue(BedRestRules.suppressesTimeSkip(false, true, true, false, false));
+        assertTrue(BedRestRules.suppressesTimeSkip(false, true, false, false, false));
+        assertTrue(BedRestRules.suppressesTimeSkip(false, true, true, true, false));
+        assertTrue(BedRestRules.suppressesTimeSkip(false, true, false, true, false));
     }
 
     @Test
     void otherDimensionsKeepVanillaSleep() {
-        assertFalse(BedRestRules.suppressesTimeSkip(false, false, true, false));
-        assertFalse(BedRestRules.suppressesTimeSkip(false, false, false, false));
+        assertFalse(BedRestRules.suppressesTimeSkip(false, false, true, false, true));
+        assertFalse(BedRestRules.suppressesTimeSkip(false, false, false, false, false));
     }
 
     @Test

@@ -25,6 +25,8 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
  * <p><b>绑定诅咒</b>：{@link LivingEquipmentChangeEvent} 在服务端 {@code LivingEntity#tick} 里按装备槽
  * 与上一 tick 快照的差异触发，所以从背包里把绑定诅咒装备脱下也会命中。三个条件同时成立才挂效果：
  * 离开槽位的那件带 {@code PREVENT_ARMOR_CHANGE}、槽位变空、身上没有别的绑定诅咒装备；时长 72000 tick。
+ * 槽位范围由 {@link CurseRules#isBindingCurseArmorSlot(EquipmentSlot)} 限定为四盔甲槽（2026-11-25 口径，
+ * 手持/动物鞍甲不参与），两处入口（变化事件与"身上是否还有别的"扫描）同口径。
  * 反向：换上来的那件带绑定诅咒就立刻解除。切创造模式（{@link PlayerEvent.PlayerChangeGameModeEvent}）
  * 也解除。死亡不持久化，新 {@code ServerPlayer} 不复制效果，照常清空。</p>
  *
@@ -49,6 +51,11 @@ public final class CurseEvents {
     @SubscribeEvent
     public static void onEquipmentChanged(LivingEquipmentChangeEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player) || player.isDeadOrDying()) {
+            return;
+        }
+        // 绑定诅咒只管四盔甲槽（用户口径 2026-11-25）：主/副手换手、动物鞍甲变化一律不参与，
+        // 否则把带绑定诅咒的护甲从手里换到另一只手上也会触发"脱不掉"。
+        if (!CurseRules.isBindingCurseArmorSlot(event.getSlot())) {
             return;
         }
         ItemStack from = event.getFrom();
@@ -140,10 +147,10 @@ public final class CurseEvents {
         }
     }
 
-    /** 除本次变化的槽位之外，身上是否还穿着/拿着别的绑定诅咒装备。 */
+    /** 除本次变化的槽位之外，身上是否还穿着别的绑定诅咒护甲（只看四盔甲槽）。 */
     private static boolean wearsOtherBindingCurse(ServerPlayer player, EquipmentSlot changedSlot) {
         for (EquipmentSlot slot : EquipmentSlot.values()) {
-            if (slot == changedSlot) {
+            if (slot == changedSlot || !CurseRules.isBindingCurseArmorSlot(slot)) {
                 continue;
             }
             ItemStack worn = player.getItemBySlot(slot);

@@ -12,8 +12,10 @@ public final class SteamEngineOverloadMath {
     public static final int SOUND_INTERVAL_TICKS = 20;
     /** 警告粒子间隔：2 tick。 */
     public static final int PARTICLE_INTERVAL_TICKS = 2;
-    /** 断轴排气粒子时长：8 秒 × 20 tps。 */
-    public static final int EXHAUST_DURATION_TICKS = 160;
+    /** 断轴排气总时长：32 秒 × 20 tps（2026-11-25 拍板，原 8 秒）。 */
+    public static final int EXHAUST_DURATION_TICKS = 640;
+    /** 排气音重播间隔：160 tick = 8 秒，0/160/320/480 共 4 次覆盖 32 秒。 */
+    public static final int EXHAUST_SOUND_INTERVAL_TICKS = 160;
     /** 第一阶段云粒子：count=1、speed=0.05、delta 全 0。 */
     public static final int OVERLOAD_PARTICLE_COUNT = 1;
     public static final double OVERLOAD_PARTICLE_SPEED = 0.05D;
@@ -41,9 +43,22 @@ public final class SteamEngineOverloadMath {
         return exhaustAgeTicks % PARTICLE_INTERVAL_TICKS == 0;
     }
 
-    /** 第二阶段是否播完（播满 160 tick 即停）。 */
+    /** 第二阶段是否播完（播满 640 tick = 32 秒即停）。 */
     public static boolean exhaustDone(int exhaustAgeTicks) {
         return exhaustAgeTicks >= EXHAUST_DURATION_TICKS;
+    }
+
+    /**
+     * 第二阶段是否播排气音（32 秒里 4 次：age = 0 / 160 / 320 / 480）。
+     *
+     * <p>原 8 秒窗口只播 1 次；窗口拉到 32 秒后素材只有 1.49 秒，只播一次后面 30 秒是哑的，
+     * 所以按 {@link #EXHAUST_SOUND_INTERVAL_TICKS} 重播，最后一次在 480（第 25 秒），
+     * 到 640 收尾时尾巴刚好放完。</p>
+     */
+    public static boolean shouldPlayExhaustSound(int exhaustAgeTicks) {
+        return exhaustAgeTicks >= 0
+                && exhaustAgeTicks < EXHAUST_DURATION_TICKS
+                && exhaustAgeTicks % EXHAUST_SOUND_INTERVAL_TICKS == 0;
     }
 
     private SteamEngineOverloadMath() {

@@ -6,6 +6,8 @@ import com.jesz.createdieselgenerators.content.diesel_engine.modular.ModularDies
 import com.jesz.createdieselgenerators.content.diesel_engine.normal.DieselEngineBlockEntity;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import dimblend.experience.compat.cdg.CdgAttachments;
+import dimblend.experience.compat.cdg.CdgEngineDamage;
 import java.util.List;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -28,6 +30,12 @@ public abstract class CdgEngineGoggleFuelHintMixin {
         // 组合式非 controller 委托给 controller 实例渲染（其 RETURN 已追加），跳过防重复
         if (engine instanceof ModularDieselEngineBlockEntity modular && !modular.isController()) {
             return shown;
+        }
+        // 2026-11-25：活塞损坏优先于"没油"提示——坏机器有油也转不了，提示要指向换活塞
+        if (engine.self().getData(CdgAttachments.ENGINE_STATE).pistonDamaged) {
+            tooltip.add(Component.translatable(CdgEngineDamage.HINT_KEY)
+                    .withStyle(ChatFormatting.RED));
+            return true;
         }
         if (!engine.fs().isEmpty()) {
             return shown;

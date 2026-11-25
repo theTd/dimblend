@@ -1,0 +1,39 @@
+{
+	"credit": "Made with Blockbench",
+	"texture_size": [32, 32],
+	"textures": {
+		"0": "dimblend_blocks:block/train_pressured_tube",
+		"1": "dimblend_blocks:block/train_pressured_tube_connected",
+		"particle": "dimblend_blocks:block/train_pressured_tube"
+	},
+	"elements": [
+		{
+			"name": "rim_north",
+			"from": [3, 3, 0],
+			"to": [13, 13, 2],
+			"faces": {
+				"north": {
+					"uv": [11, 11, 16, 16],
+					"texture": "#1",
+					"cullface": "north"
+				},
+				"east": {
+					"uv": [1, 11, 6, 16],
+					"texture": "#0"
+				},
+				"west": {
+					"uv": [1, 11, 6, 16],
+					"texture": "#0"
+				},
+				"up": {
+					"uv": [1, 11, 6, 16],
+					"texture": "#0"
+				},
+				"down": {
+					"uv": [1, 11, 6, 16],
+					"texture": "#0"
+				}
+			}
+		}
+	]
+}

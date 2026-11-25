@@ -64,5 +64,18 @@
 	"tooltip.dimblend_experience.thermolith.mode": "使用 冰/岩漿塊 右鍵設定工作模式",
 	"tooltip.dimblend_experience.thermolith.redstone_stop": "通入訊號停止工作",
 	"message.dimblend_experience.dirty_water_rejected": "太髒了 至少先過濾一下",
-	"pack.dimblend_experience.thermolith_override": "DimBlend 溫石模式貼圖"
+	"pack.dimblend_experience.thermolith_override": "DimBlend 溫石模式貼圖",
+	"dimblend_experience.bogey.survival_styles": "生存可用樣式",
+	"hud.dimblend_experience.item_drain.evaporating": "蒸發中（%1$s×%2$s）",
+	"item.dimblend_experience.supplement.tap_for_brew_barrel": "酒桶專用",
+	"item.dimblend_experience.supplement.filter_core_pocket": "位於背包時 可過濾喝下去的水",
+	"item.dimblend_experience.supplement.filter_core_frame": "或放入淨水器框架 過濾管路的水",
+	"item.dimblend_experience.supplement.filter_frame": "配合濾芯 過濾管路水 兩端需加壓",
+	"item.dimblend_experience.supplement.fan_catalyst": "也可將抓到的生物放入其中展示",
+	"block.dimblend_experience.mob_display_catalyst": "生物展示觸媒",
+	"message.dimblend_experience.steam_engine_exhausting": "蒸汽引擎正在排氣，暫時無法拆卸",
+	"tooltip.dimblend_experience.diesel_engine_piston_damaged": "已損壞 需更換活塞",
+	"tooltip.dimblend_experience.diesel_engine_piston_repaired": "已更換活塞，引擎可重新點火",
+	"tooltip.dimblend_experience.diesel_engine_piston_wrench_denied": "已損壞 需更換活塞（扳手拆不走）",
+	"tooltip.dimblend_experience.nvg.handcrafted": "純手搓 需要定期更換鏡片"
 }

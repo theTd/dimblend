@@ -1,5 +1,6 @@
 package dimblend.compat;
 
+import dev.ryanhcode.sable.companion.SableCompanion;
 import dimblend.DimBlendRegistries;
 import dimblend.worldgen.BandLayout;
 import dimblend.worldgen.RotatingChunkGenerator;
@@ -9,6 +10,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.biome.Biome;
@@ -27,6 +31,16 @@ public final class TwilightBand {
 
     /** {@code TwilightForestRenderInfo.isFoggyAt} treats Y above this as out of the dark-forest canopy. */
     public static final int TF_FOGGY_AT_CEILING_Y = 20;
+
+    /**
+     * Highest block Y still treated as "inside a twilight cave" by {@link #weatherSampleY}.
+     *
+     * <p>The twilight delegate's {@code biome_grid.json} switches every column to
+     * {@code twilightforest:underground} below quart Y {@code -3}; after the {@code +64} lift that
+     * is block Y {@code 60}. 56 leaves a margin so a player standing on a cave floor just under the
+     * grid seam still samples the cave biome instead of the surface one.
+     */
+    public static final int UNDERGROUND_SAMPLE_MAX_Y = 56;
 
     /**
      * Absolute Y for a TF-authored client effect after the rotating-dimension
@@ -51,6 +65,56 @@ public final class TwilightBand {
 
     public static boolean isTwilightPos(LevelAccessor level, BlockPos pos) {
         return isRotating(level) && isTwilightBiome(level.getBiome(pos));
+    }
+
+    /** True for {@code twilightforest:underground}, the safe cave biome under every TF surface band. */
+    public static boolean isTwilightUnderground(Holder<Biome> biome) {
+        return isTwilightBiome(biome)
+                && biome.unwrapKey()
+                        .map(key -> "underground".equals(key.location().getPath()))
+                        .orElse(false);
+    }
+
+    /**
+     * Y at which Twilight Forest's locked-biome weather ({@code TFWeatherRenderer}) must sample
+     * biomes and block light inside {@code dimblend:rotating}.
+     *
+     * <p>TF hardcodes {@code y = 0}. After the {@code +64} lift every {@code (x, 0, z)} column
+     * answers {@code twilightforest:underground} — the biome with no restriction entry — so
+     * {@code isNearLockedBiome} was false for every position and no curse curtain was ever
+     * drawn. Sampling surface bands at the camera's own block Y (never below
+     * {@link #DEFAULT_Y_OFFSET}) puts both the biome lookup and the acid-rain
+     * {@code LevelRenderer#getLightColor} sample in the air the camera is in; inside a
+     * {@code twilightforest:underground} cave the player's own Y is used instead, so a cave under
+     * a twilight band stays as calm as the server {@code Enforcement} path treats it.
+     *
+     * @param viewEntity the entity whose position decides the "inside a TF cave" case (may be null)
+     * @param cameraY    camera Y in the same column; the surface sample follows it
+     */
+    public static int weatherSampleY(Level level, @Nullable Entity viewEntity, double cameraY) {
+        if (viewEntity != null
+                && viewEntity.getBlockY() < UNDERGROUND_SAMPLE_MAX_Y
+                && isTwilightUnderground(level.getBiome(viewEntity.blockPosition()))) {
+            return viewEntity.getBlockY();
+        }
+        return Math.max(Mth.floor(cameraY), DEFAULT_Y_OFFSET);
+    }
+
+    /**
+     * True while Sable carries the player: standing, walking or jumping on a structure
+     * ({@code trackingSubLevel}), riding a seat inside one ({@code vehicleSubLevel}), or lying in
+     * a bed whose position lives in a Sable plot.
+     *
+     * <p>{@code SableCompanion.INSTANCE} is a no-op stub when Sable is not installed, so this call
+     * is safe unconditionally (the same way {@code WarpGateBlock#mayPass} uses it).
+     */
+    public static boolean isOnSable(Player player) {
+        if (SableCompanion.INSTANCE.getTrackingOrVehicleSubLevel(player) != null) {
+            return true;
+        }
+        return player.getSleepingPos()
+                .map(pos -> SableCompanion.INSTANCE.getContaining(player.level(), pos) != null)
+                .orElse(false);
     }
 
     public static boolean isTwilightColumn(LevelAccessor level, int blockX) {

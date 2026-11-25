@@ -1,10 +1,12 @@
 package dimblend.spyglass.client;
 
+import dimblend.api.RegionLanes;
 import dimblend.spyglass.structure.OutlineBox;
 import dimblend.spyglass.structure.SpyglassDistance;
 import dimblend.spyglass.structure.StructureKey;
 import dimblend.spyglass.structure.StructureOutline;
 import java.util.Objects;
+import net.minecraft.util.Mth;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -105,6 +107,24 @@ final class StructureSelection {
             return;
         }
         if (!SpyglassDistance.inRange(selected.distanceTo(playerX, playerZ))) {
+            selected = null;
+        }
+    }
+
+    /**
+     * Drops the selection when the player has left the selected structure's rotating region.
+     *
+     * <p>A rotating region is one lane of the world: after a border crossing the selected
+     * structure belongs to a stretch of track the player cannot reach without the world rotating
+     * under them, and the marker would sit pinned at a world position that no longer holds that
+     * structure. This runs independently of the fog state — a region change is a fact, not an
+     * observation gap — and only in the rotating dimension ({@code bandSize > 0}).
+     */
+    static void pruneOutOfRegion(int bandSize, int playerBlockX) {
+        if (selected == null || bandSize <= 0) {
+            return;
+        }
+        if (!RegionLanes.sameRegion(bandSize, Mth.floor(selected.centerX()), playerBlockX)) {
             selected = null;
         }
     }

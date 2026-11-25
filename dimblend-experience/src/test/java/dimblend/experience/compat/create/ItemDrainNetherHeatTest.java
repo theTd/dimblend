@@ -68,10 +68,10 @@ class ItemDrainNetherHeatTest {
     }
 
     @Test
-    void pipeIntakeNeedsSwitchOnAndNotNether() {
-        // ④ 管道注水：开关开 且 不在下界才放开；下界一律维持原版禁止（与 ③ 的桶右键无关）
+    void pipeIntakeOnlyNeedsTheSwitch() {
+        // ④ 管道注水：只看开关；下界不再维持原版禁止（与 ③ 的桶右键无关）
         assertTrue(ItemDrainNetherHeat.pipeIntakeAllowed(true, false), "主世界 + 开 → 允许");
-        assertFalse(ItemDrainNetherHeat.pipeIntakeAllowed(true, true), "下界 + 开 → 仍禁止");
+        assertTrue(ItemDrainNetherHeat.pipeIntakeAllowed(true, true), "下界 + 开 → 允许（限制已取消）");
         assertFalse(ItemDrainNetherHeat.pipeIntakeAllowed(false, false), "关开关 → 禁止");
         assertFalse(ItemDrainNetherHeat.pipeIntakeAllowed(false, true), "关开关 + 下界 → 禁止");
     }

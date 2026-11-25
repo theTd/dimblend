@@ -2,12 +2,15 @@ package dimblend.experience.compat.jade;
 
 import com.simibubi.create.content.fluids.drain.ItemDrainBlockEntity;
 
+import dimblend.experience.Config;
 import dimblend.experience.DimBlend;
 import dimblend.experience.compat.create.ItemDrainGrowthBoost;
 import dimblend.experience.compat.create.ItemDrainHud;
+import dimblend.experience.compat.create.ItemDrainNetherEvaporation;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.material.Fluids;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.fluids.FluidStack;
@@ -22,8 +25,9 @@ import snownee.jade.api.config.IPluginConfig;
  * 分液池 HUD 的 Jade provider（服务端数据 + 客户端组件双角色）。
  *
  * <p>数据通道：Jade 只在玩家注视目标时按自身节流同步 server data，无全局流量。
- * 服务端写入当前水量（mb，只认水，口径同 {@code ItemDrainIrrigation}）与催熟剩余
- * tick（{@code countdown*10}，未在计时为 -1）；客户端按 Config 副本组装文案
+ * 服务端写入当前水量（mb，只认水，口径同 {@code ItemDrainIrrigation}）、催熟剩余
+ * tick（{@code countdown*10}，未在计时为 -1）以及"是否正在下界蒸发"和覆盖面宽
+ * （{@code 2 * itemDrainCoverageRadius + 1}，默认 7）；客户端按 Config 副本组装文案
  * （{@link ItemDrainHud#hudLines}，与护目镜共用）。</p>
  *
  * <p>UID 同时是 Jade 设置里的开关项（{@code config.jade.plugin_dimblend_experience.item_drain_hud}）。
@@ -37,6 +41,8 @@ public final class ItemDrainJadeProvider implements IServerDataProvider<BlockAcc
             "item_drain_hud");
     private static final String TAG_WATER_MB = "WaterMb";
     private static final String TAG_BOOST_TICKS_LEFT = "BoostTicksLeft";
+    private static final String TAG_EVAPORATING = "Evaporating";
+    private static final String TAG_COVERAGE_DIAMETER = "CoverageDiameter";
 
     private ItemDrainJadeProvider() {
     }
@@ -56,6 +62,19 @@ public final class ItemDrainJadeProvider implements IServerDataProvider<BlockAcc
         data.putInt(TAG_WATER_MB, waterMb);
         int countdown = ((ItemDrainGrowthBoost.HasState) be).dimblend$growthState().countdown;
         data.putInt(TAG_BOOST_TICKS_LEFT, countdown > 0 ? countdown * 10 : -1);
+        boolean evaporating = false;
+        int diameter = 1;
+        if (Config.isLoaded()) {
+            int radius = Config.ITEM_DRAIN_COVERAGE_RADIUS.get();
+            diameter = 2 * radius + 1;
+            Level level = accessor.getLevel();
+            evaporating = ItemDrainHud.shouldShowEvaporating(waterMb,
+                    ItemDrainNetherEvaporation.isNetherBiome(level, be.getBlockPos()),
+                    Config.ITEM_DRAIN_NETHER_EVAPORATION.get(),
+                    Config.ITEM_DRAIN_NETHER_EVAPORATION_RATE_MB_PER_SECOND.get());
+        }
+        data.putBoolean(TAG_EVAPORATING, evaporating);
+        data.putInt(TAG_COVERAGE_DIAMETER, diameter);
     }
 
     @Override
@@ -64,7 +83,12 @@ public final class ItemDrainJadeProvider implements IServerDataProvider<BlockAcc
         if (!data.contains(TAG_WATER_MB)) {
             return;
         }
-        for (var line : ItemDrainHud.hudLines(data.getInt(TAG_WATER_MB), data.getInt(TAG_BOOST_TICKS_LEFT))) {
+        ItemDrainHud.Snapshot snapshot = new ItemDrainHud.Snapshot(
+                data.getInt(TAG_WATER_MB),
+                data.getInt(TAG_BOOST_TICKS_LEFT),
+                data.getBoolean(TAG_EVAPORATING),
+                data.contains(TAG_COVERAGE_DIAMETER) ? data.getInt(TAG_COVERAGE_DIAMETER) : 0);
+        for (var line : ItemDrainHud.hudLines(snapshot)) {
             tooltip.add(line);
         }
     }

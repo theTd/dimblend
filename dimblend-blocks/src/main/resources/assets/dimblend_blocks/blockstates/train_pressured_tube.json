@@ -1,0 +1,116 @@
+{
+	"multipart": [
+		{
+			"when": {
+				"casing": "true"
+			},
+			"apply": {
+				"model": "dimblend_blocks:block/train_pressured_tube/casing"
+			}
+		},
+		{
+			"when": {
+				"casing": "false"
+			},
+			"apply": {
+				"model": "dimblend_blocks:block/train_pressured_tube/core"
+			}
+		},
+		{
+			"when": {
+				"up": "true"
+			},
+			"apply": {
+				"model": "dimblend_blocks:block/train_pressured_tube/arm_up"
+			}
+		},
+		{
+			"when": {
+				"down": "true"
+			},
+			"apply": {
+				"model": "dimblend_blocks:block/train_pressured_tube/arm_down"
+			}
+		},
+		{
+			"when": {
+				"north": "true"
+			},
+			"apply": {
+				"model": "dimblend_blocks:block/train_pressured_tube/arm_north"
+			}
+		},
+		{
+			"when": {
+				"south": "true"
+			},
+			"apply": {
+				"model": "dimblend_blocks:block/train_pressured_tube/arm_south"
+			}
+		},
+		{
+			"when": {
+				"east": "true"
+			},
+			"apply": {
+				"model": "dimblend_blocks:block/train_pressured_tube/arm_east"
+			}
+		},
+		{
+			"when": {
+				"west": "true"
+			},
+			"apply": {
+				"model": "dimblend_blocks:block/train_pressured_tube/arm_west"
+			}
+		},
+		{
+			"when": {
+				"up": "true"
+			},
+			"apply": {
+				"model": "dimblend_blocks:block/train_pressured_tube/rim_up"
+			}
+		},
+		{
+			"when": {
+				"down": "true"
+			},
+			"apply": {
+				"model": "dimblend_blocks:block/train_pressured_tube/rim_down"
+			}
+		},
+		{
+			"when": {
+				"north": "true"
+			},
+			"apply": {
+				"model": "dimblend_blocks:block/train_pressured_tube/rim_north"
+			}
+		},
+		{
+			"when": {
+				"south": "true"
+			},
+			"apply": {
+				"model": "dimblend_blocks:block/train_pressured_tube/rim_south"
+			}
+		},
+		{
+			"when": {
+				"east": "true"
+			},
+			"apply": {
+				"model": "dimblend_blocks:block/train_pressured_tube/rim_east"
+			}
+		},
+		{
+			"when": {
+				"west": "true"
+			},
+			"apply": {
+				"model": "dimblend_blocks:block/train_pressured_tube/rim_west"
+			}
+		}
+	]
+}

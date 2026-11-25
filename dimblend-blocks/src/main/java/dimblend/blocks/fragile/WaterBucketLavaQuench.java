@@ -112,6 +112,23 @@ public final class WaterBucketLavaQuench {
     }
 
     /** 玩家视线命中的岩浆格（与原版 {@code Item#getPlayerPOVHitResult} 完全同口径）；命中纯岩浆液体格时返回，否则 {@code null}。 */
+    /**
+     * 「纯岩浆格」的方块状态口径：流体是岩浆且方块本体是液体方块。
+     *
+     * <p>不给 {@code Level}——调用方自己保证区块已就位（服务器 tick 路径一律
+     * {@code getChunkSource().getChunkNow()}，不许 {@code getChunk(..., false)}）。</p>
+     */
+    public static boolean isPureLavaCell(BlockState state, FluidState fluidState) {
+        if (state == null || fluidState == null) {
+            return false;
+        }
+        if (!fluidState.is(FluidTags.LAVA)) {
+            return false;
+        }
+        return state.liquid();
+    }
+
+    /** 玩家视线命中的岩浆格（与原版 {@code Item#getPlayerPOVHitResult} 完全同口径）；命中纯岩浆液体格时返回，否则 {@code null}。 */
     @Nullable
     public static BlockHitResult findRaytracedLavaHit(Level level, Player player) {
         Vec3 from = player.getEyePosition();
@@ -146,6 +163,24 @@ public final class WaterBucketLavaQuench {
                 serverLevel.gameEvent(player, GameEvent.FLUID_PLACE, pos);
             }
         }
+        return true;
+    }
+
+    /**
+     * 消防喷头（createfirefightingadd）水雾命中岩浆时的「按蓝冰口径冷却」入口：
+     * 与玩家手持蓝冰右键完全同一套 {@link #executeLavaQuench}（源头 3x3x3 固化 /
+     * 追溯上游 / 16 格外烟雾截断），只是音效粒子按蓝冰版本播放。
+     *
+     * @return 命中格确实被按「蓝冰」效果处理过（{@code SOLIDIFIED}）时为 {@code true}
+     */
+    public static boolean quenchAsBlueIce(ServerLevel level, BlockPos hitPos) {
+        if (!isPureLavaCell(level, hitPos)) {
+            return false;
+        }
+        if (executeLavaQuench(level, hitPos) != QuenchOutcome.SOLIDIFIED) {
+            return false;
+        }
+        playBlueIceQuenchEffects(level, null, hitPos);
         return true;
     }
 
