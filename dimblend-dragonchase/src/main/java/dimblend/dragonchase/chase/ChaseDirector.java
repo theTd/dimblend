@@ -1,5 +1,6 @@
 package dimblend.dragonchase.chase;
 
+import dev.ryanhcode.sable.companion.SableCompanion;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dimblend.DimBlendRegistries;
 import dimblend.api.BandTrainMarker;
@@ -356,6 +357,12 @@ public final class ChaseDirector {
      * §3.3: while a nest exists, every force-loaded sub-level below 2 m/s is topped up to 2 m/s —
      * except idle station-depot spares (assumption Q1) and consists the ender brake holds (§2.3).
      *
+     * <p>The floor is only ever applied while the whole crew is aboard a Sable sub-level
+     * ({@link #allPlayersOnSable}): once a player is flying after the dragon, has fallen off a car
+     * and cannot get back on yet, is waiting to respawn, or stands in another dimension, the train
+     * must not be dragged forward underneath them. A skipped tick marks no car as governed or
+     * actively pushed, so the parking brake behaves exactly as it does with no nest at all.
+     *
      * <p>In ACTIVE the nest is skipped here: {@link #tickChase} already raises it to its keep-away
      * target, and two deltas measured against the same stale velocity would overshoot it. WAITING
      * skips it too, so a queued-to-parked nest stays parked where it was built until the train
@@ -363,7 +370,7 @@ public final class ChaseDirector {
      */
     private static void tickSpeedFloor(ServerLevel level, List<ChaseTrackScan.Car> all, ServerSubLevel nest,
             DragonChaseSavedData.Phase phase) {
-        if (nest == null || !DragonChaseTuning.speedFloorEnabled()) {
+        if (nest == null || !DragonChaseTuning.speedFloorEnabled() || !allPlayersOnSable(level)) {
             return;
         }
         UUID nestId = nest.getUniqueId();
@@ -387,6 +394,37 @@ public final class ChaseDirector {
                 MinimumSpeedState.markActivelyPushing(level, car.id());
             }
         }
+    }
+
+    /**
+     * §3.3: the floor is for a crew that is riding the train, so it is offered only while every
+     * non-spectator player on the server stands or rides on a Sable sub-level
+     * ({@link SableCompanion#INSTANCE}). Spectators never count in either direction: they cannot
+     * ride and they must not be able to hold the floor off from the outside either.
+     *
+     * <p>A player who is dead (waiting to respawn) is not "on" a sub-level even if the corpse's
+     * position still resolves one, and a player in another dimension has no sub-level here at all —
+     * both fail this check, which is the point: the train waits instead of driving away from them.
+     *
+     * <p>Reads the server-wide player list, not {@code level.players()}: the gate asks about the
+     * whole crew, so a player who fell out of the rotating dimension keeps the floor off.
+     */
+    private static boolean allPlayersOnSable(ServerLevel level) {
+        List<ServerPlayer> players = level.getServer() != null
+                ? level.getServer().getPlayerList().getPlayers()
+                : level.players();
+        int eligiblePlayers = 0;
+        int playersOnSable = 0;
+        for (ServerPlayer player : players) {
+            if (player.isSpectator()) {
+                continue;
+            }
+            eligiblePlayers++;
+            if (player.isAlive() && SableCompanion.INSTANCE.getTrackingOrVehicleSubLevel(player) != null) {
+                playersOnSable++;
+            }
+        }
+        return ChaseMath.speedFloorAllowed(eligiblePlayers, playersOnSable);
     }
 
     // ---------------------------------------------------------------- chase (§3.3, §3.4, §3.6)
@@ -665,6 +703,10 @@ public final class ChaseDirector {
      * Ends the chase BGM: the clients fade the audible track out over 16 s and then release their
      * MUSIC block. Idempotent — every chase-ending path calls it, and several of them run for the
      * same chase (e.g. {@code discardSilently} removes the dragon before {@code forgetChase}).
+     *
+     * <p>A chase that already played its {@link ChaseMusicPhase#PHASE_END} epilogue is
+     * {@code IDLE} here, so {@code wasAudible} is false and this sends nothing: the 200-tick corpse
+     * removal and the later warp-gate {@code abandonChase} must never cut the epilogue short.
      */
     private static void endChaseMusic(ServerLevel level, DragonChaseSavedData data) {
         boolean wasAudible = data.musicPhase != ChaseMusicPhase.IDLE;
@@ -673,6 +715,31 @@ public final class ChaseDirector {
             data.setDirty();
             ChaseMusicStatePayload.broadcast(level, ChaseMusicPhase.IDLE, -1, false);
         }
+    }
+
+    /**
+     * The victory epilogue: one non-looping track, the same author as this chase's Phase A track
+     * ({@link ChaseMusicMath#phaseEndTrack}), broadcast exactly once at the killing blow.
+     *
+     * <p>{@code musicPhase} is deliberately set to {@link ChaseMusicPhase#IDLE} <b>before</b> the
+     * broadcast, and {@code PHASE_END} is never persisted. All four boundaries then hold by
+     * construction:
+     * <ol>
+     *   <li>the 200-tick death animation's {@code onChaseDragonRemoved -> endChaseMusic} sees
+     *       {@code IDLE} and sends nothing, so the epilogue is not cut off;</li>
+     *   <li>the nest reaching the warp gate later calls {@code abandonChase -> endChaseMusic}, which
+     *       is equally silent;</li>
+     *   <li>a reconnect or a dimension change goes through {@code syncMusic}, which reads
+     *       {@code IDLE} and never replays the one-shot track;</li>
+     *   <li>a lost chase ({@code failChase}) or a mid-fight {@code /kill} still leaves
+     *       {@code phase_A/B} in {@code musicPhase} and takes the plain 16 s fade instead.</li>
+     * </ol>
+     */
+    private static void playPhaseEndMusic(ServerLevel level, DragonChaseSavedData data) {
+        int track = ChaseMusicMath.phaseEndTrack(data.phaseATrack);
+        data.musicPhase = ChaseMusicPhase.IDLE;
+        data.setDirty();
+        ChaseMusicStatePayload.broadcast(level, ChaseMusicPhase.PHASE_END, track, true);
     }
 
     /**
@@ -767,8 +834,9 @@ public final class ChaseDirector {
         DragonCarriages.retireHealing(level);
         ServerSubLevel nest = ChaseTrackScan.byId(level, data.nestId);
         data.phase = DragonChaseSavedData.Phase.WON;
-        // The 16 s fade starts at the killing blow, not when the 200-tick corpse disappears.
-        endChaseMusic(level, data);
+        // BGM: the victory epilogue starts at the killing blow, not when the 200-tick corpse
+        // disappears. It replaces "fade the fight track out" rather than following it.
+        playPhaseEndMusic(level, data);
         if (nest != null) {
             double nestX = centerX(nest);
             double nestZ = centerZ(nest);
@@ -924,6 +992,10 @@ public final class ChaseDirector {
         }
         clearMarker(data);
         endChaseMusic(level, data);
+        // A debug reset must also silence a one-shot Phase End already playing: the epilogue keeps
+        // musicPhase at IDLE, so endChaseMusic above is silent by design and this explicit
+        // broadcast is the only way to stop it.
+        ChaseMusicStatePayload.broadcast(level, ChaseMusicPhase.IDLE, -1, false);
         data.forgetEverything();
         ChaseSpawnRule.publish(false, 0.0D, 0.0D);
     }

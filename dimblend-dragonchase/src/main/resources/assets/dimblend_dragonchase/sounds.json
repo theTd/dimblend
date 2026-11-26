@@ -62,5 +62,37 @@
         "stream": true
       }
     ]
+  },
+  "music.phase_end_1": {
+    "sounds": [
+      {
+        "name": "dimblend_dragonchase:music/phase_end_1",
+        "stream": true
+      }
+    ]
+  },
+  "music.phase_end_2": {
+    "sounds": [
+      {
+        "name": "dimblend_dragonchase:music/phase_end_2",
+        "stream": true
+      }
+    ]
+  },
+  "music.phase_end_3": {
+    "sounds": [
+      {
+        "name": "dimblend_dragonchase:music/phase_end_3",
+        "stream": true
+      }
+    ]
+  },
+  "music.phase_end_4": {
+    "sounds": [
+      {
+        "name": "dimblend_dragonchase:music/phase_end_4",
+        "stream": true
+      }
+    ]
   }
 }

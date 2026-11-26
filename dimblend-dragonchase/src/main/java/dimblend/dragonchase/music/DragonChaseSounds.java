@@ -9,8 +9,9 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 /**
- * The eight chase BGM tracks as individual sound events
- * ({@code dimblend_dragonchase:music.phase_a_1..4} / {@code music.phase_b_1..4}).
+ * The twelve chase BGM tracks as individual sound events
+ * ({@code dimblend_dragonchase:music.phase_a_1..4} / {@code music.phase_b_1..4} /
+ * {@code music.phase_end_1..4}).
  *
  * <p>One event per file on purpose: the server rolls the track index once and every player hears
  * that same track. A single event holding four weighted sounds would let each client pick its own
@@ -20,7 +21,8 @@ import net.neoforged.neoforge.registries.DeferredRegister;
  * <p>The matching {@code assets/dimblend_dragonchase/sounds.json} marks every entry
  * {@code "stream": true}: the tracks are minutes long, so they must not be decoded into a complete
  * PCM buffer up front. Streaming plus the client's {@code looping = true} gives a seamless
- * single-track loop.
+ * single-track loop; the Phase End table is the exception, its client instance runs
+ * {@code looping = false} and plays its file exactly once.
  */
 public final class DragonChaseSounds {
     private static final DeferredRegister<SoundEvent> SOUND_EVENTS =
@@ -38,7 +40,17 @@ public final class DragonChaseSounds {
             sound("music.phase_b_3"),
             sound("music.phase_b_4"));
 
-    /** Registers the eight sound events; called once from the mod constructor. */
+    /**
+     * The victory epilogue, one track per Phase A track and the same author in that slot
+     * ({@link ChaseMusicMath#phaseEndTrack}).
+     */
+    private static final List<DeferredHolder<SoundEvent, SoundEvent>> PHASE_END = List.of(
+            sound("music.phase_end_1"),
+            sound("music.phase_end_2"),
+            sound("music.phase_end_3"),
+            sound("music.phase_end_4"));
+
+    /** Registers the twelve sound events; called once from the mod constructor. */
     public static void register(IEventBus modEventBus) {
         SOUND_EVENTS.register(modEventBus);
     }
@@ -53,15 +65,15 @@ public final class DragonChaseSounds {
         List<DeferredHolder<SoundEvent, SoundEvent>> table = switch (phase) {
             case PHASE_A -> PHASE_A;
             case PHASE_B -> PHASE_B;
+            case PHASE_END -> PHASE_END;
             case IDLE -> null;
         };
         return table == null ? null : table.get(ChaseMusicMath.clampTrack(track)).get();
     }
 
-    /** The registry path of one track, e.g. {@code music.phase_a_3} (used by the sound-event test and logs). */
+    /** The registry path of one track, e.g. {@code music.phase_a_3} (delegates to {@link ChaseMusicMath#trackPath}). */
     public static String trackPath(ChaseMusicPhase phase, int track) {
-        String prefix = phase == ChaseMusicPhase.PHASE_B ? "music.phase_b_" : "music.phase_a_";
-        return prefix + (ChaseMusicMath.clampTrack(track) + 1);
+        return ChaseMusicMath.trackPath(phase, track);
     }
 
     private static DeferredHolder<SoundEvent, SoundEvent> sound(String path) {

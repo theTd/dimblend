@@ -49,11 +49,12 @@ public final class CarRules {
     /**
      * The fall-away launch speed, split into 45° components.
      *
-     * <p>Eight metres per second total is the same order as a train at speed and lifts the car clear
-     * of the deck within the second before it explodes; the requirement asks for 45° upward toward a
-     * random ±Z side with the X velocity kept.
+     * <p>Sixteen metres per second total — double the original eight, the side launch distance and
+     * height having been doubled twice — lifts the car well clear of the deck inside the second of
+     * flight before it explodes; the requirement asks for 45° upward toward a random ±Z side with the
+     * X velocity kept.
      */
-    public static final double LAUNCH_SPEED_MPS = 8.0;
+    public static final double LAUNCH_SPEED_MPS = 16.0;
 
     /** No removal in progress. */
     public static final int NO_PHASE = 0;

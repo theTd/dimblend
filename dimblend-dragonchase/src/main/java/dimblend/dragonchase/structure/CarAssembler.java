@@ -8,6 +8,7 @@ import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dimblend.dragonchase.DimBlendDragonChase;
 import dimblend.dragonchase.block.DragonChaseBlocks;
+import dimblend.dragonchase.carriage.CarCrystalExplosion;
 import dimblend.dragonchase.carriage.CarRegistry;
 import dimblend.dragonchase.carriage.DragonCarriages;
 import java.util.ArrayList;
@@ -232,6 +233,17 @@ public final class CarAssembler {
      * <p><b>No bottom plate</b> ({@code EndCrystal#setShowBottom(false)}) — the requirement draws
      * bare crystals on the deck.
      *
+     * <p><b>One cell higher than the campfire.</b> The crystal rides the cell two above the pedestal
+     * base (campfire still in the base cell), so its bottom edge clears the pedestal instead of
+     * clipping into it. The layout slot stores that height ({@code cell.dy() + 2}) and every reader
+     * of a slot — {@code CarTicker#glueCrystals}, {@code CrystalMountsSync}, {@code
+     * ClientCrystalMounts} — projects the slot, so they all follow without a second constant.
+     *
+     * <p><b>Tagged, so an explosion can tell it from a player-placed crystal.</b> The persisted
+     * {@link CarCrystalExplosion#CRYSTAL_TAG} tag survives a save, and {@code
+     * CarRegistry#ownsCrystal} covers crystals spawned before the tag existed. Both only ever turn
+     * this crystal's explosion into knockback ({@link CarCrystalExplosion}).
+     *
      * <p><b>Why they are tracked by UUID.</b> Sable does <i>not</i> carry an ordinary entity with a
      * sub-level on the server: the stick-to-sub-level mechanism is fed by
      * {@code EntityStickExtension#sable$setPlotPosition}, whose only callers are the client packet
@@ -256,17 +268,18 @@ public final class CarAssembler {
             BlockPos base = plotPos(car, cell);
             level.setBlock(base, DragonChaseBlocks.OBSIDIAN_SOUL_CAMPFIRE.get().defaultBlockState(),
                     Block.UPDATE_ALL);
-            BlockPos plotPos = base.above();
+            BlockPos plotPos = base.above(2);
             Vec3 world = CarMotion.worldOf(car, plotPos);
             EndCrystal crystal = new EndCrystal(level, world.x, world.y, world.z);
             crystal.setShowBottom(false);
+            crystal.addTag(CarCrystalExplosion.CRYSTAL_TAG);
             if (!level.addFreshEntity(crystal)) {
                 DimBlendDragonChase.LOGGER.warn("Crystal car {} could not add a crystal at {}", car.getUniqueId(), plotPos);
                 continue;
             }
             if (record != null) {
                 record.crystals.add(new CarRegistry.Crystal(crystal.getUUID(),
-                        cell.dx(), cell.dy() + 1, cell.dz()));
+                        cell.dx(), cell.dy() + 2, cell.dz()));
             }
         }
         PlotRelight.relight(level, car);

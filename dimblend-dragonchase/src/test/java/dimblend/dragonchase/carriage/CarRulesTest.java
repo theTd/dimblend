@@ -38,11 +38,17 @@ class CarRulesTest {
 
     @Test
     void theLaunchKeepsXAndSplitsTheRestAtFortyFiveDegrees() {
+        assertEquals(16.0, CarRules.LAUNCH_SPEED_MPS,
+                "the side launch was doubled twice: 8 m/s -> 16 m/s");
         double[] velocity = CarRules.launchVelocity(3.5, 1);
         assertEquals(3.5, velocity[0], "the car keeps its forward speed");
         double component = CarRules.LAUNCH_SPEED_MPS * Math.sin(Math.PI / 4.0);
         assertEquals(component, velocity[1], 1.0E-9);
         assertEquals(component, velocity[2], 1.0E-9);
+        assertEquals(16.0 * Math.sin(Math.PI / 4.0), velocity[1], 1.0E-9,
+                "with 16 m/s the 45 degree component is 8*sqrt(2) m/s");
+        assertEquals(16.0 * Math.sin(Math.PI / 4.0), velocity[2], 1.0E-9,
+                "the Z component carries the same 45 degree amount");
         assertEquals(Math.abs(velocity[1]), Math.abs(velocity[2]), 1.0E-9,
                 "45 degrees: the two components are equal");
     }

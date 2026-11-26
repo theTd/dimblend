@@ -381,6 +381,6 @@
 	"message.dimblend_experience.steam_engine_exhausting": "蒸汽引擎正在排气，暂时无法拆卸",
 	"tooltip.dimblend_experience.diesel_engine_piston_damaged": "已损坏 需更换活塞",
 	"tooltip.dimblend_experience.diesel_engine_piston_repaired": "已更换活塞，引擎可重新点火",
-	"tooltip.dimblend_experience.diesel_engine_piston_wrench_denied": "已损坏 需更换活塞（扳手拆不走）",
+	"tooltip.dimblend_experience.diesel_engine_piston_wrench_denied": "坏掉了 要先修好",
 	"tooltip.dimblend_experience.nvg.handcrafted": "纯手搓 需要定期更换镜片"
 }

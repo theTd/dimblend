@@ -381,6 +381,6 @@
   "message.dimblend_experience.steam_engine_exhausting": "Steam engine is exhausting and cannot be dismantled yet",
   "tooltip.dimblend_experience.diesel_engine_piston_damaged": "Damaged – replace the engine piston",
   "tooltip.dimblend_experience.diesel_engine_piston_repaired": "Piston replaced – the engine can be relit",
-  "tooltip.dimblend_experience.diesel_engine_piston_wrench_denied": "Damaged – replace the engine piston (wrench removal blocked)",
+  "tooltip.dimblend_experience.diesel_engine_piston_wrench_denied": "Broken — repair it first",
   "tooltip.dimblend_experience.nvg.handcrafted": "Handcrafted - requires periodic lens replacement"
 }

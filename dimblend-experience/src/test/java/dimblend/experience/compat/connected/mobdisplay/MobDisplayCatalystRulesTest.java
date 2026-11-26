@@ -120,7 +120,11 @@ class MobDisplayCatalystRulesTest {
     // ---- 自转 ---------------------------------------------------------------
 
     @Test
-    void rotationWrapsEveryTwoPointFiveSeconds() {
+    void rotationWrapsEveryNineSeconds() {
+        // 0.04°/ms = 40°/s -> 9 秒一圈（旧注释误写成"≈ 2.5 秒一圈"，这里把真实数值钉死）
+        assertEquals(0.04D, MobDisplayCatalystRules.DEGREES_PER_MILLISECOND, 1.0e-12D);
+        assertEquals(9000.0D, 360.0D / MobDisplayCatalystRules.DEGREES_PER_MILLISECOND, 1.0e-6D);
+
         assertEquals(0.0f, MobDisplayCatalystRules.rotationDegrees(0L), EPS);
         assertEquals(1.0f, MobDisplayCatalystRules.rotationDegrees(25L), EPS);
         assertEquals(90.0f, MobDisplayCatalystRules.rotationDegrees(2250L), EPS);

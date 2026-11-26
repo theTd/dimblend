@@ -25,7 +25,9 @@ import net.minecraft.sounds.SoundSource;
  *       {@link ChaseMusicMath#SILENT_START_VOLUME}, so the eager zero-volume skip is not reached
  *       and the fade-in runs from the very first tick.</li>
  *   <li><b>{@code looping}</b> — with {@code "stream": true} the engine feeds a
- *       {@code LoopingAudioStream}, so the same file restarts seamlessly at its end.</li>
+ *       {@code LoopingAudioStream} when the instance loops, so the same file restarts seamlessly
+ *       at its end. The Phase End track passes {@code false} instead: the engine then feeds a
+ *       {@code FiniteAudioStream} and the file plays exactly once.</li>
  * </ul>
  *
  * <p>Volume is advanced in {@link #tick()}, which the sound engine calls once per client tick and
@@ -44,12 +46,15 @@ public final class ChaseMusicSoundInstance extends AbstractTickableSoundInstance
      * @param startVolume  the volume of the first tick
      * @param targetVolume the volume the linear fade ends on; {@code 0} stops the instance at the end
      * @param ticks        fade length in client ticks; {@code 0} applies the target immediately
+     * @param looping      true for the fight tracks (seamless restart at the end of the file),
+     *                     false for the one-shot Phase End track
      */
-    public ChaseMusicSoundInstance(SoundEvent sound, float startVolume, float targetVolume, int ticks) {
+    public ChaseMusicSoundInstance(SoundEvent sound, float startVolume, float targetVolume, int ticks,
+            boolean looping) {
         super(sound, SoundSource.RECORDS, SoundInstance.createUnseededRandom());
         this.volume = Math.max(0.0F, Math.min(1.0F, startVolume));
         this.pitch = 1.0F;
-        this.looping = true;
+        this.looping = looping;
         this.relative = true;
         this.attenuation = SoundInstance.Attenuation.NONE;
         this.delay = 0;

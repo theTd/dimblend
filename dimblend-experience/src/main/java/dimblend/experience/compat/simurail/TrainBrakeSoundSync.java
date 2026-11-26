@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
+import dimblend.experience.compat.sable.SableWorldPosition;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -20,8 +21,12 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
  * {@code start = false} 瞬停。</p>
  *
  * <p><b>去重</b>：整列施闸时多架同 tick 各发一次「同一张车架表」，所以同维度、同开始/停止、
- * 同坐标集合的包在 {@link #DUPLICATE_WINDOW_TICKS} 内只发一次。按<b>坐标集合</b>而不是
- * 「沿位置」去重，是为了不把tick内相邻的另一列车误吞掉（集合不同即视为不同事件）。</p>
+ * 同坐标集合、<b>同音调</b>的包在 {@link #DUPLICATE_WINDOW_TICKS} 内只发一次。按<b>坐标集合</b>
+ * 而不是「沿位置」去重，是为了不把tick内相邻的另一列车误吞掉（集合不同即视为不同事件）。</p>
+ *
+ * <p><b>音调必须参与签名</b>（2026-11-27 Slice 10）：列车正轻刹（{@code pitch = 1.0}）时穿进
+ * 末影龙龙息，同一 tick 内车架会立刻改发 {@code pitch = 0.5} 的急刹开始包；若签名里没有音调，
+ * 它会被 2 tick 去重窗当成「同一张车架表的重复」直接吞掉，客户端就一直用 1.0 音调鸣响。</p>
  */
 public final class TrainBrakeSoundSync {
 
@@ -30,7 +35,8 @@ public final class TrainBrakeSoundSync {
     /** 同集合包的合并窗（tick）。 */
     private static final long DUPLICATE_WINDOW_TICKS = 2L;
 
-    private record Signature(ResourceLocation dimension, boolean start, int positionsHash) {
+    /** 去重签名。{@code pitchBits} = {@code Float.floatToIntBits(pitch)}，见类注释。 */
+    record Signature(ResourceLocation dimension, boolean start, int positionsHash, int pitchBits) {
     }
 
     private static Signature lastSignature;
@@ -64,7 +70,7 @@ public final class TrainBrakeSoundSync {
         List<BlockPos> positions = sortedCopy(plotPositions);
         ResourceLocation dimension = level.dimension().location();
         long now = level.getGameTime();
-        Signature signature = new Signature(dimension, start, positions.hashCode());
+        Signature signature = signatureOf(dimension, start, positions, pitch);
         synchronized (TrainBrakeSoundSync.class) {
             if (signature.equals(lastSignature) && now - lastSignatureTick <= DUPLICATE_WINDOW_TICKS) {
                 return;
@@ -78,11 +84,28 @@ public final class TrainBrakeSoundSync {
             if (player.isSpectator()) {
                 continue;
             }
-            if (player.position().distanceToSqr(edgeWorldPos) > PLAYER_RADIUS * PLAYER_RADIUS) {
+            // 玩家坐在 Sable 座椅上时 position() 是 plot 坐标（~1.6×10^7），直接与边沿世界坐标
+            // 比距离会恒超 256 格，把全部持续刹车包丢掉。必须先投影到世界坐标再量。
+            if (SableWorldPosition.project(level, player.position()).distanceToSqr(edgeWorldPos)
+                    > PLAYER_RADIUS * PLAYER_RADIUS) {
                 continue;
             }
             PacketDistributor.sendToPlayer(player, payload);
         }
+    }
+
+    /**
+     * 去重签名（纯函数，单测钉住「音调参与去重」与「坐标集合顺序无关」两条不变量）。
+     *
+     * <p>内部按 {@link #sortedCopy} 排序后取 {@code List#hashCode()}，所以同一张车架表从任何
+     * 一架触发、以任何顺序传入都得到同一个签名。</p>
+     *
+     * @param pitch 本包的音调；停止包传 {@code 1.0}（{@code sendStop} 亦然）
+     */
+    static Signature signatureOf(ResourceLocation dimension, boolean start, List<BlockPos> positions,
+                                 float pitch) {
+        return new Signature(dimension, start, sortedCopy(positions).hashCode(),
+                Float.floatToIntBits(pitch));
     }
 
     /** 稳定排序：同一张车架表从任何一架触发都得到同一个 hashCode（去重与网络字节都稳定）。 */

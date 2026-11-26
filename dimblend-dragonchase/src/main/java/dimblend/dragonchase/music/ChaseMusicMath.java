@@ -9,7 +9,7 @@ package dimblend.dragonchase.music;
  * sounds, and a fade measured in milliseconds would finish unnoticed in the background.
  */
 public final class ChaseMusicMath {
-    /** Phase A/Phase B each have four tracks on disk ({@code music.phase_a_1..4}). */
+    /** Each phase has four tracks on disk ({@code music.phase_a_1..4} / {@code phase_b_1..4} / {@code phase_end_1..4}). */
     public static final int TRACK_COUNT = 4;
 
     /**
@@ -50,6 +50,37 @@ public final class ChaseMusicMath {
     /** A track index from the server clamped into the four on-disk tracks. */
     public static int clampTrack(int track) {
         return Math.max(0, Math.min(TRACK_COUNT - 1, track));
+    }
+
+    /**
+     * The {@code music.phase_end_*} track that belongs to a Phase A track index.
+     *
+     * <p>The epilogue reuses the fight's author, one to one (index {@code 0..3} of
+     * {@code phase_end_1..4} matches index {@code 0..3} of {@code phase_a_1..4}): index {@code n}
+     * of Phase A and index {@code n} of Phase End are the same composer, so a player who heard the
+     * Phase A track hears its author's ending piece. No pitch or offset, just the same clamped
+     * index ({@link #clampTrack}), which also makes a stale {@code -1} fall back to track 0.
+     */
+    public static int phaseEndTrack(int phaseATrack) {
+        return clampTrack(phaseATrack);
+    }
+
+    /**
+     * The sound-event path of one track, e.g. {@code music.phase_a_3} or {@code music.phase_end_1}.
+     *
+     * <p>Lives here (zero Minecraft / registry imports) so pure unit tests can pin the event-name
+     * mapping without triggering {@code BuiltInRegistries} bootstrap via {@link DragonChaseSounds}.
+     */
+    public static String trackPath(ChaseMusicPhase phase, int track) {
+        String prefix = switch (phase) {
+            case PHASE_A -> "music.phase_a_";
+            case PHASE_B -> "music.phase_b_";
+            case PHASE_END -> "music.phase_end_";
+            // IDLE owns no table; keeping the Phase A prefix preserves the pre-existing fallback
+            // for a phase that has no track at all.
+            case IDLE -> "music.phase_a_";
+        };
+        return prefix + (clampTrack(track) + 1);
     }
 
     /**

@@ -7,7 +7,11 @@ import com.jesz.createdieselgenerators.content.diesel_engine.modular.ModularDies
 import com.jesz.createdieselgenerators.content.diesel_engine.modular.ModularDieselEngineBlockEntity;
 import com.jesz.createdieselgenerators.content.diesel_engine.normal.DieselEngineBlock;
 import com.jesz.createdieselgenerators.content.diesel_engine.normal.DieselEngineBlockEntity;
+import com.simibubi.create.AllItems;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -25,6 +29,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.common.Tags;
 
 import dimblend.experience.Config;
 
@@ -41,11 +46,17 @@ import dimblend.experience.Config;
  * 右键任意部件都会落到 controller（mixin 里按 {@code IEngine} 统一处理，
  * 巨型机的 controller 语义由 {@code ModularDieselEngineBlockEntity}-侧的同族实现保证）。</p>
  *
- * <p><b>防反拆（2026-11-25 口径）</b>：损坏的机器不允许用扳手拆走再重放来"洗掉"损坏——
- * 扳手拆除走 {@code IWrenchable#onSneakWrenched}，其内部会 post 可取消的
- * {@code BlockEvent.BreakEvent}，{@link CdgEngineDamageEvents} 在那里取消并提示。
- * 镐子正常挖是可以的（掉落物会带上 {@link #TAG_PISTON_DAMAGED} 自定义数据，
- * 放回去仍是坏的——见 {@code CdgPistonDamageDropMixin} / {@code CdgPistonDamageRestoreMixin}）。</p>
+ * <p><b>防反拆（2026-11-27 口径）</b>：损坏的机器不允许用扳手拆走再重放来"洗掉"损坏——
+ * 潜行扳手拆除走 {@code IWrenchable#onSneakWrenched}，其内部会 post 可取消的
+ * {@code BlockEvent.BreakEvent}，{@link CdgEngineDamageEvents} 在那里取消并提示；
+ * 非潜行扳手右键在 {@code useItemOn} 层就被挡下（见 {@code CdgEnginePistonRepairMixin}）。
+ * 两处都用 {@link #WRENCH_DENIED_KEY}（"坏掉了 要先修好"）。</p>
+ *
+ * <p><b>破坏后的掉落（2026-11-27 口径）</b>：用扳手以外的任何方式破坏（镐子/手/钻头/
+ * 爆炸/{@code level.destroyBlock}）都只掉 {@link #DAMAGED_SCRAP_COUNT} 张黄铜板，
+ * 机器本体不进背包——见 {@code CdgPistonDamageDropMixin} 覆写的
+ * {@code getDrops}（原版所有掉落路径都汇到那儿）。{@link #TAG_PISTON_DAMAGED} /
+ * {@link #tagDamagedDrop} / {@link #restoreOnPlace} 只为改动前存档里已经带标记的引擎物品保留。</p>
  *
  * <p>本类是普通 helper（非 mixin 包），mixin 只做转发。</p>
  */
@@ -65,6 +76,86 @@ public final class CdgEngineDamage {
 
     /** 修复成功时的动作条文案。 */
     public static final String REPAIRED_KEY = "tooltip.dimblend_experience.diesel_engine_piston_repaired";
+
+    /** 损坏机器被"非扳手"方式破坏后掉落的黄铜板数量（2026-11-27 口径：2）。 */
+    public static final int DAMAGED_SCRAP_COUNT = 2;
+
+    /** 损坏机器右键时该做什么（纯逻辑，零 Minecraft 依赖，单测直接覆盖）。 */
+    public enum RightClickAction {
+        /** 机器没坏：完全不干预，交给原版 {@code useItemOn}（升级件/扳手照常）。 */
+        IGNORE,
+        /** 手里是活塞：走换活塞修复。 */
+        REPAIR,
+        /** 手里是扳手（普通或潜行右键）：挡下，提示"坏掉了 要先修好"。 */
+        DENY_WRENCH,
+        /** 手里是别的物品：提示"已损坏 需更换活塞"。 */
+        DENY_OTHER
+    }
+
+    /**
+     * 损坏机器的右键路由：活塞 → 修复；扳手 → 挡下（提示"坏掉了 要先修好"）；
+     * 其它物品 → 挡下（提示"已损坏 需更换活塞"）；没坏 → 不干预。
+     *
+     * <p>活塞优先于扳手：手里同时拿着两样时以"能修"为准，避免挡掉唯一有用的操作。</p>
+     */
+    public static RightClickAction decideRightClick(boolean damaged, boolean holdingPiston, boolean holdingWrench) {
+        if (!damaged) {
+            return RightClickAction.IGNORE;
+        }
+        if (holdingPiston) {
+            return RightClickAction.REPAIR;
+        }
+        if (holdingWrench) {
+            return RightClickAction.DENY_WRENCH;
+        }
+        return RightClickAction.DENY_OTHER;
+    }
+
+    /**
+     * 手里拿的是不是扳手：Create 的扳手物品本体，或任何落在 {@code c:tools/wrench} 的物品
+     * （附属模组的扳手也得挡住，否则换个扳手就能把坏机器拆走洗掉损坏）。
+     */
+    public static boolean isWrench(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return false;
+        }
+        return stack.is(AllItems.WRENCH.get()) || stack.is(Tags.Items.TOOLS_WRENCH);
+    }
+
+    /**
+     * 损坏机器被破坏后的掉落表：{@link #DAMAGED_SCRAP_COUNT} 张黄铜板。
+     *
+     * <p><b>必须每次新建可变 {@link ArrayList}</b>：{@code getDrops} 的部分调用方
+     * （如战利品/掉落处理的 {@code removeIf}、{@code forEach} 之外的改写）会就地改这个列表，
+     * 返回不可变列表会直接抛 {@code UnsupportedOperationException}。
+     */
+    public static List<ItemStack> damagedScrapDrops() {
+        List<ItemStack> drops = new ArrayList<>(1);
+        drops.add(new ItemStack(AllItems.BRASS_SHEET.get(), DAMAGED_SCRAP_COUNT));
+        return drops;
+    }
+
+    /**
+     * 掉落时判"这台机器是不是坏的"（{@code getDrops} 覆写用）。
+     *
+     * <p>组合式（{@code ModularDieselEngineBlockEntity}）的损坏态记在 controller 上，非 controller
+     * 部件被拆时自己的附件是干净的，必须再看一层 {@code getControllerBE()}；普通机与巨型机各格
+     * 自带 BE，只看自己。功能开关（{@code Config.DIESEL_ENGINE_OVERLOAD}）走 {@link #isDamaged}
+     * 同一口径——开关关掉时旧存档里的残留损坏位不掉黄铜板。</p>
+     */
+    public static boolean isDamagedForDrop(BlockEntity be) {
+        if (!(be instanceof IEngine engine)) {
+            return false;
+        }
+        if (isDamaged(engine)) {
+            return true;
+        }
+        if (be instanceof ModularDieselEngineBlockEntity modular && !modular.isController()) {
+            ModularDieselEngineBlockEntity controller = modular.getControllerBE();
+            return controller != null && isDamaged(controller);
+        }
+        return false;
+    }
 
     /** 损坏态黑烟散布 delta（2026-11-25 口径：0.15）。 */
     private static final double SMOKE_DELTA = 0.15;

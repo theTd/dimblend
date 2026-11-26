@@ -18,6 +18,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * 生物展示催化剂的方块实体：存整只 {@code creatorsword:capture_box}（外壳与其内的生物数据都在里面），
@@ -31,6 +32,18 @@ import net.minecraft.world.level.block.state.BlockState;
  * <p><b>客户端实体只重建一次</b>：每次 {@code clientTick} 比较盒子内容，变了才重建（
  * {@code EntityType.byString → create(level) → load(nbt)}），并复位 {@code hurtTime/deathTime}、
  * 清火、隐藏自定义名字——保证展示的是"刚拍下来那一刻"的干净生物。</p>
+ *
+ * <p><b>展示实体必须每 tick 锁死朝向与插值历史（2026-11-27 修复"生物高速旋转/剧烈左右摆动"）</b>：
+ * 原版 {@code Entity#load(CompoundTag)}（{@code Entity.java:1749-1751}）只
+ * {@code setOldPosAndRot()}（同步 {@code yRotO}/{@code xRotO}）再
+ * {@code setYHeadRot(getYRot())} / {@code setYBodyRot(getYRot())}，<b>不会</b>同步
+ * {@code yBodyRotO}/{@code yHeadRotO}——于是 {@code yBodyRotO == 0} 而 {@code yBodyRot == 175}（抓捕朝向）。
+ * 本方块实体只自增 {@code tickCount}、从不调 {@code Entity#tick()}，那两个 {@code O} 字段永远停在初值，
+ * 而渲染器把实时 {@code partialTick}（每 tick {@code 0 → 1} 的锯齿）传给
+ * {@code LivingEntityRenderer#render}，其 {@code Mth.rotLerp(partialTick, yBodyRotO, yBodyRot)}
+ * （{@code LivingEntityRenderer.java:57-58}）就每秒 20 次在 {@code 0°} 与抓捕朝向之间狂甩，
+ * 肉眼即"高速旋转/左右摆动"。修法：建实体后与每 tick 都走 {@link #lockDisplayPose(Entity)}，
+ * 把所有朝向/插值历史字段（含 {@code walkAnimation}/{@code attackAnim}）全部归零。</p>
  *
  * <p><b>必须同时覆盖 {@code getUpdateTag} 与 {@code getUpdatePacket}（2026-11-26 修复）</b>：
  * 原版 {@code BlockEntity#getUpdatePacket} 默认 {@code return null}，而
@@ -96,6 +109,9 @@ public final class MobDisplayCatalystBlockEntity extends BlockEntity {
         }
         if (displayEntity != null && ItemStack.matches(storedBox, displayBuiltFor)) {
             displayEntity.tickCount++;
+            // 每 tick 兜底再锁一次：只要某个字段被别处写过（例如某个 renderer/model 顺手改了朝向），
+            // 下一 tick 立刻归零，绝不会累积成"0° ⇄ 抓捕朝向"的锯齿。
+            lockDisplayPose(displayEntity);
             return;
         }
         displayBuiltFor = storedBox.copy();
@@ -108,7 +124,56 @@ public final class MobDisplayCatalystBlockEntity extends BlockEntity {
             }
             displayEntity.clearFire();
             displayEntity.setCustomNameVisible(false);
+            lockDisplayPose(displayEntity);
         }
+    }
+
+    /**
+     * 把展示实体的朝向、位移速度与"上一 tick"插值历史字段全部归零并锁定（纯姿态操作，不含 AI/物理）。
+     *
+     * <p><b>为什么必须做</b>：{@code Entity#load} 只同步了 {@code yRotO}/{@code xRotO}，
+     * {@code LivingEntity} 的 {@code yBodyRotO}/{@code yHeadRotO} 仍是 {@code 0.0F}，而
+     * {@code yBodyRot}/{@code yHeadRot} 被设成抓捕瞬间的朝向。本实体不跑 {@code Entity#tick()}，
+     * 这些 {@code O} 字段永远不会被推进，渲染器的 {@code Mth.rotLerp(partialTick, …)} 于是逐个
+     * partialTick 帧在 {@code 0} 和抓捕朝向之间插值——用户看到的就是"高速旋转/剧烈左右摆动"。</p>
+     *
+     * <p>归零后 {@code yRot == yRotO == 0}、{@code yBodyRot == yBodyRotO == 0}、
+     * {@code yHeadRot == yHeadRotO == 0}，{@code rotLerp} 对任何 partialTick 都恒返回 {@code 0}，
+     * 朝向完全静止；{@code tickCount} 仍逐 tick 自增，所以 {@code getBob}（待机呼吸/翅膀微动，
+     * {@code LivingEntityRenderer.java:214-216}）依旧平滑。</p>
+     *
+     * <p>渲染器每帧也会再调一次（见 {@code MobDisplayCatalystRenderer#render}），双保险。</p>
+     *
+     * <p><b>刻意没动</b>：{@code swimAmount}/{@code swimAmountO}、{@code animStep}/{@code animStepO}、
+     * {@code run}/{@code oRun} 这些同为"当前值 + O 历史值"的字段是 {@code private}/{@code protected}
+     * （本包无权写），但它们只在 {@code LivingEntity#tick} / {@code updateSwimming} 里推进、
+     * 也不进 NBT——{@code Entity#load} 之后仍是构造期的 {@code 0}，所以不贡献抖动。
+     * {@code tickCount} 也刻意保留自增：它是 {@code getBob}/{@code ageInTicks} 的时间轴，归零反而会让动画卡住。</p>
+     */
+    public static void lockDisplayPose(Entity entity) {
+        entity.setDeltaMovement(Vec3.ZERO);
+        entity.setYRot(0.0F);
+        entity.yRotO = 0.0F;
+        entity.setXRot(0.0F);
+        entity.xRotO = 0.0F;
+        entity.setYHeadRot(0.0F);
+        entity.setYBodyRot(0.0F);
+        if (entity instanceof LivingEntity living) {
+            living.yBodyRot = 0.0F;
+            living.yBodyRotO = 0.0F;
+            living.yHeadRot = 0.0F;
+            living.yHeadRotO = 0.0F;
+            living.oAttackAnim = 0.0F;
+            living.attackAnim = 0.0F;
+            living.hurtTime = 0;
+            living.deathTime = 0;
+            // WalkAnimationState 的 speed(float) 在 speedOld 与 speed 之间插值（WalkAnimationState.java:24-26），
+            // 所以必须先 setSpeed(0) 再 update(0, 1)——update 会把 speedOld 也拉成 0；只 setSpeed 不够。
+            living.walkAnimation.setSpeed(0.0F);
+            living.walkAnimation.update(0.0F, 1.0F);
+        }
+        // 最后同步"上一 tick 的位置/朝向"：渲染器若用 xOld/xo 做帧间插值也拿不到位移抖动。
+        entity.setOldPosAndRot();
     }
 
     @Nullable

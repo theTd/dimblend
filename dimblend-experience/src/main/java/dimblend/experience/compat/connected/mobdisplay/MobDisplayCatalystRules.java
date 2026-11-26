@@ -30,7 +30,10 @@ public final class MobDisplayCatalystRules {
     /** 展示用的最大占位（格）：最大的那只生物也不许超过这个边长。 */
     public static final float MAX_DIMENSION = 0.8F;
 
-    /** 自转：每 25 ms 一度 ≈ 2.5 秒一圈。 */
+    /**
+     * 自转：每 25 ms 一度 = {@code 0.04°/ms} = {@code 40°/s}，即 <b>9 秒一圈</b>
+     * （{@code 360° / 0.04°/ms = 9000 ms}；旧注释误写成"≈ 2.5 秒一圈"，与数值不符，2026-11-27 更正）。
+     */
     public static final double DEGREES_PER_MILLISECOND = 1.0D / 25.0D;
 
     /** 尺寸下界，避免 0 宽高实体（如被清空渲染的标记实体）除零。 */

@@ -159,6 +159,24 @@ public final class ChaseMath {
     }
 
     /**
+     * §3.3: whether the {@link #SPEED_FLOOR} may be applied at all this tick. The floor exists so
+     * the train does not stall out of reach once a nest stands on the track, which only makes sense
+     * while every player is actually riding it: a player flying after the dragon, a player who just
+     * fell off the car and cannot climb back yet, a player waiting to respawn, or a player standing
+     * in another dimension must not have the train dragged forward underneath them.
+     *
+     * <p>So the floor needs at least one non-spectator player on the server, and every non-spectator
+     * player standing or riding on a Sable sub-level. No players at all counts as "not aboard"
+     * ({@code false}), not as vacuously true.
+     *
+     * @param eligiblePlayers non-spectator players on the server
+     * @param playersOnSable  eligible players that are alive and on a Sable sub-level
+     */
+    public static boolean speedFloorAllowed(int eligiblePlayers, int playersOnSable) {
+        return eligiblePlayers > 0 && playersOnSable == eligiblePlayers;
+    }
+
+    /**
      * §3.4 damage accumulation: hits during the 8 s cooldown are discarded, not banked.
      */
     public static double accumulateDamage(double accumulated, float applied, long gameTime, long cooldownUntil) {

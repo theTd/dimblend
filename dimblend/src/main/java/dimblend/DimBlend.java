@@ -28,10 +28,13 @@ import dimblend.worldgen.PregenConfig;
 import dimblend.worldgen.PregenController;
 import dimblend.worldgen.RegionBoundaryWallProtector;
 import dimblend.worldgen.RegionOverrideStore;
+import dimblend.worldgen.RotatingChunkGenerator;
 import dimblend.worldgen.WarpGateColumnsImpl;
 import dimblend.worldgen.WarpGatePassageGuard;
 import dimblend.worldgen.WarpGateSableCrossing;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
@@ -43,6 +46,7 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.RegisterGameTestsEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
+import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
@@ -94,6 +98,16 @@ public final class DimBlend {
         NeoForge.EVENT_BUS.addListener(WarpGatePassageGuard::onEntityTickPost);
         NeoForge.EVENT_BUS.addListener(WarpGateSableCrossing::onLevelTick);
         NeoForge.EVENT_BUS.addListener(DimBlend::onLevelUnload);
+        // dimblend:rotating's delegate placement states may only run their concentric-ring biome
+        // searches once OVERWORLD/NETHER/END all exist. Before that, a ring search samples
+        // TheEndBiomeSource while Biolith's End noise is still null: the NPE poisons the ring future
+        // for the rest of the session and crashes the server on the first End-region chunk.
+        // LevelEvent.Load at LOWEST fires inside MinecraftServer#createLevels(), right after each
+        // vanilla dimension finished ServerLevel.<init> (so Biolith's per-dimension init ran), and
+        // before prepareLevels() forces chunks in dimblend:rotating.
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, DimBlend::onLevelLoadInitDelegateStructures);
+        // Fallback for custom/minimal presets that omit NETHER or END.
+        NeoForge.EVENT_BUS.addListener(DimBlend::onServerStarting);
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, VoidscapeNetherDezombify::onSpawnPlacementCheck);
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, VoidscapeNetherDezombify::onFinalizeSpawn);
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, VoidscapeBand::onPlayerTickEnter);
@@ -141,6 +155,38 @@ public final class DimBlend {
     private static void onLevelUnload(LevelEvent.Unload event) {
         if (event.getLevel() instanceof ServerLevel level) {
             MinimumSpeedState.clear(level.dimension());
+        }
+    }
+
+    /**
+     * Publishes {@code dimblend:rotating}'s delegate structure state once every vanilla dimension
+     * exists. Runs at LOWEST inside {@code createLevels()} so it lands after Biolith's
+     * {@code MixinServerWorld} and any NORMAL-priority load listener initialized their per-dimension
+     * noise, and before {@code prepareLevels()} touches a rotating chunk.
+     */
+    private static void onLevelLoadInitDelegateStructures(LevelEvent.Load event) {
+        if (!(event.getLevel() instanceof ServerLevel level)) {
+            return;
+        }
+        MinecraftServer server = level.getServer();
+        if (RotatingChunkGenerator.readyToInitDelegateStructures(
+                server.getLevel(Level.OVERWORLD) != null,
+                server.getLevel(Level.NETHER) != null,
+                server.getLevel(Level.END) != null)) {
+            initRotatingDelegateStructures(server);
+        }
+    }
+
+    /** Fallback for world presets that omit NETHER or END; idempotent after the LevelEvent.Load hook. */
+    private static void onServerStarting(ServerStartingEvent event) {
+        initRotatingDelegateStructures(event.getServer());
+    }
+
+    private static void initRotatingDelegateStructures(MinecraftServer server) {
+        for (ServerLevel lvl : server.getAllLevels()) {
+            if (lvl.getChunkSource().getGenerator() instanceof RotatingChunkGenerator rotating) {
+                rotating.ensureDelegateStructuresGenerated();
+            }
         }
     }
 
