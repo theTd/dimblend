@@ -13,7 +13,7 @@ class SteamEngineOverloadMathTest {
         assertTrue(SteamEngineOverloadMath.shouldEmitOverloadParticle(0));
         assertFalse(SteamEngineOverloadMath.shouldEmitOverloadParticle(1));
         assertTrue(SteamEngineOverloadMath.shouldEmitOverloadParticle(2));
-        assertTrue(SteamEngineOverloadMath.shouldEmitOverloadParticle(318));
+        assertTrue(SteamEngineOverloadMath.shouldEmitOverloadParticle(158));
     }
 
     @Test
@@ -22,14 +22,15 @@ class SteamEngineOverloadMathTest {
         assertFalse(SteamEngineOverloadMath.shouldPlayOverloadSound(1));
         assertFalse(SteamEngineOverloadMath.shouldPlayOverloadSound(19));
         assertTrue(SteamEngineOverloadMath.shouldPlayOverloadSound(20));
-        assertTrue(SteamEngineOverloadMath.shouldPlayOverloadSound(300));
+        assertTrue(SteamEngineOverloadMath.shouldPlayOverloadSound(140));
     }
 
     @Test
-    void windowIsSixteenSeconds() {
+    void windowIsEightSeconds() {
+        // 2026-11-26 口径：过载警告窗口 160 tick（8 秒），原 320。
         assertFalse(SteamEngineOverloadMath.windowElapsed(0));
-        assertFalse(SteamEngineOverloadMath.windowElapsed(319));
-        assertTrue(SteamEngineOverloadMath.windowElapsed(320));
+        assertFalse(SteamEngineOverloadMath.windowElapsed(159));
+        assertTrue(SteamEngineOverloadMath.windowElapsed(160));
         assertTrue(SteamEngineOverloadMath.windowElapsed(400));
     }
 
@@ -44,14 +45,14 @@ class SteamEngineOverloadMathTest {
     }
 
     @Test
-    void exhaustSoundReplaysFourTimesAcrossThirtyTwoSeconds() {
-        // 0 / 160 / 320 / 480 各一次，480 是第 25 秒，尾巴放到 640 刚好收尾。
+    void exhaustSoundPlaysOnceAtBreak() {
+        // 2026-11-26 口径：声音只在断轴当 tick（age == 0）响一次，后面 32 秒只有云粒子。
         assertTrue(SteamEngineOverloadMath.shouldPlayExhaustSound(0));
         assertFalse(SteamEngineOverloadMath.shouldPlayExhaustSound(1));
         assertFalse(SteamEngineOverloadMath.shouldPlayExhaustSound(159));
-        assertTrue(SteamEngineOverloadMath.shouldPlayExhaustSound(160));
-        assertTrue(SteamEngineOverloadMath.shouldPlayExhaustSound(320));
-        assertTrue(SteamEngineOverloadMath.shouldPlayExhaustSound(480));
+        assertFalse(SteamEngineOverloadMath.shouldPlayExhaustSound(160));
+        assertFalse(SteamEngineOverloadMath.shouldPlayExhaustSound(320));
+        assertFalse(SteamEngineOverloadMath.shouldPlayExhaustSound(480));
         assertFalse(SteamEngineOverloadMath.shouldPlayExhaustSound(640));
     }
 

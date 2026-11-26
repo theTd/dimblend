@@ -75,10 +75,14 @@ public class DumpBeltFunnelBlock extends AbstractHorizontalFunnelBlock {
         return state.setValue(SHAPE, shapeForPosition(context.getLevel(), context.getClickedPos(), facing));
     }
 
-    /** 永不给 {@code PULLING}：{@code extracting = true} 时 Create 只会返回 PUSHING / RETRACTED。 */
+    /** 放置用形态：卸料漏斗只推不抽，{@code extracting = true} → 只会得到 PUSHING / RETRACTED。 */
     private static BeltFunnelBlock.Shape shapeForPosition(BlockGetter level, BlockPos pos, Direction facing) {
-        BeltFunnelBlock.Shape shape = BeltFunnelBlock.getShapeForPosition(level, pos, facing, true);
-        return shape == BeltFunnelBlock.Shape.PULLING ? BeltFunnelBlock.Shape.PUSHING : shape;
+        return shapeForPosition(level, pos, facing, true);
+    }
+
+    private static BeltFunnelBlock.Shape shapeForPosition(BlockGetter level, BlockPos pos, Direction facing,
+            boolean extracting) {
+        return BeltFunnelBlock.getShapeForPosition(level, pos, facing, extracting);
     }
 
     @Override
@@ -110,10 +114,14 @@ public class DumpBeltFunnelBlock extends AbstractHorizontalFunnelBlock {
         BeltFunnelBlock.Shape current = state.getValue(SHAPE);
         BeltFunnelBlock.Shape next = switch (current) {
             case RETRACTED -> BeltFunnelBlock.Shape.EXTENDED;
-            case EXTENDED, PUSHING -> BeltFunnelBlock.Shape.RETRACTED;
-            case PULLING -> BeltFunnelBlock.Shape.PUSHING;
+            case EXTENDED -> BeltFunnelBlock.Shape.RETRACTED;
+            // 垂直形态（传送带与朝向异轴）没有"推/抽"这一对可切：原版是 PUSHING↔PULLING，
+            // 我们永不进入 PULLING，所以这里保持原样，避免落回一个立刻被 updateShape 改掉的中间态。
+            case PUSHING, PULLING -> current;
         };
-        level.setBlockAndUpdate(context.getClickedPos(), state.setValue(SHAPE, next));
+        if (next != current) {
+            level.setBlockAndUpdate(context.getClickedPos(), state.setValue(SHAPE, next));
+        }
         return InteractionResult.SUCCESS;
     }
 
@@ -133,14 +141,14 @@ public class DumpBeltFunnelBlock extends AbstractHorizontalFunnelBlock {
             return parentState.setValue(FunnelBlock.EXTRACTING, Boolean.TRUE)
                     .setValue(FunnelBlock.FACING, state.getValue(HORIZONTAL_FACING));
         }
-        BeltFunnelBlock.Shape updated = shapeForPosition((BlockGetter) level, pos, state.getValue(HORIZONTAL_FACING));
-        if (updated == state.getValue(SHAPE)) {
-            return state;
-        }
-        if (updated == BeltFunnelBlock.Shape.PUSHING && state.getValue(SHAPE) == BeltFunnelBlock.Shape.RETRACTED) {
-            return state;
-        }
-        return state.setValue(SHAPE, updated);
+        BeltFunnelBlock.Shape current = state.getValue(SHAPE);
+        DumpFunnelLayout.Shape currentLayout = DumpFunnelLayout.Shape.of(current);
+        DumpFunnelLayout.Shape computed = DumpFunnelLayout.normalizeComputedShape(
+                DumpFunnelLayout.Shape.of(shapeForPosition((BlockGetter) level, pos,
+                        state.getValue(HORIZONTAL_FACING), current == BeltFunnelBlock.Shape.PUSHING)),
+                currentLayout);
+        DumpFunnelLayout.Shape resolved = DumpFunnelLayout.resolveNeighborShape(computed, currentLayout);
+        return resolved == currentLayout ? state : state.setValue(SHAPE, resolved.toCreate());
     }
 
     @Override

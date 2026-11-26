@@ -29,13 +29,15 @@ import net.minecraft.world.level.block.state.BlockState;
  * {@code PoweredShaftBlockExhaustMixin} 把 {@code stillValid} 压成 false，32 秒结束再
  * {@link #finishExhaust} 把仍在原位的普通传动杆换回动力轴，恢复正常运转。</p>
  *
- * <p>第一阶段（过载连续计时，0..319 tick）：引擎运转（isValid + 轴非 null）且轴过载时
+ * <p>第一阶段（过载连续计时，0..159 tick）：引擎运转（isValid + 轴非 null）且轴过载时
  * overloadAge++；每 2 tick 在引擎中心播 {@code minecraft:cloud}（count=1、delta=0、
  * speed=0.05），每 20 tick 播 {@code steam_overstress}。任一条件消失即清零。</p>
  *
- * <p>第二阶段（满 320 tick = 16 秒）：断轴 + {@code steam_exhaust} + 32 秒（640 tick）排气粒子。
- * 排气音在 age = 0/160/320/480 各播一次（4 次覆盖 32 秒）。引擎本体保留停转，且这 32 秒里
- * 引擎与它贴着的锅炉储罐格都不可破坏/不可扳手拆（见 {@code SteamEngineExhaustGuard}）。</p>
+ * <p>第二阶段（满 160 tick = 8 秒）：断轴 + {@code steam_exhaust} + 32 秒（640 tick）排气粒子。
+ * 排气音只在 age = 0 播<b>一次</b>（2026-11-26 口径，原 4 次）。引擎本体保留停转，且这 32 秒里
+ * 引擎与它贴着的锅炉储罐格都不可破坏/不可扳手拆（见 {@code SteamEngineExhaustGuard}）。
+ * 排气期间每 tick 往 {@link SteamEngineExhaustHeatZones} 续期一笔，让 Cold Sweat 的
+ * 温度查询能在 32 秒里把这台引擎当岩浆级热源（{@code ColdSweatHeatSources} 的 Create 段）。</p>
  */
 public final class SteamEngineOverload {
 
@@ -43,7 +45,7 @@ public final class SteamEngineOverload {
      * 第一阶段推进 1 tick（调用方保证：服务端、总开关已开、引擎运转中）。
      *
      * @param overloadAgeTicks 当前过载年龄（进入时为 0）
-     * @return 满 16 秒窗口时 true（调用方转第二阶段），否则 false
+     * @return 满 8 秒窗口时 true（调用方转第二阶段），否则 false
      */
     public static boolean tickOverload(ServerLevel level, BlockPos enginePos, int overloadAgeTicks) {
         double x = enginePos.getX() + 0.5D;
@@ -62,7 +64,7 @@ public final class SteamEngineOverload {
     }
 
     /**
-     * 第二阶段断轴（满 16 秒当 tick，调用方保证服务端 + 总开关已开）。
+     * 第二阶段断轴（满 8 秒当 tick，调用方保证服务端 + 总开关已开）。
      * 只破仍是 Create 动力轴的格；其他方块（被换/已空）不动。
      *
      * @return 轴位置仍是动力轴且破坏成功时 true
@@ -82,11 +84,13 @@ public final class SteamEngineOverload {
     public static void beginExhaust(ServerLevel level, BlockPos enginePos, SmartBlockEntity engine) {
         severShaft(level, enginePos);
         SteamEngineExhaustAccess.setRemaining(engine, SteamEngineOverloadMath.EXHAUST_DURATION_TICKS);
+        SteamEngineExhaustHeatZones.refresh(level, enginePos);
         engine.notifyUpdate();
     }
 
     /**
-     * 第二阶段收尾 1 tick：排气音（age = 0/160/320/480）+ 排气粒子。
+     * 第二阶段收尾 1 tick：排气音（仅 age = 0 一次）+ 排气粒子（每 2 tick），并给
+     * {@link SteamEngineExhaustHeatZones} 续期（Cold Sweat 的岩浆级热源判据）。
      *
      * @param exhaustAgeTicks 排气年龄（断轴当 tick 为 0）
      * @return 排气播满 32 秒时 true（调用方清状态），否则 false
@@ -104,6 +108,8 @@ public final class SteamEngineOverload {
                     SteamEngineOverloadMath.EXHAUST_PARTICLE_COUNT, 0.0D, 0.0D, 0.0D,
                     SteamEngineOverloadMath.EXHAUST_PARTICLE_SPEED);
         }
+        // 每 tick 续期：区块内正常 tick 就一直在表里；一旦停止 tick，TTL 过期自动从热源里消失。
+        SteamEngineExhaustHeatZones.refresh(level, enginePos);
         return SteamEngineOverloadMath.exhaustDone(exhaustAgeTicks);
     }
 
@@ -114,6 +120,8 @@ public final class SteamEngineOverload {
      * @return 是否真的换回了动力轴
      */
     public static boolean finishExhaust(ServerLevel level, BlockPos enginePos) {
+        // 排气窗口一结束就立刻撤掉热源登记（TTL 只是兜底）。
+        SteamEngineExhaustHeatZones.clear(level, enginePos);
         BlockPos shaftPos = shaftPos(level.getBlockState(enginePos), enginePos);
         if (shaftPos == null) {
             return false;

@@ -28,6 +28,8 @@
 	"effect.dimblend_experience.binding_curse": "綁定詛咒",
 	"message.dimblend_experience.item_drain.nether_too_hot": "這裡太熱了",
 	"dimblend_experience.display_source.vault_storage_groups": "讀取存量-計位",
+	"dimblend_experience.display_source.velocity_kmh": "相對速度 km/h",
+	"dimblend_experience.display_source.velocity_mph": "相對速度 mph",
 	"dimblend_experience.display_source.vault_storage_items": "讀取存量-計件",
 	"dimblend_experience.display_source.vault_storage.display": "顯示格式",
 	"dimblend_experience.display_source.vault_storage.count": "數量/總量",

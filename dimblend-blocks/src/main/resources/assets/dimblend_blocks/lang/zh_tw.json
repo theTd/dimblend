@@ -28,7 +28,6 @@
 	"dimblend_blocks.dump_funnel.no_filter": "需要設定過濾",
 	"block.dimblend_blocks.dump_gauge": "卸料儀錶",
 	"block.dimblend_blocks.dump_gauge.tooltip.1": "庫存高於目標時自動向網路下單卸料",
-	"block.dimblend_blocks.dump_gauge.tooltip.2": "滑桿：0 未啟用，1 卸空，2..100 表示目標 1..99（個/組）",
 	"dimblend_blocks.dump_gauge.board.title": "目標卸料數量",
 	"dimblend_blocks.dump_gauge.board.row.items": "個",
 	"dimblend_blocks.dump_gauge.board.row.stacks": "組",
@@ -53,5 +52,7 @@
 	"dimblend_blocks.train_pressured_tube.link.too_far": "兩端距離超過 16 格",
 	"dimblend_blocks.train_pressured_tube.link.already_linked": "該端點已經連接",
 	"dimblend_blocks.train_pressured_tube.link.stale_endpoint": "起點端點已失效，請重新選擇",
-	"dimblend_blocks.train_pressured_tube.link.linked": "跨車廂管道已連接"
+	"dimblend_blocks.train_pressured_tube.link.linked": "跨車廂管道已連接",
+	"dimblend_blocks.train_pressured_tube.link.disconnected": "跨車廂管道已斷開",
+	"dimblend_blocks.train_pressured_tube.link.wrench_removed": "扳手已切出，端點選擇已取消"
 }

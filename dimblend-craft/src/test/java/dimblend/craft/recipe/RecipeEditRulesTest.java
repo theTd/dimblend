@@ -945,6 +945,30 @@ class RecipeEditRulesTest {
         assertNull(rule.newResultCount(), "只换材料，不得改产物数量");
     }
 
+    /**
+     * 重载阶段的规则集里不得出现「材料级删除」。
+     *
+     * <p>{@link RecipeInputMatcher} 会调用 {@code Ingredient#test()} / {@code #getItems()}，而
+     * {@link RecipeEditReloadListener}（数据包重载监听器）执行时物品标签<b>还没绑定</b>
+     * （{@code TagManager} 只收集定义，{@code ReloadableServerResources#updateRegistryTags} 在整轮
+     * reload 完成后才绑标签并发 {@code TagsUpdatedEvent}）。更糟的是 {@code Ingredient} 会把这次
+     * 解析结果永久缓存：标签为空时 NeoForge 缓存的是一个名为 {@code "Empty Tag: <标签 id>"} 的屏障占位，
+     * 之后该材料在游戏里认不出任何物品 —— 2026-11-26 的「TACZ 枪械工作台全部材料变 empty tag」
+     * 就是这个机制（当时是从 {@code TaczGunRecipeEditor} 触发的，见 {@code .work-notes/slice-7.md}）。</p>
+     */
+    @Test
+    void reloadPhaseRulesMustNotResolveIngredientContents() {
+        for (RecipeEdit edit : RecipeEditRules.edits()) {
+            assertFalse(edit instanceof RecipeEdit.DeleteByIngredientId,
+                    "规则「" + edit.label() + "」不能放进重载阶段规则集：它会解析材料内容，"
+                            + "把「Empty Tag」占位永久缓存进 Ingredient；应改放 ingredientEdits() / lateEdits()");
+        }
+        // 反向对照：材料级规则确实存在，只是必须待在标签已绑定的阶段。
+        assertTrue(RecipeEditRules.ingredientEdits().stream()
+                        .anyMatch(edit -> edit instanceof RecipeEdit.DeleteByIngredientId),
+                "列车机壳原料删除必须留在 ingredientEdits()（TagsUpdatedEvent 之后执行）");
+    }
+
     /** 取出命中给定配方 ID 的字段改写规则；不存在即断言失败。 */
     private static RecipeEdit.FieldModify fieldRuleFor(List<RecipeEdit> edits, ResourceLocation recipeId) {
         for (RecipeEdit edit : edits) {

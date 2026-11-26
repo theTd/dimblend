@@ -283,8 +283,15 @@ public final class ColdSweatHeatSources {
      * （{@link #LAVA_EQUIVALENT}）：断轴的引擎在喷高温蒸汽，玩家贴上去要付出中暑代价。
      * 正常运转/停转的引擎<b>不</b>发热（蒸汽机不等于锅炉炉膛）。</p>
      *
-     * <p>判据走 {@code isExhaustingAt}（{@code getChunkNow} 非阻塞），不直接
-     * {@code level.getBlockEntity}——本方法在玩家每次温度扫描时被调用，不能临场加载区块。</p>
+     * <p><b>判据（2026-11-26 修）</b>：主判据是 {@code SteamEngineExhaustHeatZones.isExhausting}
+     * ——一张由引擎自己的服务端 tick 每 tick 续期的 {@code (维度, BlockPos)} 纯内存表，
+     * 只做 O(1) 查表，不碰区块、不碰 BE 实例。旧的
+     * {@code SteamEngineExhaustAccess.isExhaustingAt}（{@code getChunkNow} + 服务端
+     * {@code WeakHashMap<BlockEntity, Integer>}）降为兜底：它要求"当场解析出那个 BE"，
+     * 而 Cold Sweat 2.4.2 在 Sable 子层级里是用 {@code DummyEntity} 在 plot 坐标上跑
+     * {@code isValid}（{@code SublevelBlockTempModifier}），解析上下文与引擎 tick 不保证一致，
+     * {@code ServerChunkCache#getChunkNow} 还有"非主线程→null"的硬守卫——这正是
+     * "喷汽了但高温没出现"的来路。</p>
      */
     private static final class Create {
 
@@ -296,7 +303,8 @@ public final class ColdSweatHeatSources {
         }
 
         private static boolean exhaustingEngine(Level level, BlockPos pos, BlockState state) {
-            return dimblend.experience.compat.create.SteamEngineExhaustAccess.isExhaustingAt(level, pos);
+            return dimblend.experience.compat.create.SteamEngineExhaustHeatZones.isExhausting(level, pos)
+                    || dimblend.experience.compat.create.SteamEngineExhaustAccess.isExhaustingAt(level, pos);
         }
 
         private Create() {

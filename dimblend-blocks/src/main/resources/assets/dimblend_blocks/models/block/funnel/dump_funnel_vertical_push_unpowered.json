@@ -4,6 +4,7 @@
     "base": "dimblend_blocks:block/funnel/dump_funnel",
     "block": "dimblend_blocks:block/funnel/dump_funnel_block",
     "direction": "dimblend_blocks:block/funnel/dump_funnel_push",
+    "open": "create:block/funnel/funnel_open",
     "particle": "dimblend_blocks:block/funnel/dump_funnel_block",
     "redstone": "dimblend_blocks:block/funnel/dump_funnel_unpowered",
     "back": "dimblend_blocks:block/funnel/dump_funnel_back",

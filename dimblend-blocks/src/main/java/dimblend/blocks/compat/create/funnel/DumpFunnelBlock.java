@@ -41,9 +41,22 @@ public class DumpFunnelBlock extends FunnelBlock {
         return state == null ? null : state.setValue(EXTRACTING, Boolean.TRUE);
     }
 
+    /**
+     * 等价传送带漏斗状态。必须像 Create 的 {@code BrassFunnelBlock#getEquivalentBeltFunnel}
+     * 那样把<b>朝向与通电</b>抄过去：直接给 {@code defaultBlockState()} 会让任何"先放漏斗、
+     * 后形成/放置传送带"（以及 {@link #updateShape} 的换算）都得到朝向 NORTH、
+     * 未通电的传送带漏斗——模型整体转 90°，与皮带条走向错开，过滤槽也落到错误的面。
+     */
     @Override
     public BlockState getEquivalentBeltFunnel(BlockGetter world, BlockPos pos, BlockState state) {
-        return DumpFunnels.DUMP_BELT_FUNNEL_BLOCK.get().defaultBlockState();
+        Direction facing = AbstractFunnelBlock.getFunnelFacing(state);
+        if (facing == null || !facing.getAxis().isHorizontal()) {
+            // 调用方（FunnelItem 放置路径与本类 updateShape）只在水平态换算；立式态没有等价形态
+            return DumpFunnels.DUMP_BELT_FUNNEL_BLOCK.get().defaultBlockState();
+        }
+        return DumpFunnels.DUMP_BELT_FUNNEL_BLOCK.get().defaultBlockState()
+                .setValue(DumpBeltFunnelBlock.HORIZONTAL_FACING, facing)
+                .setValue(POWERED, state.getValue(POWERED));
     }
 
     /**

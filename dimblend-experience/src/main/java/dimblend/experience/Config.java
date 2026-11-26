@@ -114,8 +114,9 @@ public final class Config {
             .defineInRange("dieselEngineFuelTankMb", 100, 1, 16000);
 
     public static final ModConfigSpec.BooleanValue STEAM_ENGINE_OVERLOAD = BUILDER
-            .comment("H 板块：Create 蒸汽引擎过载两阶段（过载持续 16 秒内每秒警告音 + 云粒子，解除即停；"
-                    + "满 16 秒断开传动杆掉落 + 排气音 1 次 + 8 秒云粒子，过载解除不中断）")
+            .comment("H 板块：Create 蒸汽引擎过载两阶段（2026-11-26 口径：过载持续 8 秒内每秒警告音 + 云粒子，"
+                    + "解除即停；满 8 秒断开传动杆掉落 + 排气音 1 次 + 32 秒持续喷气云粒子，"
+                    + "期间引擎等同岩浆级热源；过载解除不中断）")
             .define("steamEngineOverload", true);
 
     public static final ModConfigSpec.BooleanValue ELECTRIC_MOTOR_BEHAVIOR = BUILDER

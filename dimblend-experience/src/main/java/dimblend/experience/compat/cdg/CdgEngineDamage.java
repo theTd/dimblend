@@ -17,12 +17,16 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+
+import dimblend.experience.Config;
 
 /**
  * 柴油机"活塞损坏"态（B6'，2026-11-25 LOCKED 口径）。
@@ -66,6 +70,8 @@ public final class CdgEngineDamage {
     private static final double SMOKE_DELTA = 0.15;
     /** 损坏态黑烟速度（2026-11-25 口径：0.01）。 */
     private static final double SMOKE_SPEED = 0.01;
+    /** 灭火音锚点选举的邻域半径（巨型机 3×3 结构最多跨 2 格）。 */
+    private static final int SPEAKER_RADIUS = 2;
 
     /**
      * 把引擎标记为损坏并立刻同步（客户端护目镜红字、音效停转都靠这次 {@code notifyUpdate}）。
@@ -97,6 +103,102 @@ public final class CdgEngineDamage {
                 CdgOverloadMath.useLargeSmoke(gameTime) ? ParticleTypes.LARGE_SMOKE : ParticleTypes.SMOKE,
                 pos.getX() + 0.5, pos.getY() + 1.0, pos.getZ() + 0.5,
                 1, SMOKE_DELTA, SMOKE_DELTA, SMOKE_DELTA, SMOKE_SPEED);
+    }
+
+    /**
+     * 2026-11-26 口径的"损坏期间"判据（燃油门控 / 静音 / 灭火音都走这一个口径）。
+     *
+     * <p>客户端<b>不读</b> {@code Config.DIESEL_ENGINE_OVERLOAD}（SERVER 配置在客户端不可读），
+     * 只认同步过来的 {@code pistonDamaged}：客户端拿到 true 就必须静音，否则 {@code tickClient}
+     * 会继续 keepAlive 运转音。服务端额外把功能开关一起判，开关关掉时旧存档里的残留标记不生效。</p>
+     */
+    public static boolean isDamaged(IEngine engine) {
+        SmartBlockEntity self = engine.self();
+        if (self == null) {
+            return false;
+        }
+        if (!self.getData(CdgAttachments.ENGINE_STATE).pistonDamaged) {
+            return false;
+        }
+        Level level = self.getLevel();
+        if (level == null || level.isClientSide) {
+            return true;
+        }
+        return Config.DIESEL_ENGINE_OVERLOAD.get();
+    }
+
+    /**
+     * 损坏期的"黑烟 + 偶发灭火音"每 tick 入口。
+     *
+     * @param soundAnchor 本格是否负责发声。普通机恒 true；组合式只有 controller true；
+     *                    巨型机走 {@link #isSoleDamagedSpeaker}。多格结构若人人发声会变成
+     *                    一台机器连续爆响，故收敛到单格。
+     */
+    public static void tickDamagedAmbience(ServerLevel level, BlockPos pos, CdgEngineState state,
+            boolean soundAnchor) {
+        tickDamagedSmoke(level, pos);
+        if (!soundAnchor) {
+            return;
+        }
+        state.extinguishCooldown = CdgDamageAudioMath.tickDown(state.extinguishCooldown);
+        if (state.extinguishCooldown > 0) {
+            return;
+        }
+        playExtinguish(level, pos);
+        state.extinguishCooldown = CdgDamageAudioMath.nextIntervalTicks(level.random.nextFloat());
+    }
+
+    /** 灭火音本体（{@code block.fire.extinguish}，音量/音调都带随机）。 */
+    private static void playExtinguish(ServerLevel level, BlockPos pos) {
+        level.playSound(null,
+                pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D,
+                SoundEvents.FIRE_EXTINGUISH, SoundSource.BLOCKS,
+                CdgDamageAudioMath.volume(level.random.nextFloat()),
+                CdgDamageAudioMath.pitch(level.random.nextFloat()));
+    }
+
+    /**
+     * 多格结构里"谁负责响灭火音"的选举：邻域内若存在坐标更小的同类损坏引擎就让位，
+     * 于是整个结构里坐标最小的那台唯一当选。
+     *
+     * <p>扫描只用 {@code getChunkNow}（不触发同步建块，见 AGENTS/skill §8.28），
+     * 且只在真正的触发瞬间调用（3~6 秒一次），代价可忽略。</p>
+     *
+     * @param engineType 同类判定（巨型机传 {@code HugeDieselEngineBlockEntity.class}，
+     *                   避免隔壁一台普通机的坐标把巨型机顶掉）
+     */
+    public static boolean isSoleDamagedSpeaker(ServerLevel level, BlockPos pos, Class<?> engineType) {
+        for (int dy = -SPEAKER_RADIUS; dy <= SPEAKER_RADIUS; dy++) {
+            for (int dz = -SPEAKER_RADIUS; dz <= SPEAKER_RADIUS; dz++) {
+                for (int dx = -SPEAKER_RADIUS; dx <= SPEAKER_RADIUS; dx++) {
+                    BlockPos probe = pos.offset(dx, dy, dz);
+                    if (probe.equals(pos) || probe.compareTo(pos) >= 0) {
+                        continue; // 只关心坐标更小的同类损坏引擎
+                    }
+                    if (isDamagedOfType(level, probe, engineType)) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    private static boolean isDamagedOfType(ServerLevel level, BlockPos pos, Class<?> engineType) {
+        BlockEntity be = loadedBlockEntity(level, pos);
+        if (!(be instanceof SmartBlockEntity smart)) {
+            return false;
+        }
+        if (!engineType.isInstance(be) || !(be instanceof IEngine)) {
+            return false;
+        }
+        return smart.getData(CdgAttachments.ENGINE_STATE).pistonDamaged;
+    }
+
+    /** 非阻塞取已加载 BE：{@code getChunkNow} 拿不到就直接放弃（绝不 {@code getBlockEntity} 直调）。 */
+    private static BlockEntity loadedBlockEntity(ServerLevel level, BlockPos pos) {
+        var chunk = level.getChunkSource().getChunkNow(pos.getX() >> 4, pos.getZ() >> 4);
+        return chunk == null ? null : chunk.getBlockEntity(pos);
     }
 
     /** 该方块是不是三类柴油机之一（掉落物打标 / 放置还原用）。 */

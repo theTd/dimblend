@@ -211,7 +211,8 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".compat.cdg.ModularEngineRedstoneMixin")
                 || mixinClassName.endsWith(".compat.cdg.CdgEngineGoggleFuelHintMixin")
                 || mixinClassName.endsWith(".compat.cdg.OilChunksSavedDataMixin")
-                || mixinClassName.endsWith(".compat.cdg.OilScannerItemMixin")) {
+                || mixinClassName.endsWith(".compat.cdg.OilScannerItemMixin")
+                || mixinClassName.endsWith(".compat.cdg.EngineFuelGateMixin")) {
             return isLoaded("createdieselgenerators");
         }
         if (mixinClassName.endsWith(".compat.cca.ElectricMotorMixin")
@@ -439,6 +440,9 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
             }
             if (mixinClassName.endsWith(".GunsmithUnjamSpeedMixin")) {
                 return classPresent("mod.cdv.gdb.network.StartJamWorkerPacket");
+            }
+            if (mixinClassName.endsWith(".GunsmithGunLevelTooltipMixin")) {
+                return classPresent("com.tacz.guns.client.tooltip.ClientGunTooltip");
             }
             return true;
         }

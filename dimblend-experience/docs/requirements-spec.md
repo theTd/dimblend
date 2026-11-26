@@ -707,15 +707,16 @@
 
 ## 11. 板块 H：Create 蒸汽引擎过载两阶段（新增）
 
-- H1 第一阶段（过载连续计时 0..319 tick = 16 秒）：引擎运转（`isValid` 贴锅炉 + `getShaft()` 非 null）
+- H1 第一阶段（过载连续计时 0..159 tick = 8 秒）：引擎运转（`isValid` 贴锅炉 + `getShaft()` 非 null）
   且轴 `isOverStressed()` 时 overloadAge++；每 2 tick 在引擎中心播 `minecraft:cloud`
   （count=1、delta=0、speed=0.05），每 20 tick 播 `steam_overstress`（单声道 1.49 秒，
   1 秒间隔近无缝）。任一条件消失（过载解除/停机/轴缺失）即清零，声音粒子同时停
-- H2 第二阶段（满 320 tick 当 tick）：只破仍是 `create:powered_shaft` 的格
+- H2 第二阶段（满 160 tick 当 tick）：只破仍是 `create:powered_shaft` 的格
   （`AllBlocks.POWERED_SHAFT.has`，`destroyBlock(shaftPos, true)` 按战利品表掉成 `create:shaft`），
-  引擎本体保留停转；`steam_exhaust` 播 1 次 + 8 秒（160 tick）排气粒子
-  （每 2 tick `minecraft:cloud` count=5、delta=0、speed=0.1）。过载解除不中断排气；
-  引擎被拆/区块卸载则 BE 不再 tick，自然终止
+  引擎本体保留停转；`steam_exhaust` 播 1 次 + 32 秒（640 tick）排气粒子
+  （每 2 tick `minecraft:cloud` count=5、delta=0、speed=0.1），期间引擎以 `SteamEngineExhaustHeatZones`
+  向 Cold Sweat 暴露等同岩浆的高温热源（`LAVA_EQUIVALENT`）。过载解除不中断排气；
+  引擎被拆/区块卸载则 BE 不再 tick，TTL 自动清零
 - 实现 `SteamEngineOverloadMixin`（`SteamEngineBlockEntity.tick` RETURN）+ 纯函数
   `SteamEngineOverload` / `SteamEngineOverloadMath`；状态全内存态（卸载清零）；
   新开关 `steamEngineOverload`（默认开）；音效 `steam_overstress` / `steam_exhaust`

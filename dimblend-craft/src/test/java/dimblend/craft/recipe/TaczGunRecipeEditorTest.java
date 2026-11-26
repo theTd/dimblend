@@ -2,13 +2,21 @@ package dimblend.craft.recipe;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
 
 import net.minecraft.resources.ResourceLocation;
 
@@ -30,6 +38,10 @@ class TaczGunRecipeEditorTest {
     private static final ResourceLocation GUN_ITEM = ResourceLocation.parse("tacz:modern_kinetic_gun");
     private static final ResourceLocation AMMO_ITEM = ResourceLocation.parse("tacz:ammo");
     private static final ResourceLocation ATTACHMENT_ITEM = ResourceLocation.parse("tacz:attachment");
+
+    private static final String INGREDIENT_INTERNAL = "net/minecraft/world/item/crafting/Ingredient";
+    private static final Set<String> FORBIDDEN_INGREDIENT_CALLS = Set.of(
+            "getItems", "test", "getStackingIds", "hasNoItems");
 
     /** 上游写明 {@code type == "gun"} 就是枪，产物物品是什么都不影响判定。 */
     @Test
@@ -109,5 +121,79 @@ class TaczGunRecipeEditorTest {
         assertEquals("tacz:modern_kinetic_gun", GunSmithTableMechanism.GUN_OUTPUT_ITEM.toString());
         assertEquals("gun", GunSmithTableMechanism.GUN_RESULT_TYPE);
         assertEquals("枪械工作台配方追加精密构件", GunSmithTableMechanism.LABEL);
+    }
+
+    /**
+     * 结构相等入口的空值守卫与字节码契约：
+     * {@link GunSmithTableMechanism#acceptsOnly} 必须直接走 {@code Ingredient#equals}（只比 {@code values} 结构），
+     * 并在上游未解析出精密构件（{@code expected == null}）时保守判否。
+     */
+    @Test
+    void acceptsOnlyUsesStructuralEqualsAndRejectsNull() throws IOException {
+        assertFalse(GunSmithTableMechanism.acceptsOnly(null, null),
+                "上游解析不到精密构件时必须保守判否");
+
+        List<String> calls = collectMethodCalls(GunSmithTableMechanism.class, "acceptsOnly");
+        assertTrue(calls.stream().anyMatch(c -> c.endsWith(".equals(Ljava/lang/Object;)Z")),
+                "acceptsOnly 必须走 Ingredient#equals 结构相等，实际调用：" + calls);
+    }
+
+    /**
+     * <b>根因回归测试（字节码级锁定）</b>：重载阶段的 TACZ 枪械配方编辑器与判定辅助类
+     * 绝不得调用 {@code Ingredient#getItems / test / getStackingIds / hasNoItems}。
+     *
+     * <p>本判定跑在 {@link RecipeEditReloadListener}（数据包重载）里，此刻物品标签尚未绑定
+     * （{@code TagManager} 只收集定义，{@code ReloadableServerResources#updateRegistryTags} 在整轮
+     * reload 完成后才绑标签并发 {@code TagsUpdatedEvent}）。{@link Ingredient#getItems()} 会把这次
+     * 解析结果写进私有 {@code itemStacks} 字段并<b>永不重算</b>；标签为空时 NeoForge 缓存的是名为
+     * {@code "Empty Tag: <标签 id>"} 的屏障占位 —— 于是枪械工作台里所有标签材料永久显示为
+     * empty tag、配方再也合不出来（2026-11-26 用户缺陷）。</p>
+     *
+     * <p>离线单测里 NeoForge 的 {@code Ingredient.<clinit>} 依赖 FML {@code LoadingModList} 无法直接实例化，
+     * 这里用 ASM 直接扫描编译后的 {@code .class} 字节码指令：任何改回 {@code getItems()} 等标签解析
+     * 调用的写法都会立刻让本用例变红。</p>
+     */
+    @Test
+    void reloadStageTaczEditorNeverInvokesIngredientContentResolution() throws IOException {
+        for (Class<?> cls : List.of(GunSmithTableMechanism.class, TaczGunRecipeEditor.class)) {
+            List<String> violations = new ArrayList<>();
+            for (String call : collectMethodCalls(cls, null)) {
+                if (call.startsWith(INGREDIENT_INTERNAL + ".")) {
+                    String rest = call.substring(INGREDIENT_INTERNAL.length() + 1);
+                    String name = rest.substring(0, rest.indexOf('('));
+                    if (FORBIDDEN_INGREDIENT_CALLS.contains(name)) {
+                        violations.add(cls.getSimpleName() + " -> " + call);
+                    }
+                }
+            }
+            assertTrue(violations.isEmpty(),
+                    "重载阶段 TACZ 配方编辑器触发了 Ingredient 内容/标签解析（会导致 empty tag 永久缓存）："
+                            + violations);
+        }
+    }
+
+    private static List<String> collectMethodCalls(Class<?> cls, String onlyMethod) throws IOException {
+        String resource = cls.getName().replace('.', '/') + ".class";
+        List<String> calls = new ArrayList<>();
+        try (InputStream in = cls.getClassLoader().getResourceAsStream(resource)) {
+            assertNotNull(in, "Missing class resource: " + resource);
+            new ClassReader(in).accept(new ClassVisitor(Opcodes.ASM9) {
+                @Override
+                public MethodVisitor visitMethod(int access, String name, String descriptor,
+                        String signature, String[] exceptions) {
+                    if (onlyMethod != null && !onlyMethod.equals(name)) {
+                        return null;
+                    }
+                    return new MethodVisitor(Opcodes.ASM9) {
+                        @Override
+                        public void visitMethodInsn(int opcode, String owner, String mName,
+                                String mDesc, boolean isInterface) {
+                            calls.add(owner + "." + mName + mDesc);
+                        }
+                    };
+                }
+            }, 0);
+        }
+        return calls;
     }
 }

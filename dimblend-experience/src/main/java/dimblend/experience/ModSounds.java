@@ -42,10 +42,10 @@ public final class ModSounds {
     /** B6：柴油机过载警告（过载确认累计首 tick 服务端单次播放；点引信前解除过载即掐掉，点引信后播完，再 4 秒自毁；素材长 6.005 秒 ≈120 tick，2 秒确认 + 4 秒引信刚好在爆炸瞬间播完）。 */
     public static final DeferredHolder<SoundEvent, SoundEvent> DIESEL_OVERSTRESS =
             register("diesel_overstress");
-    /** H：蒸汽引擎过载警告（过载 16 秒窗口内服务端每秒 1 次，解除即停）。 */
+    /** H：蒸汽引擎过载警告（过载 8 秒窗口内服务端每秒 1 次，解除即停）。 */
     public static final DeferredHolder<SoundEvent, SoundEvent> STEAM_OVERSTRESS =
             register("steam_overstress");
-    /** H：蒸汽引擎断轴排气（满 16 秒过载断轴时服务端 1 次）。 */
+    /** H：蒸汽引擎断轴排气（满 8 秒过载断轴时服务端 1 次，此后 32 秒持续喷气云粒子）。 */
     public static final DeferredHolder<SoundEvent, SoundEvent> STEAM_EXHAUST =
             register("steam_exhaust");
     /** 列车汽笛·蒸汽（汽笛六面邻接蒸汽引擎、红石上升沿触发，单次；自定义客户端实例做 256/512 距离曲线）。 */

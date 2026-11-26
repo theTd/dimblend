@@ -28,7 +28,6 @@
 	"dimblend_blocks.dump_funnel.no_filter": "需要设置过滤",
 	"block.dimblend_blocks.dump_gauge": "卸料仪表",
 	"block.dimblend_blocks.dump_gauge.tooltip.1": "库存高于目标时自动向网络下单卸料",
-	"block.dimblend_blocks.dump_gauge.tooltip.2": "滑条：0 未启用，1 卸空，2..100 表示目标 1..99（个/组）",
 	"dimblend_blocks.dump_gauge.board.title": "目标卸料数量",
 	"dimblend_blocks.dump_gauge.board.row.items": "个",
 	"dimblend_blocks.dump_gauge.board.row.stacks": "组",
@@ -53,5 +52,7 @@
 	"dimblend_blocks.train_pressured_tube.link.too_far": "两端距离超过 16 格",
 	"dimblend_blocks.train_pressured_tube.link.already_linked": "该端点已经连接",
 	"dimblend_blocks.train_pressured_tube.link.stale_endpoint": "起点端点已失效，请重新选择",
-	"dimblend_blocks.train_pressured_tube.link.linked": "跨车厢管道已连接"
+	"dimblend_blocks.train_pressured_tube.link.linked": "跨车厢管道已连接",
+	"dimblend_blocks.train_pressured_tube.link.disconnected": "跨车厢管道已断开",
+	"dimblend_blocks.train_pressured_tube.link.wrench_removed": "扳手已切出，端点选择已取消"
 }

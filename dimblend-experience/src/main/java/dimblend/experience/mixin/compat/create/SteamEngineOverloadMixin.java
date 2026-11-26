@@ -11,6 +11,7 @@ import com.simibubi.create.content.kinetics.steamEngine.SteamEngineBlockEntity;
 
 import dimblend.experience.Config;
 import dimblend.experience.compat.create.SteamEngineExhaustAccess;
+import dimblend.experience.compat.create.SteamEngineExhaustHeatZones;
 import dimblend.experience.compat.create.SteamEngineOverload;
 import dimblend.experience.compat.create.SteamEngineOverloadMath;
 import net.minecraft.server.level.ServerLevel;
@@ -26,7 +27,7 @@ import net.minecraft.server.level.ServerLevel;
  * 把 32 秒里被"卡"在普通杆形态的轴换回动力轴 + {@code notifyUpdate()}，恢复正常运转。
  * 引擎被拆/区块卸载则 BE 不再 tick，重进后由 {@code read} 把剩余量带回来继续烧。</li>
  * <li>运转（isValid + 轴在位）且轴过载：overloadAge++，播警告粒子/音；
- * 满 320 tick（16 秒）→ {@link SteamEngineOverload#beginExhaust}（断轴 + 写 640 + 同步）。</li>
+ * 满 160 tick（8 秒）→ {@link SteamEngineOverload#beginExhaust}（断轴 + 写 640 + 同步）。</li>
  * <li>其余（未运转/过载解除/轴缺失）：清过载年龄，第一阶段声音粒子同时停。</li>
  * </ul>
  *
@@ -48,6 +49,8 @@ public abstract class SteamEngineOverloadMixin {
         }
         if (!Config.STEAM_ENGINE_OVERLOAD.get()) {
             this.dimblend$overloadAge = 0;
+            // 热源登记也一起撤：开关关掉后不该再有"岩浆级蒸汽机"
+            SteamEngineExhaustHeatZones.clear(level, self.getBlockPos());
             if (SteamEngineExhaustAccess.isExhausting(self)) {
                 SteamEngineExhaustAccess.clear(self);
                 self.notifyUpdate();

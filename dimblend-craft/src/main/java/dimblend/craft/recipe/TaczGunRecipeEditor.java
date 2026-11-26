@@ -26,7 +26,7 @@ import dimblend.craft.DimblendCraft;
  * 而枪械配方、材料与产物的类型都来自 tacz。反射句柄在首次命中时解析并缓存，
  * 解析失败只降级（保留原配方 + 一条告警），不影响其它规则。</p>
  *
- * <p><b>三条必须绕开的坑（report-w5 §5f，全部已按字节码核实）：</b></p>
+ * <p><b>四条必须绕开的坑（report-w5 §5f，全部已按字节码核实）：</b></p>
  * <ol>
  *   <li>{@code GunSmithTableResult.encode} 直接抛 {@code UnsupportedOperationException}
  *       ——它只为解码而生。因此本类<b>绝不</b>走 {@link RecipeJsonEditor} 的
@@ -41,6 +41,15 @@ import dimblend.craft.DimblendCraft;
  *       而 {@code init} 是「{@code raw != null} 才处理，处理完把 {@code raw} 置 null」
  *       （字节码核实）。新构造的配方只要持有<b>同一个</b>产物对象，重载之后的初始化就会
  *       照常把产物填好；反过来自己造一个产物对象，产物会永久为空、工作台永远合成不出枪。</li>
+ *   <li><b>判定材料时绝不能调 {@link Ingredient#getItems()}（2026-11-26 用户缺陷根因）：</b>
+ *       本类跑在数据包重载阶段，物品标签还没绑定（{@code TagManager} 只收集定义，
+ *       {@code ReloadableServerResources#updateRegistryTags} 在整轮 reload 完成后才绑标签并发
+ *       {@code TagsUpdatedEvent}），而 {@code Ingredient} 把解析结果缓存在私有
+ *       {@code itemStacks} 字段里永不重算；标签为空时 NeoForge 还会塞一个名为
+ *       {@code "Empty Tag: <标签 id>"} 的屏障占位物品并一起缓存 —— 症状就是「枪械工作台
+ *       所有材料除精密构件外全变成 empty tag」、配方再也合不出来（详细取证见
+ *       {@code .work-notes/slice-7.md}）。因此判据改成结构性相等
+ *       {@link GunSmithTableMechanism#acceptsOnly}，不碰任何标签解析。</li>
  * </ol>
  *
  * <p>因为 {@code init} 已经跑完的阶段（{@code ServerStartedEvent} 的晚期规则）再来一次
@@ -62,8 +71,7 @@ public final class TaczGunRecipeEditor {
     private static volatile Ingredients ingredients;
     private static volatile boolean ingredientsUnresolved;
 
-    /** 精密构件（物品 + 材料对象），一次解析后缓存；Create 未装时为 null。 */
-    private static volatile Item mechanismItem;
+    /** 精密构件材料对象（{@code Ingredient.of(item)}，单 ItemValue）；一次解析后缓存，Create 未装时为 null。 */
     private static volatile Ingredient mechanismIngredient;
     private static volatile boolean mechanismResolved;
 
@@ -113,7 +121,8 @@ public final class TaczGunRecipeEditor {
             }
             List<GunSmithTableMechanism.Input> views = new ArrayList<>(oldInputs.size());
             for (Object input : oldInputs) {
-                views.add(new GunSmithTableMechanism.Input(acceptsOnlyMechanism(ingredientAccess, input),
+                views.add(new GunSmithTableMechanism.Input(
+                        acceptsOnlyMechanism(ingredientAccess, input, mechanism),
                         count(ingredientAccess, input)));
             }
             OptionalInt merging = GunSmithTableMechanism.mergingIndex(views);
@@ -153,7 +162,6 @@ public final class TaczGunRecipeEditor {
         if (!mechanismResolved) {
             Item item = BuiltInRegistries.ITEM.getOptional(GunSmithTableMechanism.PRECISION_MECHANISM)
                     .orElse(null);
-            mechanismItem = item;
             mechanismIngredient = item == null ? null : Ingredient.of(item);
             mechanismResolved = true;
         }
@@ -176,18 +184,21 @@ public final class TaczGunRecipeEditor {
         return type instanceof String value ? value : null;
     }
 
-    /** 材料是否「只接受精密构件这一种物品」：写死物品、且解析后恰好一个物品。 */
-    private static boolean acceptsOnlyMechanism(Ingredients access, Object input) throws ReflectiveOperationException {
-        Item mechanism = mechanismItem;
+    /**
+     * 材料是否「只接受精密构件这一种物品」。
+     *
+     * <p><b>只做结构性相等，绝不解析材料内容</b>：本类跑在数据包重载阶段，物品标签尚未绑定，
+     * 任何 {@code getItems()} 都会把「空标签占位」永久缓存进 {@link Ingredient}，代价与原因见
+     * {@link GunSmithTableMechanism#acceptsOnly}。</p>
+     */
+    private static boolean acceptsOnlyMechanism(Ingredients access, Object input, Ingredient mechanism)
+            throws ReflectiveOperationException {
         if (mechanism == null) {
             return false;
         }
         Object value = access.getIngredient().invoke(input);
-        if (!(value instanceof Ingredient ingredient)) {
-            return false;
-        }
-        ItemStack[] stacks = ingredient.getItems();
-        return stacks.length == 1 && stacks[0].getItem() == mechanism;
+        return value instanceof Ingredient ingredient
+                && GunSmithTableMechanism.acceptsOnly(mechanism, ingredient);
     }
 
     private static int count(Ingredients access, Object input) throws ReflectiveOperationException {

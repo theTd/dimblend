@@ -58,6 +58,11 @@ public class CdgEngineState {
      * 同步到客户端（护目镜红字要靠它）。只有"换活塞"能清掉它：重新加油、红石、燃尽都不行。</p>
      */
     public boolean pistonDamaged;
+    /**
+     * 损坏期间偶发灭火音的下次触发倒计时（tick）。
+     * <b>不序列化</b>：纯运行时噪声，读档后从头随机无任何语义损失（见 {@link CdgDamageAudioMath}）。
+     */
+    public int extinguishCooldown;
 
     public boolean clearOverload() {
         boolean changed = overloadLatched || fuseActive || fuseTicksLeft != 0 || overloadTicks != 0;
@@ -81,6 +86,7 @@ public class CdgEngineState {
         fuseTicksLeft = 0;
         overloadTicks = 0;
         rampTicks = 0;
+        extinguishCooldown = 0;
         return changed;
     }
 
@@ -100,6 +106,7 @@ public class CdgEngineState {
         rampTicks = 0;
         fluctTicksLeft = 0;
         boostConsumed = false;
+        extinguishCooldown = 0;
         return changed;
     }
 

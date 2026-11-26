@@ -11,7 +11,17 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
 
-/** Input-only matching after tag binding, using the complete Ingredient predicate. */
+/**
+ * Input-only matching after tag binding, using the complete Ingredient predicate.
+ *
+ * <p><b>只能在标签已绑定之后调用</b>（{@code TagsUpdatedEvent} 及更晚的阶段）。
+ * {@link #acceptsItem} 会走 {@link Ingredient#test}/{@link Ingredient#getItems()}，而
+ * {@code Ingredient} 把解析结果永久缓存在私有 {@code itemStacks} 字段里；在数据包重载监听器
+ * （标签未绑定）里调用过一次，标签型材料就会被缓存成「{@code Empty Tag: ...} 屏障占位」，
+ * 之后这个材料在游戏里再也认不出任何物品（2026-11-26 枪械工作台缺陷即此机制）。
+ * 因此本类不得进入 {@code RecipeEditRules.edits()}（重载阶段规则集），
+ * 只能经 {@code RecipeEditRules.ingredientEdits()} 在 {@code TagsUpdatedEvent} 生效。</p>
+ */
 public final class RecipeInputMatcher {
     private RecipeInputMatcher() {}
 

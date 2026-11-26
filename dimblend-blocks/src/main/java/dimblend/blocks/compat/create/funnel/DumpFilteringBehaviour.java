@@ -2,8 +2,8 @@ package dimblend.blocks.compat.create.funnel;
 
 import java.util.List;
 
-import com.simibubi.create.content.logistics.funnel.FunnelFilterSlotPositioning;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
+import com.simibubi.create.foundation.blockEntity.behaviour.ValueBoxTransform;
 import com.simibubi.create.foundation.blockEntity.behaviour.ValueSettingsBoard;
 import com.simibubi.create.foundation.blockEntity.behaviour.ValueSettingsFormatter;
 import com.simibubi.create.foundation.blockEntity.behaviour.ValueSettingsBehaviour.ValueSettings;
@@ -31,7 +31,11 @@ import net.minecraft.world.phys.BlockHitResult;
  */
 public class DumpFilteringBehaviour extends FilteringBehaviour {
 
-    public DumpFilteringBehaviour(SmartBlockEntity blockEntity, FunnelFilterSlotPositioning slot) {
+    /**
+     * @param slot 过滤槽的定位变换；卸料漏斗必须传 {@link DumpFunnelFilterSlotPositioning}
+     *             （原版 {@code FunnelFilterSlotPositioning} 认不出我们的传送带漏斗）
+     */
+    public DumpFilteringBehaviour(SmartBlockEntity blockEntity, ValueBoxTransform slot) {
         super(blockEntity, slot);
         // 默认 1 组、单位是组（不是 Create 的"个"）
         this.count = DumpFunnelRules.DEFAULT_STACKS;

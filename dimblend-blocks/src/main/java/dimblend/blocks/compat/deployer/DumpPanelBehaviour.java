@@ -2,6 +2,9 @@ package dimblend.blocks.compat.deployer;
 
 import java.util.List;
 
+import com.simibubi.create.AllBlocks;
+import com.simibubi.create.AllSoundEvents;
+import com.simibubi.create.Create;
 import com.simibubi.create.content.logistics.BigItemStack;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlock;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlockEntity;
@@ -23,13 +26,18 @@ import net.liukrast.deployer.lib.logistics.board.PanelType;
 import net.liukrast.deployer.lib.logistics.board.connection.PanelConnectionBuilder;
 import net.liukrast.deployer.lib.registry.DeployerPanelConnections;
 import net.minecraft.ChatFormatting;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
+import net.neoforged.neoforge.common.Tags;
 
 /**
  * 卸料仪表：把"库存压到目标值以下"做成一张物流面板。
@@ -133,6 +141,68 @@ public class DumpPanelBehaviour extends AbstractPanelBehaviour {
         return filter.item();
     }
 
+    // ---------------------------------------------------------------- 右键
+
+    /**
+     * 短按右键：<b>手持物品 → 直接设过滤</b>，空手 → 打开「卸料设置」页。
+     *
+     * <p>这是 Deployer 给自定义面板留的 5 参钩子（4 参版本在 {@code AbstractPanelBehaviour}
+     * 里是 {@code final}）。默认实现只有「客户端就开页面」，正好把「手持物品设过滤」吞掉：
+     * 过滤槽为空时 {@code acceptsValueSettings()} 为 false，Create 的
+     * {@code ValueSettingsInputHandler} 会直接在双端调这里，于是客户端弹页面、服务端什么也没做。
+     * 分支本身放在 {@link DumpGaugeInteraction} 里，单测钉死「拿着物品时客户端不许开页面」。</p>
+     */
+    @Override
+    public void onShortInteract(Player player, InteractionHand hand, Direction side, BlockHitResult hitResult,
+            boolean client) {
+        ItemStack held = player.getItemInHand(hand);
+        switch (DumpGaugeInteraction.route(client, held.isEmpty(), canShortInteract(held))) {
+            case APPLY_FILTER -> applyFilterFromHand(player, side, held);
+            case OPEN_SCREEN -> displayScreen(player);
+            case CONSUME_ONLY, IGNORE -> {
+                // 客户端拿着物品时什么都不做（服务端负责写过滤）；扳手/机械臂两侧都不动，
+                // 空手短按在服务端也不需要写状态
+            }
+        }
+    }
+
+    /** 与 Create {@code FilteringBehaviour#canShortInteract} 一致：扳手要用来循环连线，机械臂是要放下的方块。 */
+    @Override
+    public boolean canShortInteract(ItemStack toApply) {
+        return DumpGaugeInteraction.isFilterCandidate(toApply.isEmpty(),
+                toApply.is(Tags.Items.TOOLS_WRENCH), AllBlocks.MECHANICAL_ARM.isIn(toApply));
+    }
+
+    /**
+     * 服务端：把手里物品写进过滤槽。语义照抄 {@code FilteringBehaviour#onShortInteract}——
+     * 同一个物品不能被当过滤（{@code setFilter} 返回 false）时只播 deny 音，成功时播框架音。
+     *
+     * <p>{@code redraw} 必须先于 {@code setFilter} 置位：{@code FactoryPanelBlockEntity#write}
+     * 只有在 {@code redraw} 为真时才把 "Redraw" 标记写进客户端包，客户端收到后才
+     * {@code sendBlockUpdated} 重建面板模型，过滤物品才会出现在面板上。</p>
+     */
+    private void applyFilterFromHand(Player player, Direction side, ItemStack held) {
+        if (!Create.LOGISTICS.mayInteract(network, player)) {
+            player.displayClientMessage(Component.translatable("create.logistically_linked.protected")
+                    .withStyle(ChatFormatting.RED), true);
+            return;
+        }
+        Level level = getWorld();
+        panelBE().redraw = true;
+        if (!setFilter(side, held.copy())) {
+            player.displayClientMessage(Component.translatable("create.logistics.filter.invalid_item")
+                    .withStyle(ChatFormatting.RED), true);
+            if (level != null) {
+                AllSoundEvents.DENY.playOnServer(level, panelBE().getBlockPos(), 1.0F, 1.0F);
+            }
+            return;
+        }
+        if (level != null) {
+            level.playSound(null, panelBE().getBlockPos(), SoundEvents.ITEM_FRAME_ADD_ITEM,
+                    SoundSource.BLOCKS, 0.25F, 0.1F);
+        }
+    }
+
     // ---------------------------------------------------------------- 滑条
 
     @Override
@@ -157,6 +227,9 @@ public class DumpPanelBehaviour extends AbstractPanelBehaviour {
         }
         count = raw;
         upTo = stacks;
+        // 与 Create 的 FactoryPanelBehaviour#setValueSettings 对齐：先标 redraw 再发包，
+        // 客户端才会带 "Redraw" 标记重建面板模型（否则滑条改了、面板上显示的还是旧值）
+        panelBE().redraw = true;
         panelBE().sendData();
     }
 

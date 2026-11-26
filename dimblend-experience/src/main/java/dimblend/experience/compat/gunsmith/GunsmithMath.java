@@ -14,7 +14,8 @@ import java.util.Locale;
  *   <li>前置条件：原耐久必须未满（{@code currentDamage > 0}）；原耐久满时即便第二行蓝色条未满
  *       也禁止维修。满足前置条件后可单次灌注至双条 200%（原耐久 + 蓝色过度维修条各满），
  *       经验消耗严格等于 {@code used * 1} 级。</li>
- *   <li>隐藏等级线性插值（{@code t = level / 50.0f}，不在任何 UI 显示）：
+ *   <li>等级线性插值（{@code t = level / 50.0f}，倍率数值本身不在任何 UI 显示；只有等级数字出现在
+ *       TaCZ 原生 tooltip 的「等级」行，见 {@link GunsmithLevelText}）：
  *       伤害 {@code 1.0x..2.0x}、换弹速度 {@code 1.0x..1.5x}、卡壳排障速度 {@code 1.0x..3.0x}。</li>
  * </ul>
  */
@@ -128,7 +129,7 @@ public final class GunsmithMath {
         return new RepairResult(true, used, newDamage, newOver, newLevel, xpCost);
     }
 
-    // ---- 隐藏等级倍率（0..50 均匀线性，Audit Default #11） ---------------------
+    // ---- 等级倍率（0..50 均匀线性，Audit Default #11） -------------------------
 
     /** 伤害倍率：{@code 1.0x}（0 级）→ {@code 1.02x}（1 级）→ {@code 2.0x}（50 级）。 */
     public static float damageMultiplier(int level) {

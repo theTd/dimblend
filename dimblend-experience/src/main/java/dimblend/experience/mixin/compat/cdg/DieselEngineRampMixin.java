@@ -160,8 +160,14 @@ public abstract class DieselEngineRampMixin {
         // （双向对齐：controller 修好了部件也得跟着好，否则换活塞后旧部件还僵在坏态）
         dimblend$alignModularDamage(self, state);
         if (Config.DIESEL_ENGINE_OVERLOAD.get() && state.pistonDamaged) {
-            // 2026-11-25 活塞损坏：不烧油、不爬梯、不点引信，只每 5 tick 冒一缕黑烟等玩家换活塞
-            CdgEngineDamage.tickDamagedSmoke(level, self.getBlockPos());
+            // 2026-11-26 口径：损坏期间不出力/不烧油/不发声全部由 IEngine 门控（EngineFuelGateMixin
+            // 的 enabled() + getFuelThrottle() 两个注入点）在源头掐掉——普通机扣油块在 enabled() 内，
+            // 组合式扣油块不检查 enabled() 所以必须同时把 getFuelThrottle() 归零；
+            // 客户端 tickClient 同样以 enabled() 为开音前提，归零后自然 fadeOut。
+            // 这里只补两件事：黑烟（每 5 tick）+ 偶发灭火音。
+            // 组合式 21 格结构里只有 controller 发声，否则一台机器会连响 21 遍。
+            boolean soundAnchor = !(self instanceof ModularDieselEngineBlockEntity modular) || modular.isController();
+            CdgEngineDamage.tickDamagedAmbience(level, self.getBlockPos(), state, soundAnchor);
             state.rampTicks = 0;
             state.fluctTicksLeft = 0;
             state.boostConsumed = false;
