@@ -6,6 +6,7 @@ import dimblend.experience.Config;
 import dimblend.experience.compat.cca.AlternatorOverstressLatch;
 import dimblend.experience.compat.cca.AlternatorOverstressLatchAccess;
 import net.minecraft.server.level.ServerLevel;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -47,8 +48,9 @@ public abstract class AlternatorIdleDrainMixin {
     @Unique
     private static final int dimblend$DRAIN_PER_TICK = AlternatorOverstressLatch.STASH_DRAIN_PER_TICK;
 
-    /** 目标为 protected final（构造器初始化），shadow 按只读使用、不匹配 finality。 */
+    /** 目标为 protected final（构造器初始化），本 mixin 仅只读访问，标注 @Final 匹配目标修饰符。 */
     @Shadow(remap = false)
+    @Final
     protected InternalEnergyStorage energy;
 
     @Inject(method = "tick()V", at = @At("HEAD"))

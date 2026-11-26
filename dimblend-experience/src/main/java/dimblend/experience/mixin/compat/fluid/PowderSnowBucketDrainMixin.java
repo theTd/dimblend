@@ -6,6 +6,7 @@ import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.FluidType;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler.FluidAction;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Shadow;
@@ -51,8 +52,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(targets = "com.adonis.fluid.fluid.powdersnow.PowderSnowBucketHandler$PowderSnowBucketFluidHandler", remap = false)
 public abstract class PowderSnowBucketDrainMixin {
 
-    /** 上游为 private final（构造器唯一赋值）；写回需 @Mutable，@Shadow 只声明不加 @Final。 */
+    /** 上游为 private final（构造器唯一赋值）；写回需同时标注 @Shadow @Final @Mutable。 */
     @Mutable
+    @Final
     @Shadow
     private ItemStack container;
 

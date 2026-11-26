@@ -3,6 +3,7 @@ package dimblend.experience.mixin.compat.cca;
 import com.mrh0.createaddition.blocks.alternator.AlternatorBlockEntity;
 import com.mrh0.createaddition.energy.InternalEnergyStorage;
 import dimblend.experience.Config;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -44,6 +45,7 @@ public abstract class AlternatorCapacityMixin {
      * 因此这里的可见性不影响对目标 protected 字段的读写；本 mixin 只读该实例以调用其 setter。
      */
     @Shadow(remap = false)
+    @Final
     private InternalEnergyStorage energy;
 
     /** 构造返回后抬上限：容量定型，后续 read 不重设容量。 */

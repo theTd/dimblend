@@ -98,7 +98,7 @@ public abstract class ElectricMotorMixin {
      * recompute 为幂等直写：同 tick 多次传播/多调用点无叠加、无递归。
      */
     @Inject(method = "tick()V", at = @At(value = "INVOKE", target = "Lcom/mrh0/createaddition/blocks/electric_motor/ElectricMotorBlockEntity;updateGeneratedRotation()V"))
-    public void dimblend$recomputeBeforePropagate(CallbackInfo ci) {
+    private void dimblend$recomputeBeforePropagate(CallbackInfo ci) {
         dimblend$recompute();
     }
 
@@ -120,7 +120,7 @@ public abstract class ElectricMotorMixin {
     private static final float dimblend$PROPAGATE_EPSILON = 1.0E-3F;
 
     @Inject(method = "tick()V", at = @At("HEAD"))
-    public void dimblend$followSignalLive(CallbackInfo ci) {
+    private void dimblend$followSignalLive(CallbackInfo ci) {
         ElectricMotorBlockEntity self = (ElectricMotorBlockEntity) (Object) this;
         if (!(self.getLevel() instanceof ServerLevel serverLevel)) {
             return;
@@ -169,7 +169,7 @@ public abstract class ElectricMotorMixin {
      * 已处理（updateFromNetwork 系 tick 外异步事件）；TAIL 只补 active=false。
      */
     @Inject(method = "tick()V", at = @At("TAIL"))
-    public void dimblend$resetLatchOnPowerLoss(CallbackInfo ci) {
+    private void dimblend$resetLatchOnPowerLoss(CallbackInfo ci) {
         ElectricMotorBlockEntity self = (ElectricMotorBlockEntity) (Object) this;
         if (!(self.getLevel() instanceof ServerLevel)) {
             return;
@@ -194,7 +194,7 @@ public abstract class ElectricMotorMixin {
 
     /** D2：滚动值回调路径（int 版内部 super 传播前的重算，覆盖滚动面板改动）。 */
     @Inject(method = "updateGeneratedRotation(I)V", at = @At(value = "INVOKE", target = "Lcom/simibubi/create/content/kinetics/base/GeneratingKineticBlockEntity;updateGeneratedRotation()V"))
-    public void dimblend$recomputeBeforePanelPropagate(int newSpeed, CallbackInfo ci) {
+    private void dimblend$recomputeBeforePanelPropagate(int newSpeed, CallbackInfo ci) {
         dimblend$recompute();
     }
 
@@ -203,7 +203,7 @@ public abstract class ElectricMotorMixin {
      * 首次传播即按信号映射。
      */
     @Inject(method = "initialize()V", at = @At(value = "INVOKE", target = "Lcom/mrh0/createaddition/blocks/electric_motor/ElectricMotorBlockEntity;updateGeneratedRotation()V"))
-    public void dimblend$recomputeOnInitialize(CallbackInfo ci) {
+    private void dimblend$recomputeOnInitialize(CallbackInfo ci) {
         dimblend$recompute();
     }
 
@@ -316,7 +316,7 @@ public abstract class ElectricMotorMixin {
                     ordinal = 0,
                     remap = false),
             method = "tick()V")
-    public boolean dimblend$activateOnSignal(boolean originalPowered) {
+    private boolean dimblend$activateOnSignal(boolean originalPowered) {
         ElectricMotorBlockEntity self = (ElectricMotorBlockEntity) (Object) this;
         if (!(self.getLevel() instanceof ServerLevel)) {
             return originalPowered;
@@ -342,7 +342,7 @@ public abstract class ElectricMotorMixin {
                     ordinal = 1,
                     remap = false),
             method = "tick()V")
-    public boolean dimblend$stayActiveOnSignal(boolean originalPowered) {
+    private boolean dimblend$stayActiveOnSignal(boolean originalPowered) {
         ElectricMotorBlockEntity self = (ElectricMotorBlockEntity) (Object) this;
         if (!(self.getLevel() instanceof ServerLevel)) {
             return originalPowered;
@@ -370,7 +370,7 @@ public abstract class ElectricMotorMixin {
                     target = "Lcom/mrh0/createaddition/blocks/electric_motor/ElectricMotorBlockEntity;active:Z",
                     remap = false),
             method = "tickAudio()V")
-    public boolean dimblend$muteOriginalAudio(boolean originalActive) {
+    private boolean dimblend$muteOriginalAudio(boolean originalActive) {
         if (!Config.ELECTRIC_MOTOR_BEHAVIOR.get()) {
             return originalActive;
         }

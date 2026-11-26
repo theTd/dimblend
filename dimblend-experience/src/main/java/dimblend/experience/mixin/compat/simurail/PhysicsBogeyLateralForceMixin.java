@@ -18,6 +18,7 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Quaterniondc;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -47,12 +48,14 @@ public abstract class PhysicsBogeyLateralForceMixin {
     private double visualSpeed;
 
     @Shadow(remap = false)
+    @Final
     private PhysicsBogeyOptions options;
 
     @Shadow(remap = false)
     private GenericConstraintHandle pivotJoint;
 
     @Shadow(remap = false)
+    @Final
     private Vector3dc localCenter;
 
     @Shadow(remap = false)
