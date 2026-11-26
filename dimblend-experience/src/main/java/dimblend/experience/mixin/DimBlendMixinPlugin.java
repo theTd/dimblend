@@ -343,10 +343,13 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.endsWith(".compat.simurail.AutomaticCouplerWireBreakMixin")) {
             return isLoaded("simurail") && isLoaded("createaddition");
         }
+        if (mixinClassName.endsWith(".compat.simurail.BogeySetOptionsSurvivalMixin")) {
+            return isLoaded("simurail")
+                    && classPresent("foundry.veil.api.network.handler.ServerPacketContext");
+        }
         if (mixinClassName.endsWith(".compat.simurail.PhysicsBogeyZeroHoldMixin")
                 || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyAxleBrakeHoldMixin")
                 || mixinClassName.endsWith(".compat.simurail.PhysicsBogeyMinimumSpeedParticleMixin")
-                || mixinClassName.endsWith(".compat.simurail.BogeySetOptionsSurvivalMixin")
                 || mixinClassName.endsWith(".compat.simurail.BogeyOptionsScreenSurvivalMixin")
                 || mixinClassName.endsWith(".compat.simurail.BogeyMenuScreenSurvivalMixin")) {
             return isLoaded("simurail");
