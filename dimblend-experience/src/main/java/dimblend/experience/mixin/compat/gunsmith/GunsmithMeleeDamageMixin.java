@@ -12,8 +12,8 @@ import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
 
 /**
- * 枪托/刺刀/扳手近战（{@code ModernKineticGunItem#doMelee → doPerLivingHurt}）同步吃隐藏等级伤害倍率
- * （0–50 级线性 {@code 1.0x..2.0x}）。
+ * 枪托/刺刀/扳手近战（{@code ModernKineticGunItem#doMelee → doPerLivingHurt}）同步吃等级伤害倍率
+ * （0–50 级线性 {@code 1.0x..2.0x}，倍率本身不显示）。
  *
  * <p>{@code doPerLivingHurt} 是 {@code private static} 方法，体内只有一处
  * {@code LivingEntity#hurt(DamageSource, float)}（偏移 83），攻击者直接从

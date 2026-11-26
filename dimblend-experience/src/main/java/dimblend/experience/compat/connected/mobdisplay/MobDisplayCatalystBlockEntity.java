@@ -6,6 +6,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientGamePacketListener;
+import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -28,16 +31,17 @@ import net.minecraft.world.level.block.state.BlockState;
  * <p><b>客户端实体只重建一次</b>：每次 {@code clientTick} 比较盒子内容，变了才重建（
  * {@code EntityType.byString → create(level) → load(nbt)}），并复位 {@code hurtTime/deathTime}、
  * 清火、隐藏自定义名字——保证展示的是"刚拍下来那一刻"的干净生物。</p>
+ *
+ * <p><b>必须同时覆盖 {@code getUpdateTag} 与 {@code getUpdatePacket}（2026-11-26 修复）</b>：
+ * 原版 {@code BlockEntity#getUpdatePacket} 默认 {@code return null}，而
+ * {@code ChunkHolder#broadcastBlockEntity} 见 null 就直接不发包——只写 {@code sync()} 的话
+ * 玩家放进盒子后客户端永远拿不到那份 {@code StoredBox}，{@code clientTick} 遂把
+ * {@code displayEntity} 置 null，方块里看不到生物（重启/重进区块走存档加载才看得到）。</p>
  */
 public final class MobDisplayCatalystBlockEntity extends BlockEntity {
 
     /** 盒子的存档键。 */
     private static final String NBT_STORED_BOX = "StoredBox";
-
-    /** 盒子里的三个约定键（creatorsword 的抓捕盒格式）。 */
-    private static final String TAG_HAS_CAPTURED = "HasCapturedEntity";
-    private static final String TAG_CAPTURED_TYPE = "CapturedEntityType";
-    private static final String TAG_CAPTURED_NBT = "CapturedEntityNbt";
 
     private ItemStack storedBox = ItemStack.EMPTY;
 
@@ -118,10 +122,10 @@ public final class MobDisplayCatalystBlockEntity extends BlockEntity {
             return null;
         }
         CompoundTag tag = data.copyTag();
-        if (!tag.getBoolean(TAG_HAS_CAPTURED)) {
+        if (!MobDisplayCatalystRules.hasCapturedEntity(tag)) {
             return null;
         }
-        String typeId = tag.getString(TAG_CAPTURED_TYPE);
+        String typeId = MobDisplayCatalystRules.capturedEntityTypeId(tag);
         Optional<EntityType<?>> type = EntityType.byString(typeId);
         if (type.isEmpty()) {
             return null;
@@ -130,8 +134,8 @@ public final class MobDisplayCatalystBlockEntity extends BlockEntity {
         if (entity == null) {
             return null;
         }
-        if (tag.contains(TAG_CAPTURED_NBT)) {
-            CompoundTag captured = tag.getCompound(TAG_CAPTURED_NBT).copy();
+        CompoundTag captured = MobDisplayCatalystRules.capturedEntityTag(tag);
+        if (captured != null) {
             try {
                 entity.load(captured);
             } catch (RuntimeException ignored) {
@@ -157,11 +161,30 @@ public final class MobDisplayCatalystBlockEntity extends BlockEntity {
         storedBox = tag.contains(NBT_STORED_BOX)
                 ? ItemStack.parse(registries, tag.getCompound(NBT_STORED_BOX)).orElse(ItemStack.EMPTY)
                 : ItemStack.EMPTY;
+        // 客户端/服务端都可能走到这里（客户端是 handleUpdateTag / onDataPacket）：把展示缓存作废，
+        // 下一次 clientTick 必定按新盒子重建，免得"同步来的盒子恰好和本地缓存相等"时继续画旧的。
+        displayEntity = null;
+        displayBuiltFor = ItemStack.EMPTY;
     }
 
     /** 客户端拿到的同步包：整只盒子（渲染器需要它的 nbt 来建展示实体）。 */
     @Override
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
         return saveWithoutMetadata(registries);
+    }
+
+    /**
+     * 同步包本体：**必须在方块更新时真的把包发出去**。
+     *
+     * <p>原版 {@code BlockEntity#getUpdatePacket()} 默认返回 {@code null}，而
+     * {@code ChunkHolder#broadcastBlockEntity}（{@code ChunkHolder.java:213-221}）判断
+     * {@code if (packet != null) broadcast(...)}——只写 {@code getUpdateTag} 的话
+     * {@code setStoredBox → sync()} 这条路一条包都不会发，客户端 {@code storedBox} 永远是空，
+     * {@code clientTick} 就把 {@code displayEntity} 清掉了。这里要的语义正是"放进盒子立刻看见生物"，
+     * 所以必须自己造包（{@code create(this)} 内部即 {@code getUpdateTag(level.registryAccess())}）。</p>
+     */
+    @Override
+    public Packet<ClientGamePacketListener> getUpdatePacket() {
+        return ClientboundBlockEntityDataPacket.create(this);
     }
 }

@@ -353,6 +353,8 @@
 	"item.dimblend_experience.supplement.levitite_bucket": "用于列车时 可有效减重 且不产生阻力",
 	"item.dimblend_experience.supplement.doll": "它也会是称职的仓库管理员",
 	"dimblend_experience.display_source.traction_efficiency": "牵引效率",
+	"dimblend_experience.display_source.velocity_kmh": "相对速度 km/h",
+	"dimblend_experience.display_source.velocity_mph": "相对速度 mph",
 	"dimblend_experience.display_source.vault_storage_groups": "读取存量-计位",
 	"dimblend_experience.display_source.vault_storage_items": "读取存量-计件",
 	"dimblend_experience.display_source.vault_storage.display": "显示格式",

@@ -67,6 +67,7 @@ public final class TrainTubes {
         TrainTubeLinksPayload.register(modEventBus);
 
         NeoForge.EVENT_BUS.addListener(TrainTubeNetworkManager::onLevelTickPost);
+        NeoForge.EVENT_BUS.addListener(TrainTubeLinkInteraction::onLevelTickPost);
         NeoForge.EVENT_BUS.addListener(TrainTubeLinkInteraction::onPlayerLoggedOut);
         NeoForge.EVENT_BUS.addListener(TrainTubePlacementGuard::onEntityPlace);
         NeoForge.EVENT_BUS.addListener(TrainTubePlacementGuard::onServerTickPost);

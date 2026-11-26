@@ -9,6 +9,7 @@
 	"mixins": [
 		"OriginCompassMixin",
 		"compat.simulated.NavigationCompassMixin",
+		"compat.simulated.VelocitySensorRelativeSpeedMixin",
 		"ServerPlayerTotemDeathMixin",
 		"compat.solcarrot.FoodRecordDeathMixin",
 		"PlayerBedRestMixin",
@@ -162,6 +163,7 @@
 		"compat.cdg.CdgPistonDamageDropMixin",
 		"compat.cdg.CdgPistonDamageRestoreMixin",
 		"compat.cdg.CdgPistonDamagedSyncMixin",
+		"compat.cdg.EngineFuelGateMixin",
 		"compat.cca.LiquidBlazeBurnerSoundMixin",
 		"compat.cca.LiquidBlazeBurnerFuelMixin",
 		"compat.cca.SubLevelWireDistanceMixin",
@@ -268,6 +270,7 @@
 		"compat.create.FluidValveVisualMixin",
 		"compat.fluid.CopperSinkTooltipSummaryMixin",
 		"compat.gunsmith.GunsmithClientAnimationMixin",
+		"compat.gunsmith.GunsmithGunLevelTooltipMixin",
 		"compat.gunsmith.GunsmithSoundPitchMixin",
 		"compat.gunsmith.GunsmithUnjamSpeedMixin",
 		"compat.gunsmith.JeiGunsmithRepairPluginMixin"

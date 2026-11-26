@@ -13,7 +13,8 @@ import net.minecraft.world.item.component.CustomData;
  * <ul>
  *   <li>{@link #OVER_DURABILITY_KEY}：第二行蓝色过度维修耐久（{@code 0..maxDamage}）。
  *       与原耐久正交，开火优先扣除本键，因此原版卡壳率与低耐久衰减自动不受蓝色条干扰。</li>
- *   <li>{@link #LEVEL_KEY}：隐藏枪械经验等级（{@code 0..50}，新枪为 0；绝不在任何 UI/Tooltip 显示）。</li>
+ *   <li>{@link #LEVEL_KEY}：枪械经验等级（{@code 0..50}，新枪为 0；只在 TaCZ 原生 tooltip 的「等级」
+ *       行显示出来，见 {@link GunsmithLevelText}，任何倍率/加成数值一律不显示）。</li>
  * </ul>
  */
 public final class GunsmithData {
@@ -21,7 +22,7 @@ public final class GunsmithData {
     /** 第二行蓝色过度维修耐久键。 */
     public static final String OVER_DURABILITY_KEY = "DimBlendOverDurability";
 
-    /** 隐藏枪械经验等级键（0–50，缺席即 0 级）。 */
+    /** 枪械经验等级键（0–50，缺席即 0 级）。 */
     public static final String LEVEL_KEY = "DimBlendGunsmithLevel";
 
     // ---- 蓝色过度维修耐久 ----------------------------------------------------
@@ -57,7 +58,7 @@ public final class GunsmithData {
         return remaining;
     }
 
-    // ---- 隐藏枪械经验等级（0..50） --------------------------------------------
+    // ---- 枪械经验等级（0..50） ------------------------------------------------
 
     public static int getLevel(ItemStack stack) {
         CustomData data = stack.get(DataComponents.CUSTOM_DATA);

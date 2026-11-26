@@ -8,13 +8,11 @@ import com.simibubi.create.content.kinetics.belt.behaviour.DirectBeltInputBehavi
 import com.simibubi.create.content.logistics.funnel.AbstractFunnelBlock;
 import com.simibubi.create.content.logistics.funnel.BeltFunnelBlock;
 import com.simibubi.create.content.logistics.funnel.FunnelBlockEntity;
-import com.simibubi.create.content.logistics.funnel.FunnelFilterSlotPositioning;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import com.simibubi.create.foundation.blockEntity.behaviour.filtering.FilteringBehaviour;
 import com.simibubi.create.foundation.blockEntity.behaviour.inventory.InvManipulationBehaviour;
 import com.simibubi.create.foundation.item.ItemHelper;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -66,7 +64,7 @@ public class DumpFunnelBlockEntity extends FunnelBlockEntity implements IHaveHov
         super.addBehaviours(behaviours);
         // 黄铜漏斗默认挂一条 FilteringBehaviour（活跃条件只认自家方块）；这里整条替换成
         // 卸料版本，保证 getBehaviour(FilteringBehaviour.TYPE) 取到的是卸料判定。
-        DumpFilteringBehaviour replacement = new DumpFilteringBehaviour(this, new FunnelFilterSlotPositioning());
+        DumpFilteringBehaviour replacement = new DumpFilteringBehaviour(this, new DumpFunnelFilterSlotPositioning());
         int index = -1;
         for (int i = 0; i < behaviours.size(); i++) {
             if (behaviours.get(i) instanceof FilteringBehaviour && !(behaviours.get(i) instanceof DumpFilteringBehaviour)) {
@@ -194,13 +192,28 @@ public class DumpFunnelBlockEntity extends FunnelBlockEntity implements IHaveHov
     }
 
     /**
+     * 门帘（flap）偏移：Create 的 {@code FunnelBlockEntity#getFlapOffset()} 只认自家
+     * {@code BeltFunnelBlock}，我们是第三方子类会一路拿到普通漏斗的 {@code -0.0625}。
+     * 偏移差 0.5 格时，4 段门帘（每段 0.190625，共 0.7625 格长）会被画在方块中部而不是
+     * 延展喷口前缘——视觉上等于"皮带条处被门帘盖住了"，所以这里按形态补上。
+     */
+    @Override
+    public float getFlapOffset() {
+        BlockState state = getBlockState();
+        if (state.getBlock() instanceof DumpBeltFunnelBlock) {
+            return DumpFunnelLayout.flapOffset(DumpFunnelLayout.Shape.of(state.getValue(DumpBeltFunnelBlock.SHAPE)));
+        }
+        return super.getFlapOffset();
+    }
+
+    /**
      * 护目镜信息：没设过滤 = 完全不卸料，必须显式提示（否则玩家只会看到漏斗"不动"）。
+     * 行首 4 空格给左上角 16×16 的护目镜图标让位（口径见 {@link DumpFunnelLayout#GOGGLE_GUTTER}）。
      */
     @Override
     public boolean addToTooltip(List<Component> tooltip, boolean isPlayerSneaking) {
         if (dumpFilter != null && dumpFilter.getFilter().isEmpty()) {
-            tooltip.add(Component.translatable("dimblend_blocks.dump_funnel.no_filter")
-                    .withStyle(ChatFormatting.GRAY));
+            tooltip.add(DumpFunnelLayout.goggleLine("dimblend_blocks.dump_funnel.no_filter"));
             return true;
         }
         return false;

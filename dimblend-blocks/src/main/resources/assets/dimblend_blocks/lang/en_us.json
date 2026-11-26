@@ -28,7 +28,6 @@
   "dimblend_blocks.dump_funnel.no_filter": "Filter required",
   "block.dimblend_blocks.dump_gauge": "Dump Gauge",
   "block.dimblend_blocks.dump_gauge.tooltip.1": "Requests a dump from the network whenever storage holds more than the target",
-  "block.dimblend_blocks.dump_gauge.tooltip.2": "Slider: 0 disables, 1 empties, 2..100 target 1..99 (items/stacks)",
   "dimblend_blocks.dump_gauge.board.title": "Target Dump Amount",
   "dimblend_blocks.dump_gauge.board.row.items": "Items",
   "dimblend_blocks.dump_gauge.board.row.stacks": "Stacks",
@@ -53,5 +52,7 @@
   "dimblend_blocks.train_pressured_tube.link.too_far": "Endpoints are more than 16 blocks apart",
   "dimblend_blocks.train_pressured_tube.link.already_linked": "That endpoint is already linked",
   "dimblend_blocks.train_pressured_tube.link.stale_endpoint": "The first endpoint is no longer valid, select it again",
-  "dimblend_blocks.train_pressured_tube.link.linked": "Cross-carriage pipe link established"
+  "dimblend_blocks.train_pressured_tube.link.linked": "Cross-carriage pipe link established",
+  "dimblend_blocks.train_pressured_tube.link.disconnected": "Cross-carriage pipe link removed",
+  "dimblend_blocks.train_pressured_tube.link.wrench_removed": "Wrench no longer held: endpoint selection cleared"
 }

@@ -20,7 +20,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * TaCZ 子弹隐藏伤害加成（0–50 级线性 {@code 1.0x..2.0x}，绝不写入 {@code AttachmentCacheProperty}，
- * 因而不在任何 UI/Tooltip 泄露）。
+ * 因而不在任何伤害类 UI 数字里泄露——只有 tooltip 的「等级」行显示等级本身，
+ * 具体倍率不出现，见 {@link dimblend.experience.compat.gunsmith.GunsmithLevelText}）。
  *
  * <p>在受保护的 10 参构造器 {@code TAIL}（此时 {@code this} 已完成初始化且
  * {@code this.explosionDamage} 已算完）从 {@code gunItem} 读取等级倍率并缓存到

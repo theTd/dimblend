@@ -133,10 +133,12 @@ public abstract class HugeDieselEngineMixin {
         }
         CdgEngineState state = self.getData(CdgAttachments.ENGINE_STATE);
         if (Config.DIESEL_ENGINE_OVERLOAD.get() && state.pistonDamaged) {
-            // 2026-11-25 活塞损坏：不烧油、不爬梯、不点引信，只每 5 tick 冒一缕黑烟等玩家换活塞
-            // （巨型机是 3×3，每格的 BE 各自登记到轴、各自吃自己的油，所以"哪格烧坏就哪格停"，
-            // 换掉那格的活塞即恢复；轴侧登记由原版 tick 的 enabled()==false 分支摘掉）
-            CdgEngineDamage.tickDamagedSmoke(level, self.getBlockPos());
+            // 2026-11-26 口径：零耗油/静音由 IEngine 门控（EngineFuelGateMixin）统一处理
+            // （巨型机的扣油块在 enabled() 内、轴侧登记由原版 tick 的 enabled()==false 分支摘掉）。
+            // 这里只补黑烟 + 偶发灭火音；3×3 结构里只让坐标最小的那台发声，避免九台同时爆响。
+            boolean soundAnchor = CdgEngineDamage.isSoleDamagedSpeaker(
+                    level, self.getBlockPos(), HugeDieselEngineBlockEntity.class);
+            CdgEngineDamage.tickDamagedAmbience(level, self.getBlockPos(), state, soundAnchor);
             state.rampTicks = 0;
             state.fluctTicksLeft = 0;
             state.boostConsumed = false;

@@ -193,7 +193,8 @@ public final class TrainTubeNetworkManager {
         syncLinks(level);
     }
 
-    private static boolean isLinkStillValid(ServerLevel level, TrainTubeLink link) {        SubLevel first = TrainTubeSable.subLevel(level, link.subA());
+    private static boolean isLinkStillValid(ServerLevel level, TrainTubeLink link) {
+        SubLevel first = TrainTubeSable.subLevel(level, link.subA());
         SubLevel second = TrainTubeSable.subLevel(level, link.subB());
         if (first == null || second == null) {
             return false; // 子层级已被移除
@@ -387,9 +388,9 @@ public final class TrainTubeNetworkManager {
     // ------------------------------------------------------------------ 同步
 
     public static void syncLinks(ServerLevel level) {
-        TrainTubeLinksPayload payload = TrainTubeLinksPayload.of(TrainTubeSavedData.get(level).links());
+        // 每个玩家的快照都必须带上"他自己的挂起选择"，所以逐人构造，不再共用一份包
         for (ServerPlayer player : level.players()) {
-            PacketDistributor.sendToPlayer(player, payload);
+            PacketDistributor.sendToPlayer(player, payloadFor(level, player));
         }
     }
 
@@ -397,8 +398,12 @@ public final class TrainTubeNetworkManager {
         if (!(player.level() instanceof ServerLevel level)) {
             return;
         }
-        PacketDistributor.sendToPlayer(player,
-                TrainTubeLinksPayload.of(TrainTubeSavedData.get(level).links()));
+        PacketDistributor.sendToPlayer(player, payloadFor(level, player));
+    }
+
+    private static TrainTubeLinksPayload payloadFor(ServerLevel level, ServerPlayer player) {
+        return TrainTubeLinksPayload.of(level.dimension(), TrainTubeSavedData.get(level).links(),
+                TrainTubeLinkInteraction.selectionOf(player));
     }
 
     // ------------------------------------------------------------------ 方块读取

@@ -149,7 +149,46 @@ class GunsmithMathTest {
         assertEquals(1, maxed.xpCost());
     }
 
-    // ---- 隐藏等级倍率（0 / 1 / 25 / 50 精确锚点） -----------------------------
+    /**
+     * 用户口径（2026-11-26）：新枪 0 级，第 1 次维修后 1 级，……，第 50 次维修后 50 级，
+     * 第 51 次维修后仍是 50（不溢出）；并且只有 50 级在 tooltip 上带 {@code MAX}。
+     *
+     * <p>每一轮模拟"开火打掉 10 点原耐久 → 用 1 件精密构件修回来"：手枪 {@code maxDamage=800}、
+     * {@code perItem=800}，所以单件刚好修满且必然只消耗 1 件。</p>
+     */
+    @Test
+    void repairLadderRaisesLevelOnePerRepairUpToFiftyAndNeverOverflows() {
+        int maxDamage = 800;
+        String gunType = "pistol";
+        int level = 0;
+
+        assertEquals("0", GunsmithLevelText.levelText(level), "新制造的枪必须是 0 级且不显示 MAX");
+
+        for (int repair = 1; repair <= 51; repair++) {
+            GunsmithMath.RepairResult r = GunsmithMath.computeAnvilRepair(maxDamage, 10, 0, level, gunType, 1);
+            assertTrue(r.allowed(), "第 " + repair + " 次维修应允许");
+            assertEquals(1, r.usedMechanisms(), "第 " + repair + " 次维修只消耗 1 件");
+            assertEquals(1, r.xpCost(), "第 " + repair + " 次维修收 1 级经验");
+
+            level = r.newLevel();
+            int expected = Math.min(GunsmithMath.MAX_LEVEL, repair);
+            assertEquals(expected, level, "第 " + repair + " 次维修后的等级");
+            assertTrue(level <= GunsmithMath.MAX_LEVEL, "等级绝不超过 50");
+
+            if (level < GunsmithMath.MAX_LEVEL) {
+                assertEquals(Integer.toString(level), GunsmithLevelText.levelText(level),
+                        "未满级只显示数字，不得出现 MAX");
+            } else {
+                assertEquals("50 (MAX)", GunsmithLevelText.levelText(level), "满级才显示 50 (MAX)");
+            }
+        }
+
+        // 第 51 次之后仍然是 50 级、仍然显示 50 (MAX)
+        assertEquals(50, level);
+        assertEquals("50 (MAX)", GunsmithLevelText.levelText(level));
+    }
+
+    // ---- 等级倍率（0 / 1 / 25 / 50 精确锚点） -------------------------------
 
     @Test
     void damageMultiplierExactAnchors() {

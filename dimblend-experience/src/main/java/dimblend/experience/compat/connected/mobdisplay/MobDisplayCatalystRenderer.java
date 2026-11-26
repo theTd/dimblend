@@ -24,7 +24,8 @@ import org.joml.Vector3d;
  * 所以用 {@code ClientSubLevel#renderPose()} 把中心投到真实世界坐标，再做 16 格距离判定；
  * 不投出去的话，载具开走时生物会留在原地。</li>
  * <li><b>统一缩放</b>：{@code scale = min(0.8 / max(bbW, bbH, 0.001), 0.8)}，
- * 让最大的那只生物也塞进 0.8 格；中心对齐 {@code (0.5, 0.5 - bbH*scale*0.5, 0.5)}。</li>
+ * 让最大的那只生物也塞进 0.8 格；中心对齐 {@code (0.5, 0.5 - bbH*scale*0.5, 0.5)}。
+ * 缩放与自转公式都收在 {@link MobDisplayCatalystRules} 里（纯函数，可单测）。</li>
  * <li><b>Y 轴转速</b> {@code (System.currentTimeMillis() / 25.0) % 360}（与 {@code @Local} 无关，
  * 纯墙钟：暂停游戏也继续转，和 Create 的展示件同手感）。</li>
  * <li><b>不要影子</b>：实体渲染器的阴影是贴地椭圆，在方块内部会穿帮；渲染前后
@@ -34,12 +35,8 @@ import org.joml.Vector3d;
 public final class MobDisplayCatalystRenderer
         implements BlockEntityRenderer<MobDisplayCatalystBlockEntity> {
 
-    /** 最大占位（格）。 */
-    private static final float MAX_DIMENSION = 0.8F;
     /** 只在这个世界距离内画（格，平方比较）。 */
     private static final double RENDER_DISTANCE_SQR = 16.0D * 16.0D;
-    /** 自转：每 25 ms 一度 ≈ 2.5 秒一圈。 */
-    private static final double DEGREES_PER_MILLISECOND = 1.0D / 25.0D;
 
     public MobDisplayCatalystRenderer(BlockEntityRendererProvider.Context context) {
     }
@@ -63,9 +60,8 @@ public final class MobDisplayCatalystRenderer
         if (camera.distanceToSqr(center.x, center.y, center.z) > RENDER_DISTANCE_SQR) {
             return;
         }
-        float maxDimension = Math.max(display.getBbWidth(), display.getBbHeight());
-        float scale = Math.min(MAX_DIMENSION / Math.max(maxDimension, 0.001F), MAX_DIMENSION);
-        float rotation = (float) ((System.currentTimeMillis() * DEGREES_PER_MILLISECOND) % 360.0D);
+        float scale = MobDisplayCatalystRules.displayScale(display.getBbWidth(), display.getBbHeight());
+        float rotation = MobDisplayCatalystRules.rotationDegrees(System.currentTimeMillis());
 
         EntityRenderDispatcher dispatcher = Minecraft.getInstance().getEntityRenderDispatcher();
         pose.pushPose();

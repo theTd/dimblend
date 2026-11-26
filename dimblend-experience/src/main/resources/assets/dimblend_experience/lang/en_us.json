@@ -353,6 +353,8 @@
 	"item.dimblend_experience.supplement.levitite_bucket": "Effectively lightens trains without adding drag",
 	"item.dimblend_experience.supplement.doll": "It would also make a capable stock keeper",
 	"dimblend_experience.display_source.traction_efficiency": "Traction Efficiency",
+	"dimblend_experience.display_source.velocity_kmh": "Relative Speed (km/h)",
+	"dimblend_experience.display_source.velocity_mph": "Relative Speed (mph)",
 	"dimblend_experience.display_source.vault_storage_groups": "Storage Readout - Groups",
 	"dimblend_experience.display_source.vault_storage_items": "Storage Readout - Pieces",
 	"dimblend_experience.display_source.vault_storage.display": "Display Format",
