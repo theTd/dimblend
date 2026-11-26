@@ -27,7 +27,13 @@ import org.joml.Vector3d;
  * 让最大的那只生物也塞进 0.8 格；中心对齐 {@code (0.5, 0.5 - bbH*scale*0.5, 0.5)}。
  * 缩放与自转公式都收在 {@link MobDisplayCatalystRules} 里（纯函数，可单测）。</li>
  * <li><b>Y 轴转速</b> {@code (System.currentTimeMillis() / 25.0) % 360}（与 {@code @Local} 无关，
- * 纯墙钟：暂停游戏也继续转，和 Create 的展示件同手感）。</li>
+ * 纯墙钟：暂停游戏也继续转，和 Create 的展示件同手感），即 {@code 40°/s}、<b>9 秒一圈</b>——
+ * 这是唯一的"转"，速度刻意压得很温和。</li>
+ * <li><b>生物自身朝向必须每帧锁死</b>：{@link MobDisplayCatalystBlockEntity#lockDisplayPose} 把
+ * {@code yRot/yRotO/yBodyRot/yBodyRotO/yHeadRot/yHeadRotO} 全部归零后再进 {@code EntityRenderDispatcher}，
+ * 否则 {@code LivingEntityRenderer#render} 的 {@code Mth.rotLerp(partialTick, yBodyRotO, yBodyRot)}
+ * 会让生物每 tick 在 {@code 0°} 与抓捕朝向之间狂甩（2026-11-27 用户报告的"高速旋转/剧烈左右摆动"）。
+ * {@code partialTick} 仍照常传下去：{@code getBob}（待机呼吸/翅膀微动）靠它平滑推进。</li>
  * <li><b>不要影子</b>：实体渲染器的阴影是贴地椭圆，在方块内部会穿帮；渲染前后
  * {@code finally} 复位，绝不污染同帧别的实体。</li>
  * </ul>
@@ -64,6 +70,8 @@ public final class MobDisplayCatalystRenderer
         float rotation = MobDisplayCatalystRules.rotationDegrees(System.currentTimeMillis());
 
         EntityRenderDispatcher dispatcher = Minecraft.getInstance().getEntityRenderDispatcher();
+        // 进渲染前的最后一道兜底：把生物自身朝向与插值历史全部归零（详见 lockDisplayPose 的注释）。
+        MobDisplayCatalystBlockEntity.lockDisplayPose(display);
         pose.pushPose();
         // PoseStack 在进入 BlockEntityRenderer 时已定位到本方块原点（Sable 子层级亦已施加 renderPose），
         // 只需移到方块正中 (0.5, 0.5, 0.5)；上面的 center 投影仅用于 16 格世界距离裁剪。

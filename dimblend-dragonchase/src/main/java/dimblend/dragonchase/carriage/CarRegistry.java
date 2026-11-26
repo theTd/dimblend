@@ -116,6 +116,31 @@ public final class CarRegistry extends SavedData {
         return !cars.isEmpty();
     }
 
+    /**
+     * True when {@code crystalId} is one of the end crystals a registered crystal car spawned.
+     *
+     * <p>This is the save-agnostic half of {@code CarCrystalExplosion}'s recognition: a crystal
+     * spawned before the persisted {@code CRYSTAL_TAG} existed carries no tag, but the record still
+     * names it. Removed records are skipped — their slots are cleared or orphaned, and a crystal of a
+     * car that is gone no longer belongs to anything this world runs.
+     */
+    public boolean ownsCrystal(UUID crystalId) {
+        if (crystalId == null) {
+            return false;
+        }
+        for (Car car : cars.values()) {
+            if (car.removed) {
+                continue;
+            }
+            for (Crystal crystal : car.crystals) {
+                if (crystal.id().equals(crystalId)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /** A snapshot, so the tick loop can mutate records while iterating. */
     public List<Car> snapshot() {
         return new ArrayList<>(cars.values());

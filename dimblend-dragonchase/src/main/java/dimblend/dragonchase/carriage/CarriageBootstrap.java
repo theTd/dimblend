@@ -16,8 +16,8 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
  *
  * <p>The split is deliberate: {@link CarTicker} owns what happens over time, {@link CarInteractionLock}
  * owns what a player may touch, {@link CarPurgeListener} owns identities deleted underneath this
- * mod, {@link CrystalMountsSync} owns the one client-facing list. Nothing here decides anything
- * itself.
+ * mod, {@link CrystalMountsSync} owns the one client-facing list, {@link CarCrystalExplosion} owns
+ * what a broken car crystal does. Nothing here decides anything itself.
  *
  * <p><b>Cross-mod wiring.</b> {@code dimblend.api.NonCrewCarriages} is the "not a player's train"
  * answer the other DimBlend features ask for; the registered cars are exactly that set, so the
@@ -29,6 +29,8 @@ public final class CarriageBootstrap {
         NeoForge.EVENT_BUS.addListener(CarInteractionLock::onRightClick);
         NeoForge.EVENT_BUS.addListener(CarInteractionLock::onLeftClick);
         NeoForge.EVENT_BUS.addListener(CarInteractionLock::onBreak);
+        // Break one crystal, keep the rest: the car's crystals knock back, they never damage.
+        NeoForge.EVENT_BUS.addListener(CarCrystalExplosion::onExplosionStart);
         NeoForge.EVENT_BUS.addListener(CarriageBootstrap::onPlayerLoggedIn);
         NeoForge.EVENT_BUS.addListener(CarriageBootstrap::onPlayerChangedDimension);
         CarPurgeListener.register();

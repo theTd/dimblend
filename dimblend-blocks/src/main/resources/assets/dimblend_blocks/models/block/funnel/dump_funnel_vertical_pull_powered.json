@@ -1,4 +1,5 @@
 {
+  "render_type": "minecraft:cutout_mipped",
   "parent": "create:block/funnel/block_vertical",
   "textures": {
     "base": "dimblend_blocks:block/funnel/dump_funnel",

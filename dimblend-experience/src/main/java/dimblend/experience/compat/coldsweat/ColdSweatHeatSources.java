@@ -26,6 +26,7 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.level.block.state.properties.Property;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.common.NeoForge;
 
@@ -150,12 +151,22 @@ public final class ColdSweatHeatSources {
         return (fahrenheit - (absolute ? 32.0 : 0.0)) / 45.0;
     }
 
-    /** 由 {@code DimBlend} 在构造期调用一次：订阅 Cold Sweat 的热源注册事件。 */
+    /**
+     * 由 {@code DimBlend} 在构造期调用一次：订阅 Cold Sweat 的热源注册事件。
+     *
+     * <p><b>为什么是 {@link EventPriority#LOWEST}</b>：同一优先级内监听器按模组加载顺序派发，
+     * {@code create_cold_sweat} 的 modId 字母序排在 {@code dimblend_experience} 之前，用默认
+     * {@code NORMAL} 注册时它排在前面、先占住 {@code create:steam_engine}。本模组必须晚于所有
+     * {@code NORMAL} 监听执行，才能保证 {@link Create} 的 {@code registerFirst} 真的把条目插到
+     * 下标 0——根因（{@code BlockTempModifier} 命中首个非零 {@code BlockTemp} 即 {@code break}）
+     * 见 {@link Create} 的类注释。</p>
+     */
     public static void register() {
         if (!ModList.get().isLoaded("cold_sweat")) {
             return;
         }
-        NeoForge.EVENT_BUS.addListener(ColdSweatHeatSources::onRegisterBlockTemps);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST,
+                ColdSweatHeatSources::onRegisterBlockTemps);
     }
 
     private static void onRegisterBlockTemps(BlockTempRegisterEvent event) {
@@ -292,13 +303,44 @@ public final class ColdSweatHeatSources {
      * {@code isValid}（{@code SublevelBlockTempModifier}），解析上下文与引擎 tick 不保证一致，
      * {@code ServerChunkCache#getChunkNow} 还有"非主线程→null"的硬守卫——这正是
      * "喷汽了但高温没出现"的来路。</p>
+     *
+     * <p><b>为什么必须 {@code registerFirst} + {@link EventPriority#LOWEST}（2026-11-27 字节码实证）</b>：
+     * {@code ColdSweat-2.4.2.jar} 的 {@code BlockTempModifier#calculate}（字节码偏移 540–875）
+     * 遍历 {@code BlockTempRegistry#getBlockTempsFor(state)} 的整列 {@code BlockTemp} 时，
+     * <b>只要遇到第一个 {@code isValid() == true && getTemperature() != 0.0} 的条目</b>，
+     * 累加完温度就 {@code goto 875}——即跳出 {@code for (BlockTemp)} 循环、直接进下一格坐标，
+     * 同格列表里排在它后面的 {@code BlockTemp} 一个都不再执行。而整合包的
+     * {@code create_cold_sweat-1.1.2.jar}（modId 字母序在 {@code dimblend_experience} 之前，
+     * 用默认 {@code NORMAL}）已通过 {@code event.register(...)} 给 {@code create:steam_engine}
+     * 注册了 {@code net.orion.create_cold_sweat.blockeffects.SteamEngine}：它不覆写
+     * {@code isValid}（恒 {@code true}），且引擎贴着加热锅炉储罐时 {@code getTemperature}
+     * 返回锅炉余温的微弱非零正值。于是本条的岩浆热源排在它后面，永远轮不到——表现就是
+     * "过载断轴了、蒸汽在喷，但 32 秒内的高温没出现"。</p>
+     *
+     * <p><b>双保险</b>：</p>
+     * <ol>
+     *   <li>{@code EventPriority.LOWEST} 保证本监听晚于 {@code create_cold_sweat} 等所有
+     *       {@code NORMAL} 监听执行；</li>
+     *   <li>{@code registerFirst} 走 {@code BlockTempRegistry#register(BlockTemp, true)}
+     *       （{@code ColdSweat-2.4.2.jar} 字节码实证）：它既把条目插到 {@code BLOCK_TEMPS} 的
+     *       下标 0，也把 {@code MAPPED_BLOCKS.get(block)}（底层保序 {@code LinkedHashSet} 的
+     *       {@code RegistryMultiMap}）清空重排后插到下标 0。两步合起来，本条才稳定压过
+     *       {@code create_cold_sweat.SteamEngine}。</li>
+     * </ol>
+     *
+     * <p><b>不破坏原有行为</b>：引擎正常运转/停转时 {@code exhaustingEngine(...)} 返回
+     * {@code false}，{@code BlockTempModifier} 对下标 0 只是 {@code isValid} 失败后
+     * {@code goto 540}（继续遍历），下标 1 的 {@code create_cold_sweat.SteamEngine} 照旧生效；
+     * 只有过载断轴后的 32 秒排气窗口里，下标 0 抢先命中 {@link #LAVA_EQUIVALENT}。</p>
      */
     private static final class Create {
 
         private static void register(BlockTempRegisterEvent event) {
             Block engine = block("create", "steam_engine");
             if (engine != null) {
-                event.register(ColdSweatHeatBlockTemps.lavaEquivalent(Create::exhaustingEngine, engine));
+                // registerFirst（不是 register）：插到列表下标 0，否则 create_cold_sweat 的
+                // SteamEngine 会在 BlockTempModifier 里抢先命中并 break，岩浆热源永远不生效。
+                event.registerFirst(ColdSweatHeatBlockTemps.lavaEquivalent(Create::exhaustingEngine, engine));
             }
         }
 

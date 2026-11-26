@@ -14,6 +14,8 @@ import dimblend.api.RegionLanes;
 import dimblend.api.RegionOverrides;
 import dimblend.dragonchase.DimBlendDragonChase;
 import dimblend.dragonchase.DragonChaseRegistries;
+import dimblend.dragonchase.carriage.CarCrystalExplosion;
+import dimblend.dragonchase.carriage.CarRegistry;
 import dimblend.dragonchase.carriage.CarRules;
 import dimblend.dragonchase.carriage.DragonCarriages;
 import dimblend.dragonchase.chase.ChaseDirector;
@@ -357,6 +359,45 @@ public final class DragonChaseGameTests {
             helper.assertTrue(DragonCarriages.healingCrystalCount(level) >= 1,
                     "the live crystals are counted for the dragon's unlimited-range heal, got "
                             + DragonCarriages.healingCrystalCount(level));
+
+            // §3.5: the crystals ride one cell higher than the campfire (y+2 from the pedestal base,
+            // i.e. one more than the original y+1) and are tagged at spawn, so the blast can tell
+            // them apart from a crystal a player placed.
+            CarRegistry.Car crystalRecord = CarRegistry.get(level).find(crystal.getUniqueId());
+            helper.assertTrue(crystalRecord != null, "the crystal car has a registry record");
+            if (crystalRecord != null) {
+                List<CarRegistry.Crystal> slots = crystalRecord.crystals;
+                helper.assertTrue(!slots.isEmpty(),
+                        "the record tracks the crystals the assembler spawned, got " + slots.size());
+                for (CarRegistry.Crystal slot : slots) {
+                    helper.assertTrue(slot.dy() == 2,
+                            "a crystal sits two cells above the campfire base (y+2, one higher than the"
+                                    + " original y+1), dy " + slot.dy());
+                }
+                helper.assertTrue(crystals.stream()
+                                .allMatch(carCrystal -> carCrystal.getTags().contains(
+                                        CarCrystalExplosion.CRYSTAL_TAG)),
+                        "every car crystal carries the persisted tag " + CarCrystalExplosion.CRYSTAL_TAG);
+                helper.assertTrue(slots.stream().allMatch(
+                                slot -> crystals.stream().anyMatch(carCrystal -> carCrystal.getUUID()
+                                        .equals(slot.id()))),
+                        "every tracked slot names one of the loaded crystals");
+            }
+
+            if (crystals.size() >= 2) {
+                // §3.5: a car crystal's explosion only knocks back — it must not damage the crystals
+                // next to it, or one hit would empty the whole car.
+                EndCrystal victim = crystals.get(0);
+                EndCrystal bystander = crystals.get(1);
+                int before = crystals.size();
+                victim.hurt(level.damageSources().generic(), 1.0F);
+                helper.assertTrue(victim.isRemoved(), "the struck crystal is destroyed");
+                helper.assertFalse(bystander.isRemoved(),
+                        "the blast is knockback only: the neighbouring crystal survives");
+                helper.assertTrue(DragonCarriages.aliveCrystals(level).size() == before - 1,
+                        "exactly one crystal is gone, was " + before + ", now "
+                                + DragonCarriages.aliveCrystals(level).size());
+            }
 
             DragonCarriages.fallAway(level, brake);
             PhysicsBogeyBlockEntity falling = bogeyOf(level, brake, CarKind.BRAKE);

@@ -23,9 +23,17 @@ import net.neoforged.neoforge.network.registration.NetworkRegistry;
  * travel as the {@code crossfade} flag rather than as durations, because the client is the only
  * side that knows whether it was already playing Phase A.
  *
- * <p>Sent on {@code startChase}, the first drop below 50% HP, every chase-ending transition, and to
- * each player on login / dimension change. {@link #send} never puts an unregistered payload on the
- * wire: a client without this channel is skipped, exactly like the band-train sync.
+ * <p>Sent on {@code startChase}, the first drop below 50% HP, the killing blow (a single
+ * {@code PHASE_END} track), every chase-ending transition, and to each player on login / dimension
+ * change. {@link #send} never puts an unregistered payload on the wire: a client without this
+ * channel is skipped, exactly like the band-train sync.
+ *
+ * <p>Wire layout stays {@code [phase ordinal byte][track byte][crossfade bool]}. The phase set grew
+ * from three values to four ({@code IDLE 0}, {@code PHASE_A 1}, {@code PHASE_B 2}, {@code PHASE_END
+ * 3}), which is still one byte and within {@link ChaseMusicPhase#values()} on both ends — so the
+ * registrar version stays {@code "1"}: no field was added, removed or resized. Both ends ship in
+ * the same jar (the controller only ever answers a phase this very enum declares), and a decode
+ * above the range throws rather than silently aliasing a track table.
  */
 public record ChaseMusicStatePayload(ChaseMusicPhase phase, int track, boolean crossfade)
         implements CustomPacketPayload {
@@ -37,6 +45,8 @@ public record ChaseMusicStatePayload(ChaseMusicPhase phase, int track, boolean c
                 @Override
                 public ChaseMusicStatePayload decode(RegistryFriendlyByteBuf buffer) {
                     int ordinal = buffer.readByte();
+                    // Covers every current phase ordinal (0..3) without hardcoding a count:
+                    // reordering or extending the enum cannot silently map to another phase.
                     if (ordinal < 0 || ordinal >= ChaseMusicPhase.values().length) {
                         throw new DecoderException("ChaseMusicStatePayload phase out of range: " + ordinal);
                     }

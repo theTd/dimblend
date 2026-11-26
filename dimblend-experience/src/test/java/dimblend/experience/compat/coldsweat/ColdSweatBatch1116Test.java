@@ -6,11 +6,15 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -29,6 +33,12 @@ import org.junit.jupiter.api.Test;
  * 所以这里只碰不引用它们的部分（{@link ColdSweatHeatSources} 的常数与换算、
  * {@link ThermolithModeRules} 的纯规则），Cold Sweat 的
  * {@code Temperature.convert(20, F, MC, false) = 20/45} 这类口径以注释写死期望值。</p>
+ *
+ * <p>2026-11-27 批次追加：蒸汽引擎排气热源的<b>注册序源码契约</b>
+ * （{@code EventPriority.LOWEST} + {@code BlockTempRegisterEvent#registerFirst}）与
+ * {@link ColdSweatHeatSources#LAVA_EQUIVALENT} 对 {@code world.toml:242} {@code minecraft:lava}
+ * 的参数一致性。注册序契约只能靠源码检查锁定——Cold Sweat 不在测试 classpath 上，
+ * 而线上失败形态是"静默不生效"，行为测试无从触发。</p>
  */
 class ColdSweatBatch1116Test {
 
@@ -84,6 +94,159 @@ class ColdSweatBatch1116Test {
         // 与 profile 里的温度同源
         assertEquals(ColdSweatHeatSources.KINDLED.temperatureMc(),
                 ColdSweatHeatSources.fahrenheitToMc(20.0, false), EPSILON);
+    }
+
+    // ------------------------------------------- 蒸汽引擎排气热源的注册序契约
+
+    /**
+     * 监听必须挂 {@link net.neoforged.bus.api.EventPriority#LOWEST}。
+     *
+     * <p>根因（{@code ColdSweat-2.4.2.jar} 字节码实证）：{@code BlockTempModifier#calculate}
+     * 偏移 540–875 遍历 {@code BlockTempRegistry#getBlockTempsFor(state)} 时，遇到第一个
+     * {@code isValid() == true && getTemperature() != 0.0} 的条目就累加后 {@code goto 875}
+     * （跳出该方块的 BlockTemp 列表）——同一格后面的条目全部不执行。而
+     * {@code create_cold_sweat-1.1.2.jar} 用默认 {@code NORMAL} 给 {@code create:steam_engine}
+     * 注册了恒 {@code isValid} 且锅炉余温非零的 {@code SteamEngine}，且其 modId 字母序在本模组之前，
+     * 所以本模组只有降到 {@code LOWEST} 才能排在它后面、把条目顶到下标 0。</p>
+     */
+    @Test
+    void blockTempListenerUsesLowestPriority() throws IOException {
+        String source = heatSourcesSource();
+
+        assertTrue(source.contains("import net.neoforged.bus.api.EventPriority;"),
+                "必须显式导入 EventPriority");
+
+        String registerBody = slice(source,
+                "public static void register()",
+                "private static void onRegisterBlockTemps");
+        assertTrue(registerBody.contains("addListener(EventPriority.LOWEST"),
+                "BlockTempRegisterEvent 监听必须以 EventPriority.LOWEST 注册，"
+                        + "否则字母序在前的 create_cold_sweat 抢先注册 SteamEngine");
+        assertFalse(registerBody.contains("addListener(ColdSweatHeatSources::onRegisterBlockTemps)"),
+                "两参 addListener 重载等于默认 NORMAL，禁止退回");
+        // 幂等门控不能被顺手删掉
+        assertTrue(registerBody.contains("isLoaded(\"cold_sweat\")"),
+                "Cold Sweat 缺席时必须早退，否则静态初始化会拉缺席类");
+    }
+
+    /**
+     * 蒸汽引擎热源必须用 {@code registerFirst}（{@code BlockTempRegistry#register(BlockTemp, true)}：
+     * 条目插入 {@code BLOCK_TEMPS} 下标 0，并把 {@code MAPPED_BLOCKS.get(block)} 清空重排后插到下标 0），
+     * 而不是 {@code register}。
+     */
+    @Test
+    void steamEngineHeatSourceIsRegisteredFirst() throws IOException {
+        String source = heatSourcesSource();
+
+        String createRegister = slice(source,
+                "private static final class Create",
+                "private static boolean exhaustingEngine");
+        assertTrue(createRegister.contains("event.registerFirst("),
+                "create:steam_engine 的岩浆热源必须 registerFirst，否则被 create_cold_sweat 截胡");
+        assertFalse(createRegister.contains("event.register("),
+                "同一方块只能注册一条岩浆热源，不能退回 event.register(...)");
+        assertTrue(createRegister.contains("lavaEquivalent("),
+                "排气窗口施加的是 LAVA_EQUIVALENT（岩浆等价），不是烈焰人炉档位");
+        assertTrue(createRegister.contains("Create::exhaustingEngine"),
+                "判据必须是排气窗口，正常运转/停转的引擎不发热");
+        // registerFirst 是全类唯一一处：其它方块（basic_burner / 炉灶 / CDG）仍走 register，
+        // 因为 world.toml 与 create_cold_sweat 都不覆盖它们，没必要抢序。
+        assertEquals(1, occurrences(source, "registerFirst("),
+                "只有蒸汽引擎需要抢到下标 0");
+    }
+
+    /**
+     * {@code LAVA_EQUIVALENT} 与 {@code world.toml:242} 的 {@code minecraft:lava} 同参：
+     * {@code ["minecraft:lava", 30, 7, "f", 200, "", "", 1000, true]} ——
+     * 温度 30 °F（相对）= 30/45 MC、range 7、maxEffect 200 °F = 200/45 MC、
+     * 温度上限 1000 °F（绝对）= (1000−32)/45 MC、fade 恒 true（{@code BlockTempData.fromToml} 写死）、
+     * 第九位 {@code true} = {@code logarithmic}。
+     */
+    @Test
+    void lavaEquivalentProfileMatchesWorldTomlLava() {
+        ColdSweatHeatSources.HeatProfile lava = ColdSweatHeatSources.LAVA_EQUIVALENT;
+
+        assertEquals(30.0 / 45.0, lava.temperatureMc(), EPSILON);
+        assertEquals(7.0, lava.range(), EPSILON);
+        assertEquals(-200.0 / 45.0, lava.minEffectMc(), EPSILON);
+        assertEquals(200.0 / 45.0, lava.maxEffectMc(), EPSILON);
+        assertEquals(Double.NEGATIVE_INFINITY, lava.minTemperatureMc());
+        assertEquals((1000.0 - 32.0) / 45.0, lava.maxTemperatureMc(), EPSILON);
+        assertTrue(lava.fade(), "world.toml 的 BlockTempData.fromToml 恒传 fade=true");
+        assertTrue(lava.logarithmic(), "minecraft:lava 第九位 true 即 logarithmic（对数衰减）");
+    }
+
+    /**
+     * 若本机装着开发整合包，则直接拿 {@code config/coldsweat/world.toml} 第 242 行原值复算一遍，
+     * 防止哪天整合包改了岩浆参数而这里悄悄漂移。CI / 干净环境没有该文件时跳过。
+     */
+    @Test
+    void lavaEquivalentAgreesWithInstalledWorldTomlWhenAvailable() throws IOException {
+        Path toml = Path.of("E:/misc/TrainTripWorld/config/coldsweat/world.toml");
+        assumeTrue(Files.exists(toml), "本机没有开发整合包，跳过 world.toml 比对");
+
+        String lavaRow = null;
+        for (String line : Files.readAllLines(toml, StandardCharsets.UTF_8)) {
+            if (line.contains("\"minecraft:lava\",")) {
+                lavaRow = line;
+                break;
+            }
+        }
+        assertNotNull(lavaRow, "world.toml 里找不到 minecraft:lava 条目");
+
+        int open = lavaRow.indexOf('[');
+        int close = lavaRow.lastIndexOf(']');
+        assertTrue(open >= 0 && close > open, "minecraft:lava 行格式异常: " + lavaRow);
+        String[] cells = lavaRow.substring(open + 1, close).split(",");
+        assertEquals(9, cells.length, "minecraft:lava 行应为 9 列: " + lavaRow);
+
+        assertEquals("f", cells[3].trim().replace("\"", ""));
+        ColdSweatHeatSources.HeatProfile lava = ColdSweatHeatSources.LAVA_EQUIVALENT;
+        assertEquals(Double.parseDouble(cells[1].trim()) / 45.0, lava.temperatureMc(), EPSILON);
+        assertEquals(Double.parseDouble(cells[2].trim()), lava.range(), EPSILON);
+        assertEquals(Double.parseDouble(cells[4].trim()) / 45.0, lava.maxEffectMc(), EPSILON);
+        assertEquals(-Double.parseDouble(cells[4].trim()) / 45.0, lava.minEffectMc(), EPSILON);
+        assertEquals((Double.parseDouble(cells[7].trim()) - 32.0) / 45.0,
+                lava.maxTemperatureMc(), EPSILON);
+        assertEquals(Boolean.parseBoolean(cells[8].trim()), lava.logarithmic());
+        assertTrue(lava.fade());
+    }
+
+    /** 模块内的主源码文本（不依赖 Cold Sweat 是否在 classpath 上）。 */
+    private static String heatSourcesSource() throws IOException {
+        Path relative = Path.of("src/main/java/dimblend/experience/compat/coldsweat/ColdSweatHeatSources.java");
+        Path start = Path.of("").toAbsolutePath();
+        // 从测试工作目录逐级向上找：模块根 / 仓库根 / build 目录下跑都能定位到。
+        for (Path dir = start; dir != null; dir = dir.getParent()) {
+            Path candidate = dir.resolve(relative);
+            if (Files.exists(candidate)) {
+                return Files.readString(candidate, StandardCharsets.UTF_8);
+            }
+            Path inModule = dir.resolve("dimblend-experience").resolve(relative);
+            if (Files.exists(inModule)) {
+                return Files.readString(inModule, StandardCharsets.UTF_8);
+            }
+        }
+        throw new AssertionError("找不到 ColdSweatHeatSources.java（从 " + start + " 逐级向上都没找到）");
+    }
+
+    /** 取 {@code [fromMarker, toMarker)} 之间的源码片段，两端标记都必须存在。 */
+    private static String slice(String source, String fromMarker, String toMarker) {
+        int from = source.indexOf(fromMarker);
+        assertTrue(from >= 0, "源码里找不到起始标记: " + fromMarker);
+        int to = source.indexOf(toMarker, from + fromMarker.length());
+        assertTrue(to > from, "源码里找不到结束标记: " + toMarker);
+        return source.substring(from, to);
+    }
+
+    private static int occurrences(String source, String token) {
+        int count = 0;
+        int index = source.indexOf(token);
+        while (index >= 0) {
+            count++;
+            index = source.indexOf(token, index + token.length());
+        }
+        return count;
     }
 
     // ---------------------------------------------------------------- 模式信号

@@ -33,7 +33,11 @@ import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 
 /**
  * 跨车厢管道线缆的世界渲染：每帧按 {@link ClientTrainTubeLinks} 的连接表，
- * 把两个 Sable 子层级上的端点用一根带下垂的 2×2 px 方截面线缆连起来，并在两端各画一个小线框。
+ * 把两个 Sable 子层级上的端点用一根带下垂的 2×2 px 方截面线缆连起来。
+ *
+ * <p>线缆本身即"已连接"的唯一视觉提示：两端<b>不再</b>画常驻线框。早先版本的青色高亮线框
+ * （{@code 0x4FD6C6}、半边长 0.18）被用户实测反馈为"连接成功后一直亮着、看不出用意"，2026-11-27 删除；
+ * 现在只有配对选择挂起时，才在选中的端点上画一个琥珀色脉冲线框。</p>
  *
  * <p>四条口径，都是本轮踩出来的：</p>
  * <ol>
@@ -56,13 +60,10 @@ public final class TrainTubeCableRenderer {
             ResourceLocation.fromNamespaceAndPath(DimBlendBlocks.MODID, "textures/block/train_pressured_tube_cable.png");
     private static final RenderType CABLE_TYPE = RenderType.entityCutoutNoCull(CABLE_TEXTURE);
 
-    /** 已连接端点的标记色（青绿）。 */
-    private static final int LINKED_MARKER_COLOUR = 0x4FD6C6;
     /** 挂起选择的标记色（琥珀）。 */
     private static final int SELECTION_MARKER_COLOUR = 0xFFC24A;
 
-    /** 端点标记线框半边长。 */
-    private static final double LINK_MARKER_HALF = 0.18;
+    /** 挂起选择标记线框半边长。 */
     private static final double SELECTION_MARKER_HALF = 0.30;
 
     /** 一根本帧要画的线缆（两端世界坐标 + 打包亮度）。 */
@@ -114,19 +115,17 @@ public final class TrainTubeCableRenderer {
             buffers.endBatch(CABLE_TYPE);
         }
 
-        VertexConsumer lines = buffers.getBuffer(RenderType.lines());
-        for (VisualCable cable : drawn) {
-            marker(pose, lines, cable.from(), camera, LINK_MARKER_HALF, LINKED_MARKER_COLOUR, 0.85f);
-            marker(pose, lines, cable.to(), camera, LINK_MARKER_HALF, LINKED_MARKER_COLOUR, 0.85f);
-        }
+        // 已连接的端点不画任何标记：线缆本身就是"已连接"的提示
         if (selection != null) {
             ClientSubLevel subLevel = clientSubLevel(container, selection.subLevel());
             if (subLevel != null) {
                 Vec3 center = subLevel.renderPose(partialTick).transformPosition(Vec3.atCenterOf(selection.pos()));
-                marker(pose, lines, center, camera, SELECTION_MARKER_HALF, SELECTION_MARKER_COLOUR, pulse(level, partialTick));
+                VertexConsumer lines = buffers.getBuffer(RenderType.lines());
+                marker(pose, lines, center, camera, SELECTION_MARKER_HALF, SELECTION_MARKER_COLOUR,
+                        pulse(level, partialTick));
+                buffers.endBatch(RenderType.lines());
             }
         }
-        buffers.endBatch(RenderType.lines());
     }
 
     /** 把一条连接的端点投影成这一帧的世界坐标；不可画时返回 {@code null}。 */

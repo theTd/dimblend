@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -74,6 +75,13 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
     public boolean hasStarterDepot() { return starterDepot; }
 
     public void setStarterDepot(boolean enabled) { starterDepot = enabled; }
+
+    /**
+     * True once every delegate placement state in the current {@link RuntimeState} has run its lazy
+     * ring/placement generation. Bound to that runtime: cleared before any new runtime is published.
+     */
+    private volatile boolean delegateStructuresGenerated;
+
     @Nullable
     private volatile RuntimeState runtime;
 
@@ -172,7 +180,11 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
         if (current.randoms != null) {
             return;
         }
-        this.runtime = this.buildRuntime(access, current.seed);
+        RuntimeState next = this.buildRuntime(access, current.seed);
+        // New delegate states: whatever the previous runtime had generated is void. Clear the bit
+        // before publishing, so a fast-path reader never sees the new runtime with the old answer.
+        this.delegateStructuresGenerated = false;
+        this.runtime = next;
     }
 
     private RuntimeState buildRuntime(RegistryAccess access, long seed) {
@@ -249,13 +261,38 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
      * Runs the lazy placement/ring generation of every delegate state. Vanilla only ever calls
      * {@code ensureStructuresGenerated()} for the main state (ServerLevel.java:266); the delegate
      * states are otherwise first touched by whoever reads them, which is unsynchronized and would
-     * run the concentric-ring biome searches on that thread. Server thread only.
+     * run the concentric-ring biome searches on that thread.
+     *
+     * <p>Must not run before all three vanilla dimensions exist: a concentric-ring search over the
+     * End delegate goes through {@code TheEndBiomeSource}, whose Biolith noise is only initialized
+     * when {@code minecraft:the_end}'s {@code ServerLevel} is constructed, and the resulting NPE
+     * permanently poisons the ring future. Callers are therefore the {@code LevelEvent.Load} hook
+     * once OVERWORLD/NETHER/END are all up (see {@link #readyToInitDelegateStructures}) and
+     * structure lookups that only happen after startup.
      */
-    private void ensureDelegateStructuresGenerated() {
-        RuntimeState current = this.requireRuntime();
-        for (ChunkGeneratorStructureState state : current.states) {
-            state.ensureStructuresGenerated();
+    public void ensureDelegateStructuresGenerated() {
+        if (this.delegateStructuresGenerated) {
+            return;
         }
+        synchronized (this) {
+            if (this.delegateStructuresGenerated) {
+                return;
+            }
+            this.ensureRuntimeOrThrow();
+            RuntimeState current = this.requireRuntime();
+            for (ChunkGeneratorStructureState state : current.states) {
+                state.ensureStructuresGenerated();
+            }
+            this.delegateStructuresGenerated = true;
+        }
+    }
+
+    /**
+     * True once all three vanilla dimensions exist so dimension-keyed biome hooks (e.g. Biolith's
+     * {@code BiomeCoordinator.OVERWORLD/NETHER/END}) have initialized their per-dimension noise.
+     */
+    public static boolean readyToInitDelegateStructures(boolean hasOverworld, boolean hasNether, boolean hasEnd) {
+        return hasOverworld && hasNether && hasEnd;
     }
 
     @Override
@@ -267,21 +304,29 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
         RuntimeState current = this.runtime;
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (current == null || current.seed != seed || current.randoms == null) {
+            RuntimeState next;
             if (server != null) {
-                this.runtime = this.buildRuntime(server.registryAccess(), seed);
+                next = this.buildRuntime(server.registryAccess(), seed);
             } else {
-                this.runtime = new RuntimeState(seed, null, null, new BandLayout(this.delegates, seed));
+                next = new RuntimeState(seed, null, null, new BandLayout(this.delegates, seed));
             }
+            // See ensureRuntime: new states invalidate the previous generation pass.
+            this.delegateStructuresGenerated = false;
+            this.runtime = next;
         }
-        // ChunkMap calls createState from the ServerLevel constructor, i.e. on the server thread
-        // before the level is handed out (ChunkMap.java:177, ServerLevel.java:266). Run the delegate
-        // init on every server-thread call, not only when the runtime is rebuilt here: if something
-        // built it off-thread first, this is the call that must still publish the placement state.
-        // ensureStructuresGenerated() is idempotent.
-        if (server != null && server.isSameThread() && this.runtime.randoms != null) {
-            this.ensureDelegateStructuresGenerated();
-        }
-        return ChunkGeneratorStructureState.createForNormal(randomState, seed, this.getBiomeSource(), lookup);
+        // Deliberately no delegate structure init here. createState runs inside the ChunkMap
+        // constructor (ServerLevel.<init>), which MinecraftServer#createLevels() reaches for
+        // dimblend:rotating in registry order — possibly BEFORE minecraft:the_end. A ring search
+        // then samples TheEndBiomeSource before Biolith initializes its End noise and the delegate
+        // future is poisoned. The LevelEvent.Load hook in DimBlend publishes it once all dimensions
+        // exist instead.
+        //
+        // The main state this returns is unused: createStructures ignores it and delegates to the
+        // per-band states, findNearestMapStructure reads the delegate states, and dimblend-spyglass
+        // uses StructureStateProvider#structureStatesFor. So return an empty flat state, which keeps
+        // levelSeed/randomState intact while turning ServerLevel.java:266's constructor-time
+        // ensureStructuresGenerated() into a safe no-op that never queries RotatingBiomeSource.
+        return ChunkGeneratorStructureState.createForFlat(randomState, seed, this.getBiomeSource(), Stream.empty());
     }
 
     @Override
@@ -579,11 +624,9 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
             throw new IllegalStateException("dimblend delegate RandomState requires a running server");
         }
         this.ensureRuntime(server.registryAccess());
-        // A worker thread may be the first to build the runtime; only the server thread may publish
-        // the lazy structure placement state (see StructureStateProvider).
-        if (server.isSameThread()) {
-            this.ensureDelegateStructuresGenerated();
-        }
+        // No delegate structure init here: this can be the first touch during createLevels(), before
+        // minecraft:the_end exists. The DimBlend LevelEvent.Load hook publishes the delegate pass
+        // once every vanilla dimension is up.
     }
 
     @Override
@@ -677,6 +720,7 @@ public final class RotatingChunkGenerator extends ChunkGenerator implements Stru
             boolean skipKnown
     ) {
         this.ensureRuntime(level.registryAccess());
+        this.ensureDelegateStructuresGenerated();
         Pair<BlockPos, Holder<Structure>> nearest = null;
         double nearestDistance = Double.MAX_VALUE;
         for (int i = 0; i < this.delegates.size(); i++) {

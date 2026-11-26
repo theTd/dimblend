@@ -157,6 +157,26 @@ class ChaseMathTest {
     }
 
     @Test
+    void speedFloorNeedsACrewThatIsEntirelyAboard() {
+        // Nobody online is not "everybody aboard": the floor stays off.
+        assertFalse(ChaseMath.speedFloorAllowed(0, 0), "an empty server must not get the floor");
+
+        // One non-spectator: the floor is offered only while that player is on a sub-level.
+        assertTrue(ChaseMath.speedFloorAllowed(1, 1));
+        assertFalse(ChaseMath.speedFloorAllowed(1, 0), "a lone player flying after the dragon holds the floor off");
+
+        // Several non-spectators: all of them, not just one, must be aboard.
+        assertTrue(ChaseMath.speedFloorAllowed(2, 2));
+        assertTrue(ChaseMath.speedFloorAllowed(4, 4));
+        assertFalse(ChaseMath.speedFloorAllowed(2, 1), "one player fell off the car: the train waits");
+        assertFalse(ChaseMath.speedFloorAllowed(4, 3));
+        assertFalse(ChaseMath.speedFloorAllowed(4, 0));
+
+        // A count above the eligible total cannot happen, and never unlocks the floor.
+        assertFalse(ChaseMath.speedFloorAllowed(2, 3));
+    }
+
+    @Test
     void regionAndLocalMathUsesFloorDivision() {
         int band = 4096;
         assertEquals(0, ChaseMath.regionOf(1000.0D, band));
