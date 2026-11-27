@@ -1,5 +1,7 @@
 package dimblend.blocks.compat.deployer;
 
+import java.util.Locale;
+
 /**
  * 卸料仪表的纯数值映射（锁定判定 #19）。
  *
@@ -10,8 +12,10 @@ package dimblend.blocks.compat.deployer;
  *   raw = 2..100   -> 目标 units = raw - 1（1..99）
  * </pre>
  *
- * <p>目标件数：{@code inStacks ? units * maxStackSize : units}。卸料量
- * {@code min(inStorage - target, maxStackSize * 9)}，于是库存会停在 {@code == target}。</p>
+ * <p>目标件数：{@code inStacks ? units * maxStackSize : units}。单轮卸料量
+ * {@code min(库存 - 目标, 一个包裹的容量)}：Create 的打包机一次最多抽 64 个
+ * （{@code PackagerBlockEntity#attemptToSend} 里的 {@code Math.min(64, count)}），
+ * 装不进容器的大件一件一包，所以库存是分多轮压到目标的。</p>
  *
  * <p>外部 {@code NUMBERS} 信号直接给出 <b>units</b>：{@code < 0} 视为未启用，
  * {@code >= 0} 直接当目标（所以 {@code 0} 就是"卸空"）。</p>
@@ -28,8 +32,24 @@ public final class DumpGaugeMath {
     public static final int SIGNAL_INACTIVE = -1;
     /** units 上限（raw 100 -> 99）。 */
     public static final int MAX_UNITS = 99;
-    /** 单次最多发一整潜影盒的量（9 组）。 */
+    /** 一个包裹的格数上限（Create {@code PackageItem.SLOTS}）。 */
     public static final int MAX_BATCH_STACKS = 9;
+    /** 单包件数上限：直通散装物一轮只发一个包裹，最多 64 个。 */
+    public static final int MAX_ITEMS_PER_PACKAGE = 64;
+    /** 两次检查网络库存的间隔（tick）：80 tick = 4 秒。 */
+    public static final int CHECK_INTERVAL_TICKS = 80;
+    /** 一秒的 tick 数，只用于把检查周期显示成秒。 */
+    private static final int TICKS_PER_SECOND = 20;
+
+    /** 墙面灯珠的三态，与 Deployer 的 {@code AbstractPanelBehaviour.BulbState} 一一对应。 */
+    public enum Bulb {
+        /** 目标为 0：面板模型此时是无棱柱的 {@code panel}，画灯珠就是浮空玻璃珠。 */
+        DISABLED,
+        /** 正常轮询中。 */
+        GREEN,
+        /** 被红石按住，暂停卸料。 */
+        RED
+    }
 
     /** 夹取到滑条值域。 */
     public static int clampRaw(int raw) {
@@ -73,19 +93,29 @@ public final class DumpGaugeMath {
     }
 
     /**
-     * 本次应发送的件数：库存严格大于目标才发，发到"刚好剩 target"为止；
-     * 单次不超过 {@code maxStackSize * 9}（一个潜影盒的量）。
+     * 一个包裹能装多少件。
+     *
+     * <p>装不进容器的大件（潜影盒之类，{@code ItemStack#canFitInsideContainerItems} 为假）在 Create 的打包机里
+     * 抽一件就 {@code break}，所以恒为 1；其余按 {@code 组数 × 单组上限} 夹到 64。</p>
      */
-    public static int dumpAmount(int raw, boolean inStacks, int maxStackSize, int inStorage) {
-        int units = targetUnits(raw);
-        if (units < 0) {
-            return 0;
+    public static int itemsPerPackage(int maxStackSize, boolean canFitInsideContainerItems) {
+        if (!canFitInsideContainerItems) {
+            return 1;
         }
-        return dumpAmountForUnits(units, inStacks, maxStackSize, inStorage);
+        return Math.min(MAX_ITEMS_PER_PACKAGE, Math.max(1, maxStackSize) * MAX_BATCH_STACKS);
     }
 
-    /** 按 units 计算本次发送件数（滑条路径与外部信号路径共用）。 */
+    /**
+     * 本次应发送的件数：库存严格大于目标才发，发到"刚好剩 target"为止；
+     * 单次不超过 {@code itemsPerPackage(maxStackSize, true)}（默认按直通散装物算一包）。
+     */
     public static int dumpAmountForUnits(int units, boolean inStacks, int maxStackSize, int inStorage) {
+        return dumpAmountForUnits(units, inStacks, maxStackSize, inStorage, itemsPerPackage(maxStackSize, true));
+    }
+
+    /** 按 units 计算本次发送件数（滑条路径、外部信号路径与打包机的大件规则共用）。 */
+    public static int dumpAmountForUnits(int units, boolean inStacks, int maxStackSize, int inStorage,
+            int maxPerPackage) {
         if (units < 0 || inStorage <= 0) {
             return 0;
         }
@@ -93,8 +123,8 @@ public final class DumpGaugeMath {
         if (inStorage <= target) {
             return 0;
         }
-        long batch = (long) Math.max(1, maxStackSize) * MAX_BATCH_STACKS;
-        return (int) Math.min(inStorage - target, batch);
+        long cap = Math.max(1, maxPerPackage);
+        return (int) Math.min(inStorage - target, cap);
     }
 
     /** 外部 {@code NUMBERS} 信号 -&gt; units；负值即未启用。 */
@@ -109,6 +139,44 @@ public final class DumpGaugeMath {
     public static Integer displayUnits(int raw) {
         int units = targetUnits(raw);
         return units < 0 ? null : units;
+    }
+
+    /**
+     * 错峰后的检查相位：{@code gameTime + 位置哈希} 每 {@code interval} tick 命中一次。
+     *
+     * <p>用位置哈希错开各面板，避免所有卸料仪表在同一 tick 一起查网络汇总。</p>
+     */
+    public static boolean isCheckTick(long gameTime, int positionHash, int interval) {
+        if (interval <= 0) {
+            return true;
+        }
+        return Math.floorMod(gameTime + positionHash, (long) interval) == 0;
+    }
+
+    /** tick 数 -&gt; 界面上的秒数文案（{@code 80 -> "4"}，{@code 90 -> "4.5"}）。 */
+    public static String secondsText(int ticks) {
+        if (ticks % TICKS_PER_SECOND == 0) {
+            return Integer.toString(ticks / TICKS_PER_SECOND);
+        }
+        return String.format(Locale.ROOT, "%.1f", ticks / (float) TICKS_PER_SECOND);
+    }
+
+    /** 灯珠状态：目标 0 不画；红石供电红；其余绿。 */
+    public static Bulb bulbState(int count, boolean redstonePowered) {
+        if (count == 0) {
+            return Bulb.DISABLED;
+        }
+        return redstonePowered ? Bulb.RED : Bulb.GREEN;
+    }
+
+    /**
+     * 一次检查的准入：有目标、没被红石按住、有投递地址，三者缺一不发包。
+     *
+     * <p>抽成纯函数是为了让"红石暂停"这条规则能被单测钉住——{@code DumpPanelBehaviour#dump()}
+     * 本体要整个物流栈才跑得起来，测不了。</p>
+     */
+    public static boolean mayDispatch(boolean hasTarget, boolean redstonePowered, String address) {
+        return hasTarget && !redstonePowered && address != null && !address.isBlank();
     }
 
     private DumpGaugeMath() {

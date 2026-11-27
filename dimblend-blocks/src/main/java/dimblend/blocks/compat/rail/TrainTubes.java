@@ -1,11 +1,15 @@
 package dimblend.blocks.compat.rail;
 
+import com.simibubi.create.content.decoration.bracket.BracketBlockItem;
 import dimblend.blocks.DimBlendBlocks;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
@@ -15,6 +19,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
@@ -73,6 +78,34 @@ public final class TrainTubes {
         NeoForge.EVENT_BUS.addListener(TrainTubePlacementGuard::onServerTickPost);
         NeoForge.EVENT_BUS.addListener(TrainTubeLinksPayload::onPlayerLoggedIn);
         NeoForge.EVENT_BUS.addListener(TrainTubeLinksPayload::onPlayerChangedDimension);
+        NeoForge.EVENT_BUS.addListener(TrainTubes::onSneakRightClickBracket);
+    }
+
+    /** 潜行右键会跳过 {@code Block#useItemOn} 直达 {@code BracketBlockItem#useOn}，在此补接。 */
+    private static void onSneakRightClickBracket(PlayerInteractEvent.RightClickBlock event) {
+        if (!event.getEntity().isSecondaryUseActive()) {
+            return;
+        }
+        ItemStack stack = event.getItemStack();
+        if (!(stack.getItem() instanceof BracketBlockItem)) {
+            return;
+        }
+        BlockState state = event.getLevel().getBlockState(event.getPos());
+        if (!isTube(state)) {
+            return;
+        }
+        Direction face = event.getFace();
+        if (face == null) {
+            return;
+        }
+        ItemInteractionResult result = TrainPressuredTubeBlock.tryInstallBracket(
+                stack, state, event.getLevel(), event.getPos(), event.getEntity(), face);
+        if (result != ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION) {
+            event.setCanceled(true);
+            event.setCancellationResult(result == ItemInteractionResult.SUCCESS
+                    ? InteractionResult.sidedSuccess(event.getLevel().isClientSide)
+                    : InteractionResult.FAIL);
+        }
     }
 
     private static void onRegisterCapabilities(RegisterCapabilitiesEvent event) {

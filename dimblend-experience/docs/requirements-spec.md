@@ -715,7 +715,7 @@
   （`AllBlocks.POWERED_SHAFT.has`，`destroyBlock(shaftPos, true)` 按战利品表掉成 `create:shaft`），
   引擎本体保留停转；`steam_exhaust` 播 1 次 + 32 秒（640 tick）排气粒子
   （每 2 tick `minecraft:cloud` count=5、delta=0、speed=0.1），期间引擎以 `SteamEngineExhaustHeatZones`
-  向 Cold Sweat 暴露等同岩浆的高温热源（`LAVA_EQUIVALENT`）。过载解除不中断排气；
+  向 Cold Sweat 暴露岩浆温度 × 8 的高温热源（`STEAM_ENGINE_EXHAUST`，按 `logarithmic=true` 的 `^0.52` 幂律反推使实际生效温升严格为岩浆 8 倍）。过载解除不中断排气；
   引擎被拆/区块卸载则 BE 不再 tick，TTL 自动清零
 - 实现 `SteamEngineOverloadMixin`（`SteamEngineBlockEntity.tick` RETURN）+ 纯函数
   `SteamEngineOverload` / `SteamEngineOverloadMath`；状态全内存态（卸载清零）；

@@ -9,7 +9,7 @@ import net.minecraft.nbt.CompoundTag;
  * <ul>
  * <li>{@code creatorsword:capture_box} 的三个约定键解析（{@code HasCapturedEntity} /
  *     {@code CapturedEntityType} / {@code CapturedEntityNbt}）；</li>
- * <li>展示缩放：最长边塞进 {@link #MAX_DIMENSION} 格，且永不放大超过 {@code 0.8}；</li>
+ * <li>展示缩放：最长边塞进 {@link #MAX_DIMENSION} 格，且永不放大超过 {@code 0.4}；</li>
  * <li>展示自转角度：按墙钟毫秒线性推进（暂停游戏也继续转）。</li>
  * </ul>
  *
@@ -27,8 +27,8 @@ public final class MobDisplayCatalystRules {
     /** 盒子里生物 NBT 的复合键。 */
     public static final String TAG_CAPTURED_NBT = "CapturedEntityNbt";
 
-    /** 展示用的最大占位（格）：最大的那只生物也不许超过这个边长。 */
-    public static final float MAX_DIMENSION = 0.8F;
+    /** 展示用的最大占位（格）：最大的那只生物也不许超过这个边长（2026-11-27 口径减半：0.8 → 0.4）。 */
+    public static final float MAX_DIMENSION = 0.4F;
 
     /**
      * 自转：每 25 ms 一度 = {@code 0.04°/ms} = {@code 40°/s}，即 <b>9 秒一圈</b>
@@ -59,9 +59,9 @@ public final class MobDisplayCatalystRules {
     }
 
     /**
-     * 展示缩放：{@code min(0.8 / max(bbW, bbH, 0.001), 0.8)}。
+     * 展示缩放：{@code min(0.4 / max(bbW, bbH, 0.001), 0.4)}。
      *
-     * <p>把最长的边压进 {@link #MAX_DIMENSION}；比 0.8 格还小的生物<b>不放大</b>（保证小鸡、蝙蝠等
+     * <p>把最长的边压进 {@link #MAX_DIMENSION}；比 0.4 格还小的生物<b>不放大</b>（保证小鸡、蝙蝠等
      * 不会变成巨型），所以公式外面还要再取一次 {@code min}。</p>
      */
     public static float displayScale(float boundingBoxWidth, float boundingBoxHeight) {

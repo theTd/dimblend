@@ -23,8 +23,8 @@ import org.joml.Vector3d;
  * <li><b>方块中心要先投出 Sable</b>：方块实体活在子层级坐标系里，相机距离与视锥都按子层级算，
  * 所以用 {@code ClientSubLevel#renderPose()} 把中心投到真实世界坐标，再做 16 格距离判定；
  * 不投出去的话，载具开走时生物会留在原地。</li>
- * <li><b>统一缩放</b>：{@code scale = min(0.8 / max(bbW, bbH, 0.001), 0.8)}，
- * 让最大的那只生物也塞进 0.8 格；中心对齐 {@code (0.5, 0.5 - bbH*scale*0.5, 0.5)}。
+ * <li><b>统一缩放</b>：{@code scale = min(0.4 / max(bbW, bbH, 0.001), 0.4)}，
+ * 让最大的那只生物也塞进 0.4 格；中心对齐 {@code (0.5, 0.5 - bbH*scale*0.5, 0.5)}。
  * 缩放与自转公式都收在 {@link MobDisplayCatalystRules} 里（纯函数，可单测）。</li>
  * <li><b>Y 轴转速</b> {@code (System.currentTimeMillis() / 25.0) % 360}（与 {@code @Local} 无关，
  * 纯墙钟：暂停游戏也继续转，和 Create 的展示件同手感），即 {@code 40°/s}、<b>9 秒一圈</b>——

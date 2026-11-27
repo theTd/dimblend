@@ -11,6 +11,7 @@ import com.simibubi.create.foundation.gui.AllGuiTextures;
 import com.simibubi.create.foundation.gui.widget.IconButton;
 import com.simibubi.create.foundation.gui.widget.ScrollInput;
 
+import dimblend.blocks.compat.deployer.DumpGaugeMath;
 import dimblend.blocks.compat.deployer.DumpPanelBehaviour;
 import dimblend.blocks.compat.deployer.DumpPanelLayout;
 import net.createmod.catnip.gui.element.GuiGameElement;
@@ -253,14 +254,16 @@ public class DumpPanelScreen extends FactoryPanelScreen {
         graphics.fill(x + mask.x(), y + mask.y(), x + mask.right(), y + mask.bottom(), DumpPanelLayout.FOOTER_GRAY);
 
         Component period = Component.translatable("dimblend_blocks.dump_gauge.gui.period",
-                DumpPanelBehaviour.DUMP_INTERVAL_TICKS);
+                DumpGaugeMath.secondsText(DumpGaugeMath.CHECK_INTERVAL_TICKS));
         graphics.drawString(this.font, period,
                 x + mask.x() + (mask.width() - this.font.width(period)) / 2, y + mask.y() + 9,
                 DumpPanelLayout.FOOTER_TEXT_COLOR, false);
 
         if (mask.contains(mouseX - x, mouseY - y)) {
             graphics.renderComponentTooltip(this.font,
-                    List.of(Component.translatable("dimblend_blocks.dump_gauge.tip.interval")
+                    List.of(Component.translatable("dimblend_blocks.dump_gauge.tip.interval",
+                                    DumpGaugeMath.secondsText(DumpGaugeMath.CHECK_INTERVAL_TICKS),
+                                    DumpGaugeMath.MAX_ITEMS_PER_PACKAGE)
                             .withStyle(ChatFormatting.GRAY)),
                     mouseX, mouseY);
         }

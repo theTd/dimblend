@@ -341,6 +341,12 @@ public class DimBlendMixinPlugin implements IMixinConfigPlugin {
             return isLoaded("createaddition") && isLoaded("sable")
                     && classPresent("dev.codex.sablecreateadditioncompat.SubLevelWireTransforms");
         }
+        // 跨 Sable 子层级线缆加粗（2026-11-27）：目标是 CCA 的 WireNodeRenderer，只改客户端；
+        // 需要 sable_createaddition_compat 提供子层级投影（跨载具连线才存在）。
+        if (mixinClassName.endsWith(".client.compat.cca.CrossSableWireThicknessMixin")) {
+            return isLoaded("createaddition") && isLoaded("sable")
+                    && classPresent("dev.codex.sablecreateadditioncompat.SubLevelWireTransforms");
+        }
         if (mixinClassName.endsWith(".compat.simurail.AutomaticCouplerWireBreakMixin")) {
             return isLoaded("simurail") && isLoaded("createaddition");
         }

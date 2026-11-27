@@ -145,8 +145,8 @@ class ColdSweatBatch1116Test {
                 "create:steam_engine 的岩浆热源必须 registerFirst，否则被 create_cold_sweat 截胡");
         assertFalse(createRegister.contains("event.register("),
                 "同一方块只能注册一条岩浆热源，不能退回 event.register(...)");
-        assertTrue(createRegister.contains("lavaEquivalent("),
-                "排气窗口施加的是 LAVA_EQUIVALENT（岩浆等价），不是烈焰人炉档位");
+        assertTrue(createRegister.contains("steamEngineExhaust("),
+                "排气窗口施加的是 STEAM_ENGINE_EXHAUST（8× 岩浆），不是烈焰人炉档位");
         assertTrue(createRegister.contains("Create::exhaustingEngine"),
                 "判据必须是排气窗口，正常运转/停转的引擎不发热");
         // registerFirst 是全类唯一一处：其它方块（basic_burner / 炉灶 / CDG）仍走 register，
@@ -174,6 +174,115 @@ class ColdSweatBatch1116Test {
         assertEquals((1000.0 - 32.0) / 45.0, lava.maxTemperatureMc(), EPSILON);
         assertTrue(lava.fade(), "world.toml 的 BlockTempData.fromToml 恒传 fade=true");
         assertTrue(lava.logarithmic(), "minecraft:lava 第九位 true 即 logarithmic（对数衰减）");
+    }
+
+    /**
+     * 蒸汽引擎排气档：在 {@link ColdSweatHeatSources#LAVA_EQUIVALENT} 上补偿 Cold Sweat 的
+     * {@code ^0.52} 叠加曲线，最终效应精确为 8× 岩浆。
+     *
+     * <p>补偿公式：{@code temperature *= 8^(1/0.52)}；minEffect/maxEffect 直接 ×8，
+     * range / 温度上下限 / fade / logarithmic 原样继承。</p>
+     */
+    @Test
+    void steamEngineExhaustProfileIsEightTimesLavaAfterLogCompensation() {
+        ColdSweatHeatSources.HeatProfile lava = ColdSweatHeatSources.LAVA_EQUIVALENT;
+        ColdSweatHeatSources.HeatProfile exhaust = ColdSweatHeatSources.STEAM_ENGINE_EXHAUST;
+
+        assertEquals(8.0, ColdSweatHeatSources.STEAM_ENGINE_EXHAUST_LAVA_MULTIPLIER, EPSILON);
+        assertEquals(0.52, ColdSweatHeatSources.COLD_SWEAT_LOGARITHMIC_EXPONENT, EPSILON);
+        // 只把输入温度 ×8 会被 Cold Sweat 压成 8^0.52 ≈ 2.95×，所以必须预补偿 8^(1/0.52)。
+        assertEquals(Math.pow(8.0, 1.0 / 0.52), exhaust.temperatureMc() / lava.temperatureMc(), EPSILON);
+        assertEquals(30.0 / 45.0 * Math.pow(8.0, 1.0 / 0.52), exhaust.temperatureMc(), 1.0E-9);
+        assertTrue(exhaust.temperatureMc() > 8.0 * lava.temperatureMc(),
+                "预补偿后的输入温度必须明显大于 8× 岩浆输入温度");
+        // clamp 边界同步 ×8：否则多引擎会提前饱和，实际倍数被压到 8 以下
+        assertEquals(8.0 * lava.maxEffectMc(), exhaust.maxEffectMc(), EPSILON);
+        assertEquals(8.0 * lava.minEffectMc(), exhaust.minEffectMc(), EPSILON);
+        assertEquals(1600.0 / 45.0, exhaust.maxEffectMc(), EPSILON);
+        // 其余参数原样继承
+        assertEquals(lava.range(), exhaust.range(), EPSILON);
+        assertEquals(lava.minTemperatureMc(), exhaust.minTemperatureMc());
+        assertEquals(lava.maxTemperatureMc(), exhaust.maxTemperatureMc(), EPSILON);
+        assertTrue(exhaust.fade());
+        assertTrue(exhaust.logarithmic());
+    }
+
+    /**
+     * 复刻 {@code BlockTempModifier#calculate} 的 logarithmic 分支（2.4.2 字节码实证）：
+     * {@code newTotal = (oldTotal^(1/0.52) + tempToAdd)^0.52}，{@code delta /= (blocks+1)}，
+     * 再 clamp 到 {@code [minEffect, maxEffect]}；{@code tempToAdd} 由 {@code fade} 的
+     * {@code CSMath.blend(temp, 0, distance, 0.5, range)} 给出。
+     */
+    private static double coldSweatLogTotal(ColdSweatHeatSources.HeatProfile profile, double distance,
+                                            int occludingBlocks, int engineBlocks) {
+        double tempToAdd = coldSweatBlend(profile.temperatureMc(), 0.0, distance, 0.5, profile.range());
+        double exponent = ColdSweatHeatSources.COLD_SWEAT_LOGARITHMIC_EXPONENT;
+        double total = 0.0;
+        for (int i = 0; i < engineBlocks; i++) {
+            double newTotal = Math.pow(Math.pow(total, 1.0 / exponent) + tempToAdd, exponent);
+            double delta = (newTotal - total) / (occludingBlocks + 1);
+            total = Math.max(profile.minEffectMc(), Math.min(profile.maxEffectMc(), total + delta));
+        }
+        return total;
+    }
+
+    /** {@code CSMath.blend} 的 double 重载（引擎源码：factor ≤ rangeMin 取满、≥ rangeMax 归零）。 */
+    private static double coldSweatBlend(double from, double to, double factor,
+                                         double rangeMin, double rangeMax) {
+        if (factor <= rangeMin) {
+            return from;
+        }
+        if (factor >= rangeMax) {
+            return to;
+        }
+        return (to - from) / (rangeMax - rangeMin) * (factor - rangeMin) + from;
+    }
+
+    /**
+     * 任意距离、任意引擎数、任意遮挡格数下，排气热源的实际 Cold Sweat 温升都精确是岩浆的 8 倍。
+     *
+     * <p>距离取 {@code 0.5}（fade 满值边界）、{@code 2.0}/{@code 3.75}（线性衰减中段）、
+     * {@code 6.0}（接近 range=7 的尾段）；引擎数 1–3 覆盖单机与相邻多机；
+     * 遮挡 0/2 覆盖 {@code blocks[0] + 1} 的除算。</p>
+     */
+    @Test
+    void steamEngineExhaustHeatIsExactlyEightTimesLavaAtEveryDistanceAndEngineCount() {
+        ColdSweatHeatSources.HeatProfile lava = ColdSweatHeatSources.LAVA_EQUIVALENT;
+        ColdSweatHeatSources.HeatProfile exhaust = ColdSweatHeatSources.STEAM_ENGINE_EXHAUST;
+
+        for (double distance : new double[] {0.5, 2.0, 3.75, 6.0}) {
+            for (int engines : new int[] {1, 2, 3}) {
+                for (int occludingBlocks : new int[] {0, 2}) {
+                    double lavaTotal = coldSweatLogTotal(lava, distance, occludingBlocks, engines);
+                    double exhaustTotal = coldSweatLogTotal(exhaust, distance, occludingBlocks, engines);
+                    String context = "distance=" + distance + " engines=" + engines
+                            + " occludingBlocks=" + occludingBlocks;
+                    assertTrue(lavaTotal > 0.0, "岩浆基准必须是正温升: " + context);
+                    assertEquals(8.0 * lavaTotal, exhaustTotal, 1.0E-6,
+                            "实际温升必须精确 8× 岩浆: " + context);
+                    // 1–3 台引擎远未到 maxEffect：8 倍关系不能被 clamp 提前截断
+                    assertTrue(lavaTotal < lava.maxEffectMc(), "岩浆基准不应提前饱和: " + context);
+                    assertTrue(exhaustTotal < exhaust.maxEffectMc(),
+                            "1–3 台引擎的 8× 热源不应提前饱和: " + context);
+                }
+            }
+        }
+    }
+
+    /**
+     * 饱和段（30 台贴脸引擎）两条档位同时 clamp，倍数仍精确是 8：
+     * {@code maxEffect} 按 ×8 同步放大后，clamp 边界也必须保持同一比例。
+     */
+    @Test
+    void steamEngineExhaustClampStaysProportionalAtSaturation() {
+        ColdSweatHeatSources.HeatProfile lava = ColdSweatHeatSources.LAVA_EQUIVALENT;
+        ColdSweatHeatSources.HeatProfile exhaust = ColdSweatHeatSources.STEAM_ENGINE_EXHAUST;
+
+        double lavaTotal = coldSweatLogTotal(lava, 0.5, 0, 30);
+        double exhaustTotal = coldSweatLogTotal(exhaust, 0.5, 0, 30);
+        assertEquals(lava.maxEffectMc(), lavaTotal, EPSILON, "岩浆基准应已 clamp 到 maxEffect");
+        assertEquals(exhaust.maxEffectMc(), exhaustTotal, EPSILON, "8× 档位应已 clamp 到 8× maxEffect");
+        assertEquals(8.0 * lavaTotal, exhaustTotal, 1.0E-9);
     }
 
     /**
