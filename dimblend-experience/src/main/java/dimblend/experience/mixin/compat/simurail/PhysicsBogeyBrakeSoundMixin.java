@@ -53,11 +53,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * {@code Sable.HELPER.projectOutOfSubLevel} 投影到世界坐标再播——此前直接播
  * 局部坐标，声音落在 plot 区、车旁听不见，即"刹车/松闸无声"的根因，
  * 2026-09-23 双 jar 字节码核实）。未组装（不在子层级）时投影恒等，无副作用。</p>
- *
- * <p><b>2026-11-27 Slice 10：音调变化当 tick 重发</b>。列车正轻刹（{@code pitch = 1.0}）穿过
- * 末影龙龙息的那一 tick，末影锁存成立，音调要降到 0.5；但车架仍在持续鸣响，只盯着 40 tick
- * 保活窗会让客户端一直用 1.0 鸣响到下一次刷新。所以本 tick 记住上次音调，一变就立刻下发
- * 开始包（{@code TrainBrakeSoundSync} 的去重签名已含音调，2 tick 合并窗不会把它当重复吞掉）。</p>
  */
 @Mixin(PhysicsBogeyBlockEntity.class)
 public abstract class PhysicsBogeyBrakeSoundMixin {
@@ -80,10 +75,6 @@ public abstract class PhysicsBogeyBrakeSoundMixin {
     /** 本车架是否已在持续鸣响（决定何时下发开始包，以及保活重发）。 */
     @Unique
     private boolean dimblend$sustainActive;
-
-    /** 上一次下发开始包用的音调；哨兵值无关，{@link #dimblend$sustainActive} 为假时永不参与比较。 */
-    @Unique
-    private float dimblend$lastPitch;
 
     /** 下一次保活重发的游戏 tick。 */
     @Unique
@@ -141,26 +132,20 @@ public abstract class PhysicsBogeyBrakeSoundMixin {
             return;
         }
 
-        // 2026-11-04：无人值守锁存引起的那一次施闸是「急刹」，音调降到 0.5；
-        // 司机自己施闸仍按原音调（口径见 TrainSpeedGateMath#brakePitch）。
-        float pitch = TrainSpeedGateMath.brakePitch(TrainDeadmanBrake.isLatched(self));
-        // 2026-11-27 Slice 10：音调变化必须当 tick 生效。轻刹（1.0）穿进末影龙龙息的那一
-        // tick 末端影锁存就成立，车架仍处于持续鸣响（sustainActive = true），若只等 40 tick
-        // 保活窗重发，客户端会用 1.0 一直鸣响到下一次刷新；服务端这边的去重签名已把音调算进去，
-        // 所以这里立刻发一次开始包不会被 2 tick 合并窗吞掉。
-        boolean pitchChanged = dimblend$sustainActive && pitch != dimblend$lastPitch;
         boolean refreshDue = dimblend$sustainActive && now >= dimblend$nextRefreshTick;
-        if (!dimblend$sustainActive || refreshDue || pitchChanged) {
+        if (!dimblend$sustainActive || refreshDue) {
             BlockPos selfPos = self.getBlockPos();
             List<BlockPos> members =
                     TrainBrakeBroadcast.collectMembers(serverLevel, world, speed, now);
             if (members.isEmpty()) {
                 members = List.of(selfPos);
             }
+            // 2026-11-04：无人值守锁存引起的那一次施闸是「急刹」，音调降到 0.5；
+            // 司机自己施闸仍按原音调（口径见 TrainSpeedGateMath#brakePitch）。
+            float pitch = TrainSpeedGateMath.brakePitch(TrainDeadmanBrake.isLatched(self));
             TrainBrakeSoundSync.sendStart(serverLevel, world, members,
                     TrainBrakeSustainRules.SUSTAIN_VOLUME, pitch);
             dimblend$sustainActive = true;
-            dimblend$lastPitch = pitch;
             dimblend$nextRefreshTick = TrainBrakeSustainRules.nextRefreshTick(now);
         }
     }

@@ -10,6 +10,7 @@ import com.simibubi.create.content.logistics.BigItemStack;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlock;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlockEntity;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBehaviour;
+import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelEffectPacket;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelPosition;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelSetItemMenu;
 import com.simibubi.create.content.logistics.packager.InventorySummary;
@@ -24,7 +25,7 @@ import com.simibubi.create.foundation.blockEntity.behaviour.ValueSettingsBehavio
 import dev.engine_room.flywheel.lib.model.baked.PartialModel;
 import dimblend.blocks.compat.deployer.client.DumpGaugeClient;
 import dimblend.blocks.compat.deployer.client.DumpGaugePartialModels;
-import net.createmod.catnip.animation.LerpedFloat;
+import net.createmod.catnip.platform.CatnipServices;
 import net.liukrast.deployer.lib.logistics.LogisticallyLinked;
 import net.liukrast.deployer.lib.logistics.board.AbstractPanelBehaviour;
 import net.liukrast.deployer.lib.logistics.board.PanelType;
@@ -37,6 +38,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -65,9 +67,6 @@ import net.neoforged.neoforge.common.Tags;
  * 屏为 {@link dimblend.blocks.compat.deployer.client.DumpPanelScreen}，标题「卸料设置」。</p>
  */
 public class DumpPanelBehaviour extends AbstractPanelBehaviour implements RenderFilterSlot {
-
-    /** 两次发包尝试的最小间隔（tick）：每 tick 查一次网络汇总既浪费又容易重复下单。 */
-    public static final int DUMP_INTERVAL_TICKS = 10;
 
     /** 墙面角标里代表「组」的方块字符，与 Create 自己的 {@code getCountLabelForValueBox} 同字形。 */
     private static final String STACK_GLYPH = "\u25A4";
@@ -153,6 +152,25 @@ public class DumpPanelBehaviour extends AbstractPanelBehaviour implements Render
                     : DumpGaugePartialModels.PANEL_RESTOCKER;
         }
         return active ? DumpGaugePartialModels.PANEL_WITH_BULB : DumpGaugePartialModels.PANEL;
+    }
+
+    /**
+     * 墙面灯珠状态。Deployer 的 {@code FactoryPanelRendererMixin} 只用这个值决定两件事：
+     * {@code renderSafe} 里 {@code getAmount()} 被改成 {@code DISABLED ? 0 : 1}（0 = 干脆不画灯珠），
+     * {@code renderBulb} 里选 {@code FACTORY_PANEL_LIGHT}（绿）还是 {@code FACTORY_PANEL_RED_LIGHT}（红）。
+     *
+     * <p>不覆写时它恒返回 {@code DISABLED}（{@code AbstractPanelBehaviour:319}），于是面板模型
+     * {@code panel_with_bulb} 上的棱柱永远空着——这就是「右上角灯珠模型坏了」的真因，贴图和模型本身没问题。</p>
+     */
+    @Override
+    public AbstractPanelBehaviour.BulbState getBulbState() {
+        DumpGaugeMath.Bulb bulb = DumpGaugeMath.bulbState(count, redstonePowered);
+        if (bulb == DumpGaugeMath.Bulb.DISABLED) {
+            return AbstractPanelBehaviour.BulbState.DISABLED;
+        }
+        return bulb == DumpGaugeMath.Bulb.RED
+                ? AbstractPanelBehaviour.BulbState.RED
+                : AbstractPanelBehaviour.BulbState.GREEN;
     }
 
     /**
@@ -418,19 +436,54 @@ public class DumpPanelBehaviour extends AbstractPanelBehaviour implements Render
 
     /** 设置页要标出「这个目标是不是来自外部信号」，此时滑条值不生效。 */
     public boolean hasSignalTarget() {
-        return getConnectionValue(DeployerPanelConnections.NUMBERS.get()).isPresent();
+        if (hasNoInputs()) {
+            return false;
+        }
+        List<Float> values = getAllValues(DeployerPanelConnections.NUMBERS.get());
+        return values != null && !values.isEmpty();
+    }
+
+    /**
+     * Create 的判据是「有输入或贴着打包机 && 目标 ≠ 0 && 自填地址为空」，对卸料仪表错两次：
+     * 接了 STRING 地址信号时自填地址本来就该是空的；没接输入时缺地址也不影响卸料。
+     * 只认真正解析出来的投递地址，否则墙面连线和灯珠都会被画成「缺地址」的红色。
+     */
+    @Override
+    public boolean isMissingAddress() {
+        return count != 0 && resolveAddress().isBlank();
     }
 
     // ---------------------------------------------------------------- 下料
 
+    /**
+     * 每 tick 的驱动。
+     *
+     * <p>Deployer 的 {@code FactoryPanelBehaviourMixin} 把父类 {@code tick()} 在 {@code isClientSide()} 处整段取消，
+     * 所以客户端那一半必须自己补：灯珠的追逐（红石供电 → 1.0）与手持同频率物流物品时的面板描边。
+     * 服务端则每 tick 同步一次输入（父类的 {@code checkForRedstoneInput} 被改成了 {@code final} + 空实现的
+     * {@link #notifiedFromInput()}，只剩 {@code lazyTick} 每 20 tick 才碰一次），
+     * 再按 {@link DumpGaugeMath#CHECK_INTERVAL_TICKS}（80 tick = 4 秒）的错峰相位查一遍网络库存。</p>
+     */
     @Override
     public void tick() {
         super.tick();
         Level level = getWorld();
-        if (level == null || level.isClientSide) {
+        if (level == null) {
             return;
         }
-        if (level.getGameTime() % DUMP_INTERVAL_TICKS != 0) {
+        if (level.isClientSide) {
+            if (bulb != null) {
+                bulb.updateChaseTarget(redstonePowered ? 1.0F : 0.0F);
+                bulb.tickChaser();
+            }
+            if (active) {
+                DumpGaugeClient.tickPanel(this);
+            }
+            return;
+        }
+        notifiedFromInput();
+        if (!DumpGaugeMath.isCheckTick(level.getGameTime(), getPos().hashCode(),
+                DumpGaugeMath.CHECK_INTERVAL_TICKS)) {
             return;
         }
         try {
@@ -441,57 +494,145 @@ public class DumpPanelBehaviour extends AbstractPanelBehaviour implements Render
         }
     }
 
+    /**
+     * 输入同步：把红石输入汇总进 {@code redstonePowered}。
+     *
+     * <p>Deployer 把父类 {@code checkForRedstoneInput()} 换成了 {@code final} 的「计数 + 空实现」版本
+     * （{@code AbstractPanelBehaviour:300-314}），{@code notifiedFromInput()} 不覆写就等于红石输入完全无效：
+     * {@code redstonePowered} 永远是 {@code false}，面板既不会被红石暂停，灯珠也永远是绿的。
+     * 这里按 Deployer 自己混入 {@code checkForRedstoneInput} 的同一口径读输入：
+     * 全部 {@code REDSTONE} 值取或；数值/文本信号不进这个字段，由 {@link #resolveUnits()}/{@link #resolveAddress()} 现读。</p>
+     */
+    @Override
+    public void notifiedFromInput() {
+        if (!active) {
+            return;
+        }
+        boolean powered;
+        if (hasNoInputs()) {
+            powered = false;
+        } else {
+            List<Boolean> values = getAllValues(DeployerPanelConnections.REDSTONE.get());
+            if (values == null) {
+                return; // 输入区块未加载：保留上一次判定，别把"读不到"当成"断电"
+            }
+            powered = values.contains(Boolean.TRUE);
+        }
+        if (powered == redstonePowered) {
+            return;
+        }
+        redstonePowered = powered;
+        panelBE().notifyUpdate();
+    }
+
+    /**
+     * 一轮检查：库存严格大于目标时发一个包裹，最多 {@link DumpGaugeMath#MAX_ITEMS_PER_PACKAGE} 个
+     * （装不进容器的大件一件一包）。
+     *
+     * <p>闸门见 {@link DumpGaugeMath#mayDispatch}：没绑网络 / 面板不在场 / 没设卸料物 / 没目标 /
+     * 被红石按住 / 没地址，任一成立都不发。</p>
+     */
     private void dump() {
-        if (network == null || !isActive() || redstonePowered) {
+        if (network == null || !isActive()) {
             return;
         }
         ItemStack sample = filter.item();
         if (sample.isEmpty()) {
             return; // 没设过滤 = 不知道该卸什么
         }
-        String address = resolveAddress();
-        if (address.isBlank()) {
-            return;
-        }
         int units = resolveUnits();
-        if (units < 0) {
-            return; // 未启用
+        String address = resolveAddress();
+        if (!DumpGaugeMath.mayDispatch(units >= 0, redstonePowered, address)) {
+            return;
         }
         InventorySummary summary = LogisticsManager.getSummaryOfNetwork(network, true);
         if (summary == null || summary.isEmpty()) {
             return;
         }
         int inStorage = summary.getCountOf(sample);
-        int amount = DumpGaugeMath.dumpAmountForUnits(units, upTo, Math.max(1, sample.getMaxStackSize()), inStorage);
+        int maxStackSize = sample.getMaxStackSize();
+        // NeoForge 已把 Item#canFitInsideContainerItems 标成 deprecated，按它的建议走 ItemStack 扩展
+        int perPackage = DumpGaugeMath.itemsPerPackage(maxStackSize, sample.canFitInsideContainerItems());
+        int amount = DumpGaugeMath.dumpAmountForUnits(units, upTo, maxStackSize, inStorage, perPackage);
         if (amount <= 0) {
             return;
         }
         List<BigItemStack> stacks = List.of(new BigItemStack(sample.copyWithCount(1), amount));
         boolean sent = LogisticsManager.broadcastPackageRequest(network, RequestType.REDSTONE,
                 PackageOrderWithCrafts.simple(stacks), null, address);
-        if (sent) {
-            if (bulb != null) {
-                bulb.chase(1, 0.5f, LerpedFloat.Chaser.EXP);
-            }
-            panelBE().sendData();
-            notifyOutputs();
+        if (!sent) {
+            return;
         }
+        sendBulbFlash();
+        panelBE().sendData();
+        notifyOutputs();
     }
 
-    /** 外部 NUMBERS 信号优先（&gt;=0 直接当 units，&lt;0 即禁用）；否则吃滑条。 */
+    /**
+     * 灯珠闪一下绿。服务端的 {@code bulb.chase(...)} 到不了客户端（父类 tick 的客户端分支被砍了），
+     * 必须走 Create 自己的效果包：{@code FactoryPanelEffectPacket#handle} 在客户端把灯珠值顶到 1.0，
+     * 再由 {@link #tick()} 的客户端分支衰减回 0（约 11 tick，绿光闪一次）。
+     *
+     * <p>{@code fromPos} 传自己的位置：{@code handle} 先用它取方块状态校验「这确实是工厂仪表」，
+     * 再用 {@code toPos} 找行为——同一个面板两个参数就是同一个位置。</p>
+     */
+    private void sendBulbFlash() {
+        if (!(getWorld() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        FactoryPanelPosition self = getPanelPosition();
+        CatnipServices.NETWORK.sendToClientsAround(serverLevel, getPos(), 64.0,
+                new FactoryPanelEffectPacket(self, self, true));
+    }
+
+    /**
+     * 三个输入表都空时直接跳过整轮信号解析：{@code getAllValues} 每次都要遍历这三张表
+     * （{@code AbstractPanelBehaviour#getAllValuesWithSource}），面板没接输入时没必要跑。
+     */
+    private boolean hasNoInputs() {
+        return targetedBy.isEmpty() && targetedByLinks.isEmpty() && getTargetedByExtra().isEmpty();
+    }
+
+    /**
+     * 目标 units：外部 {@code NUMBERS} 信号优先（多路输入求和，与 Deployer 混入
+     * {@code checkForRedstoneInput} 的口径一致），没有数值输入时吃滑条。
+     *
+     * <p>输入区块未加载时 {@code getAllValues} 返回 {@code null}（{@code PanelValue.Abort}），
+     * 本轮按未启用处理——宁可少发一轮，也别拿"读不到"当 0 把库存卸空。</p>
+     */
     private int resolveUnits() {
-        Float signal = getConnectionValue(DeployerPanelConnections.NUMBERS.get()).orElse(null);
-        if (signal != null) {
-            return DumpGaugeMath.unitsFromSignal(signal);
+        if (!hasNoInputs()) {
+            List<Float> values = getAllValues(DeployerPanelConnections.NUMBERS.get());
+            if (values == null) {
+                return DumpGaugeMath.SIGNAL_INACTIVE;
+            }
+            if (!values.isEmpty()) {
+                float sum = 0.0F;
+                for (float value : values) {
+                    sum += value;
+                }
+                return DumpGaugeMath.unitsFromSignal(sum);
+            }
         }
         return DumpGaugeMath.targetUnits(count);
     }
 
-    /** STRING 连接优先给出地址，否则用面板自填地址。 */
+    /**
+     * 投递地址：{@code STRING} 输入拼起来优先（Create 的地址是逐段拼接的），否则用面板自填地址。
+     * 输入区块未加载时返回空串，于是本轮不下单。
+     */
     private String resolveAddress() {
-        String fromConnection = getConnectionValue(DeployerPanelConnections.STRING.get()).orElse(null);
-        if (fromConnection != null && !fromConnection.isBlank()) {
-            return fromConnection.trim();
+        if (!hasNoInputs()) {
+            List<String> values = getAllValues(DeployerPanelConnections.STRING.get());
+            if (values == null) {
+                return "";
+            }
+            if (!values.isEmpty()) {
+                String joined = String.join("", values).trim();
+                if (!joined.isEmpty()) {
+                    return joined;
+                }
+            }
         }
         return recipeAddress == null ? "" : recipeAddress.trim();
     }

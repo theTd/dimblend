@@ -6,6 +6,8 @@ import java.util.UUID;
 import org.jetbrains.annotations.Nullable;
 
 import com.mojang.serialization.MapCodec;
+import com.simibubi.create.content.decoration.bracket.BracketBlock;
+import com.simibubi.create.content.decoration.bracket.BracketBlockItem;
 import com.simibubi.create.content.decoration.bracket.BracketedBlockEntityBehaviour;
 import com.simibubi.create.content.equipment.wrench.IWrenchableWithBracket;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
@@ -13,8 +15,12 @@ import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
@@ -30,6 +36,7 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
+import net.minecraft.world.phys.BlockHitResult;
 
 /**
  * 列车加压管道方块（{@code dimblend_blocks:train_pressured_tube}）。
@@ -42,12 +49,17 @@ import net.minecraft.world.level.block.state.properties.BooleanProperty;
  * <p>连接只认两种邻居：本模组管道；{@code createfirefightingadd:high_pressure_pump}
  * 且泵的朝向轴与连接方向同轴。普通管道、机械泵、流体罐、物品排放口一律不连。</p>
  *
- * <p>两个派生属性让 blockstate 走纯 multipart（不需要自定义 baked model）：</p>
+ * <p>两个派生属性让 blockstate 走纯 multipart（方块模型本身不需要自定义 baked model；支架渲染由客户端
+ * 在 {@code ModelEvent.ModifyBakingResult} 里另包一层 Create 的 {@code PipeAttachmentModel}）：</p>
  * <ul>
  *   <li>{@code single_end}：本地连接数恰好 1（跨车厢锚点的资格，逻辑用）；</li>
  *   <li>{@code casing}：渲染中心方块体——单端接头或折角/多通时是 {@code [3,3,3]..[13,13,13]} 的盲管外壳，
  *       直通（两个对向臂）与空管时只画核心管体。</li>
  * </ul>
+ *
+ * <p>支架（木制/金属）只允许挂在直管上：Create 的 {@code BracketBlockItem#useOn} 只认
+ * {@code FluidPipeBlock}，对本方块不会放置，所以放置逻辑由本类的 {@code useItemOn} 按同样口径接管；
+ * 形状一旦变成三通/折角，排程 tick 会把支架取下丢回世界（见 {@link TrainTubeBracketRules}）。</p>
  */
 public class TrainPressuredTubeBlock extends PipeBlock implements EntityBlock, IWrenchableWithBracket {
 
@@ -167,18 +179,23 @@ public class TrainPressuredTubeBlock extends PipeBlock implements EntityBlock, I
     }
 
     /**
-     * 排程 tick 只做两件事：把派生属性（{@code single_end}/{@code casing}）对齐到当前连接；
-     * 真检测出连接位翻转时（理论上 {@code updateShape} 已处理，这里是兜底）再通知一次拓扑变更。
+     * 排程 tick 做三件事：把派生属性（{@code single_end}/{@code casing}）对齐到当前连接；
+     * 真检测出连接位翻转时（理论上 {@code updateShape} 已处理，这里是兜底）再通知一次拓扑变更；
+     * 形状一旦不再是直管（三通/折角），把支架取下来丢回世界——支架只允许挂在直管上，
+     * 否则会悬在接管面上（Create 的等长管道靠 {@code updateBlockState} 里"有支架就冻结形状"避免这一点，
+     * 本方块不冻结形状，改为形状失效时掉落）。
      */
     @Override
     protected void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
         BlockState recomputed = recompute(level, pos);
-        if (recomputed.equals(state)) {
-            return;
+        if (!recomputed.equals(state)) {
+            level.setBlock(pos, recomputed, 3);
+            if (!sameConnections(state, recomputed)) {
+                TrainTubeNetworkManager.markPending(level, pos);
+            }
         }
-        level.setBlock(pos, recomputed, 3);
-        if (!sameConnections(state, recomputed)) {
-            TrainTubeNetworkManager.markPending(level, pos);
+        if (!TrainTubeBracketRules.canHaveBracket(recomputed)) {
+            removeBracket(level, pos, true).ifPresent(stack -> Block.popResource(level, pos, stack));
         }
     }
 
@@ -207,6 +224,84 @@ public class TrainPressuredTubeBlock extends PipeBlock implements EntityBlock, I
             level.removeBlockEntity(pos);
         }
         super.onRemove(state, level, pos, newState, isMoving);
+    }
+
+    // ------------------------------------------------------------------ 支架安装
+
+    /**
+     * Create 的 {@code BracketBlockItem#useOn} 只把 {@code FluidPipeBlock} 当管道
+     * （{@code FluidPropagator.getStraightPipeAxis} 内部用 {@code FluidPipeBlock.isPipe} 判类），
+     * 对本方块会静默返回 {@code SUCCESS} 而不放置。这里按它的逐行语义接管：
+     * <ol>
+     *   <li>只认支架物品，其余物品原样交回默认流程；</li>
+     *   <li>先试点击面，失败再试玩家视线反方向（{@code Direction.orderedByNearest(player)[0].getOpposite()}）；</li>
+     *   <li>两面都不可用（含非直管）→ {@code SUCCESS} 但什么都不做，与 Create 的"右键没反应"一致；</li>
+     *   <li>可放：装支架、放音效、非创造扣物品，换下旧支架按 Create 的方式返还。</li>
+     * </ol>
+     */
+    @Override
+    protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos,
+            Player player, InteractionHand hand, BlockHitResult hitResult) {
+        return tryInstallBracket(stack, state, level, pos, player, hitResult.getDirection());
+    }
+
+    /**
+     * 供 {@link #useItemOn}（普通右键）与 {@link TrainTubes} 的潜行右键事件共用，
+     * 保证普通右键与潜行右键都能像 Create 原版流体管道一样安装木制/金属支架。
+     */
+    static ItemInteractionResult tryInstallBracket(ItemStack stack, BlockState state, Level level, BlockPos pos,
+            @Nullable Player player, Direction clickedFace) {
+        if (!(stack.getItem() instanceof BracketBlockItem bracketItem)
+                || !(bracketItem.getBlock() instanceof BracketBlock bracketBlock)) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        BracketedBlockEntityBehaviour behaviour =
+                BlockEntityBehaviour.get(level, pos, BracketedBlockEntityBehaviour.TYPE);
+        if (behaviour == null) {
+            return ItemInteractionResult.FAIL;
+        }
+
+        Direction.Axis axis = TrainTubeBracketRules.straightAxis(state);
+        Optional<Direction> face = TrainTubeBracketRules.resolveBracketFace(axis, clickedFace);
+        if (face.isEmpty() && player != null) {
+            face = TrainTubeBracketRules.resolveBracketFace(axis,
+                    Direction.orderedByNearest(player)[0].getOpposite());
+        }
+        if (face.isEmpty()) {
+            return ItemInteractionResult.SUCCESS;
+        }
+        if (!behaviour.canHaveBracket()) {
+            return ItemInteractionResult.FAIL;
+        }
+        if (level.isClientSide) {
+            return ItemInteractionResult.SUCCESS;
+        }
+
+        Direction bracketFace = face.get();
+        BlockState bracketState = bracketBlock.defaultBlockState()
+                .setValue(BracketBlock.TYPE, BracketBlock.BracketType.PIPE)
+                .setValue(BracketBlock.FACING, bracketFace)
+                .setValue(BracketBlock.AXIS_ALONG_FIRST_COORDINATE,
+                        TrainTubeBracketRules.axisAlongFirstCoordinate(axis, bracketFace));
+        BlockState existing = behaviour.getBracket();
+        if (existing == bracketState) {
+            return ItemInteractionResult.SUCCESS;
+        }
+        level.playSound(null, pos, bracketState.getSoundType().getPlaceSound(), SoundSource.BLOCKS, 0.75f, 1.0f);
+        behaviour.applyBracket(bracketState);
+
+        if (player == null || !player.isCreative()) {
+            stack.shrink(1);
+            if (existing != null) {
+                ItemStack previous = new ItemStack(existing.getBlock());
+                if (player == null) {
+                    Block.popResource(level, pos, previous);
+                } else {
+                    player.getInventory().placeItemBackInInventory(previous);
+                }
+            }
+        }
+        return ItemInteractionResult.SUCCESS;
     }
 
     // ------------------------------------------------------------------ 方块实体

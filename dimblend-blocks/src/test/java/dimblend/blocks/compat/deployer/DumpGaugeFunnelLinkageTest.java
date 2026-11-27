@@ -12,7 +12,8 @@ import dimblend.blocks.compat.create.funnel.DumpFunnelRules;
 /**
  * 卸料仪表 ↔ 卸料漏斗的联动词汇表：两者都"到阈值就停"，但一个管网络库存、一个管本地容器。
  *
- * <p>仪表（本包）：网络里该物品存量 <b>严格大于</b>目标 → 一次下单搬走 (存量 − 目标)，单笔上限 9 组。<br>
+ * <p>仪表（本包）：网络里该物品存量 <b>严格大于</b>目标 → 一次下单搬走 (存量 − 目标)，
+ * 单笔上限一个包裹（散装物 64 个，大件 1 个）。<br>
  * 漏斗（{@code compat.create.funnel}）：容器里该物品总数 <b>严格大于</b>阈值（N 组）→ 每次只抽
  * {@link DumpFunnelRules#EXTRACT_AMOUNT} 个往外送。</p>
  *
@@ -47,10 +48,10 @@ class DumpGaugeFunnelLinkageTest {
         // 仪表 raw=0 = 未启用（完全不干活），不是"目标 0 卸空"
         assertTrue(DumpGaugeMath.isInactive(DumpGaugeMath.RAW_INACTIVE));
         assertEquals(DumpGaugeMath.SIGNAL_INACTIVE, DumpGaugeMath.targetUnits(0));
-        assertEquals(0, DumpGaugeMath.dumpAmount(0, true, 64, 6400));
-        // 仪表"卸空"是 raw=1 / 信号 0：仍受单笔上限约束（6400 件要分多笔）
+        assertEquals(0, DumpGaugeMath.dumpAmountForUnits(DumpGaugeMath.targetUnits(0), true, 64, 6400));
+        // 仪表"卸空"是 raw=1 / 信号 0：仍受单包上限约束（6400 件要分多笔）
         assertEquals(0, DumpGaugeMath.targetUnits(1));
-        assertEquals(64 * DumpGaugeMath.MAX_BATCH_STACKS, DumpGaugeMath.dumpAmount(1, true, 64, 6400));
+        assertEquals(DumpGaugeMath.MAX_ITEMS_PER_PACKAGE, DumpGaugeMath.dumpAmountForUnits(0, true, 64, 6400));
         // 漏斗的 0 组会被夹成 1 组，而不是"抽干容器"
         assertEquals(DumpFunnelRules.MIN_STACKS, DumpFunnelRules.clampStacks(0));
         assertEquals(64L, DumpFunnelRules.thresholdItems(0, 64));
@@ -58,11 +59,11 @@ class DumpGaugeFunnelLinkageTest {
     }
 
     @Test
-    void gaugeDrainsInWholeBoxBatchesWhileTheFunnelMovesOneAtATime() {
+    void gaugeDrainsInWholePackageBatchesWhileTheFunnelMovesOneAtATime() {
         int maxStack = 64;
-        int batch = maxStack * DumpGaugeMath.MAX_BATCH_STACKS;
+        int batch = DumpGaugeMath.itemsPerPackage(maxStack, true);
         assertEquals(batch, DumpGaugeMath.dumpAmountForUnits(1, true, maxStack, batch + 100),
-                "单笔最多一个潜影盒的量");
+                "单笔最多一个包裹");
         // 漏斗每次只抽一件，所以仪表一笔订量必然被拆成很多个搬运周期；反过来只要仪表还在订，漏斗就一直有活干
         assertEquals(1, DumpFunnelRules.EXTRACT_AMOUNT);
         assertTrue(DumpGaugeMath.dumpAmountForUnits(1, true, maxStack, 2 * maxStack) > DumpFunnelRules.EXTRACT_AMOUNT);
@@ -81,7 +82,7 @@ class DumpGaugeFunnelLinkageTest {
             if (amount == 0) {
                 break;
             }
-            assertTrue(amount <= (long) maxStack * DumpGaugeMath.MAX_BATCH_STACKS);
+            assertTrue(amount <= DumpGaugeMath.itemsPerPackage(maxStack, true));
             assertTrue(storage - amount >= target, "任何一轮都不许把库存压到目标以下");
             storage -= amount;
             rounds++;

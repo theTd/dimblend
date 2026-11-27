@@ -237,6 +237,7 @@
 		"client.ItemStackNicknameMixin",
 		"client.MouseClickMixin",
 		"compat.cca.ElectricMotorSoundClientMixin",
+		"client.compat.cca.CrossSableWireThicknessMixin",
 		"compat.cca.ElectricMotorGoggleMixin",
 		"compat.create.ItemDrainGoggleMixin",
 		"compat.create.SlidingDoorRendererMixin",

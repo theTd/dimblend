@@ -17,7 +17,8 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 /**
  * 列车加压管道的方块实体。
  *
- * <p>只有两件事：挂 Create 的支架行为；按面决定是否暴露流体接口。</p>
+ * <p>只有两件事：挂 Create 的支架行为；按面决定是否暴露流体接口。支架行为带"仅直管"谓词
+ * （{@link TrainTubeBracketRules#canHaveBracket}），非直管形状不允许再放支架。</p>
  *
  * <p>暴露规则是整套"只让高压水泵进出"设计的关键：只有当该面<b>连接位为真</b>且邻方块是
  * 朝同轴的高压水泵时才返回 {@link IFluidHandler}，其余情况一律 {@code null}。Create 的
@@ -32,7 +33,7 @@ public class TrainPressuredTubeBlockEntity extends SmartBlockEntity {
 
     @Override
     public void addBehaviours(List<BlockEntityBehaviour> behaviours) {
-        behaviours.add(new BracketedBlockEntityBehaviour(this));
+        behaviours.add(new BracketedBlockEntityBehaviour(this, state -> TrainTubeBracketRules.canHaveBracket(state)));
     }
 
     /** 供能力注册回调使用：{@code side == null} 永远不给接口（中心访问一律视为无能力）。 */

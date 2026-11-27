@@ -146,24 +146,16 @@ public final class TrainDeadmanBrake {
             return false;
         }
         ResourceKey<Level> dim = level.dimension();
-        Set<UUID> previousEnder = enderLatched(dim);
-        Set<UUID> ender = new HashSet<>(previousEnder);
+        Set<UUID> ender = new HashSet<>(enderLatched(dim));
         ender.addAll(consist.carriageIds());
         ENDER_LATCHED.put(dim, Set.copyOf(ender));
         Set<UUID> previous = latchedCarriages(dim);
         Set<UUID> next = new HashSet<>(previous);
         next.addAll(consist.carriageIds());
-        boolean consistEnteredLatch = !next.equals(previous);
-        // 服务端锁存（ENDER_LATCHED）是独立的一层：车组可能早被无人值守刹车锁死，
-        // 这时 next == previous，若只看共享锁存表就会漏掉「本次末影刹车」的播报。
-        // 2026-11-27 Slice 10：两个集合各自比较，任一真变化即播一次。
-        boolean enderGrew = !ender.equals(previousEnder);
-        if (consistEnteredLatch) {
+        if (!next.equals(previous)) {
             applyLatch(level, next);
-        }
-        if (consistEnteredLatch || enderGrew) {
             // I22：锁存集合真正变化的那一 tick 播一次末影刹车播报（0.5 音调、全服、无速度门控）。
-            // 已在锁存中的编组再穿云不会重复播——两个等值判断就是「每编组一次」的持久位。
+            // 已在锁存中的编组再穿云不会重复播——上面这个等值判断就是「每编组一次」的持久位。
             TrainBrakeServiceImpl.playGlobalEnderBrakeSound(level);
         }
         for (PhysicsBogeyBlockEntity bogey : bogeysIn(level, consist.carriageIds())) {

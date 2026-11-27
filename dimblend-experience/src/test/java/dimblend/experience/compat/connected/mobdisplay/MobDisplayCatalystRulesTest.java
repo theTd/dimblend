@@ -92,17 +92,17 @@ class MobDisplayCatalystRulesTest {
 
     @Test
     void oversizedMobIsDownscaledToFitTheBlock() {
-        // 牛 1.4 高 -> 0.8 / 1.4
-        assertEquals(0.8f / 1.4f, MobDisplayCatalystRules.displayScale(0.9f, 1.4f), EPS);
+        // 牛 1.4 高 -> 0.4 / 1.4
+        assertEquals(0.4f / 1.4f, MobDisplayCatalystRules.displayScale(0.9f, 1.4f), EPS);
         // 长边取 max(宽, 高)：宽 3 的巨型生物按宽度算
-        assertEquals(0.8f / 3.0f, MobDisplayCatalystRules.displayScale(3.0f, 1.0f), EPS);
-        // 正好 0.8 格宽高：缩到 0.8（0.8 / 0.8 = 1.0，再被外层的 0.8 上限压住）
-        assertEquals(MobDisplayCatalystRules.MAX_DIMENSION, MobDisplayCatalystRules.displayScale(0.8f, 0.8f), EPS);
+        assertEquals(0.4f / 3.0f, MobDisplayCatalystRules.displayScale(3.0f, 1.0f), EPS);
+        // 正好 0.4 格宽高：缩到 0.4（0.4 / 0.4 = 1.0，再被外层的 0.4 上限压住）
+        assertEquals(MobDisplayCatalystRules.MAX_DIMENSION, MobDisplayCatalystRules.displayScale(0.4f, 0.4f), EPS);
     }
 
     @Test
     void smallMobIsNeverUpscaled() {
-        // 小鸡 0.4 高：绝不放大成巨型，封顶 0.8
+        // 小鸡 0.4 高：绝不放大成巨型，封顶 0.4
         assertEquals(MobDisplayCatalystRules.MAX_DIMENSION, MobDisplayCatalystRules.displayScale(0.4f, 0.4f), EPS);
         // 比上限还小的生物同理
         assertEquals(MobDisplayCatalystRules.MAX_DIMENSION, MobDisplayCatalystRules.displayScale(0.2f, 0.3f), EPS);

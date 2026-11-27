@@ -43,11 +43,12 @@ import net.neoforged.neoforge.common.NeoForge;
  *       minEffect −4/3 MC，其余同上</li>
  * </ul>
  *
- * <p><b>fade=true 的语义（已对 2.4.2 字节码核实）</b>：{@code BlockTempModifier} 在拿到
- * {@code getTemperature} 的非零返回值后自己做
- * {@code CSMath.blend(temp, 0, distance, 0.5, range)} —— 距离 ≤ 0.5 取满，≥ range 归零，
- * 中间线性。所以这里 {@code getTemperature} 必须返回<b>平坦值</b>，按 distance 再衰减一次
- * 会让实际强度变成平方衰减。</p>
+ * <p><b>fade 与 logarithmic 是两件事（已对 2.4.2 字节码核实）</b>：{@code fade=true} 时
+ * {@code BlockTempModifier} 在拿到 {@code getTemperature} 的非零返回值后自己做
+ * {@code CSMath.blend(temp, 0, distance, 0.5, range)} —— 距离 ≤ 0.5 取满、≥ range 归零，
+ * 中间线性衰减；{@code logarithmic=true} 则是<b>同一 BlockTemp 多格叠加</b>的曲线
+ * {@code newTotal = (oldTotal^(1/0.52) + tempToAdd)^0.52}，与距离无关。所以这里
+ * {@code getTemperature} 必须返回<b>平坦值</b>，按 distance 再衰减一次会让实际强度变成平方衰减。</p>
  *
  * <p><b>同一方块的多个 BlockTemp</b>：{@code BlockTempRegistry.MAPPED_BLOCKS} 是
  * {@code Multimap<Block, BlockTemp>}，{@code getBlockTempsFor} 返回整列，
@@ -99,9 +100,9 @@ public final class ColdSweatHeatSources {
      * 温度 30/45、range 7.0、minEffect −200/45、maxEffect 200/45、
      * minTemp −∞、maxTemp (1000 − 32)/45、fade true、<b>logarithmic true</b>。
      *
-     * <p>用在"过热断轴的蒸汽引擎"身上（{@link #Create}）：32 秒排气窗口里它就是一个岩浆级热源。
-     * {@code logarithmic} 只有这里为 true——岩浆的距离衰减是对数的，线性衰减会让贴着引擎
-     * 的玩家瞬间中暑。</p>
+     * <p>这是 1× 岩浆基准（2026-11-27 起只作为 {@link #STEAM_ENGINE_EXHAUST} 的底稿）。
+     * {@code fade} 是线性距离衰减，{@code logarithmic} 是 {@code ^0.52} 的多格叠加曲线
+     * （见类注释），两者都照 {@code world.toml} 的岩浆条目。</p>
      */
     public static final HeatProfile LAVA_EQUIVALENT = new HeatProfile(
             fahrenheitToMc(30.0, false),
@@ -112,6 +113,47 @@ public final class ColdSweatHeatSources {
             fahrenheitToMc(1000.0, true),
             true,
             true);
+
+    /** Cold Sweat 2.4.2 {@code BlockTempModifier#LOG_FACTOR}：logarithmic 叠加指数。 */
+    public static final double COLD_SWEAT_LOGARITHMIC_EXPONENT = 0.52;
+
+    /** 蒸汽引擎过载排气的等效岩浆倍数（2026-11-27 用户口径：岩浆温度 × 8）。 */
+    public static final double STEAM_ENGINE_EXHAUST_LAVA_MULTIPLIER = 8.0;
+
+    /**
+     * 把一条 logarithmic 热源的<b>最终效应</b>按 {@code effectMultiplier} 等比放大。
+     *
+     * <p>Cold Sweat 的 logarithmic 分支累加的是
+     * {@code newTotal = (oldTotal^(1/e) + tempToAdd)^e}（{@code e = }{@link #COLD_SWEAT_LOGARITHMIC_EXPONENT}），
+     * 所以单看某一格 {@code tempToAdd} 乘 {@code m}，实际温升只有 {@code m^e} 倍（8× 会变成
+     * {@code 8^0.52 ≈ 2.95×}）。先把温度乘 {@code m^(1/e)}，则任一步
+     * {@code (m^(1/e) · t)^e = m · t^e}——整条叠加序列都是基准的 {@code m} 倍；再把
+     * minEffect / maxEffect 同步乘 {@code m}，clamp 边界也保持同一比例，于是任意距离、
+     * 任意引擎数、任意遮挡格数下最终效应都精确是基准的 {@code m} 倍。</p>
+     *
+     * <p>range、温度上下限、{@code fade}/{@code logarithmic} 原样继承。</p>
+     */
+    public static HeatProfile scaleLogarithmicEffect(HeatProfile base, double effectMultiplier) {
+        return new HeatProfile(
+                base.temperatureMc() * Math.pow(effectMultiplier, 1.0 / COLD_SWEAT_LOGARITHMIC_EXPONENT),
+                base.range(),
+                base.minEffectMc() * effectMultiplier,
+                base.maxEffectMc() * effectMultiplier,
+                base.minTemperatureMc(),
+                base.maxTemperatureMc(),
+                base.fade(),
+                base.logarithmic());
+    }
+
+    /**
+     * 蒸汽引擎过载排气：岩浆等效热量的 8 倍（用户口径「岩浆温度 × 8」）。
+     *
+     * <p>温度与 effect 上下限已按 logarithmic 曲线补偿（见
+     * {@link #scaleLogarithmicEffect}），实际 Cold Sweat 温升是 {@link #LAVA_EQUIVALENT} 的
+     * 精确 8 倍，而不是只把输入温度乘 8 得到的 {@code 8^0.52} 倍。</p>
+     */
+    public static final HeatProfile STEAM_ENGINE_EXHAUST = scaleLogarithmicEffect(
+            LAVA_EQUIVALENT, STEAM_ENGINE_EXHAUST_LAVA_MULTIPLIER);
 
     /**
      * 一份 {@code BlockTemp} 的完整参数（顺序与 {@code BlockTemp} 的 8 参构造一致：
@@ -290,9 +332,10 @@ public final class ColdSweatHeatSources {
     /**
      * Create 蒸汽引擎热源。整类只在 {@code create} 在场时被加载。
      *
-     * <p>只有<b>排气窗口</b>（过热 → 断轴之后那 32 秒）的引擎算热源，而且是岩浆级
-     * （{@link #LAVA_EQUIVALENT}）：断轴的引擎在喷高温蒸汽，玩家贴上去要付出中暑代价。
-     * 正常运转/停转的引擎<b>不</b>发热（蒸汽机不等于锅炉炉膛）。</p>
+     * <p>只有<b>排气窗口</b>（过热 → 断轴之后那 32 秒）的引擎算热源，而且是
+     * <b>8× 岩浆</b>（{@link ColdSweatHeatSources#STEAM_ENGINE_EXHAUST}，由 {@link ColdSweatHeatSources#LAVA_EQUIVALENT} 经
+     * {@link ColdSweatHeatSources#scaleLogarithmicEffect} 补偿 {@code ^0.52} 后得到）：断轴的引擎在喷高温蒸汽，
+     * 玩家贴上去要付出中暑代价。正常运转/停转的引擎<b>不</b>发热（蒸汽机不等于锅炉炉膛）。</p>
      *
      * <p><b>判据（2026-11-26 修）</b>：主判据是 {@code SteamEngineExhaustHeatZones.isExhausting}
      * ——一张由引擎自己的服务端 tick 每 tick 续期的 {@code (维度, BlockPos)} 纯内存表，
@@ -331,7 +374,7 @@ public final class ColdSweatHeatSources {
      * <p><b>不破坏原有行为</b>：引擎正常运转/停转时 {@code exhaustingEngine(...)} 返回
      * {@code false}，{@code BlockTempModifier} 对下标 0 只是 {@code isValid} 失败后
      * {@code goto 540}（继续遍历），下标 1 的 {@code create_cold_sweat.SteamEngine} 照旧生效；
-     * 只有过载断轴后的 32 秒排气窗口里，下标 0 抢先命中 {@link #LAVA_EQUIVALENT}。</p>
+     * 只有过载断轴后的 32 秒排气窗口里，下标 0 抢先命中 {@link ColdSweatHeatSources#STEAM_ENGINE_EXHAUST}。</p>
      */
     private static final class Create {
 
@@ -339,8 +382,9 @@ public final class ColdSweatHeatSources {
             Block engine = block("create", "steam_engine");
             if (engine != null) {
                 // registerFirst（不是 register）：插到列表下标 0，否则 create_cold_sweat 的
-                // SteamEngine 会在 BlockTempModifier 里抢先命中并 break，岩浆热源永远不生效。
-                event.registerFirst(ColdSweatHeatBlockTemps.lavaEquivalent(Create::exhaustingEngine, engine));
+                // SteamEngine 会在 BlockTempModifier 里抢先命中并 break，8× 岩浆热源永远不生效。
+                event.registerFirst(
+                        ColdSweatHeatBlockTemps.steamEngineExhaust(Create::exhaustingEngine, engine));
             }
         }
 
@@ -467,9 +511,9 @@ final class ColdSweatHeatBlockTemps {
         return new Gated(ColdSweatHeatSources.SEETHING, gate, blocks);
     }
 
-    /** 岩浆等价（{@link ColdSweatHeatSources#LAVA_EQUIVALENT}，logarithmic）。 */
-    static BlockTemp lavaEquivalent(ColdSweatHeatSources.StateGate gate, Block... blocks) {
-        return new Gated(ColdSweatHeatSources.LAVA_EQUIVALENT, gate, blocks);
+    /** 蒸汽引擎过载排气（{@link ColdSweatHeatSources#STEAM_ENGINE_EXHAUST}，logarithmic，8× 岩浆）。 */
+    static BlockTemp steamEngineExhaust(ColdSweatHeatSources.StateGate gate, Block... blocks) {
+        return new Gated(ColdSweatHeatSources.STEAM_ENGINE_EXHAUST, gate, blocks);
     }
 
     private static final class Gated extends BlockTemp {
