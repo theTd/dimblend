@@ -12,30 +12,30 @@ import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 
 /**
- * Region partition wall + warp gate at band boundaries.
+ * Legacy region partition wall + warp gate at band boundaries.
  *
- * Every region boundary column (block X = k * band_size) that separates two different
- * {@link BandLayout#laneName} identities gets a full-height wall of Biomes O' Plenty's
- * null block. Inside the railway corridor cross-section the wall yields to warp gate
- * blocks, which replace the carved vault, the track, and the roadbed. The gate is a
- * wall for unauthorized entities ({@link dimblend.block.WarpGateBlock#getCollisionShape})
- * and air for Sable's world mesh / Create carriages; {@link WarpGatePassageGuard} is
- * only the clip/teleport safety net.
+ * <p><b>W2 status: new chunks are frameless.</b> With {@link BandSeam#isFramelessSeam()}
+ * true (the default), {@link #place} returns before writing anything: the corridor is carved
+ * straight through {@code X = slabX} by {@link OakTrackCorridor}, and the seam exists only as
+ * the pure predicates in {@link BandSeam} (walking guard, Sable crossing, fluid barrier).
+ * Setting {@link BandSeam#setFramelessSeam} to {@code false} restores the historical wall:
+ * every different-lane boundary column gets a full-height wall of Biomes O' Plenty's null
+ * block, with warp-gate blocks replacing the carved vault, the track and the roadbed. The
+ * gate is a wall for unauthorized entities
+ * ({@link dimblend.block.WarpGateBlock#getCollisionShape}) and air for Sable's world mesh /
+ * Create carriages; {@link WarpGatePassageGuard} is only the clip/teleport safety net.
  *
- * Boundaries whose adjacent regions share a lane name (see
- * {@link BandLayout#sameLaneAcrossBoundary}) get nothing — those stay open corridors
- * and skip {@link RegionBoundaryNoStructureZone}. Walled boundaries get that zone
+ * <p>Boundaries whose adjacent regions share a lane name (see
+ * {@link BandLayout#sameLaneAcrossBoundary}) get nothing in either mode — those stay open
+ * corridors and skip {@link RegionBoundaryNoStructureZone}. Walled boundaries get that zone
  * on both sides so structures cannot grow into the wall.
  *
- * Ownership rule: {@link OakTrackCorridor} never touches boundary columns (see the skip in
- * its carve loop), so neighbor re-carves during decoration cannot wipe the gate after this
- * pass wrote it. This class exclusively owns boundary columns.
- *
- * The wall cube itself is BOP null_block (normal hardness, piston-normal). Survival
- * mining / explosions / vanilla pistons are blocked by {@link RegionBoundaryWallProtector};
- * warp-gate cells already use {@code strength(-1, 3600000)} and {@code PushReaction.BLOCK}.
- * BOP End Corruption also places this block as tree trunks in End bands — protection is
- * column-scoped so those trunks stay mineable.
+ * <p>The wall cube itself is BOP null_block (normal hardness, piston-normal). Survival
+ * mining / explosions / vanilla pistons of <em>residual</em> wall cells from old saves are
+ * still blocked by {@link RegionBoundaryWallProtector}; warp-gate cells already use
+ * {@code strength(-1, 3600000)} and {@code PushReaction.BLOCK}. BOP End Corruption also
+ * places this block as tree trunks in End bands — protection is column-scoped so those
+ * trunks stay mineable.
  */
 public final class RegionBoundaryWall {
     public static final ResourceLocation WALL_ID =
@@ -45,6 +45,11 @@ public final class RegionBoundaryWall {
     }
 
     public static void place(WorldGenLevel level, ChunkAccess chunk) {
+        if (BandSeam.isFramelessSeam()) {
+            // W2: no wall, no warp gate. Old saves keep their residual blocks; nothing new
+            // is written, and OakTrackCorridor carves the corridor straight through the seam.
+            return;
+        }
         ChunkGenerator generator = level.getLevel().getChunkSource().getGenerator();
         if (!(generator instanceof RotatingChunkGenerator rotating)) {
             return;
@@ -85,43 +90,23 @@ public final class RegionBoundaryWall {
      * and {@link WarpGatePassageGuard} so both always agree on where gates exist.
      */
     public static boolean ownsBoundaryColumn(RotatingChunkGenerator rotating, int blockX) {
-        return ownsBoundaryColumn(rotating.layout(), rotating.bandSize(), blockX);
+        return BandSeam.ownsSeamColumn(rotating, blockX);
     }
 
     public static boolean ownsBoundaryColumn(BandLayout layout, int bandSize, int blockX) {
-        if (Math.floorMod(blockX, bandSize) != 0) {
-            return false;
-        }
-        return !layout.sameLaneAcrossBoundary(blockX, bandSize);
+        return BandSeam.ownsSeamColumn(layout, bandSize, blockX);
     }
 
     /**
-     * Runtime gate check for the passage guard: returns the block X of the first
-     * boundary-column slab the given box overlaps, or -1. Cells outside the octagon shape
-     * are solid wall, so blocking the whole bounding box only ever affects entities
-     * already inside wall/gate blocks.
+     * Runtime gate check kept for callers that predate {@link BandSeam}: returns the block X
+     * of the first seam-column slab the given box overlaps, or -1.
      */
     public static int overlappedBoundaryColumn(
             RotatingChunkGenerator rotating,
             double minX, double maxX,
             double minY, double maxY,
             double minZ, double maxZ) {
-        int bandSize = rotating.bandSize();
-        int from = (int) Math.floor(minX);
-        int to = (int) Math.floor(maxX - 1.0E-7);
-        for (int x = from; x <= to; x++) {
-            if (Math.floorMod(x, bandSize) != 0 || !ownsBoundaryColumn(rotating, x)) {
-                continue;
-            }
-            if (x + 1 > minX && x < maxX
-                    && maxY >= OakTrackCorridor.TRACK_Y + OakTrackCorridor.VAULT_FLOOR_DY
-                    && minY <= OakTrackCorridor.TRACK_Y + OakTrackCorridor.VAULT_APEX_DY
-                    && maxZ >= OakTrackCorridor.CORRIDOR_Z - OakTrackCorridor.VAULT_RADIUS
-                    && minZ <= OakTrackCorridor.CORRIDOR_Z + OakTrackCorridor.VAULT_RADIUS + 1) {
-                return x;
-            }
-        }
-        return -1;
+        return BandSeam.overlappedSeamColumn(rotating, minX, maxX, minY, maxY, minZ, maxZ);
     }
 
     private static void writeColumn(ChunkAccess chunk, RotatingChunkGenerator rotating, int wallX, BlockState wall) {

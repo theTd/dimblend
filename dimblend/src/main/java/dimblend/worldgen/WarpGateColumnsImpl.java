@@ -9,19 +9,20 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.AABB;
 
 /**
- * {@link WarpGateColumns} on top of the worldgen rules that own the gates.
+ * {@link WarpGateColumns} on top of the worldgen rules that own the seams.
  *
- * <p>Column ownership is not re-derived here: {@link RegionBoundaryWall#ownsBoundaryColumn} is the
- * same test {@link RegionBoundaryWall#place} used to write the wall/gate and
- * {@link WarpGatePassageGuard} uses at runtime, so a gate exists exactly on a region-boundary
- * column whose two sides differ in lane (which now includes forced End regions, see
- * {@link BandLayout#delegateIndex}). The answer is then read from the actual blocks inside the
- * corridor cross-section, so a boundary column without a carved vault (no gate cells) is not
- * reported as a gate.
+ * <p>Seam ownership is not re-derived here: {@link BandSeam#ownsSeamColumn} is the same test the
+ * corridor carve, {@link WarpGatePassageGuard} and the Sable sweep use, so a seam exists exactly
+ * on a region-boundary column whose two sides differ in lane (which includes forced End regions,
+ * see {@link BandLayout#delegateIndex}).
  *
- * <p>Only already-loaded chunks are read ({@code ServerChunkCache#getChunkNow}); a null chunk
- * means "not ready" and is treated as not touching — this must never trigger generation or a
- * blocking chunk load from a gameplay check (dimblend-dev §8.28).
+ * <p>W2 ({@link BandSeam#isFramelessSeam()}) reports the carved vault cross-section
+ * geometrically: the gate is the shape of the tunnel, no block has to exist. Legacy saves with
+ * the old {@code warp_gate} blocks still get the block-scan answer, and a boundary column without
+ * a carved vault (no gate cells) is never reported as a gate. Only already-loaded chunks are
+ * read ({@code ServerChunkCache#getChunkNow}); a null chunk means "not ready" and is treated as
+ * not touching — this must never trigger generation or a blocking chunk load from a gameplay
+ * check (dimblend-dev §8.28).
  *
  * <p>Server thread only (the caller's contract).
  */
@@ -66,7 +67,15 @@ public final class WarpGateColumnsImpl implements WarpGateColumns.Impl {
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
         for (int x = fromX; x <= toX; x++) {
             if (Math.floorMod(x, bandSize) != 0
-                    || !RegionBoundaryWall.ownsBoundaryColumn(layout, bandSize, x)) {
+                    || !BandSeam.ownsSeamColumn(layout, bandSize, x)) {
+                continue;
+            }
+            if (BandSeam.isFramelessSeam()) {
+                // W2: the gate is the carved vault cross-section itself; no blocks to read, so
+                // report the same geometry the passage guard and Sable sweep use.
+                if (intersectsVault(fromY, toY, fromZ, toZ)) {
+                    return true;
+                }
                 continue;
             }
             for (int z = fromZ; z <= toZ; z++) {
@@ -80,6 +89,26 @@ public final class WarpGateColumnsImpl implements WarpGateColumns.Impl {
                         return true;
                     }
                 }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * True when the block interval intersects the octagon silhouette. Every row is symmetric in
+     * {@code dz}, so testing the interval's closest-to-zero dz against
+     * {@link OakTrackCorridor#inVault} answers the whole row.
+     */
+    private static boolean intersectsVault(int fromY, int toY, int fromZ, int toZ) {
+        int dzLow = fromZ - OakTrackCorridor.CORRIDOR_Z;
+        int dzHigh = toZ - OakTrackCorridor.CORRIDOR_Z;
+        if (dzLow > dzHigh) {
+            return false;
+        }
+        int dz = dzLow <= 0 && dzHigh >= 0 ? 0 : Math.min(Math.abs(dzLow), Math.abs(dzHigh));
+        for (int y = fromY; y <= toY; y++) {
+            if (OakTrackCorridor.inVault(dz, y - OakTrackCorridor.TRACK_Y)) {
+                return true;
             }
         }
         return false;

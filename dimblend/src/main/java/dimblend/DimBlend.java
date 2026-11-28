@@ -11,6 +11,10 @@ import dimblend.band.BandTrainPayload;
 import dimblend.client.DimBlendClient;
 import dimblend.command.DimBlendCommands;
 import dimblend.diagnostics.HangWatchdog;
+import dimblend.mirage.BandSeamInfoPayload;
+import dimblend.mirage.MirageChunkPayload;
+import dimblend.mirage.MirageRequestPayload;
+import dimblend.mirage.MirageServerManager;
 import dimblend.purge.RegionPurgeConfig;
 import dimblend.purge.RegionPurgeController;
 import dimblend.compat.CorridorTrackProtector;
@@ -97,6 +101,7 @@ public final class DimBlend {
         NeoForge.EVENT_BUS.addListener(RegionBoundaryWallProtector::onPistonPre);
         NeoForge.EVENT_BUS.addListener(WarpGatePassageGuard::onEntityTickPost);
         NeoForge.EVENT_BUS.addListener(WarpGateSableCrossing::onLevelTick);
+        NeoForge.EVENT_BUS.register(MirageServerManager.get());
         NeoForge.EVENT_BUS.addListener(DimBlend::onLevelUnload);
         // dimblend:rotating's delegate placement states may only run their concentric-ring biome
         // searches once OVERWORLD/NETHER/END all exist. Before that, a ring search samples
@@ -191,13 +196,17 @@ public final class DimBlend {
     }
 
     private static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
-        // "2": BandTrainPayload gained the alert bit (dragon-chase marker). A peer still speaking
-        // "1" would mis-decode the extra boolean, so let NeoForge reject the connection instead.
-        PayloadRegistrar registrar = event.registrar("2");
+        // "3": M1 adds BandSeamInfoPayload + MirageChunkPayload (S2C) and MirageRequestPayload
+        // (C2S). Peers must agree on all three or NeoForge rejects the connection. "2" added the
+        // BandTrainPayload alert bit; "1" was the first band sync.
+        PayloadRegistrar registrar = event.registrar("3");
         TimeLockPayload.register(registrar);
         BandInfoPayload.register(registrar);
         BandLanePayload.register(registrar);
         BandTrainPayload.register(registrar);
+        MirageRequestPayload.register(registrar);
+        MirageChunkPayload.register(registrar);
+        BandSeamInfoPayload.register(registrar);
     }
 
     private static void onRegisterGameTests(RegisterGameTestsEvent event) {

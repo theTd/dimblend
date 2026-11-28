@@ -45,10 +45,11 @@ import org.slf4j.Logger;
  * missing. The only place a crossing exists is the sub-level's world box against the gate's slab,
  * so the sweep compares those two boxes each tick.
  *
- * <p><b>Coordinates.</b> The gate is a real block of the <i>world</i>, so the slab is found by
- * the boundary-column rule in {@link RegionBoundaryWall} and the block read is a world read.
- * The sub-level's box is also a world box ({@code SubLevel#boundingBox()}). Nothing here goes
- * through the plot: the sub-level's own blocks are not what this looks at.
+ * <p><b>Coordinates.</b> The crossing plane is the seam column ({@code X = slabX}), found by the
+ * same {@link BandSeam} rule the walking guard uses. In frameless mode the gate cells are the
+ * carved vault cross-section itself (no blocks to read); legacy saves still read the real
+ * {@code warp_gate} blocks. The sub-level's box is also a world box
+ * ({@code SubLevel#boundingBox()}); nothing here goes through the plot.
  *
  * <p><b>Velocity only, never position.</b> The first 2026-11-04 correction refused a backward
  * crossing by teleporting the body back outside the gate every tick. In game that fought the
@@ -182,7 +183,10 @@ public final class WarpGateSableCrossing {
             if (action == WarpGateMotion.Action.HOLD_STILL || action == WarpGateMotion.Action.TURN_PLUS_X) {
                 return;
             }
-            playCrossingEffects(level, sub, box, slabX);
+            int gateMaxDy = BandSeam.isFramelessSeam()
+                    ? BandSeam.seamMaxDy(rotating, slabX)
+                    : OakTrackCorridor.VAULT_APEX_DY;
+            playCrossingEffects(level, sub, box, slabX, gateMaxDy);
         }
 
         /**
@@ -197,7 +201,8 @@ public final class WarpGateSableCrossing {
          * and has no creating accessor, so writing the flag there would throw on a sub-level the
          * game built without one.
          */
-        private static void playCrossingEffects(ServerLevel level, ServerSubLevel sub, AABB box, int slabX) {
+        private static void playCrossingEffects(
+                ServerLevel level, ServerSubLevel sub, AABB box, int slabX, int gateMaxDy) {
             if (!INSIDE.add(sub.getUniqueId())) {
                 return;
             }
@@ -206,12 +211,13 @@ public final class WarpGateSableCrossing {
             // nether-portal travel sound the first version played.
             level.playSound(null, centre.x, centre.y, centre.z,
                     SoundEvents.PORTAL_AMBIENT, SoundSource.BLOCKS, 1.0F, 1.0F);
-            emitParticles(level, box, slabX, level.random);
+            emitParticles(level, box, slabX, gateMaxDy, level.random);
         }
 
         /** Purple portal particles over the gate cells this sub-level overlaps. */
-        private static void emitParticles(ServerLevel level, AABB box, int slabX, RandomSource random) {
-            List<BlockPos> cells = overlappingCells(level, box, slabX);
+        private static void emitParticles(
+                ServerLevel level, AABB box, int slabX, int gateMaxDy, RandomSource random) {
+            List<BlockPos> cells = overlappingCells(level, box, slabX, gateMaxDy);
             for (int index : WarpGateParticles.sampledIndices(cells.size())) {
                 BlockPos cell = cells.get(index);
                 for (int i = 0; i < WarpGateParticles.PARTICLES_PER_CELL; i++) {
@@ -292,23 +298,32 @@ public final class WarpGateSableCrossing {
     /**
      * The X of the first gate slab this box overlaps, or -1.
      *
-     * <p>{@link RegionBoundaryWall#overlappedBoundaryColumn} already answers exactly this for the
-     * corridor cross-section; it is reused rather than re-derived so the sweep and the walking
-     * player's safety net can never disagree about where a gate is.
+     * <p>{@link BandSeam#overlappedSeamColumn} already answers exactly this for the corridor
+     * cross-section; it is reused rather than re-derived so the sweep and the walking player's
+     * safety net can never disagree about where a seam is. In frameless mode the gate cells are
+     * the carving cross-section itself (no blocks to read); legacy saves still confirm the real
+     * {@code warp_gate} blocks.
      */
     private static int overlappingGate(ServerLevel level, RotatingChunkGenerator rotating, AABB box) {
-        int slabX = RegionBoundaryWall.overlappedBoundaryColumn(rotating,
+        int slabX = BandSeam.overlappedSeamColumn(rotating,
                 box.minX, box.maxX, box.minY, box.maxY, box.minZ, box.maxZ);
         if (slabX < 0) {
             return -1;
         }
-        // The column rule says a gate exists at this X; confirm the cells the box really touches
-        // are gate blocks, so a carved-out or replaced column is not treated as a gate.
-        return overlappingCells(level, box, slabX).isEmpty() ? -1 : slabX;
+        int maxDy = BandSeam.isFramelessSeam()
+                ? BandSeam.seamMaxDy(rotating, slabX)
+                : OakTrackCorridor.VAULT_APEX_DY;
+        // The column rule says a seam exists at this X; confirm the cells the box really touches
+        // are gate cells, so a carved-out or replaced legacy column is not treated as a gate.
+        return overlappingCells(level, box, slabX, maxDy).isEmpty() ? -1 : slabX;
     }
 
-    /** The gate blocks this box overlaps inside slab column {@code slabX}. */
-    private static List<BlockPos> overlappingCells(ServerLevel level, AABB box, int slabX) {
+    /** The gate cells this box overlaps inside slab column {@code slabX}. */
+    private static List<BlockPos> overlappingCells(
+            ServerLevel level, AABB box, int slabX, int maxDy) {
+        if (BandSeam.isFramelessSeam()) {
+            return seamCells(box, slabX, maxDy);
+        }
         BlockState gate = DimBlendRegistries.WARP_GATE.get().defaultBlockState();
         ResourceLocation gateId = BuiltInRegistries.BLOCK.getKey(gate.getBlock());
         List<BlockPos> out = new ArrayList<>();
@@ -325,6 +340,33 @@ public final class WarpGateSableCrossing {
                 }
                 if (BuiltInRegistries.BLOCK.getKey(level.getBlockState(cursor).getBlock()).equals(gateId)) {
                     out.add(cursor.immutable());
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Frameless gate cells: the carved octagon column at {@code slabX}, intersected with the
+     * sub-level's box. No block reads, so the sweep works on never-generated or freshly mined
+     * seams alike.
+     */
+    private static List<BlockPos> seamCells(AABB box, int slabX, int maxDy) {
+        List<BlockPos> out = new ArrayList<>();
+        if (maxDy < 0) {
+            return out;
+        }
+        int minY = Math.max(OakTrackCorridor.TRACK_Y + OakTrackCorridor.VAULT_FLOOR_DY,
+                (int) Math.floor(box.minY));
+        int maxY = Math.min(OakTrackCorridor.TRACK_Y + maxDy, (int) Math.floor(box.maxY));
+        int minZ = Math.max(OakTrackCorridor.CORRIDOR_Z - OakTrackCorridor.VAULT_RADIUS,
+                (int) Math.floor(box.minZ));
+        int maxZ = Math.min(OakTrackCorridor.CORRIDOR_Z + OakTrackCorridor.VAULT_RADIUS,
+                (int) Math.floor(box.maxZ));
+        for (int y = minY; y <= maxY; y++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                if (OakTrackCorridor.inVault(z - OakTrackCorridor.CORRIDOR_Z, y - OakTrackCorridor.TRACK_Y)) {
+                    out.add(new BlockPos(slabX, y, z));
                 }
             }
         }

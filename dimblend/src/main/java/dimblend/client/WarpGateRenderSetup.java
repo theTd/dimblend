@@ -1,9 +1,10 @@
 package dimblend.client;
 
 import dimblend.DimBlendRegistries;
+import dimblend.client.bandrift.BandRiftMode;
+import dimblend.client.bandrift.WarpGateMembraneRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderers;
-import net.minecraft.client.renderer.blockentity.TheEndGatewayRenderer;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -11,10 +12,15 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 
 /**
- * Binds the vanilla end-gateway starfield renderer to the warp gate block entity type.
- * Kept out of the main mod class so the server never classloads client renderer code.
+ * Binds the warp gate block entity renderer. Kept out of the main mod class so the server never
+ * classloads client renderer code.
  *
- * Registered twice on purpose. The official path is {@code EntityRenderersEvent.RegisterRenderers},
+ * <p>The binding is {@link WarpGateMembraneRenderer}, which draws nothing in the default
+ * {@link BandRiftMode#RIFT} mode (one batched membrane draw per boundary column replaces the 293
+ * per-cell gateway cubes) and delegates to {@code TheEndGatewayRenderer} in
+ * {@link BandRiftMode#LEGACY} for A/B captures. See {@link BandRiftRenderer} for the batch pass.</p>
+ *
+ * <p>Registered twice on purpose. The official path is {@code EntityRenderersEvent.RegisterRenderers},
  * but FML refuses every mod-bus event once ANY mod's common setup has failed (a broken
  * mod state, common in big packs) — without a renderer the gate block, which renders no
  * static model, would be fully invisible. The game bus is unaffected by that state, so
@@ -43,7 +49,7 @@ public final class WarpGateRenderSetup {
             return;
         }
         registered = true;
-        BlockEntityRenderers.register(DimBlendRegistries.WARP_GATE_BE.get(), TheEndGatewayRenderer::new);
+        BlockEntityRenderers.register(DimBlendRegistries.WARP_GATE_BE.get(), WarpGateMembraneRenderer::new);
         if (!latePoke) {
             // Official path: the initial resource reload runs after this event and rebuilds
             // the dispatcher snapshot, so no manual poke is needed here. Poking now would
