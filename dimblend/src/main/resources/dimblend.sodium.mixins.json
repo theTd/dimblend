@@ -1,0 +1,17 @@
+{
+  "required": false,
+  "package": "dimblend.mixin.sodium",
+  "plugin": "dimblend.mixin.sodium.SodiumMixinPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "minVersion": "0.8",
+  "priority": 1500,
+  "client": [
+    "ShaderLoaderProbeMixin",
+    "ShaderParserInjectionMixin",
+    "DefaultShaderInterfaceRiftUniformsMixin",
+    "SodiumWorldRendererAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

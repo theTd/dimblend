@@ -26,6 +26,7 @@
     "DecorationClearanceMixin",
     "FlowingFluidTickMixin",
     "FlowingFluidSpreadInvoker",
+    "FlowingFluidSeamMixin",
     "CorridorLavaChunkPyramidMixin",
     "CorridorLavaChunkStatusTasksMixin",
     "StationDepotChunkStatusTasksMixin",

@@ -10,13 +10,13 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.tick.EntityTickEvent;
 
 /**
- * Clip/teleport safety net for warp gates (see {@link RegionBoundaryWall}).
+ * Clip/teleport safety net for band seams (see {@link BandSeam}).
  *
- * Walking players are stopped by {@link WarpGateBlock#getCollisionShape}; this guard
- * still pushes unauthorized entities back out if they spawn, teleport, or otherwise
- * clip into a gate slab. Passage policy is {@link WarpGateBlock#mayPass} so collision
- * and this revert cannot disagree (Create carriages / Sable riders pass, other
- * entities do not).
+ * <p>W2 made this the <b>only</b> walking block on new chunks: the vault is carved straight
+ * through the seam, so there is no {@link WarpGateBlock#getCollisionShape} wall any more. Legacy
+ * saves keep a residual wall/gate; the guard covers both because it works on
+ * {@link BandSeam#overlappedSeamColumn}, never on blocks. Passage policy is
+ * {@link WarpGateBlock#mayPass} (Create carriages / Sable riders pass, other entities do not).
  */
 public final class WarpGatePassageGuard {
     private WarpGatePassageGuard() {

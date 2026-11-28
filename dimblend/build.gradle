@@ -100,6 +100,12 @@ neoForge {
 // "optional", meaning it will not be pulled by dependents of this mod.
 configurations {
     runtimeClasspath.extendsFrom localRuntime
+    // Sodium is optional at runtime: only the S2 mixin targets need its classes at compile
+    // time. Resolved as a JarJar shell and unpacked below, so no binary is committed.
+    sodiumModJar {
+        canBeConsumed = false
+        canBeResolved = true
+    }
 }
 
 dependencies {
@@ -156,7 +162,62 @@ dependencies {
     localRuntime files(rootProject.file("dimblend/libs/sable-neoforge-1.21.1-2.0.5_cui-modded.jar"))
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // Sodium 0.8.13 (MC 1.21.1). The Modrinth artifact is a JarJar shell; the task below
+    // unpacks the real mod jar into build/tmp/sodium-compile/classes for compileOnly.
+    sodiumModJar("maven.modrinth:sodium:mc1.21.1-0.8.13-neoforge") {
+        transitive = false
+    }
+    compileOnly files(layout.buildDirectory.dir("tmp/sodium-compile/classes"))
 }
+
+// Unpacks the nested Sodium mod jar (META-INF/jarjar/net.caffeinemc.sodium-*.jar) out of the
+// Modrinth shell. Keeping it in the build directory means a clean checkout compiles without a
+// vendored binary, and the S2 mixins stay optional at runtime (required=false + plugin gate).
+def sodiumCompileDir = layout.buildDirectory.dir("tmp/sodium-compile")
+def unpackSodiumCompileJar = tasks.register("unpackSodiumCompileJar") {
+    def shellJars = configurations.sodiumModJar
+    inputs.files(shellJars)
+    outputs.dir(sodiumCompileDir)
+    doLast {
+        java.io.File outDir = sodiumCompileDir.get().asFile
+        outDir.deleteDir()
+        java.io.File classesDir = new java.io.File(outDir, "classes")
+        classesDir.mkdirs()
+        java.io.File shell = shellJars.files.find { it.name.endsWith(".jar") }
+        if (shell == null) {
+            throw new GradleException("sodiumModJar resolved no jar file")
+        }
+        new java.util.zip.ZipFile(shell).withCloseable { shellZip ->
+            def innerEntries = shellZip.entries().findAll {
+                it.name.startsWith("META-INF/jarjar/") && it.name.endsWith(".jar")
+                        && it.name.contains("sodium-neoforge")
+            }
+            if (innerEntries.isEmpty()) {
+                throw new GradleException("no nested sodium-neoforge jar inside ${shell.name}")
+            }
+            innerEntries.each { entry ->
+                java.io.File innerJar = new java.io.File(outDir, new java.io.File(entry.name).name)
+                shellZip.getInputStream(entry).withStream { input ->
+                    innerJar.withOutputStream { output -> input.transferTo(output) }
+                }
+                new java.util.zip.ZipFile(innerJar).withCloseable { innerZip ->
+                    innerZip.entries().each { inner ->
+                        if (inner.isDirectory() || inner.name.startsWith("META-INF/")) {
+                            return
+                        }
+                        java.io.File target = new java.io.File(classesDir, inner.name)
+                        target.parentFile?.mkdirs()
+                        innerZip.getInputStream(inner).withStream { input ->
+                            target.withOutputStream { output -> input.transferTo(output) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+tasks.named("compileJava").configure { dependsOn(unpackSodiumCompileJar) }
 
 tasks.named('test', Test).configure {
     useJUnitPlatform()

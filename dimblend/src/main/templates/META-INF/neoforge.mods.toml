@@ -65,6 +65,13 @@ config="${mod_id}.simurail.mixins.json"
 [[mixins]]
 config="${mod_id}.sable.mixins.json"
 
+# Sodium chunk-shader injection for the S2 volumetric double-universe. required=false plus
+# SodiumMixinPlugin: without Sodium the client boots and RIFT mode falls back to the Phase-1
+# membrane. The six uniforms are bound optionally, so a Sodium shader whose text drifted
+# degrades instead of crashing.
+[[mixins]]
+config="${mod_id}.sodium.mixins.json"
+
 # The [[accessTransformers]] block allows you to declare where your AT file is.
 # If this block is omitted, a fallback attempt will be made to load an AT from META-INF/accesstransformer.cfg
 #[[accessTransformers]]
